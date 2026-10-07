@@ -61,8 +61,8 @@ export function daysBetween(a: Date, b: Date): number {
 }
 
 export function formatDays(value: number | null | undefined): string {
+  if (value === Number.POSITIVE_INFINITY) return "∞";
   if (value === null || value === undefined || !Number.isFinite(value)) return UNKNOWN;
-  if (value === Infinity) return "∞";
   if (value < 1) return `${formatNumber(value, 1)} jour`;
   return `${formatNumber(value, value < 10 ? 1 : 0)} jours`;
 }
