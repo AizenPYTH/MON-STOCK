@@ -13,8 +13,6 @@ export function Topbar({ ctx }: { ctx: OrgContext }) {
             <select
               name="organization_id"
               defaultValue={ctx.organization.id}
-              // Le changement soumet le formulaire (progressive enhancement : sans JS, un bouton serait nécessaire)
-              onChange={undefined}
               className="h-8 appearance-none rounded-lg border border-border bg-surface pl-2.5 pr-7 text-sm font-medium"
             >
               {ctx.memberships.map((m) => (

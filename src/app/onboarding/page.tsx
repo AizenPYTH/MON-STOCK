@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 // Application entièrement authentifiée : rendu dynamique à chaque requête.
 export const dynamic = "force-dynamic";
+// Le seed DEMO (plusieurs centaines d'insertions) peut dépasser 10 s.
+export const maxDuration = 120;
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getOrgContext } from "@/features/auth/dal";

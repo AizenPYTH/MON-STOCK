@@ -13,8 +13,15 @@ function isPublicPath(pathname: string): boolean {
  * Rafraîchit la session Supabase (cookies) et protège les routes applicatives.
  * Vérification optimiste : la vraie autorisation est faite dans la couche d'accès aux données.
  */
+// Routes machine-à-machine : pas de session à rafraîchir (webhooks signés, cron protégé par secret).
+const MACHINE_PATHS = ["/api/webhooks", "/api/cron"];
+
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
+
+  if (MACHINE_PATHS.some((p) => request.nextUrl.pathname.startsWith(p))) {
+    return response;
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

@@ -177,7 +177,8 @@ create table public.price_history (
   price numeric(12, 2) not null check (price >= 0),
   currency char(3) not null default 'EUR',
   source text not null default 'manual',
-  recorded_at timestamptz not null default now()
+  -- clock_timestamp() : horodatage réel même au sein d'une transaction
+  recorded_at timestamptz not null default clock_timestamp()
 );
 
 create index price_history_sku_idx on public.price_history (sku_id, kind, recorded_at desc);

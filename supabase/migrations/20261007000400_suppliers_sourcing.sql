@@ -330,6 +330,24 @@ create table public.supplier_stock_history (
 
 create index supplier_stock_history_offer_idx on public.supplier_stock_history (offer_id, recorded_at desc);
 
+create or replace function public.offer_before_update()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.original_price is distinct from old.original_price
+     or new.original_currency is distinct from old.original_currency
+     or new.tax_type is distinct from old.tax_type then
+    new.last_price_at := clock_timestamp();
+  end if;
+  if new.available_quantity is distinct from old.available_quantity
+     or new.stock_status is distinct from old.stock_status then
+    new.last_stock_at := clock_timestamp();
+  end if;
+  return new;
+end;
+$$;
+
 create or replace function public.record_offer_history()
 returns trigger
 language plpgsql
@@ -340,7 +358,7 @@ begin
     values (new.organization_id, new.id, new.original_price, new.original_currency, new.normalized_price, new.normalized_currency, new.tax_type, new.last_price_at);
     if new.available_quantity is not null or new.stock_status <> 'unknown' then
       insert into public.supplier_stock_history (organization_id, offer_id, available_quantity, stock_status, recorded_at)
-      values (new.organization_id, new.id, new.available_quantity, new.stock_status, coalesce(new.last_stock_at, now()));
+      values (new.organization_id, new.id, new.available_quantity, new.stock_status, coalesce(new.last_stock_at, clock_timestamp()));
     end if;
     return new;
   end if;
@@ -348,25 +366,27 @@ begin
   if new.original_price is distinct from old.original_price
      or new.original_currency is distinct from old.original_currency
      or new.tax_type is distinct from old.tax_type then
-    new.last_price_at := now();
     insert into public.supplier_price_history (organization_id, offer_id, original_price, original_currency, normalized_price, normalized_currency, tax_type, recorded_at)
     values (new.organization_id, new.id, new.original_price, new.original_currency, new.normalized_price, new.normalized_currency, new.tax_type, new.last_price_at);
   end if;
 
   if new.available_quantity is distinct from old.available_quantity
      or new.stock_status is distinct from old.stock_status then
-    new.last_stock_at := now();
     insert into public.supplier_stock_history (organization_id, offer_id, available_quantity, stock_status, recorded_at)
-    values (new.organization_id, new.id, new.available_quantity, new.stock_status, new.last_stock_at);
+    values (new.organization_id, new.id, new.available_quantity, new.stock_status, coalesce(new.last_stock_at, clock_timestamp()));
   end if;
 
   return new;
 end;
 $$;
 
--- BEFORE pour pouvoir modifier last_price_at / last_stock_at
+-- BEFORE UPDATE : horodatages ; AFTER INSERT/UPDATE : historique (la ligne existe alors).
+create trigger sourcing_offers_before_update
+  before update on public.sourcing_offers
+  for each row execute function public.offer_before_update();
+
 create trigger sourcing_offers_record_history
-  before insert or update on public.sourcing_offers
+  after insert or update on public.sourcing_offers
   for each row execute function public.record_offer_history();
 
 -- -----------------------------------------------------------------------------
