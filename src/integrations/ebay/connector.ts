@@ -7,7 +7,7 @@ import { createEbayConfig, EBAY_PROVIDER, EBAY_SCOPES, ebayScopeList, type EbayC
 import { buildAuthorizeUrl, exchangeAuthorizationCode, refreshAccessToken } from "@/integrations/ebay/oauth";
 import { fetchEbayAccountInfo } from "@/integrations/ebay/identity";
 import { iterateEbayOrders } from "@/integrations/ebay/fulfillment";
-import { iterateGetMyeBaySelling, reviseInventoryStatus } from "@/integrations/ebay/trading";
+import { iterateGetMyeBaySelling, GET_MY_EBAY_SELLING_MAX_PAGES, reviseInventoryStatus } from "@/integrations/ebay/trading";
 
 const log = createLogger("EBAY");
 
@@ -80,9 +80,13 @@ export class EbayConnector implements MarketplaceConnector {
 
   async *getListings(auth: ConnectorAuth): AsyncIterable<ListingsPage> {
     const config = this.requireConfig();
+    let pageIndex = 0;
     for await (const page of iterateGetMyeBaySelling(config, auth)) {
+      pageIndex++;
       for (const inv of page.invalid) log.warn("annonce eBay ignorée (format inattendu)", { itemId: inv.itemId, reason: inv.message });
-      yield { listings: page.listings, invalid: page.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page.warnings };
+      const truncated = pageIndex >= GET_MY_EBAY_SELLING_MAX_PAGES && page.totalPages > pageIndex;
+      if (truncated) log.warn("liste d'annonces tronquée (limite de pages atteinte)", { pages: pageIndex, totalPages: page.totalPages });
+      yield { listings: page.listings, invalid: page.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page.warnings, truncated };
     }
   }
 

@@ -14,6 +14,8 @@ export interface OrdersPhaseResult {
   invalid: number;
   failed: number;
   maxModifiedSeen: Date | null;
+  /** plus ancienne date de modification parmi les commandes dont l'ingestion a échoué (pour ne pas les perdre). */
+  minFailedModified: Date | null;
   truncated: boolean;
 }
 
@@ -61,7 +63,12 @@ export function orderToRpcPayload(order: NormalizedOrder): { p_order: Json; p_it
 
 export async function syncOrders(ctx: SyncContext, window: OrdersWindow): Promise<OrdersPhaseResult> {
   const { admin } = ctx;
-  const result: OrdersPhaseResult = { fetched: 0, created: 0, updated: 0, itemsUnmapped: 0, movements: 0, invalid: 0, failed: 0, maxModifiedSeen: null, truncated: false };
+  const result: OrdersPhaseResult = { fetched: 0, created: 0, updated: 0, itemsUnmapped: 0, movements: 0, invalid: 0, failed: 0, maxModifiedSeen: null, minFailedModified: null, truncated: false };
+  const noteFailed = (modifiedAt: string | null) => {
+    if (!modifiedAt) return;
+    const d = new Date(modifiedAt);
+    if (!result.minFailedModified || d < result.minFailedModified) result.minFailedModified = d;
+  };
 
   for await (const page of ctx.connector.getOrders(ctx.auth, { since: window.since, until: window.until })) {
     result.fetched += page.orders.length;
@@ -81,12 +88,14 @@ export async function syncOrders(ctx: SyncContext, window: OrdersWindow): Promis
       });
       if (error) {
         result.failed++;
+        noteFailed(order.externalModifiedAt);
         ctx.recordError({ code: "ORDER_INGEST_FAILED", message: error.message, entityType: "order", entityRef: order.externalOrderId, details: { pgCode: error.code ?? null } });
         continue;
       }
       const parsed = ingestResultSchema.safeParse(data);
       if (!parsed.success) {
         result.failed++;
+        noteFailed(order.externalModifiedAt);
         ctx.recordError({ code: "ORDER_INGEST_UNEXPECTED", message: "Résultat inattendu de ingest_external_order.", entityType: "order", entityRef: order.externalOrderId });
         continue;
       }

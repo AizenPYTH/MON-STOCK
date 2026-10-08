@@ -1,4 +1,5 @@
 import "server-only";
+import { escapeLike } from "@/services/sourcing/offer-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/db/database.types";
 import { matchOfferToSkus, type MatchCandidate, type MatchResult } from "@/domain/sourcing/matching";
@@ -57,21 +58,21 @@ export async function loadMatchCandidates(client: DbClient, organizationId: stri
     add(byBarcode as SkuRow[] | null);
   }
   if (hints.mpn) {
-    const { data } = await base().ilike("variant.mpn", hints.mpn).limit(20);
+    const { data } = await base().ilike("variant.mpn", escapeLike(hints.mpn)).limit(20);
     add(data as SkuRow[] | null);
   }
   if (hints.supplierSku) {
-    const { data } = await base().ilike("code", hints.supplierSku).limit(5);
+    const { data } = await base().ilike("code", escapeLike(hints.supplierSku)).limit(5);
     add(data as SkuRow[] | null);
   }
   if (hints.brand && out.size < limit) {
-    const { data } = await base().ilike("product.brand", hints.brand).limit(limit);
+    const { data } = await base().ilike("product.brand", escapeLike(hints.brand)).limit(limit);
     add(data as SkuRow[] | null);
   }
   if (out.size === 0 && hints.text) {
-    const term = hints.text.replace(/[%_\\]/g, "").split(" ").filter((t) => t.length >= 3)[0];
+    const term = hints.text.split(" ").filter((t) => t.length >= 3)[0];
     if (term) {
-      const { data } = await base().ilike("product.name", `%${term}%`).limit(limit);
+      const { data } = await base().ilike("product.name", `%${escapeLike(term)}%`).limit(limit);
       add(data as SkuRow[] | null);
     }
   }

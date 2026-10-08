@@ -18,6 +18,8 @@ export interface ListingsPage {
   listings: NormalizedListing[];
   invalid: InvalidEntry[];
   warnings: string[];
+  /** true si la limite de pages a été atteinte : la liste est incomplète. */
+  truncated: boolean;
 }
 
 /**

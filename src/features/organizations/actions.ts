@@ -19,10 +19,8 @@ function fieldErrors(issues: Array<{ path: PropertyKey[]; message: string }>): R
   return out;
 }
 
-async function uniqueSlug(base: string): Promise<string> {
-  const supabase = await createServerSupabaseClient();
-  // Les organisations ne sont pas visibles avant adhésion : on ajoute un suffixe aléatoire court.
-  void supabase;
+function uniqueSlug(base: string): string {
+  // Les organisations ne sont pas visibles avant adhésion : un suffixe aléatoire court évite les collisions.
   const suffix = Math.random().toString(36).slice(2, 7);
   return `${slugify(base)}-${suffix}`;
 }
@@ -34,7 +32,7 @@ export async function createOrganizationAction(_prev: ActionResult | null, formD
   if (!parsed.success) return fail("Vérifiez les champs du formulaire.", { fieldErrors: fieldErrors(parsed.error.issues) });
 
   const supabase = await createServerSupabaseClient();
-  const slug = await uniqueSlug(parsed.data.name);
+  const slug = uniqueSlug(parsed.data.name);
   const { data: orgId, error } = await supabase.rpc("create_organization_with_owner", { p_name: parsed.data.name, p_slug: slug, p_is_demo: false });
   if (error || !orgId) return fail(toUserMessage(fromPostgrestError(error ?? { message: "Création impossible" })));
 
@@ -115,11 +113,24 @@ export async function revokeInvitationAction(formData: FormData): Promise<void> 
   revalidatePath("/settings/users");
 }
 
+async function ownersCount(ctx: Awaited<ReturnType<typeof requireOrgContextForAction>>): Promise<number> {
+  const { count } = await ctx.supabase.from("organization_members").select("user_id", { count: "exact", head: true }).eq("organization_id", ctx.organization.id).eq("role", "owner");
+  return count ?? 0;
+}
+
+/**
+ * Règles (doublées par la RLS) : seul un propriétaire attribue ou retire le rôle propriétaire ;
+ * le dernier propriétaire ne peut être ni rétrogradé ni retiré.
+ */
 export async function changeMemberRoleAction(formData: FormData): Promise<void> {
   const ctx = await requireOrgContextForAction({ admin: true });
   const parsed = changeRoleSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
-  if (parsed.data.user_id === ctx.user.id && ctx.role === "owner" && parsed.data.role !== "owner") return; // le propriétaire ne se rétrograde pas lui-même
+  const { data: target } = await ctx.supabase.from("organization_members").select("role").eq("organization_id", ctx.organization.id).eq("user_id", parsed.data.user_id).maybeSingle();
+  if (!target) return;
+  const touchesOwner = target.role === "owner" || parsed.data.role === "owner";
+  if (touchesOwner && ctx.role !== "owner") return;
+  if (target.role === "owner" && parsed.data.role !== "owner" && (await ownersCount(ctx)) <= 1) return; // dernier propriétaire
   await ctx.supabase.from("organization_members").update({ role: parsed.data.role }).eq("organization_id", ctx.organization.id).eq("user_id", parsed.data.user_id);
   revalidatePath("/settings/users");
 }
@@ -128,6 +139,9 @@ export async function removeMemberAction(formData: FormData): Promise<void> {
   const ctx = await requireOrgContextForAction({ admin: true });
   const userId = String(formData.get("user_id") ?? "");
   if (userId === ctx.user.id) return;
+  const { data: target } = await ctx.supabase.from("organization_members").select("role").eq("organization_id", ctx.organization.id).eq("user_id", userId).maybeSingle();
+  if (!target) return;
+  if (target.role === "owner" && (ctx.role !== "owner" || (await ownersCount(ctx)) <= 1)) return;
   await ctx.supabase.from("organization_members").delete().eq("organization_id", ctx.organization.id).eq("user_id", userId);
   revalidatePath("/settings/users");
 }

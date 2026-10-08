@@ -64,7 +64,9 @@ export function listingToRows(ctx: Pick<SyncContext, "organizationId" | "salesCh
     return {
       ...base,
       external_variation_id: key,
-      external_sku: v.sku ?? l.sku,
+      // Une variation sans SKU propre n'hérite PAS du SKU parent : l'associer automatiquement
+      // ferait pointer toutes les variations vers le même SKU interne (double décrément).
+      external_sku: v.sku ?? null,
       title: specificsLabel ? `${l.title} – ${specificsLabel}` : l.title,
       price: v.price ?? l.price,
       currency: v.currency ?? l.currency,
@@ -81,12 +83,14 @@ export async function syncListings(ctx: SyncContext): Promise<ListingsPhaseResul
   const nowIso = new Date().toISOString();
   const result: ListingsPhaseResult = { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
   const seen = new Set<string>();
+  let truncated = false;
 
   for await (const page of ctx.connector.getListings(ctx.auth)) {
     result.fetched += page.listings.length;
     result.invalid += page.invalid.length;
     for (const inv of page.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
     for (const w of page.warnings) log.warn("avertissement eBay (GetMyeBaySelling)", { warning: w });
+    if (page.truncated) truncated = true;
     const rows = page.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
     for (const part of chunk(rows, UPSERT_CHUNK)) {
@@ -96,9 +100,15 @@ export async function syncListings(ctx: SyncContext): Promise<ListingsPhaseResul
       result.upserted += data?.length ?? 0;
     }
   }
-  result.complete = true;
+  result.complete = !truncated;
+  if (truncated) {
+    // Liste incomplète (limite de pages atteinte) : on ne marque rien comme terminé pour ne pas
+    // « terminer » à tort des annonces réellement actives.
+    ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incomplète (limite de pages atteinte) : aucune annonce n'a été marquée terminée lors de ce run.", entityType: "phase", entityRef: "listings" });
+    log.warn("liste d'annonces tronquée : étape « annonces terminées » ignorée", { fetched: result.fetched });
+  }
 
-  // Annonces actives connues mais absentes de la liste active eBay → terminées.
+  // Annonces actives connues mais absentes de la liste active eBay → terminées (uniquement si la liste est complète).
   const { data: active, error: activeError } = await admin
     .from("channel_listings")
     .select("id, external_listing_id, external_variation_id")
@@ -107,7 +117,7 @@ export async function syncListings(ctx: SyncContext): Promise<ListingsPhaseResul
     .eq("status", "active")
     .limit(20000);
   if (activeError) throw fromPostgrestError(activeError);
-  const toEnd = (active ?? []).filter((r) => !seen.has(listingKey(r.external_listing_id, r.external_variation_id))).map((r) => r.id);
+  const toEnd = result.complete ? (active ?? []).filter((r) => !seen.has(listingKey(r.external_listing_id, r.external_variation_id))).map((r) => r.id) : [];
   for (const ids of chunk(toEnd, 500)) {
     const { error } = await admin.from("channel_listings").update({ status: "ended", ended_at: nowIso, last_synced_at: nowIso }).in("id", ids).eq("organization_id", ctx.organizationId);
     if (error) throw fromPostgrestError(error);

@@ -42,9 +42,9 @@ export async function GET(request: NextRequest) {
   if (!challenge) {
     return NextResponse.json({ ok: true, endpoint: WEBHOOK_PATH, usage: "eBay envoie GET ?challenge_code=… pour valider l'endpoint, puis des POST signés." });
   }
-  const token = process.env.EBAY_WEBHOOK_VERIFICATION_TOKEN;
-  if (!token || token.length < 32) {
-    return NextResponse.json({ error: "EBAY_WEBHOOK_VERIFICATION_TOKEN n'est pas configuré (32 à 80 caractères) : impossible de valider l'endpoint eBay." }, { status: 503 });
+  const token = getEbayConnector().config()?.webhookVerificationToken ?? null;
+  if (!token) {
+    return NextResponse.json({ error: "EBAY_WEBHOOK_VERIFICATION_TOKEN n'est pas configuré (32 à 80 caractères) ou l'intégration eBay est incomplète : impossible de valider l'endpoint eBay." }, { status: 503 });
   }
   const challengeResponse = computeChallengeResponse(challenge, token, endpointUrl());
   log.info("challenge eBay validé", { endpoint: endpointUrl() });
@@ -116,9 +116,15 @@ export async function POST(request: NextRequest) {
       signatureValid = verifyNotificationSignature(rawBody, header, key);
       if (!signatureValid) signatureError = "Signature invalide.";
     } catch (e) {
-      signatureError = toUserMessage(e);
+      // Vérification impossible (clé publique injoignable, token d'application…) : on ne consomme PAS
+      // l'identifiant d'événement ; eBay réessaiera la livraison.
+      log.warn("vérification de signature impossible, nouvelle tentative attendue", { eventId, topic, reason: toUserMessage(e) });
+      return NextResponse.json({ status: "retry", error: `Vérification de signature impossible : ${toUserMessage(e)}` }, { status: 503 });
     }
   }
+  // Une signature invalide est journalisée sous un identifiant distinct : l'identifiant réel reste
+  // disponible pour une livraison valide ultérieure (jamais acquittée comme « doublon » à tort).
+  const storedEventId = signatureValid ? eventId : `rejected:${payloadHash.slice(0, 32)}`;
 
   const data = notification.data.notification.data ?? {};
   const username = typeof data.username === "string" ? data.username : null;
@@ -130,7 +136,7 @@ export async function POST(request: NextRequest) {
     .from("webhook_events")
     .insert({
       provider: "ebay",
-      event_id: eventId,
+      event_id: storedEventId,
       event_type: topic,
       organization_id: primary?.organization_id ?? null,
       connection_id: primary?.id ?? null,
@@ -165,10 +171,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (primary && /ORDER|ITEM|LISTING|OFFER|INVENTORY/i.test(topic)) {
-    // Réponse immédiate à eBay ; la synchronisation s'exécute après l'envoi de la réponse.
+    // Réponse immédiate à eBay ; la synchronisation s'exécute après l'envoi de la réponse,
+    // avec un périmètre limité au type d'événement (pas de rechargement complet des annonces pour une commande).
+    const scope = /ORDER/i.test(topic) ? "orders" : "listings";
     after(async () => {
       try {
-        const r = await runChannelSync(primary.id, { trigger: "webhook" });
+        const r = await runChannelSync(primary.id, { trigger: "webhook", scope });
         if (eventRowId) await admin.from("webhook_events").update({ status: "processed", processed_at: new Date().toISOString() }).eq("id", eventRowId);
         log.info("synchronisation déclenchée par webhook", { eventId, runId: r.runId, status: r.status });
       } catch (e) {

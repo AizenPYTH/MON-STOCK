@@ -7,6 +7,7 @@ import { createLogger } from "@/lib/logger";
 import { getEbayConnector } from "@/integrations/core/registry";
 
 const log = createLogger("EBAY_OAUTH");
+export const OAUTH_STATE_COOKIE = "ebay_oauth_state";
 
 /**
  * Démarre la connexion eBay (OAuth 2.0, authorization code grant).
@@ -45,13 +46,14 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   }
 
   log.info("redirection vers eBay", { orgId: ctx.organization.id, userId: ctx.user.id, environment: connector.config()?.environment });
-  return NextResponse.redirect(connector.getAuthorizeUrl(state), { status: 303 });
+  const response = NextResponse.redirect(connector.getAuthorizeUrl(state), { status: 303 });
+  // L'état est aussi lié au navigateur qui a démarré le flux (cookie httpOnly, 15 min) : le callback
+  // exige la correspondance cookie ↔ state, ce qu'un tiers ne peut pas forger.
+  response.cookies.set(OAUTH_STATE_COOKIE, state, { httpOnly: true, sameSite: "lax", secure: origin.startsWith("https://"), path: "/api/integrations/ebay", maxAge: 15 * 60 });
+  return response;
 }
 
+/** Démarrage uniquement par POST (formulaire) : un simple lien ou une image ne peut pas déclencher le flux (CSRF). */
 export async function POST(request: NextRequest) {
-  return handle(request);
-}
-
-export async function GET(request: NextRequest) {
   return handle(request);
 }

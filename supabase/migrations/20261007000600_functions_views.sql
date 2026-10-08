@@ -159,8 +159,12 @@ begin
       where id = v_order_id;
   end if;
 
-  -- Application du stock : une seule fois par ligne, uniquement si la commande n'est pas annulée.
-  if v_status not in ('cancelled', 'refunded') then
+  -- Application du stock : une seule fois par ligne, uniquement à la création de la commande et si elle n'est pas annulée.
+  -- Une ligne associée a posteriori (map_listing_to_sku) n'est JAMAIS déduite ici : c'est l'action explicite
+  -- apply_pending_sales_for_sku qui s'en charge, après vérification du stock physique par l'utilisateur.
+  if v_status in ('cancelled', 'refunded') then
+    null;
+  elsif v_created then
     for v_line in
       select * from public.order_items oi
       where oi.order_id = v_order_id and oi.sku_id is not null and oi.inventory_applied = false
@@ -180,7 +184,9 @@ begin
       set inventory_applied = exists (select 1 from public.order_items where order_id = v_order_id and inventory_applied),
           inventory_applied_at = coalesce(inventory_applied_at, case when v_movements > 0 then now() end)
       where id = v_order_id;
-  else
+  end if;
+
+  if v_status in ('cancelled', 'refunded') then
     -- Annulation / remboursement : on recrédite ce qui avait été déduit, une seule fois.
     for v_line in
       select * from public.order_items oi

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { serverEnv, EnvError } from "@/lib/env";
+import { authorizeCron } from "@/lib/cron-auth";
 import { runSourcingSync } from "@/services/sourcing/sync";
 
 export const dynamic = "force-dynamic";
@@ -10,19 +10,8 @@ export const maxDuration = 300;
  * 503 si le secret n'est pas configuré, 401 si l'en-tête ne correspond pas.
  */
 async function handle(request: Request): Promise<Response> {
-  let secret: string | undefined;
-  try {
-    secret = serverEnv().CRON_SECRET;
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: e instanceof EnvError ? e.message : "Configuration serveur invalide." }, { status: 503 });
-  }
-  if (!secret) {
-    return NextResponse.json({ ok: false, error: "CRON_SECRET n'est pas configuré : le cron de sourcing est désactivé. Ajoutez CRON_SECRET (voir .env.example)." }, { status: 503 });
-  }
-  const header = request.headers.get("authorization") ?? "";
-  if (header !== `Bearer ${secret}`) {
-    return NextResponse.json({ ok: false, error: "Non autorisé : en-tête Authorization Bearer invalide." }, { status: 401 });
-  }
+  const auth = authorizeCron(request);
+  if (!auth.ok) return auth.response;
   try {
     const summary = await runSourcingSync();
     return NextResponse.json({ ok: true, summary });

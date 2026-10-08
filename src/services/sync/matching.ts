@@ -73,9 +73,20 @@ function normalizeSku(s: string): string {
   return stripAccents(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+const candidateTokenCache = new WeakMap<SkuCandidate, Set<string>>();
+
+/** Tokens d'un SKU candidat, calculés une seule fois par objet (un run compare des centaines d'annonces aux mêmes SKU). */
 function candidateTokens(c: SkuCandidate): Set<string> {
+  const cached = candidateTokenCache.get(c);
+  if (cached) return cached;
   const parts = [c.brand ?? "", c.productName, c.variantName ?? "", ...Object.values(c.attributes), c.mpn ?? ""];
-  return new Set(tokenize(parts.join(" ")));
+  const set = new Set(tokenize(parts.join(" ")));
+  candidateTokenCache.set(c, set);
+  return set;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function listingTokens(l: ListingForMatching): Set<string> {
@@ -150,7 +161,7 @@ export function scoreCandidate(listing: ListingForMatching, candidate: SkuCandid
     }
   }
   const grade = candidate.attributes.grade ?? candidate.attributes.Grade;
-  if (grade && lt.has(stripAccents(grade.toLowerCase())) && new RegExp(`grade\\s*${grade}`, "i").test(listing.title)) {
+  if (grade && lt.has(stripAccents(grade.toLowerCase())) && new RegExp(`grade\\s*${escapeRegExp(grade)}`, "i").test(listing.title)) {
     attributeMatches++;
     bonus += 0.04;
     reasons.push(`grade ${grade} mentionné`);

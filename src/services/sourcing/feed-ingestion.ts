@@ -9,6 +9,9 @@ import { fieldMappingSchema, feedOptionsSchema, mapRow, parseFeedContent, previe
 import { expireUnseenOffers, storeOffer } from "@/services/sourcing/offer-storage";
 import { finishSyncRun, isDue, recordSyncErrors, startSyncRun, type SyncErrorInput } from "@/services/sourcing/sync-runs";
 
+/** Lignes traitées au maximum par exécution (chaque ligne coûte plusieurs requêtes). */
+export const MAX_ROWS_PER_RUN = 5_000;
+
 const log = createLogger("FEED_INGESTION");
 
 export const FEED_ACCEPT: Record<FeedFormat, string> = {
@@ -99,7 +102,12 @@ export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger
       now: run.startedAt,
     };
 
-    for (const [index, row] of parsed.rows.entries()) {
+    // Plafond par exécution : au-delà, le reste est ignoré et signalé (un run doit tenir dans le budget du cron).
+    const truncated = parsed.rows.length > MAX_ROWS_PER_RUN;
+    if (truncated) {
+      errors.push({ code: "FEED_TRUNCATED", message: `Le flux contient ${parsed.rows.length} lignes : seules les ${MAX_ROWS_PER_RUN} premières ont été traitées lors de ce run. Scindez le flux ou filtrez-le côté fournisseur.`, entityType: "feed", entityRef: feed.id });
+    }
+    for (const [index, row] of parsed.rows.slice(0, MAX_ROWS_PER_RUN).entries()) {
       processed++;
       const mapped = mapRow(row, mapping, defaults);
       if (!mapped.offer) {
@@ -122,13 +130,13 @@ export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger
       }
     }
 
-    // Expiration des offres absentes de ce flux (uniquement si le flux a livré quelque chose).
-    if (stored > 0) expired = await expireUnseenOffers(ctx, run.startedAt);
+    // Expiration des offres absentes de ce flux (uniquement si le flux a livré quelque chose et a été lu en entier).
+    if (stored > 0 && !truncated) expired = await expireUnseenOffers(ctx, run.startedAt);
 
     const status: IngestResult["status"] = stored === 0 && processed > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
     const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistrée(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejetée(s), ${expired} offre(s) expirée(s).`;
     await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, rejected, invalidRows, expired, fxUnavailable, columns: parsed.columns.slice(0, 50) } as Json, errorSummary: status === "failed" ? message : null });
+    await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, rejected, invalidRows, expired, fxUnavailable, truncated, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) } as Json, errorSummary: status === "failed" ? message : null });
     await admin
       .from("supplier_feeds")
       .update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? new Date().toISOString() : feed.last_successful_sync_at, last_record_count: processed, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" })

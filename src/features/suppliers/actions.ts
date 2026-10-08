@@ -285,7 +285,11 @@ export async function createFeedAction(_prev: ActionResult<{ message: string }> 
       .insert({ organization_id: ctx.organization.id, supplier_id: d.supplier_id, source_id: source.id, type: d.type, url: emptyToNull(d.url), format: d.format, field_mapping: mapping as unknown as NonNullable<Json>, options: options as unknown as NonNullable<Json>, sync_frequency: d.url ? d.sync_frequency : "manual", status: "not_connected" })
       .select("id")
       .single();
-    if (fErr || !feed) return fail(toUserMessage(fromPostgrestError(fErr ?? { message: "Flux non créé" })));
+    if (fErr || !feed) {
+      // Compensation : pas de source orpheline si le flux n'a pas pu être créé.
+      await ctx.supabase.from("supplier_sources").delete().eq("id", source.id).eq("organization_id", ctx.organization.id);
+      return fail(toUserMessage(fromPostgrestError(fErr ?? { message: "Flux non créé" })));
+    }
     const result = await ingestFeed(feed.id, { trigger: "initial", createdBy: ctx.user.id, content });
     revalidatePath(supplierPath(d.supplier_id, "sources"));
     revalidatePath(supplierPath(d.supplier_id, "offers"));

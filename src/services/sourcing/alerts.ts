@@ -56,20 +56,39 @@ export async function evaluateAlert(admin: AdminSupabaseClient, alert: { id: str
   const events: Array<{ offer_id: string; kind: EventKind; message: string }> = [];
   const since = alert.last_checked_at ?? alert.created_at;
 
-  for (const o of offers.slice(0, 200)) {
+  const considered = offers.slice(0, 200);
+  const offerIds = considered.map((o) => o.id);
+  const historySince = new Date(now.getTime() - 60 * 86_400_000).toISOString();
+  // Historiques chargés en deux requêtes pour toutes les offres (pas deux requêtes par offre).
+  const [{ data: priceRows }, { data: stockRows }] = offerIds.length
+    ? await Promise.all([
+        admin.from("supplier_price_history").select("offer_id, original_price, recorded_at").in("offer_id", offerIds).gte("recorded_at", historySince).order("recorded_at", { ascending: false }).limit(6000),
+        admin.from("supplier_stock_history").select("offer_id, available_quantity, stock_status, recorded_at").in("offer_id", offerIds).gte("recorded_at", historySince).order("recorded_at", { ascending: false }).limit(2000),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const priceByOffer = new Map<string, Array<{ price: number; recordedAt: string }>>();
+  for (const p of priceRows ?? []) {
+    const list = priceByOffer.get(p.offer_id) ?? [];
+    if (list.length < 60) list.push({ price: Number(p.original_price), recordedAt: p.recorded_at });
+    priceByOffer.set(p.offer_id, list);
+  }
+  const stockByOffer = new Map<string, Array<{ availableQuantity: number | null; stockStatus: typeof considered[number]["stock_status"]; recordedAt: string }>>();
+  for (const st of stockRows ?? []) {
+    const list = stockByOffer.get(st.offer_id) ?? [];
+    if (list.length < 2) list.push({ availableQuantity: st.available_quantity, stockStatus: st.stock_status, recordedAt: st.recorded_at });
+    stockByOffer.set(st.offer_id, list);
+  }
+
+  for (const o of considered) {
     const price = o.normalized_price ?? (o.original_currency.toUpperCase() === orgCurrency.toUpperCase() ? Number(o.original_price) : null);
     if (c.max_price !== undefined && price !== null && price <= c.max_price) {
       events.push({ offer_id: o.id, kind: "price_below_threshold", message: `Prix inférieur à votre seuil de ${money(c.max_price, orgCurrency)} : ${money(price, orgCurrency)} chez ${o.supplier?.name ?? "un fournisseur"}` });
     } else if (new Date(o.first_seen_at).getTime() >= new Date(since).getTime()) {
       events.push({ offer_id: o.id, kind: "new_offer", message: `Nouvelle offre correspondant à votre alerte${price !== null ? ` : ${money(price, orgCurrency)}` : ""} chez ${o.supplier?.name ?? "un fournisseur"}` });
     }
-    const [{ data: ph }, { data: sh }] = await Promise.all([
-      admin.from("supplier_price_history").select("original_price, recorded_at").eq("offer_id", o.id).order("recorded_at", { ascending: false }).limit(60),
-      admin.from("supplier_stock_history").select("available_quantity, stock_status, recorded_at").eq("offer_id", o.id).order("recorded_at", { ascending: false }).limit(2),
-    ]);
-    const priceHistory = (ph ?? []).map((p) => ({ price: Number(p.original_price), recordedAt: p.recorded_at }));
+    const priceHistory = priceByOffer.get(o.id) ?? [];
     // Le dernier point d'historique stock est l'état courant : l'état précédent est le suivant.
-    const stockHistory = (sh ?? []).slice(1).map((s) => ({ availableQuantity: s.available_quantity, stockStatus: s.stock_status, recordedAt: s.recorded_at }));
+    const stockHistory = (stockByOffer.get(o.id) ?? []).slice(1);
     const ops = detectOpportunities({ price: Number(o.original_price), currency: o.original_currency, availableQuantity: o.available_quantity, stockStatus: o.stock_status }, priceHistory, stockHistory, now);
     for (const op of ops) {
       const kind = OPPORTUNITY_TO_EVENT[op.kind];
@@ -101,7 +120,8 @@ export interface AlertsRunSummary {
 export async function evaluateSourcingAlerts(now: Date = new Date(), admin: AdminSupabaseClient = createAdminSupabaseClient(), organizationId?: string): Promise<AlertsRunSummary> {
   let q = admin.from("sourcing_alerts").select("id, organization_id, query_text, parsed, criteria, sku_id, created_at, last_checked_at, organization:organizations(default_currency)").eq("is_active", true).limit(1000);
   if (organizationId) q = q.eq("organization_id", organizationId);
-  const { data: alerts } = await q;
+  const { data: alerts, error: alertsError } = await q;
+  if (alertsError) throw new Error(`Impossible de charger les alertes de sourcing : ${alertsError.message}`);
   const byOrg = new Map<string, NonNullable<typeof alerts>>();
   for (const a of alerts ?? []) byOrg.set(a.organization_id, [...(byOrg.get(a.organization_id) ?? []), a]);
   let totalEvents = 0;

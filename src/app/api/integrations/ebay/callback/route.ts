@@ -6,6 +6,7 @@ import { toUserMessage } from "@/lib/errors";
 import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { upsertOAuthConnection } from "@/services/channels/connection-store";
+import { OAUTH_STATE_COOKIE } from "@/app/api/integrations/ebay/connect/route";
 
 const log = createLogger("EBAY_OAUTH");
 
@@ -18,7 +19,11 @@ const log = createLogger("EBAY_OAUTH");
  */
 export async function GET(request: NextRequest) {
   const origin = publicEnv().NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-  const fail = (message: string) => NextResponse.redirect(`${origin}/settings/integrations?error=${encodeURIComponent(message)}`);
+  const clearState = (res: NextResponse) => {
+    res.cookies.set(OAUTH_STATE_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/api/integrations/ebay", maxAge: 0 });
+    return res;
+  };
+  const fail = (message: string) => clearState(NextResponse.redirect(`${origin}/settings/integrations?error=${encodeURIComponent(message)}`));
   const params = request.nextUrl.searchParams;
   const code = params.get("code");
   const state = params.get("state");
@@ -39,6 +44,12 @@ export async function GET(request: NextRequest) {
   }
   if (!stateRow) return fail("État de connexion inconnu ou déjà utilisé. Relancez la connexion eBay.");
   await admin.from("oauth_states").delete().eq("state", state);
+  // Le navigateur qui termine le flux doit être celui qui l'a démarré (cookie posé par /connect).
+  const cookieState = request.cookies.get(OAUTH_STATE_COOKIE)?.value ?? null;
+  if (!cookieState || cookieState !== state) {
+    log.warn("callback eBay sans cookie d'état correspondant", { orgId: stateRow.organization_id });
+    return fail("Ce retour eBay ne provient pas du navigateur qui a lancé la connexion. Relancez la connexion eBay depuis MON STOCK.");
+  }
   if (new Date(stateRow.expires_at).getTime() < Date.now()) return fail("La demande de connexion a expiré (15 min). Relancez la connexion eBay.");
 
   const connector = getEbayConnector();
@@ -59,7 +70,7 @@ export async function GET(request: NextRequest) {
     });
     log.info("connexion eBay établie", { connectionId: connection.id, orgId: stateRow.organization_id, username: account.username, isNew, environment: config.environment });
     const target = isNew || !connection.last_successful_sync_at ? `/settings/integrations/ebay/setup?connection=${connection.id}` : `/settings/integrations?connected=${connection.id}`;
-    return NextResponse.redirect(`${origin}${target}`);
+    return clearState(NextResponse.redirect(`${origin}${target}`));
   } catch (e) {
     log.error("échec de la connexion eBay", { orgId: stateRow.organization_id, message: toUserMessage(e) });
     return fail(`Connexion eBay impossible : ${toUserMessage(e)}`);

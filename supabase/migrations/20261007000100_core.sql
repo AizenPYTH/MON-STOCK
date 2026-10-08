@@ -279,9 +279,10 @@ begin
     raise exception 'INVITATION_EMAIL_MISMATCH' using errcode = 'P0003';
   end if;
 
+  -- Un membre déjà présent conserve son rôle : une invitation ne peut pas rétrograder (ni promouvoir) un compte existant.
   insert into public.organization_members (organization_id, user_id, role)
   values (v_inv.organization_id, v_user, v_inv.role)
-  on conflict (organization_id, user_id) do update set role = excluded.role;
+  on conflict (organization_id, user_id) do nothing;
 
   update public.organization_invitations
     set accepted_at = now()

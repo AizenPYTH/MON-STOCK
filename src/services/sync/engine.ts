@@ -108,7 +108,11 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
     .insert({ organization_id: connection.organization_id, source_kind: "channel", source_ref: connection.id, provider: connection.provider, trigger: options.trigger, status: "running", created_by: options.userId ?? null, stats: {} })
     .select("id")
     .single();
-  if (runError) throw fromPostgrestError(runError);
+  if (runError) {
+    // Index unique partiel (une seule ligne « running » par source) : verrou atomique contre les runs concurrents.
+    if (runError.code === "23505") throw new AppError("CONFLICT", `Une synchronisation ${label} est déjà en cours pour cette connexion. Patientez avant d'en relancer une.`);
+    throw fromPostgrestError(runError);
+  }
   const runId = run.id;
 
   log.info(`${label} sync started`, { runId, connectionId, orgId: connection.organization_id, trigger: options.trigger, scope, username: connection.external_username });
@@ -175,8 +179,15 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
       stats.orders_updated = r.updated;
       stats.items_unmapped = r.itemsUnmapped;
       stats.inventory_changes = r.movements;
-      if (r.failed === 0) state.newCursor = nextOrdersCursor(window, r.maxModifiedSeen, { truncated: r.truncated });
-      else if (r.maxModifiedSeen) state.newCursor = r.maxModifiedSeen;
+      if (r.failed === 0) {
+        state.newCursor = nextOrdersCursor(window, r.maxModifiedSeen, { truncated: r.truncated });
+      } else if (r.minFailedModified) {
+        // Des commandes ont échoué : le curseur ne dépasse pas la plus ancienne d'entre elles,
+        // afin qu'elles soient reprises (fenêtre avec chevauchement) au prochain run.
+        const candidate = nextOrdersCursor(window, r.maxModifiedSeen, { truncated: r.truncated });
+        state.newCursor = new Date(Math.min(candidate.getTime(), r.minFailedModified.getTime()));
+      }
+      // Sinon (échecs sans date connue) : le curseur n'avance pas.
       log.info(`${label} orders synced`, { runId, fetched: r.fetched, created: r.created, updated: r.updated, itemsUnmapped: r.itemsUnmapped, movements: r.movements, failed: r.failed, invalid: r.invalid, truncated: r.truncated });
     });
   }

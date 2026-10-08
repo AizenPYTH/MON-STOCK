@@ -57,13 +57,19 @@ export async function listDueConnections(now: Date = new Date()): Promise<Channe
 
 export async function findConnectionsByExternalAccount(provider: ChannelProvider, account: { userId?: string | null; username?: string | null }): Promise<ChannelConnection[]> {
   const admin = createAdminSupabaseClient();
-  const filters: string[] = [];
-  if (account.userId) filters.push(`external_account_id.eq.${account.userId.replace(/[,.()]/g, "")}`);
-  if (account.username) filters.push(`external_username.eq.${account.username.replace(/[,.()]/g, "")}`);
-  if (filters.length === 0) return [];
-  const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).or(filters.join(","));
-  if (error) throw fromPostgrestError(error);
-  return data ?? [];
+  const found = new Map<string, ChannelConnection>();
+  // Requêtes paramétrées séparées (pas de filtre `.or()` construit par concaténation : les pseudos eBay peuvent contenir des points).
+  if (account.userId) {
+    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_account_id", account.userId);
+    if (error) throw fromPostgrestError(error);
+    for (const c of data ?? []) found.set(c.id, c);
+  }
+  if (account.username) {
+    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_username", account.username);
+    if (error) throw fromPostgrestError(error);
+    for (const c of data ?? []) found.set(c.id, c);
+  }
+  return Array.from(found.values());
 }
 
 export async function saveConnectionTokens(connectionId: string, tokens: TokenSet): Promise<void> {
@@ -117,9 +123,11 @@ export async function upsertOAuthConnection(input: UpsertConnectionInput): Promi
     .order("created_at", { ascending: true });
   if (listError) throw fromPostgrestError(listError);
 
+  // Réutilisation uniquement pour le MÊME compte externe (ou une connexion jamais finalisée) :
+  // un autre compte eBay obtient sa propre connexion et son propre canal, sans hériter des annonces/commandes.
   const existing =
     (existingList ?? []).find((c) => c.external_account_id === input.account.externalAccountId) ??
-    (existingList ?? []).find((c) => !c.external_account_id || c.status === "disconnected" || c.status === "pending") ??
+    (existingList ?? []).find((c) => !c.external_account_id && c.status === "pending") ??
     null;
 
   const patch = {

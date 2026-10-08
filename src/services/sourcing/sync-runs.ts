@@ -25,13 +25,29 @@ export interface SyncErrorInput {
 export const MAX_SYNC_ERRORS_RECORDED = 200;
 
 /** Ouvre une ligne sync_runs (écriture serveur uniquement : la RLS bloque les clients utilisateurs). */
+/** Un run « running » plus ancien que ce délai est considéré interrompu (fonction tuée, timeout). */
+export const RUNNING_STALE_MINUTES = 30;
+
+async function failStaleRuns(admin: AdminSupabaseClient, sourceRef: string): Promise<void> {
+  const threshold = new Date(Date.now() - RUNNING_STALE_MINUTES * 60_000).toISOString();
+  const { error } = await admin
+    .from("sync_runs")
+    .update({ status: "failed", finished_at: new Date().toISOString(), error_summary: `Run interrompu (aucune fin enregistrée après ${RUNNING_STALE_MINUTES} min).` })
+    .eq("source_ref", sourceRef)
+    .eq("status", "running")
+    .lt("started_at", threshold);
+  if (error) log.warn("stale runs not cleaned", { sourceRef, error: error.message });
+}
+
 export async function startSyncRun(admin: AdminSupabaseClient, input: { organizationId: string; sourceKind: SourcingSyncKind; sourceRef?: string | null; provider: string; trigger: SyncTrigger; createdBy?: string | null }): Promise<SyncRunHandle> {
   const startedAt = new Date();
+  if (input.sourceRef) await failStaleRuns(admin, input.sourceRef);
   const { data, error } = await admin
     .from("sync_runs")
     .insert({ organization_id: input.organizationId, source_kind: input.sourceKind, source_ref: input.sourceRef ?? null, provider: input.provider, trigger: input.trigger, status: "running", started_at: startedAt.toISOString(), created_by: input.createdBy ?? null })
     .select("id")
     .single();
+  if (error?.code === "23505") throw new Error("Une synchronisation est déjà en cours pour cette source. Patientez avant d'en relancer une.");
   if (error || !data) throw new Error(`Impossible d'ouvrir le journal de synchronisation : ${error?.message ?? "inconnu"}`);
   return { id: data.id, organizationId: input.organizationId, startedAt };
 }

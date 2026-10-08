@@ -103,10 +103,17 @@ create policy organizations_update on public.organizations
 alter table public.organization_members enable row level security;
 create policy organization_members_select on public.organization_members
   for select to authenticated using (public.is_org_member(organization_id));
+-- Un admin gère les membres non-propriétaires ; seul un propriétaire peut modifier un propriétaire ou attribuer ce rôle.
 create policy organization_members_update on public.organization_members
-  for update to authenticated using (public.is_org_admin(organization_id)) with check (public.is_org_admin(organization_id));
+  for update to authenticated
+  using (public.is_org_admin(organization_id) and (role <> 'owner' or public.org_role_of(organization_id) = 'owner'))
+  with check (public.is_org_admin(organization_id) and (role <> 'owner' or public.org_role_of(organization_id) = 'owner'));
 create policy organization_members_delete on public.organization_members
-  for delete to authenticated using (public.is_org_admin(organization_id) or user_id = auth.uid());
+  for delete to authenticated
+  using (
+    (public.is_org_admin(organization_id) and (role <> 'owner' or public.org_role_of(organization_id) = 'owner'))
+    or (user_id = auth.uid() and role <> 'owner')
+  );
 
 alter table public.organization_invitations enable row level security;
 create policy organization_invitations_select on public.organization_invitations

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asService, asUser, canConnect, createOrgAs, createSkuAs, createUser, manualChannelId, withRollback } from "./helpers";
+import { asService, asUser, canConnect, createOrgAs, createSkuAs, createUser, manualChannelId, withRollback, expectQueryError } from "./helpers";
 
 const available = await canConnect();
 const d = available ? describe : describe.skip;
@@ -121,6 +121,45 @@ d("Mapping SKU (map_listing_to_sku)", () => {
       expect(inv.rows[0].quantity_on_hand).toBe(6);
       const unmapped = await c.query("select count(*)::int as n from public.v_unmapped_listings where organization_id = $1", [org]);
       expect(unmapped.rows[0].n).toBe(0);
+    });
+  });
+});
+
+d("Contrat du mapping (pas de déduction rétroactive)", () => {
+  it("une commande ré-ingérée après association ne déduit pas le stock sans action explicite", async () => {
+    await withRollback(async (c) => {
+      const u = await createUser(c, "map2@example.test");
+      const org = await createOrgAs(c, u, "Org", "org-map2");
+      const sku = await createSkuAs(c, u, org, "SKU-MAP2", { initial: 10 });
+      const channel = await manualChannelId(c, org);
+      await asService(c);
+      const { rows: lrows } = await c.query(
+        "insert into public.channel_listings (organization_id, sales_channel_id, provider, external_listing_id, title, status) values ($1, $2, 'ebay', 'ITEM-Z', 'Annonce Z', 'active') returning id",
+        [org, channel],
+      );
+      const line = [{ external_line_item_id: "l1", external_listing_id: "ITEM-Z", external_variation_id: "", title: "Annonce Z", quantity: 2 }];
+      await c.query("select public.ingest_external_order($1, $2, null, 'ebay', $3::jsonb, $4::jsonb)", [org, channel, JSON.stringify(order({ external_order_id: "O-Z" })), JSON.stringify(line)]);
+      await asUser(c, u);
+      await c.query("select public.map_listing_to_sku($1, $2, 'manual')", [lrows[0].id, sku]);
+      await asService(c);
+      // Mise à jour de statut de la même commande : aucune déduction ne doit se produire.
+      const r = await c.query("select public.ingest_external_order($1, $2, null, 'ebay', $3::jsonb, $4::jsonb) as r", [org, channel, JSON.stringify(order({ external_order_id: "O-Z", status: "shipped" })), JSON.stringify(line)]);
+      expect(r.rows[0].r).toMatchObject({ created: false, status_changed: true, movements: 0 });
+      const inv = await c.query("select quantity_on_hand from public.inventory where sku_id = $1", [sku]);
+      expect(inv.rows[0].quantity_on_hand).toBe(10);
+    });
+  });
+
+  it("une seule synchronisation « running » par source (verrou atomique)", async () => {
+    await withRollback(async (c) => {
+      const u = await createUser(c, "lock@example.test");
+      const org = await createOrgAs(c, u, "Org", "org-lock");
+      await asService(c);
+      const ref = "11111111-1111-1111-1111-111111111111";
+      await c.query("insert into public.sync_runs (organization_id, source_kind, source_ref, provider, trigger, status) values ($1, 'channel', $2, 'ebay', 'manual', 'running')", [org, ref]);
+      await expectQueryError(c, "insert into public.sync_runs (organization_id, source_kind, source_ref, provider, trigger, status) values ($1, 'channel', $2, 'ebay', 'scheduled', 'running')", [org, ref], /duplicate key|unique/);
+      await c.query("update public.sync_runs set status = 'success' where source_ref = $1", [ref]);
+      await c.query("insert into public.sync_runs (organization_id, source_kind, source_ref, provider, trigger, status) values ($1, 'channel', $2, 'ebay', 'scheduled', 'running')", [org, ref]);
     });
   });
 });

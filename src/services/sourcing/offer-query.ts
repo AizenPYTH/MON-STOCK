@@ -38,7 +38,7 @@ export const OFFER_FETCH_LIMIT = 500;
 
 export type OfferQueryStage = "identifier" | "structured" | "text" | "filters_only" | "none";
 
-function escapeLike(s: string): string {
+export function escapeLike(s: string): string {
   return s.replace(/[%_\\]/g, (m) => `\\${m}`);
 }
 

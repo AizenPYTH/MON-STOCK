@@ -250,6 +250,8 @@ create table public.sync_runs (
 
 create index sync_runs_org_idx on public.sync_runs (organization_id, started_at desc);
 create index sync_runs_source_idx on public.sync_runs (source_ref, started_at desc);
+-- Verrou atomique : une seule synchronisation « running » par source (connexion, flux, source).
+create unique index sync_runs_one_running_per_source_uidx on public.sync_runs (source_ref) where status = 'running' and source_ref is not null;
 
 create table public.sync_errors (
   id uuid primary key default gen_random_uuid(),

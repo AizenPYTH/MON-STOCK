@@ -114,7 +114,7 @@ export function parseFeedContent(content: string, format: FeedFormat, options: F
     } else {
       rows = parsed as Array<Record<string, unknown>>;
     }
-    if (delimiter !== (options.delimiter ?? delimiter)) warnings.push(`Délimiteur détecté : « ${delimiter} »`);
+    if (options.delimiter === undefined || options.delimiter === null) warnings.push(`Délimiteur détecté automatiquement : « ${delimiter} »`);
   } else {
     let doc: unknown;
     if (format === "xml") {

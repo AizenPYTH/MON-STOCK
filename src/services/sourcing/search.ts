@@ -1,4 +1,5 @@
 import "server-only";
+import { escapeLike } from "@/services/sourcing/offer-query";
 import type { OrgContext } from "@/features/auth/dal";
 import type { Json } from "@/db/database.types";
 import { parseQuery, type ParsedQuery } from "@/domain/sourcing/query-parser";
@@ -106,7 +107,7 @@ export interface SearchInput {
 }
 
 async function loadSku(ctx: OrgContext, code: string): Promise<SearchSku | null> {
-  const { data: row } = await ctx.supabase.from("v_stock_overview").select("sku_id, code, product_name, brand, variant_name, variant_id, condition, grade, cost_price, sale_price, avg_sale_price_30d, currency").eq("organization_id", ctx.organization.id).ilike("code", code.replace(/[%_\\]/g, "")).maybeSingle();
+  const { data: row } = await ctx.supabase.from("v_stock_overview").select("sku_id, code, product_name, brand, variant_name, variant_id, condition, grade, cost_price, sale_price, avg_sale_price_30d, currency").eq("organization_id", ctx.organization.id).ilike("code", escapeLike(code)).maybeSingle();
   if (!row || !row.sku_id) return null;
   const { data: variant } = await ctx.supabase.from("product_variants").select("attributes, ean, mpn").eq("id", row.variant_id ?? "").maybeSingle();
   const attrs = (variant?.attributes ?? {}) as Record<string, unknown>;
@@ -177,7 +178,7 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
 
   let skuIdsForCategory: string[] | null = null;
   if (filters.category) {
-    const { data } = await ctx.supabase.from("v_stock_overview").select("sku_id").eq("organization_id", orgId).ilike("category", filters.category.replace(/[%_\\]/g, "")).limit(1000);
+    const { data } = await ctx.supabase.from("v_stock_overview").select("sku_id").eq("organization_id", orgId).ilike("category", escapeLike(filters.category)).limit(1000);
     skuIdsForCategory = (data ?? []).map((d) => d.sku_id).filter((x): x is string => Boolean(x));
   }
 

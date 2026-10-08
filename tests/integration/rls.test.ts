@@ -86,3 +86,36 @@ d("RLS multi-tenant (permissions)", () => {
     });
   });
 });
+
+d("Protection du rôle propriétaire", () => {
+  it("un admin ne peut ni devenir propriétaire, ni rétrograder ou retirer le propriétaire", async () => {
+    await withRollback(async (c) => {
+      const owner = await createUser(c, "owner2@example.test");
+      const admin = await createUser(c, "admin2@example.test");
+      const org = await createOrgAs(c, owner, "Org O", "org-owner");
+      await asService(c);
+      await c.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'admin')", [org, admin]);
+      await asUser(c, admin);
+      // La clause WITH CHECK rejette la ligne modifiée (erreur RLS) : un admin ne peut pas s'attribuer le rôle owner.
+      await expectQueryError(c, "update public.organization_members set role = 'owner' where organization_id = $1 and user_id = $2", [org, admin], /row-level security/);
+      const demote = await c.query("update public.organization_members set role = 'viewer' where organization_id = $1 and user_id = $2", [org, owner]);
+      expect(demote.rowCount).toBe(0);
+      const remove = await c.query("delete from public.organization_members where organization_id = $1 and user_id = $2", [org, owner]);
+      expect(remove.rowCount).toBe(0);
+      // Un admin peut gérer un membre simple.
+      const member = await createUser(c, "member2@example.test");
+      await asService(c);
+      await c.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'member')", [org, member]);
+      await asUser(c, admin);
+      const ok = await c.query("update public.organization_members set role = 'viewer' where organization_id = $1 and user_id = $2", [org, member]);
+      expect(ok.rowCount).toBe(1);
+      // Une invitation ne rétrograde jamais un membre existant.
+      await asService(c);
+      const { rows: inv } = await c.query("insert into public.organization_invitations (organization_id, email, role) values ($1, 'owner2@example.test', 'viewer') returning token", [org]);
+      await asUser(c, owner);
+      await c.query("select public.accept_invitation($1)", [inv[0].token]);
+      const role = await c.query("select role from public.organization_members where organization_id = $1 and user_id = $2", [org, owner]);
+      expect(role.rows[0].role).toBe("owner");
+    });
+  });
+});
