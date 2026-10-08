@@ -45,9 +45,21 @@ Toutes les variables sont listées et commentées dans [`.env.example`](.env.exa
 | `CRON_SECRET` | serveur | protège `/api/cron/*` (`openssl rand -hex 32`) |
 | `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | serveur | application eBay (voir section 6) |
 | `EBAY_WEBHOOK_VERIFICATION_TOKEN` | serveur | vérification des notifications eBay |
-| `SOURCING_USER_AGENT` | serveur | identité du crawler de sources publiques |
+| `SOURCING_USER_AGENT` | serveur | identité du crawler de sources publiques (User-Agent honnête et contactable) |
+| `SOURCING_DISCOVERY_PROVIDER` | serveur | `none` (défaut) ou `brave` : découverte de nouveaux fournisseurs via une API de recherche web officielle |
+| `BRAVE_SEARCH_API_KEY` | serveur | clé de la Brave Search API (uniquement si `SOURCING_DISCOVERY_PROVIDER=brave`) |
 
-Règles : `.env*` est ignoré par git ; les variables `NEXT_PUBLIC_*` ne contiennent jamais de secret ; les variables serveur sont validées paresseusement par Zod (`src/lib/env.ts`) avec des messages d'erreur explicites.
+Règles : `.env*` est ignoré par git **sauf** `.env.example` ; les variables `NEXT_PUBLIC_*` ne contiennent jamais de secret (URL Supabase et clé anonyme uniquement) ; les variables serveur sont validées paresseusement par Zod (`src/lib/env.ts`) avec des messages d'erreur explicites ; le client `service_role` (`src/lib/supabase/admin.ts`) importe `server-only` et n'est jamais atteint depuis un composant client.
+
+### Environnements
+
+| Environnement | Base | Fichier de variables | Usage |
+| --- | --- | --- | --- |
+| DEV | projet Supabase de développement | `.env.local` | `npm run dev` |
+| TEST | PostgreSQL 16 local + shim Supabase (`npm run db:local:reset`) | variables `DATABASE_URL` / `PGDATABASE` | tests d'intégration, aucune donnée réelle |
+| PRODUCTION | projet Supabase de production | variables de l'hébergeur (jamais dans le dépôt) | déploiement |
+
+Utilisez **un projet Supabase distinct** pour DEV et PRODUCTION, et des clés eBay *sandbox* en DEV. Ne lancez jamais `npm run seed:demo` ni les tests sur la production.
 
 ## 3. Supabase
 
@@ -75,6 +87,13 @@ Toutes les modifications de schéma sont versionnées dans `supabase/migrations/
 | `…000600_functions_views.sql` | `ingest_external_order`, `map_listing_to_sku`, `receive_purchase_order_items`, vues analytiques |
 | `…000700_rls.sql` | Row Level Security complète |
 | `…000800_catalog_functions.sql` | `create_sku` (création atomique produit → variante → SKU) |
+| `…000900_indexes.sql` | index des clés étrangères jointes |
+| `…001000_security_privileges.sql` | privilèges minimaux : EXECUTE retiré à PUBLIC/anon, pas de TRUNCATE, droits par colonne |
+| `…001100_membership_hardening.sql` | invitations (email vérifié), dernier propriétaire protégé, profils et rôles verrouillés |
+| `…001200_same_org_references.sql` | trigger « même organisation » sur toutes les clés étrangères, `organization_id` immuable |
+| `…002000_stock_po_integrity.sql` | intégrité du stock (limites, sens des mouvements, historique non supprimable) et machine à états des commandes fournisseurs |
+| `…002100_analytics_views.sql` | vues analytiques par devise, jours calendaires Europe/Paris, rotation du stock |
+| `…003000_sync_hardening.sql` | ingestion de commandes sans course, stockage atomique des tokens rafraîchis |
 
 **Appliquer sur Supabase** (au choix) :
 
@@ -90,7 +109,7 @@ npx supabase db push
 **Base locale de test** (PostgreSQL 16 nu + shim reproduisant `auth.uid()`, les rôles `anon/authenticated/service_role`) :
 
 ```bash
-PGPASSWORD=postgres npm run db:local:reset     # recrée mon_stock_test et applique tout
+PGPASSWORD=postgres npm run db:local:reset     # recrée mon_stock_test et applique tout (PGDATABASE=… pour une autre base)
 npm run db:types                               # régénère src/db/database.types.ts (supabase gen types)
 ```
 
@@ -155,13 +174,15 @@ src/
   features/            un dossier par fonctionnalité : queries (lecture), actions (Server Actions + Zod), composants
   domain/              logique métier pure et testée : vitesse de vente, classification stock, marge, réapprovisionnement, sourcing (normalisation, matching, score, validation)
   services/            orchestration serveur : synchronisation, stockage des tokens, ingestion de flux, crawler, taux de change
-  integrations/        connecteurs : core/ (interface MarketplaceConnector), ebay/, amazon/, shopify/ (non implémentés, déclarés tels quels), suppliers/
+  integrations/        connecteurs marketplace : core/ (MarketplaceConnector), ebay/, amazon/ et shopify/ (non implémentés, déclarés tels quels)
+                       sourcing/ : un dossier indépendant par adaptateur de source (crawler / parser / mapper / index) + registre + catalogue des sources
   lib/                 env, clients Supabase (server / browser / admin), crypto, logger, erreurs, formatage
   db/                  types générés (database.types.ts) et alias
   proxy.ts             rafraîchissement de session + protection des routes (Next 16)
 supabase/migrations/   schéma versionné        supabase/local/  shim PostgreSQL local
-tests/unit             services du domaine     tests/integration RLS, idempotence, mouvements, mapping (PostgreSQL local)
-docs/                  data-model, ebay-setup, sourcing-engine, sourcing-sources
+tests/unit             logique pure, adaptateurs (fixtures), actions   tests/integration RLS, sécurité, stock, commandes, synchronisation (PostgreSQL local)
+tests/e2e              rendu des pages publiques (Playwright)          tests/fixtures  documents fournisseurs d'exemple (formats documentés)
+docs/                  data-model, ebay-setup, sourcing-*, BETA-READINESS
 ```
 
 Principes :
@@ -175,13 +196,20 @@ Principes :
 ## 10. Tests
 
 ```bash
-npm test                                   # unitaires : vitesse, alertes, marge, réapprovisionnement, sourcing, eBay (parsing/mapping)…
-PGPASSWORD=postgres npm run db:local:reset # base locale
-npm run test:integration                   # RLS/permissions, calcul de stock, idempotence des commandes, mapping SKU, historiques, réception fournisseur
-npm run test:all
+npm run typecheck && npm run lint
+npm test                                   # unitaires : domaine, adaptateurs de sourcing (fixtures), eBay, actions, liens internes…
+PGPASSWORD=postgres npm run db:local:reset # base locale (toutes les migrations)
+npm run test:integration                   # sécurité multi-tenant générée depuis le catalogue, rôles, stock, commandes fournisseurs,
+                                           # idempotence et concurrence (deux connexions), synchronisation eBay, webhooks
+npm run build
+# e2e (pages publiques, 3 largeurs, en-têtes de sécurité) contre un serveur lancé :
+NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=x npx next start -p 3100 &
+E2E_BASE_URL=http://localhost:3100 PLAYWRIGHT_CHROMIUM_PATH=<chemin chromium> npm run test:e2e
 ```
 
-Les tests d'intégration s'exécutent dans une transaction annulée à la fin (base propre) en simulant les rôles PostgREST (`authenticated` + claims JWT, `service_role`). Ils sont ignorés automatiquement si aucune base locale n'est joignable (`DATABASE_URL`).
+Les tests d'intégration s'exécutent dans une transaction annulée à la fin (base propre) en simulant les rôles PostgREST (`authenticated` + claims JWT, `anon`, `service_role`). Ils sont ignorés automatiquement si aucune base locale n'est joignable (`DATABASE_URL`). Les tests de sécurité énumèrent tables, vues et fonctions depuis `pg_catalog` : **toute nouvelle table avec `organization_id` doit appeler `public.install_same_org_guards(...)` et être ajoutée à `tests/integration/security-fixtures.ts`**, sinon ils échouent.
+
+Les adaptateurs de sourcing et l'API eBay sont testés **uniquement sur des fixtures** construites d'après leur documentation publique : ils n'ont jamais été exécutés contre les vrais services depuis l'environnement de développement (réseau sortant bloqué).
 
 ## 11. Déploiement
 
@@ -189,21 +217,31 @@ Les tests d'intégration s'exécutent dans une transaction annulée à la fin (b
 2. Mettez `NEXT_PUBLIC_APP_URL` sur l'URL publique, ajoutez-la aux *Redirect URLs* Supabase et dans la configuration eBay (RuName).
 3. `vercel.json` déclare les crons (`/api/cron/sync`, `/api/cron/sourcing`) ; configurez `CRON_SECRET` (Vercel envoie automatiquement `Authorization: Bearer $CRON_SECRET`).
 4. Vérifiez l'endpoint webhook eBay (challenge GET) depuis le portail développeur.
-5. Vérification finale : `npm run typecheck && npm run lint && npm test && npm run build`.
+5. Configurez Supabase : *Confirm email*, *Secure email change* et *Secure password change* activés ; *Redirect URLs* limitées à votre domaine.
+6. Si votre projet Supabase utilise un domaine personnalisé, ajoutez-le à `connect-src` de la Content-Security-Policy (`next.config.ts`).
+7. Vérification finale : `npm run typecheck && npm run lint && npm test && npm run test:integration && npm run build`.
+
+Avant la bêta, lisez [`docs/BETA-READINESS.md`](docs/BETA-READINESS.md).
 
 ## 12. État des fonctionnalités
 
+Légende : ✅ réellement disponible · ⚠️ partiellement disponible / non vérifié en conditions réelles · 🚧 prochainement disponible.
+
 | Fonctionnalité | État |
 | --- | --- |
-| Inscription, connexion, reset mot de passe, sessions, protection des routes | ✅ |
-| Organisations, membres, rôles, invitations | ✅ (envoi d'email d'invitation : lien affiché à l'admin, email transactionnel non branché) |
-| Stock central PRODUIT → VARIANTE → SKU, mouvements, historique, fiche produit | ✅ |
-| Tableau de bord, alertes de rupture, vitesse, jours de stock, recommandations expliquées, marges honnêtes | ✅ |
-| eBay : OAuth, synchronisation annonces/commandes, mapping, webhooks, cron | ✅ (voir `docs/ebay-setup.md` pour les limites connues) |
-| Envoi des quantités vers eBay | ✅ opt-in, manuel ou automatique (désactivé par défaut) |
-| Fournisseurs, offres, commandes fournisseurs, import CSV/XML/JSON | ✅ |
-| Sourcing : recherche, normalisation, matching, score transparent, historique, alertes | ✅ sur les sources connectées par l'organisation (manuelles, flux, pages publiques autorisées) |
-| Crawler de sources publiques | ✅ architecture + parser générique JSON-LD ; parsers spécifiques par source à ajouter (`docs/sourcing-engine.md`) |
-| Connecteurs API fournisseurs | 🏗 architecture prête, aucun connecteur réel livré (affiché « Aucun connecteur disponible ») |
-| Amazon, Shopify, WooCommerce | ⏳ « Disponible prochainement » (interfaces déclarées, non simulées) |
-| Facturation | ⏳ « Disponible prochainement » |
+| Inscription, connexion, reset, sessions, protection des routes | ✅ |
+| Organisations, membres, rôles, invitations | ✅ (email d'invitation non envoyé : le lien est affiché à l'administrateur) |
+| Isolation multi-tenant (RLS + garde « même organisation ») | ✅ testée table par table, fonction par fonction |
+| Stock central PRODUIT → VARIANTE → SKU, mouvements, historique, archivage | ✅ |
+| Commandes fournisseurs : brouillon → envoyée → réception partielle/totale | ✅ |
+| Tableau de bord, alertes de rupture, vitesse, jours de stock, rotation, réapprovisionnement, marges | ✅ (calculés uniquement à partir des données présentes) |
+| eBay : OAuth, annonces, commandes, mapping, webhooks, cron | ⚠️ implémenté et testé sur réponses simulées ; **jamais exécuté contre l'API eBay réelle** |
+| Envoi des quantités vers eBay | ⚠️ opt-in, même réserve |
+| Fournisseurs, offres manuelles, import CSV/XML/JSON | ✅ |
+| Sourcing : recherche, normalisation, filtrage, déduplication, classement expliqué, confiance, historique, alertes, « Trouver moins cher » | ✅ sur les offres présentes en base (saisies, flux importés) |
+| Sourcing : recherche en direct via 6 adaptateurs (JSON-LD, Shopify, WooCommerce, Google Merchant, BigBuy, Ingram Micro) | ⚠️ testés sur fixtures uniquement ; **0 source réellement connectée à ce jour** |
+| Sourcing : découverte de nouveaux fournisseurs | ⚠️ désactivée par défaut (nécessite une clé Brave Search API), sources découvertes à valider manuellement |
+| Amazon, Shopify (canal de vente), WooCommerce (canal de vente) | 🚧 « Disponible prochainement » |
+| Facturation | 🚧 « Disponible prochainement » |
+
+État réel des sources de sourcing : voir la carte « État des sources » sur `/sourcing` et [`docs/sourcing-sources-verification.md`](docs/sourcing-sources-verification.md).
