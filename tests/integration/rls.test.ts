@@ -119,3 +119,22 @@ d("Protection du rôle propriétaire", () => {
     });
   });
 });
+
+d("Invitations et escalade de privilèges", () => {
+  it("un admin ne peut pas créer une invitation avec le rôle propriétaire", async () => {
+    await withRollback(async (c) => {
+      const owner = await createUser(c, "owner3@example.test");
+      const admin = await createUser(c, "admin3@example.test");
+      const org = await createOrgAs(c, owner, "Org I", "org-inv");
+      await asService(c);
+      await c.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'admin')", [org, admin]);
+      await asUser(c, admin);
+      await expectQueryError(c, "insert into public.organization_invitations (organization_id, email, role) values ($1, 'admin3@example.test', 'owner')", [org], /row-level security/);
+      const ok = await c.query("insert into public.organization_invitations (organization_id, email, role) values ($1, 'x@example.test', 'member') returning id", [org]);
+      expect(ok.rowCount).toBe(1);
+      await asUser(c, owner);
+      const asOwner = await c.query("insert into public.organization_invitations (organization_id, email, role) values ($1, 'y@example.test', 'owner') returning id", [org]);
+      expect(asOwner.rowCount).toBe(1);
+    });
+  });
+});

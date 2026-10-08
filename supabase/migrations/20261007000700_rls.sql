@@ -118,8 +118,11 @@ create policy organization_members_delete on public.organization_members
 alter table public.organization_invitations enable row level security;
 create policy organization_invitations_select on public.organization_invitations
   for select to authenticated using (public.is_org_admin(organization_id));
+-- Un admin invite des admins/membres/lecteurs ; seul un propriétaire peut inviter avec le rôle propriétaire
+-- (sinon un admin pourrait s'inviter lui-même comme owner : escalade de privilèges).
 create policy organization_invitations_insert on public.organization_invitations
-  for insert to authenticated with check (public.is_org_admin(organization_id));
+  for insert to authenticated
+  with check (public.is_org_admin(organization_id) and (role <> 'owner' or public.org_role_of(organization_id) = 'owner'));
 create policy organization_invitations_delete on public.organization_invitations
   for delete to authenticated using (public.is_org_admin(organization_id));
 
