@@ -8,6 +8,12 @@ export interface FetchTextOptions {
   maxBytes?: number;
   accept?: string;
   fetchImpl?: typeof fetch;
+  /** méthode HTTP (GET par défaut ; POST uniquement pour les API officielles authentifiées) */
+  method?: "GET" | "POST";
+  /** en-têtes supplémentaires (Authorization, en-têtes propres à une API…) ; jamais de cookie de session */
+  headers?: Record<string, string>;
+  /** corps de requête (POST) */
+  body?: string;
 }
 
 export interface FetchTextResult {
@@ -139,9 +145,10 @@ export async function fetchText(url: string, options: FetchTextOptions & { encod
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       await assertResolvesToPublicAddress(target, options.resolver);
       res = await doFetch(target.toString(), {
-        method: "GET",
+        method: options.method ?? "GET",
         redirect: "manual",
-        headers: { "User-Agent": options.userAgent, Accept: options.accept ?? "text/html,application/xhtml+xml,application/xml,text/csv,application/json;q=0.9,*/*;q=0.8" },
+        headers: { "User-Agent": options.userAgent, Accept: options.accept ?? "text/html,application/xhtml+xml,application/xml,text/csv,application/json;q=0.9,*/*;q=0.8", ...(options.headers ?? {}) },
+        body: options.method === "POST" ? options.body ?? "" : undefined,
         signal: controller.signal,
       });
       const location = res.headers.get("location");
