@@ -14,7 +14,8 @@
     "db:local:reset": "bash scripts/db-local-reset.sh",
     "db:types": "bash scripts/generate-db-types.sh",
     "seed:demo": "tsx --env-file=.env.local scripts/seed-demo.ts",
-    "sync:run": "tsx --env-file=.env.local scripts/run-sync.ts"
+    "sync:run": "tsx --env-file=.env.local scripts/run-sync.ts",
+    "sources:verify": "tsx scripts/verify-sources.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

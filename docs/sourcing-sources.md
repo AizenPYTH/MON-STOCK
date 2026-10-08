@@ -4,6 +4,18 @@
 
 ---
 
+## 0. État de vérification
+
+| Élément | État |
+|---|---|
+| Fiches (sections 4–7) | 35 sources, établies le **2026-10-07** à partir d'extraits indexés de pages officielles (**pages non ouvertes, robots.txt non lus**) |
+| Catalogue typé (données uniquement, aucun appel réseau) | `src/integrations/sourcing/catalog.ts` — `listCatalogSources()`, `catalogSourceByKey()`, `catalogSummary()` ; chaque source porte `verification: { lastCheckedAt: "2026-10-07", checkedFrom: "search_snippets_official_domain", pageOpened: false, robotsChecked: false }`. Le catalogue reprend les fiches sans relever la confiance : « À vérifier » / « Non trouvé » → `unknown` / `null` |
+| Vérification HTTP (statut, URL finale, robots.txt pour `MonStockBot` et `*`, signaux Shopify / WooCommerce / JSON-LD / RSS, sondes publiques sans identifiants) | Script `scripts/verify-sources.ts` → `npm run sources:verify` (`--key <key>`, `--out <fichier>`). Politesse : 2 s/hôte, User-Agent `MonStockBot/0.1 (+contact)` (`SOURCING_USER_AGENT`), délai 15 s, 5 redirections max, aucune nouvelle tentative sur 403/429/CAPTCHA |
+| Dernière exécution | **2026-10-08, depuis un environnement sans accès réseau : vérification NON exécutée** (toutes les requêtes refusées par le proxy de sortie). Rapport conservé dans `docs/sourcing-sources-verification.md` avec cette mention ; **à relancer** depuis une machine connectée avant toute décision d'intégration |
+| Tableau 12 colonnes dérivé du catalogue | Section 11 (ci-dessous) ; « À vérifier (réseau bloqué) » = champ non tranché par les extraits officiels |
+
+---
+
 ## 1. Méthodologie
 
 1. **Identification** : liste de candidats (brief produit + recherches web) → 35 sources retenues pour fiche, 20 écartées ou non vérifiables (section 8).
@@ -712,3 +724,49 @@ Principe : **« 10 vraies sources bien intégrées plutôt que 500 fictives »**
 ## 10. Résumé
 
 Trente-cinq sources ont été documentées à partir de leurs pages officielles (vérification par extraits indexés, les requêtes HTTP directes étant bloquées dans l'environnement d'analyse) : **29 sont « vérifiées (extraits officiels) »** sur les champs clés (accès, compte, API/flux, clauses) et **6 sont « partielles »** (Recommerce, Smaaart, AB Business, SoloStocks, Handelot, CdiscountPro) ; une vingtaine de candidats ont été écartés comme fermés (BULQ), hors sujet ou non vérifiables (Nestor, Gesten, Panda Stock, Refurb-exchange, Techforum…). Le constat central : les seules voies d'automatisation légitimes et durables sont les **API/flux des distributeurs IT** (Ingram Micro, TD SYNNEX, ALSO, Exertis, Westcoast, KOMSA, Brodos), les **flux grossistes** (BigBuy) et les **API de marketplaces sous approbation** (Amazon Business, eBay, Alibaba) ; les plateformes de liquidation et les bourses B2B (B-Stock, BrokerBin, gsmExchange, Liquidation.com, Via Trading, Wholesale Clearance UK) interdisent explicitement tout accès automatisé et doivent rester en mode compte-vendeur/manuel, tandis que le reconditionné B2B français (Foxway, Largo, Back Market Pro, Stocklear) passe par un **compte connecté par le vendeur**, avec un partenariat data à négocier pour aller plus loin.
+
+---
+
+## 11. Tableau de synthèse 12 colonnes (dérivé du catalogue)
+
+Généré depuis `src/integrations/sourcing/catalog.ts` (`catalogTableRow()`), état des fiches au 2026-10-07. Aucune page n'a été ouverte : « À vérifier (réseau bloqué) » signale un champ que les extraits officiels n'ont pas permis de trancher ; « Après connexion » = prix réservés aux comptes ; « Interdite par les CGU » = clause anti-robots citée dans la fiche ; « Oui (canal officiel) » = automatisation documentée via API/flux officiel uniquement. La colonne STATUT reprend la confiance de la fiche (`verified_official_snippets` / `partial`), pas le résultat d'une vérification HTTP (voir `docs/sourcing-sources-verification.md`).
+
+| SOURCE | URL | CATÉGORIE | PAYS | PRIX PUBLIC ? | COMPTE NÉCESSAIRE ? | API ? | CSV/XML ? | STOCK VISIBLE ? | AUTOMATISATION POSSIBLE ? | MÉTHODE D'INTÉGRATION | STATUT |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Back Market Pro | https://pro.backmarket.fr/ | smartphones, laptops, tablettes, accessoires | FR / UK / US | À vérifier (réseau bloqué) | Oui | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | Interdite par les CGU | `SUPPLIER_ACCOUNT` | Vérifié (extraits officiels) |
+| Foxway (Reseller Store + Wholesale) | https://resellers.foxway.com/ | smartphones, tablettes, laptops, wearables, accessoires | EU (Wholesale : ex-works UK) | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | Oui | À vérifier (réseau bloqué) | `SUPPLIER_ACCOUNT` | Vérifié (extraits officiels) |
+| refurbed Business | https://business.refurbed.de/ | smartphones, laptops, tablettes, écrans | DE / AT (+ IE) ; FR : À vérifier | Oui | Oui | À vérifier (réseau bloqué) | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `MANUAL` | Vérifié (extraits officiels) |
+| Largo (Largo Business) | https://www.largo.fr/ | smartphones, tablettes, ordinateurs, accessoires | FR / BE / CH | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | Oui | À vérifier (réseau bloqué) | `SUPPLIER_ACCOUNT` | Vérifié (extraits officiels) |
+| Recommerce | https://www.recommerce.com/fr/ | smartphones | EU (20 pays) | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `PARTNER_FEED` | Partiel |
+| SMAAART | https://smaaart.fr/ | smartphones, ordinateurs, tablettes | FR | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `MANUAL` | Partiel |
+| AB Business | https://www.abbusiness.fr/ | smartphones, tablettes, accessoires | FR | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `SUPPLIER_ACCOUNT` | Partiel |
+| Ingram Micro France | https://fr.ingrammicro.eu/ | informatique, mobilité, accessoires | FR | Après connexion | Oui | Oui | À vérifier (réseau bloqué) | Oui | Oui (canal officiel) | `API` | Vérifié (extraits officiels) |
+| TD SYNNEX France | https://fr.tdsynnex.com/ | informatique | FR / EU | Après connexion | Oui | Oui | À vérifier (réseau bloqué) | Oui | Oui (canal officiel) | `API` | Vérifié (extraits officiels) |
+| ALSO France | https://www.also.com/ec/cms5/fr_2000/2000/ | informatique | FR / EU | Après connexion | Oui | Oui | Oui | Oui | Oui (canal officiel) | `FEED` | Vérifié (extraits officiels) |
+| Exertis France | https://www.exertis.fr/ | informatique, gaming, mobilité, audio-vidéo | FR | Après connexion | Oui | Oui | Oui | À vérifier (réseau bloqué) | Oui (canal officiel) | `FEED` | Vérifié (extraits officiels) |
+| Westcoast | https://www.westcoast.co.uk/ | informatique, composants | UK (FR : À vérifier) | Après connexion | Oui | Oui | Oui | Oui | Oui (canal officiel) | `API` | Vérifié (extraits officiels) |
+| KOMSA | https://komsa.com/ | smartphones, accessoires, informatique | DE (FR : À vérifier) | Après connexion | Oui | Oui | Oui | Oui | Oui (canal officiel) | `API` | Vérifié (extraits officiels) |
+| Brodos AG | https://brodos.com/ | smartphones, tablettes, accessoires | DE (intl. possible) | Après connexion | Oui | Oui | Oui | À vérifier (réseau bloqué) | Oui (canal officiel) | `API` | Vérifié (extraits officiels) |
+| Stocklear | https://stocklear.fr/ | retours clients, invendus, téléphonie | FR (+ EU) | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `SUPPLIER_ACCOUNT` | Vérifié (extraits officiels) |
+| Destockplus | https://www.destockplus.com/ | lots, téléphonie, déstockage | FR | Oui | Non | Non | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `PUBLIC_WEB` | Vérifié (extraits officiels) |
+| Merkandi | https://merkandi.fr/ | surstocks, retours, reconditionné, électronique | EU / monde | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `SUPPLIER_ACCOUNT` | Vérifié (extraits officiels) |
+| B-Stock (Europe / Amazon EU / France) | https://bstock.com/auctions/europe/ | électronique, mobiles (grades A–D), retours Amazon | EU / UK | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | Interdite par les CGU | `MANUAL` | Vérifié (extraits officiels) |
+| Eurolots | https://www.eurolots.com/en | électronique, lots mixtes | EU | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `SUPPLIER_ACCOUNT` | Vérifié (extraits officiels) |
+| Wholesale Clearance UK | https://www.wholesaleclearance.co.uk/ | électronique, lots, déstockage | UK | Oui | Non | Non | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `MANUAL` | Vérifié (extraits officiels) |
+| Gem Wholesale | https://www.gemwholesale.co.uk/ | électroménager, électronique domestique | UK | Oui | À vérifier (réseau bloqué) | Non | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `PUBLIC_WEB` | Vérifié (extraits officiels) |
+| SoloStocks | https://www.solostocks.fr/ | téléphonie, informatique, multi-secteurs | ES / FR / EU / LATAM | Oui | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `PUBLIC_WEB` | Partiel |
+| BrokerBin | https://brokerbin.com/ | pièces IT, systèmes IT, télécom/réseau | Monde | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | Interdite par les CGU | `MANUAL` | Vérifié (extraits officiels) |
+| gsmExchange | https://www.gsmexchange.com/ | smartphones en gros, accessoires | Monde (Dublin) | Après connexion | Oui | Non | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `MANUAL` | Vérifié (extraits officiels) |
+| Handelot | https://www.handelot.com/ | mobiles, tablettes, consoles, TV, informatique | Monde (Pologne) | Après connexion | Oui | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `SUPPLIER_ACCOUNT` | Partiel |
+| Amazon Business (FR) | https://business.amazon.fr/ | smartphones, informatique, tout | FR / EU | Après connexion | Oui | Oui | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `API` | Vérifié (extraits officiels) |
+| eBay (Browse API) | https://developer.ebay.com/api-docs/buy/browse/overview.html | smartphones, lots, tout | FR / EU / monde | Oui | Non | Oui | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `API` | Vérifié (extraits officiels) |
+| BigBuy | https://www.bigbuy.eu/fr/ | électronique, informatique, accessoires | EU (Espagne) | À vérifier (réseau bloqué) | Oui | Oui | Oui | Oui | Oui (canal officiel) | `API` | Vérifié (extraits officiels) |
+| CdiscountPro | https://www.cdiscountpro.com/ | informatique, téléphonie | FR | Oui | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `PUBLIC_WEB` | Partiel |
+| Alibaba.com | https://www.alibaba.com/ | électronique, tout | Asie / monde | Oui | Non | Oui | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `API` | Vérifié (extraits officiels) |
+| Global Sources | https://www.globalsources.com/ | électronique grand public, mobile | Asie / monde (Hong Kong) | Non | Oui | À vérifier (réseau bloqué) | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `MANUAL` | Vérifié (extraits officiels) |
+| Liquidation.com | https://www.liquidation.com/ | électronique, mobiles, retours | US | Après connexion | Oui | Non | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `MANUAL` | Vérifié (extraits officiels) |
+| Direct Liquidation | https://www.directliquidation.com/ | électronique, retours | US | Après connexion | Oui | Non | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `MANUAL` | Vérifié (extraits officiels) |
+| Via Trading | https://www.viatrading.com/ | électronique, retours | US (export) | Oui | Non | Non | Non | À vérifier (réseau bloqué) | Interdite par les CGU | `MANUAL` | Vérifié (extraits officiels) |
+| 888 Lots | https://888lots.com/ | électronique, mobiles | US uniquement | Après connexion | Oui | Non | Non | À vérifier (réseau bloqué) | À vérifier (réseau bloqué) | `NOT_INTEGRABLE` | Vérifié (extraits officiels) |
+
+Comptage (`catalogSummary()`) : 35 sources · 29 vérifiées (extraits officiels) · 6 partielles · 0 non vérifiée (les candidats non vérifiables sont listés en section 8 et absents du catalogue) · prix publics sans connexion : 9 · compte nécessaire : 25 · API ou flux documenté : 11 · non intégrable : 1 (888 Lots). Par classe : API 9, FEED 2, SUPPLIER_ACCOUNT 8, PARTNER_FEED 1, PUBLIC_WEB 4, MANUAL 10, NOT_INTEGRABLE 1.
