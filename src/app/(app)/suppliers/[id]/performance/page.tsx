@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Callout, Stat } from "@/components/ui/page";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { getSupplier, getSupplierPerformance, getSupplierTabCounts } from "@/features/suppliers/queries";
 import { SupplierHeader } from "@/features/suppliers/components/supplier-header";
 import { recomputeSupplierScoreAction } from "@/features/suppliers/actions";
+import { ActionButtonForm } from "@/features/sourcing/components/action-button-form";
 import { formatDate, formatRelative, NOT_PROVIDED } from "@/lib/format";
 import { SUPPLIER_SCORE_MIN_ORDERS } from "@/domain/sourcing/scoring";
 
@@ -38,12 +38,9 @@ export default async function SupplierPerformancePage({ params }: { params: Prom
             description={s.reason}
             actions={
               writable ? (
-                <form action={recomputeSupplierScoreAction}>
-                  <input type="hidden" name="supplier_id" value={supplier.id} />
-                  <Button type="submit" variant="secondary" size="sm">
-                    Recalculer et enregistrer
-                  </Button>
-                </form>
+                <ActionButtonForm action={recomputeSupplierScoreAction} fields={{ supplier_id: supplier.id }} showSuccess>
+                  Recalculer et enregistrer
+                </ActionButtonForm>
               ) : null
             }
           />

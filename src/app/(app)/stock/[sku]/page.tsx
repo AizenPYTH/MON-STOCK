@@ -6,16 +6,19 @@ import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { PageHeader, Stat, Section, DescriptionList, Callout } from "@/components/ui/page";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { getSkuDetail } from "@/features/stock/queries";
 import { StockLevelBadge, TrendIcon } from "@/features/stock/components/stock-level-badge";
 import { AdjustStockButton } from "@/features/stock/components/adjust-stock-form";
 import { MovementsTimeline } from "@/features/stock/components/movements-timeline";
-import { applyPendingSalesAction } from "@/features/stock/actions";
+import { ApplyPendingSalesForm } from "@/features/stock/components/sku-actions";
 import { formatDate, formatDateTime, formatDays, formatMoney, formatNumber, formatRelative, NOT_PROVIDED } from "@/lib/format";
-import { computeReplenishment } from "@/domain/replenishment/replenishment";
+import { buildRecommendation, pickCheapestOffer } from "@/features/analytics/replenishment.pure";
+import { findCheaperHref, findCheaperQuantity } from "@/features/sourcing/links";
+import { computeRotation } from "@/domain/inventory/rotation";
 import { UNKNOWN_COST_LABEL } from "@/domain/pricing/margin";
+import { safeExternalUrl } from "@/lib/utils";
 
 export async function generateMetadata({ params }: { params: Promise<{ sku: string }> }): Promise<Metadata> {
   const { sku } = await params;
@@ -30,22 +33,20 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
   const { sku } = await params;
   const detail = await getSkuDetail(ctx, decodeURIComponent(sku));
   if (!detail) notFound();
-  const { row, view, product, variant, movements, listings, offers, orderItems, priceHistory, siblings, pendingSalesCount, onOrder } = detail;
+  const { row, view, product, variant, movements, listings, offers, orderItems, priceHistory, siblings, pendingSalesCount, onOrder, rotation: rotationData, defaultSupplier } = detail;
   const writable = canWrite(ctx.role);
   const currency = row.currency ?? "EUR";
   const code = row.code ?? "";
-  const bestOffer = offers[0];
-  const bestSupplier = bestOffer?.supplier as { id: string; name: string; average_lead_time_days: number | null } | null | undefined;
-  const replenishment = computeReplenishment({
-    skuLabel: code,
-    availableStock: row.quantity_available ?? 0,
-    onOrder,
-    dailyVelocity: view.velocity.dailyVelocity,
-    leadTimeDays: row.lead_time_days ?? bestOffer?.delivery_max_days ?? bestSupplier?.average_lead_time_days ?? null,
-    safetyStock: row.safety_stock ?? 0,
-    moq: bestOffer?.moq ?? null,
-    supplierAvailable: bestOffer?.available_quantity ?? null,
-  });
+  // Même calcul que le dashboard, les alertes et les insights (buildRecommendation) :
+  // offre la moins chère → fournisseur de l'offre, à défaut fournisseur par défaut du SKU.
+  const bestOffer = pickCheapestOffer(offers);
+  const offerSupplier = (bestOffer?.supplier ?? null) as { id: string; name: string; average_lead_time_days: number | null; default_moq: number | null } | null;
+  const recommendation = buildRecommendation(view, { offer: bestOffer, offerSupplier, defaultSupplier, onOrder });
+  const replenishment = recommendation.result;
+  const orderSupplier = recommendation.supplier;
+  const rotation = rotationData ? computeRotation(rotationData) : null;
+  const cheaperHref = findCheaperHref(code, replenishment.recommendedQuantity);
+  const cheaperQty = findCheaperQuantity(replenishment.recommendedQuantity);
 
   return (
     <>
@@ -71,8 +72,8 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
         }
         actions={
           <>
-            <ButtonLink href={`/sourcing?sku=${encodeURIComponent(code)}`} variant="secondary">
-              <Search className="h-4 w-4" /> Trouver du stock
+            <ButtonLink href={cheaperHref} variant="secondary">
+              <Search className="h-4 w-4" /> Trouver moins cher
             </ButtonLink>
             {writable ? <AdjustStockButton skuId={row.sku_id ?? ""} available={row.quantity_available ?? 0} /> : null}
             {writable ? (
@@ -90,15 +91,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
           className="mb-5"
           title={`${pendingSalesCount} vente(s) rattachée(s) à ce SKU n'ont pas été déduites du stock.`}
           action={
-            writable ? (
-              <form action={applyPendingSalesAction}>
-                <input type="hidden" name="sku_id" value={row.sku_id ?? ""} />
-                <input type="hidden" name="code" value={code} />
-                <Button type="submit" variant="secondary" size="sm">
-                  Déduire ces ventes du stock
-                </Button>
-              </form>
-            ) : null
+            writable ? <ApplyPendingSalesForm skuId={row.sku_id ?? ""} code={code} /> : null
           }
         >
           Ces commandes ont été importées avant l'association de l'annonce au SKU. Vérifiez votre stock physique avant d'appliquer la déduction.
@@ -109,8 +102,13 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
         <Stat label="En stock" value={formatNumber(row.quantity_on_hand)} hint={row.location ? `Emplacement ${row.location}` : undefined} />
         <Stat label="Disponible" value={formatNumber(row.quantity_available)} hint={`${formatNumber(row.quantity_reserved)} réservé(s)${onOrder ? ` · ${onOrder} en commande` : ""}`} tone={view.classification.level === "out_of_stock" ? "danger" : undefined} />
         <Stat label="Ventes 7 j / 30 j" value={`${formatNumber(row.units_7d)} / ${formatNumber(row.units_30d)}`} hint={<span>Tendance <TrendIcon trend={view.velocity.trend} percent={view.velocity.trendPercent} /></span>} />
-        <Stat label="Vitesse" value={view.velocity.dailyVelocity === null ? "—" : `${view.velocity.dailyVelocity.toFixed(1)} / j`} hint={view.velocity.dailyVelocity === null ? "Pas assez de données" : view.velocity.explanation} />
+        <Stat label="Vitesse" value={view.velocity.dailyVelocity === null ? "—" : `${view.velocity.dailyVelocity.toFixed(view.velocity.dailyVelocity < 1 ? 2 : 1)} / j`} hint={view.velocity.dailyVelocity === null ? "Pas assez de données" : view.velocity.explanation} />
         <Stat label="Jours de stock" value={view.daysOfCover === null ? "—" : formatDays(view.daysOfCover)} hint={view.classification.reason} tone={view.classification.level === "at_risk" ? "warning" : undefined} />
+        <Stat
+          label="Rotation (30 j)"
+          value={rotation === null || rotation.rotation === null ? <span className="text-base font-medium text-muted">Pas assez de données</span> : `${formatNumber(rotation.rotation, 2)}×`}
+          hint={rotation?.explanation ?? "Pas assez de données."}
+        />
         <Stat label="Marge brute" value={view.margin.grossMargin === null ? "Coût inconnu" : formatMoney(view.margin.grossMargin, currency)} hint={view.margin.grossMarginPercent !== null ? `${view.margin.grossMarginPercent.toFixed(1)} % du prix de vente` : view.margin.caveat ?? undefined} tone={view.margin.grossMargin !== null && view.margin.grossMargin < 0 ? "danger" : undefined} />
       </div>
 
@@ -119,9 +117,9 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
           <Card>
             <CardHeader title="Produit et variante" />
             <CardContent className="flex gap-5">
-              {product?.image_url ? (
+              {safeExternalUrl(product?.image_url) ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={product.image_url} alt="" className="h-24 w-24 shrink-0 rounded-lg border border-border object-cover" />
+                <img src={safeExternalUrl(product?.image_url) ?? undefined} alt="" referrerPolicy="no-referrer" className="h-24 w-24 shrink-0 rounded-lg border border-border object-cover" />
               ) : (
                 <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted">Pas d'image</div>
               )}
@@ -174,8 +172,8 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                           <div className="font-mono text-xs text-muted">
                             {l.external_listing_id}
                             {l.external_variation_id ? ` / ${l.external_variation_id}` : ""}
-                            {l.listing_url ? (
-                              <a href={l.listing_url} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex align-middle text-muted hover:text-foreground">
+                            {safeExternalUrl(l.listing_url) ? (
+                              <a href={safeExternalUrl(l.listing_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex align-middle text-muted hover:text-foreground">
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : null}
@@ -222,7 +220,15 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                           <TD className="font-mono text-xs">{o?.order_number ?? o?.external_order_id}</TD>
                           <TD align="right">{oi.quantity}</TD>
                           <TD align="right">{formatMoney(oi.unit_price, oi.currency ?? currency)}</TD>
-                          <TD>{oi.inventory_applied ? <Badge variant="success">Déduite</Badge> : <Badge variant="warning">Non déduite</Badge>}</TD>
+                          <TD>
+                            {o && (o.status === "cancelled" || o.status === "refunded") ? (
+                              <Badge variant="neutral">{o.status === "cancelled" ? "Annulée · sans effet sur le stock" : "Remboursée · sans effet sur le stock"}</Badge>
+                            ) : oi.inventory_applied ? (
+                              <Badge variant="success">Déduite</Badge>
+                            ) : (
+                              <Badge variant="warning">Non déduite</Badge>
+                            )}
+                          </TD>
                         </TR>
                       );
                     })}
@@ -262,6 +268,19 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
           </Card>
 
           <Card>
+            <CardHeader title="Trouver moins cher" description="Compare votre coût d'achat actuel aux offres fournisseurs réellement trouvées (sources connectées, recherche en direct). Aucune économie n'est affichée sans offre réelle." />
+            <CardContent className="space-y-2 text-sm">
+              <p className="text-muted">
+                Coût actuel : <span className="font-semibold text-foreground">{row.cost_price === null ? "non renseigné" : formatMoney(row.cost_price, currency)}</span> · quantité comparée : {cheaperQty} unité{cheaperQty > 1 ? "s" : ""}
+                {replenishment.recommendedQuantity !== null && replenishment.recommendedQuantity >= 1 ? " (réapprovisionnement recommandé)" : ""}
+              </p>
+              <ButtonLink href={cheaperHref} size="sm">
+                <Search className="h-4 w-4" /> Trouver moins cher
+              </ButtonLink>
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardHeader title="Réapprovisionnement" />
             <CardContent className="space-y-2 text-sm">
               {replenishment.recommendedQuantity === null ? (
@@ -275,10 +294,22 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                       {w}
                     </p>
                   ))}
-                  {replenishment.needed && bestSupplier ? (
-                    <ButtonLink href={`/suppliers/${bestSupplier.id}?order_sku=${row.sku_id}&qty=${replenishment.recommendedQuantity}`} variant="secondary" size="sm">
-                      Préparer une commande chez {bestSupplier.name}
+                  {replenishment.needed && orderSupplier ? (
+                    <ButtonLink
+                      href={`/suppliers/${orderSupplier.id}/orders?order_sku=${row.sku_id}&qty=${replenishment.recommendedQuantity}${recommendation.offerId ? `&offer=${recommendation.offerId}` : ""}`}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      Préparer une commande chez {orderSupplier.name}
                     </ButtonLink>
+                  ) : replenishment.needed && writable ? (
+                    <p className="text-xs text-muted">
+                      Aucun fournisseur associé :{" "}
+                      <Link href={`/stock/${encodeURIComponent(code)}/edit` as never} className="underline">
+                        choisissez un fournisseur par défaut
+                      </Link>{" "}
+                      ou associez une offre depuis le sourcing.
+                    </p>
                   ) : null}
                 </>
               )}
@@ -286,7 +317,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
           </Card>
 
           <Card>
-            <CardHeader title="Fournisseurs" description="Offres rattachées à ce SKU, de la moins chère à la plus chère." actions={<ButtonLink href={`/sourcing?sku=${encodeURIComponent(code)}`} variant="ghost" size="sm">Trouver moins cher</ButtonLink>} />
+            <CardHeader title="Fournisseurs" description="Offres rattachées à ce SKU, de la moins chère à la plus chère." actions={<ButtonLink href={cheaperHref} variant="ghost" size="sm">Trouver moins cher</ButtonLink>} />
             <CardContent className="p-0">
               {offers.length === 0 ? (
                 <p className="px-5 py-6 text-sm text-muted">Aucune offre fournisseur associée à ce SKU.</p>

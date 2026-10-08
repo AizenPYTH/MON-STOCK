@@ -75,6 +75,7 @@ export function LiveSourcesPanel({ summary, liveEnabled, toggleHref, hasQuery }:
                   </div>
                   <Badge variant={LIVE_SOURCE_STATUS_VARIANT[s.status] ?? "neutral"}>{LIVE_SOURCE_STATUS_LABEL[s.status] ?? s.status}</Badge>
                 </div>
+                {s.queries && s.queries.length > 0 ? <div className="mt-1 text-xs text-muted">Requête{s.queries.length > 1 ? "s" : ""} envoyée{s.queries.length > 1 ? "s" : ""} : {s.queries.map((q) => `« ${q} »`).join(" · ")}</div> : null}
                 <div className={`mt-1 text-xs ${s.status === "error" || s.status === "timeout" || s.status === "robots_disallowed" ? "text-danger" : "text-muted"}`}>{statusText(s)}</div>
                 <div className="mt-0.5 text-xs text-muted">
                   {formatDuration(s.durationMs)}

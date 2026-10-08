@@ -13,6 +13,7 @@ export const signUpSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   full_name: z.string().trim().min(1, "Votre nom est requis.").max(120),
+  next: z.string().optional(),
 });
 
 export const resetPasswordSchema = z.object({ email: emailSchema });

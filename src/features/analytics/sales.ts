@@ -3,7 +3,7 @@ import { cache } from "react";
 import type { OrgContext } from "@/features/auth/dal";
 import type { DailySalesRow, InventoryMovement, Order, OrderItem } from "@/db/types";
 import { fromPostgrestError } from "@/lib/errors";
-import { fillDailySeries, summarizeSalesWindows, type DailyPoint, type SalesWindows } from "@/features/analytics/series.pure";
+import { dayKey, fillDailySeries, shiftDayKey, summarizeSalesWindows, zonedDayStartIso, type DailyPoint, type SalesWindows } from "@/features/analytics/series.pure";
 import type { SalesListParams } from "@/features/analytics/schemas";
 
 export const SALES_PAGE_SIZE = 50;
@@ -66,8 +66,9 @@ export async function listOrders(ctx: OrgContext, params: SalesListParams, pageS
   }
   if (params.channel) query = query.eq("sales_channel_id", params.channel);
   if (params.status) query = query.eq("status", params.status);
-  if (params.from) query = query.gte("placed_at", `${params.from}T00:00:00.000Z`);
-  if (params.to) query = query.lte("placed_at", `${params.to}T23:59:59.999Z`);
+  // Bornes en jours civils Europe/Paris (comme les statistiques), converties en instants UTC.
+  if (params.from) query = query.gte("placed_at", zonedDayStartIso(params.from));
+  if (params.to) query = query.lt("placed_at", zonedDayStartIso(shiftDayKey(params.to, 1)));
   if (idFilter) query = query.in("id", idFilter.slice(0, 1000)).not("status", "in", "(cancelled,refunded)");
 
   const from = (params.page - 1) * pageSize;
@@ -151,16 +152,18 @@ export async function getOrder(ctx: OrgContext, id: string): Promise<OrderDetail
 }
 
 export const loadDailySales = cache(async (ctx: OrgContext, days: number): Promise<DailySalesRow[]> => {
-  const since = new Date(Date.now() - (days + 1) * 86_400_000).toISOString().slice(0, 10);
+  // `day` est un jour civil Europe/Paris : la borne est calculée dans le même fuseau.
+  const since = shiftDayKey(dayKey(new Date()), -days);
   const { data, error } = await ctx.supabase.from("v_daily_sales").select("*").eq("organization_id", ctx.organization.id).gte("day", since).order("day", { ascending: true });
   if (error) throw fromPostgrestError(error);
   return data ?? [];
 });
 
+/** Fenêtres de ventes : montants dans la devise de l'organisation, autres devises rapportées à part. */
 export async function getSalesSummary(ctx: OrgContext): Promise<SalesWindows> {
-  return summarizeSalesWindows(await loadDailySales(ctx, 30), new Date());
+  return summarizeSalesWindows(await loadDailySales(ctx, 30), new Date(), ctx.organization.default_currency);
 }
 
 export async function getDailySales(ctx: OrgContext, days = 30): Promise<DailyPoint[]> {
-  return fillDailySeries(await loadDailySales(ctx, days), days, new Date());
+  return fillDailySeries(await loadDailySales(ctx, days), days, new Date(), { currency: ctx.organization.default_currency });
 }

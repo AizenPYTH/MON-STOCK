@@ -7,13 +7,14 @@ import type { ActionResult } from "@/lib/result";
 import type { Product, ProductVariant, StockOverviewRow } from "@/db/types";
 import { updateProductAction, updateSkuAction } from "@/features/stock/actions";
 
-export function SkuEditForm({ row, variant, suppliers }: { row: StockOverviewRow; variant: ProductVariant | null; suppliers: Array<{ id: string; name: string }> }) {
+export function SkuEditForm({ row, variant, suppliers, updatedAt }: { row: StockOverviewRow; variant: ProductVariant | null; suppliers: Array<{ id: string; name: string }>; updatedAt: string | null }) {
   const [state, action] = useActionState<ActionResult | null, FormData>(updateSkuAction, null);
   const err = state && !state.ok ? state : null;
   const fe = err?.fieldErrors;
   return (
     <form action={action} className="space-y-6">
       <input type="hidden" name="sku_id" value={row.sku_id ?? ""} />
+      {updatedAt ? <input type="hidden" name="expected_updated_at" value={updatedAt} /> : null}
       <FormError message={err?.error} />
       {state?.ok ? <FormSuccess message="SKU enregistré." /> : null}
       <Card>
@@ -33,8 +34,14 @@ export function SkuEditForm({ row, variant, suppliers }: { row: StockOverviewRow
           <Field label="Grade" htmlFor="grade" error={fe?.grade}>
             <Input id="grade" name="grade" defaultValue={row.grade ?? ""} />
           </Field>
-          <Field label="EAN / GTIN" htmlFor="ean" error={fe?.ean}>
-            <Input id="ean" name="ean" defaultValue={variant?.ean ?? ""} inputMode="numeric" />
+          <Field label="Stockage" htmlFor="storage" error={fe?.storage}>
+            <Input id="storage" name="storage" defaultValue={attr(variant, "storage")} placeholder="128 Go" />
+          </Field>
+          <Field label="Couleur" htmlFor="color" error={fe?.color}>
+            <Input id="color" name="color" defaultValue={attr(variant, "color")} placeholder="Noir" />
+          </Field>
+          <Field label="EAN / GTIN" htmlFor="ean" error={fe?.ean} hint="8, 12, 13 ou 14 chiffres.">
+            <Input id="ean" name="ean" defaultValue={variant?.ean ?? ""} inputMode="numeric" maxLength={14} />
           </Field>
           <Field label="MPN" htmlFor="mpn" error={fe?.mpn}>
             <Input id="mpn" name="mpn" defaultValue={variant?.mpn ?? ""} />
@@ -51,10 +58,10 @@ export function SkuEditForm({ row, variant, suppliers }: { row: StockOverviewRow
             <Input id="barcode" name="barcode" defaultValue={row.barcode ?? ""} />
           </Field>
           <Field label={`Coût d'achat (${row.currency})`} htmlFor="cost_price" hint="Vide = inconnu." error={fe?.cost_price}>
-            <Input id="cost_price" name="cost_price" type="number" step="0.01" min="0" defaultValue={row.cost_price ?? ""} />
+            <Input id="cost_price" name="cost_price" type="number" step="0.01" min="0" max="1000000" defaultValue={row.cost_price ?? ""} />
           </Field>
           <Field label={`Prix de vente (${row.currency})`} htmlFor="sale_price" error={fe?.sale_price}>
-            <Input id="sale_price" name="sale_price" type="number" step="0.01" min="0" defaultValue={row.sale_price ?? ""} />
+            <Input id="sale_price" name="sale_price" type="number" step="0.01" min="0" max="1000000" defaultValue={row.sale_price ?? ""} />
           </Field>
           <Field label="Emplacement" htmlFor="location" error={fe?.location}>
             <Input id="location" name="location" defaultValue={row.location ?? ""} />
@@ -66,7 +73,7 @@ export function SkuEditForm({ row, variant, suppliers }: { row: StockOverviewRow
             <Input id="safety_stock" name="safety_stock" type="number" step="1" min="0" defaultValue={row.safety_stock ?? 0} />
           </Field>
           <Field label="Délai fournisseur (jours)" htmlFor="lead_time_days" error={fe?.lead_time_days}>
-            <Input id="lead_time_days" name="lead_time_days" type="number" step="1" min="0" defaultValue={row.lead_time_days ?? ""} />
+            <Input id="lead_time_days" name="lead_time_days" type="number" step="1" min="0" max="365" defaultValue={row.lead_time_days ?? ""} />
           </Field>
           <Field label="Fournisseur par défaut" htmlFor="default_supplier_id" error={fe?.default_supplier_id}>
             <Select id="default_supplier_id" name="default_supplier_id" defaultValue={row.default_supplier_id ?? ""}>
@@ -91,6 +98,13 @@ export function SkuEditForm({ row, variant, suppliers }: { row: StockOverviewRow
       </div>
     </form>
   );
+}
+
+function attr(variant: ProductVariant | null, key: string): string {
+  const a = variant?.attributes;
+  if (!a || typeof a !== "object" || Array.isArray(a)) return "";
+  const v = (a as Record<string, unknown>)[key];
+  return typeof v === "string" ? v : "";
 }
 
 export function ProductEditForm({ product }: { product: Product }) {

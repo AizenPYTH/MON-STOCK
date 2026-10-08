@@ -4,7 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { formatMoney, formatNumber, formatRelative, NOT_PROVIDED } from "@/lib/format";
 import type { SearchOfferView, SearchSku } from "@/services/sourcing/search";
-import { ScoreBreakdown } from "@/features/sourcing/components/score-breakdown";
+import { RankingBreakdown } from "@/features/sourcing/components/ranking-breakdown";
+import { ConfidenceBadge } from "@/features/sourcing/components/confidence-badge";
+import { AWARD_META } from "@/domain/sourcing/ranking";
 import { OfferTraceability } from "@/features/sourcing/components/offer-traceability";
 import { deliveryLabel } from "@/features/sourcing/delivery";
 import { fromSearchProvenance, retrievalMethodLabel } from "@/features/sourcing/provenance";
@@ -24,7 +26,17 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
     <article className="rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
+          {view.ranking.awards.length > 0 ? (
+            <div className="mb-1 flex flex-wrap gap-1">
+              {view.ranking.awards.map((a) => (
+                <Badge key={a} variant={a === "best_opportunity" || a === "best_value" || a === "most_reliable" ? "accent" : "outline"}>
+                  <span aria-hidden>{AWARD_META[a].emoji}</span> {AWARD_META[a].label}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <h3 className="text-sm font-semibold text-foreground">
+            <span className="mr-1 text-xs font-normal text-muted">#{view.ranking.rank}</span>
             <Link href={`/sourcing/offers/${o.id}` as never} className="hover:underline">
               {o.title_original}
             </Link>
@@ -57,8 +69,11 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
             ) : null}
           </p>
           <p className="mt-0.5 text-xs text-muted">
-            {retrievalMethodLabel(provenance)} · vérifié {formatRelative(provenance.retrievedAt ?? o.last_seen_at)}
+            {retrievalMethodLabel(provenance)} · récupérée {formatRelative(provenance.retrievedAt ?? o.last_seen_at)}
           </p>
+          <ConfidenceBadge confidence={view.confidenceBadge} className="mt-1" />
+          {view.priceInsights?.reliable && view.priceInsights.opportunity && view.confidenceBadge.level !== "expired" ? <p className="mt-1 text-xs font-medium text-orange-700">{view.priceInsights.opportunity.message}</p> : null}
+          {view.priceInsights?.reliable && view.priceInsights.abnormalLow ? <p className="mt-1 text-xs font-medium text-amber-700">{view.priceInsights.abnormalLow.message}</p> : null}
         </div>
         <div className="text-right">
           <div className="text-xl font-semibold tnum">
@@ -79,9 +94,10 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
             </div>
           ) : null}
           {view.comparableNote ? <div className="text-xs text-muted">{view.comparableNote}</div> : null}
-          {view.savingsPerUnit !== null ? (
-            <div className={`text-xs font-medium ${view.savingsPerUnit > 0 ? "text-success" : "text-danger"}`}>
-              {view.savingsPerUnit > 0 ? `−${formatMoney(view.savingsPerUnit, currency)} / unité vs votre coût` : `+${formatMoney(-view.savingsPerUnit, currency)} / unité vs votre coût`}
+          {view.savings ? (
+            <div className={`text-xs font-medium ${view.savings.amount > 0 ? "text-success" : view.savings.amount < 0 ? "text-danger" : "text-muted"}`}>
+              {view.savings.amount > 0 ? `↓ ${formatMoney(view.savings.perUnit, currency)} / unité vs votre coût` : view.savings.amount < 0 ? `↑ ${formatMoney(-view.savings.perUnit, currency)} / unité vs votre coût` : "Même prix que votre coût"}
+              {view.savings.amount > 0 ? <div>Pour {view.savings.quantity} unité(s) : {formatMoney(view.savings.amount, currency)} d&apos;économie potentielle{view.savings.basis === "unit" ? " (hors frais de port non communiqués)" : ""}</div> : null}
             </div>
           ) : null}
         </div>
@@ -148,6 +164,22 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
         </div>
       </div>
 
+      <div className="mt-3 rounded-lg border border-border px-3 py-2 text-xs">
+        <div className="font-medium text-muted-strong">Pourquoi cette position</div>
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-strong">
+          {view.ranking.why.slice(0, 5).map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+        {view.filterWarnings.length > 0 ? (
+          <ul className="mt-1 space-y-0.5 text-amber-700">
+            {view.filterWarnings.map((w) => (
+              <li key={`${w.code}-${w.message}`}>⚠ {w.message}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
       <details className="mt-3 rounded-lg border border-border bg-surface-muted/40 px-3 py-2 text-xs">
         <summary className="cursor-pointer font-medium text-muted-strong hover:text-foreground">Traçabilité : données telles que récupérées</summary>
         <OfferTraceability className="mt-2" offer={o} supplierName={view.supplierName} supplierCountry={view.supplierCountry} provenance={provenance} duplicatesCollapsed={duplicatesCollapsed} />
@@ -160,7 +192,7 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
             {view.freshness.label}
             {view.freshness.warning ? ` · ${view.freshness.warning}` : ""}
           </span>
-          <ScoreBreakdown score={view.score} compact />
+          <RankingBreakdown ranking={view.ranking} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {o.source_url ? (

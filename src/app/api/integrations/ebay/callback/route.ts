@@ -5,56 +5,61 @@ import { createLogger } from "@/lib/logger";
 import { toUserMessage } from "@/lib/errors";
 import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
+import { scrubSecrets } from "@/integrations/core/sanitize";
 import { upsertOAuthConnection } from "@/services/channels/connection-store";
-import { OAUTH_STATE_COOKIE } from "@/app/api/integrations/ebay/connect/route";
+import { OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, oauthErrorCodeFor, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
 
 const log = createLogger("EBAY_OAUTH");
 
 /**
  * Retour d'eBay après autorisation (« Your auth accepted URL » du RuName).
- * 1. valide l'état anti-CSRF (existe, non expiré, supprimé après usage) ;
+ * 1. valide l'état anti-CSRF : consommé atomiquement (DELETE … RETURNING, usage unique),
+ *    non expiré, et identique au cookie httpOnly posé par /connect sur CE navigateur ;
  * 2. échange le code contre les tokens (jamais exposés) ;
  * 3. lit le compte vendeur (Identity API) ;
  * 4. enregistre la connexion (tokens chiffrés) et redirige vers l'assistant de configuration.
+ * Les redirections sont construites côté serveur (origine de l'application + chemin fixe) :
+ * aucun paramètre ne permet de rediriger ailleurs, et seul un CODE d'erreur circule dans l'URL.
  */
 export async function GET(request: NextRequest) {
   const origin = publicEnv().NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   const clearState = (res: NextResponse) => {
-    res.cookies.set(OAUTH_STATE_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/api/integrations/ebay", maxAge: 0 });
+    res.cookies.set(OAUTH_STATE_COOKIE, "", { httpOnly: true, sameSite: "lax", path: OAUTH_STATE_COOKIE_PATH, maxAge: 0 });
     return res;
   };
-  const fail = (message: string) => clearState(NextResponse.redirect(`${origin}/settings/integrations?error=${encodeURIComponent(message)}`));
+  const fail = (code: OAuthErrorCode) => clearState(NextResponse.redirect(`${origin}/settings/integrations?error=${code}`));
   const params = request.nextUrl.searchParams;
   const code = params.get("code");
   const state = params.get("state");
   const ebayError = params.get("error");
 
   if (ebayError) {
-    const description = params.get("error_description");
-    log.warn("autorisation eBay refusée", { error: ebayError, description });
-    return fail(ebayError === "access_denied" ? "Vous avez refusé l'autorisation sur eBay : aucune connexion n'a été créée." : `eBay a renvoyé une erreur (${ebayError}${description ? ` : ${description}` : ""}).`);
+    log.warn("autorisation eBay refusée", { error: ebayError.slice(0, 100), description: scrubSecrets(params.get("error_description") ?? "").slice(0, 300) });
+    return fail(ebayError === "access_denied" ? "access_denied" : "ebay_error");
   }
-  if (!code || !state) return fail("Retour eBay incomplet (code ou état manquant). Relancez la connexion.");
+  if (!code || !state || state.length > 200) return fail("incomplete");
 
-  const admin = createAdminSupabaseClient();
-  const { data: stateRow, error: stateError } = await admin.from("oauth_states").select("*").eq("state", state).eq("provider", "ebay").maybeSingle();
-  if (stateError) {
-    log.error("lecture de l'état OAuth impossible", { error: stateError.message });
-    return fail("Impossible de vérifier l'état de la connexion. Réessayez.");
-  }
-  if (!stateRow) return fail("État de connexion inconnu ou déjà utilisé. Relancez la connexion eBay.");
-  await admin.from("oauth_states").delete().eq("state", state);
   // Le navigateur qui termine le flux doit être celui qui l'a démarré (cookie posé par /connect).
+  // Vérifié AVANT toute lecture en base : un lien forgé ne consomme rien.
   const cookieState = request.cookies.get(OAUTH_STATE_COOKIE)?.value ?? null;
   if (!cookieState || cookieState !== state) {
-    log.warn("callback eBay sans cookie d'état correspondant", { orgId: stateRow.organization_id });
-    return fail("Ce retour eBay ne provient pas du navigateur qui a lancé la connexion. Relancez la connexion eBay depuis MON STOCK.");
+    log.warn("callback eBay sans cookie d'état correspondant");
+    return fail("browser_mismatch");
   }
-  if (new Date(stateRow.expires_at).getTime() < Date.now()) return fail("La demande de connexion a expiré (15 min). Relancez la connexion eBay.");
+
+  const admin = createAdminSupabaseClient();
+  // Consommation atomique : deux callbacks simultanés avec le même état ne peuvent pas aboutir tous les deux.
+  const { data: stateRow, error: stateError } = await admin.from("oauth_states").delete().eq("state", state).eq("provider", "ebay").select("*").maybeSingle();
+  if (stateError) {
+    log.error("lecture de l'état OAuth impossible", { error: stateError.message });
+    return fail("state_check_failed");
+  }
+  if (!stateRow) return fail("state_unknown");
+  if (new Date(stateRow.expires_at).getTime() < Date.now()) return fail("state_expired");
 
   const connector = getEbayConnector();
   const config = connector.config();
-  if (!config) return fail("Intégration eBay non configurée sur ce serveur.");
+  if (!config) return fail("not_configured");
 
   try {
     const tokens = await connector.exchangeCode(code);
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
     const target = isNew || !connection.last_successful_sync_at ? `/settings/integrations/ebay/setup?connection=${connection.id}` : `/settings/integrations?connected=${connection.id}`;
     return clearState(NextResponse.redirect(`${origin}${target}`));
   } catch (e) {
-    log.error("échec de la connexion eBay", { orgId: stateRow.organization_id, message: toUserMessage(e) });
-    return fail(`Connexion eBay impossible : ${toUserMessage(e)}`);
+    log.error("échec de la connexion eBay", { orgId: stateRow.organization_id, message: scrubSecrets(toUserMessage(e)) });
+    return fail(oauthErrorCodeFor(e));
   }
 }

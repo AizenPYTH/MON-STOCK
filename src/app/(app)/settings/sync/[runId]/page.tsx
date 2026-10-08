@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { requireOrgContext } from "@/features/auth/dal";
+import { canWrite, requireOrgContext } from "@/features/auth/dal";
 import { PageHeader, DescriptionList, Stat, EmptyState, Callout } from "@/components/ui/page";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -9,6 +9,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import { getSyncRunDetail } from "@/features/integrations/queries";
 import { formatDuration, formatRunSummary, PROVIDER_LABEL, readStats, SYNC_STATUS_LABEL, SYNC_TRIGGER_LABEL } from "@/features/integrations/format";
+import { SyncNowForm } from "@/features/integrations/components/sync-now-form";
 
 export const metadata: Metadata = { title: "Détail de la synchronisation" };
 
@@ -22,6 +23,8 @@ export default async function SyncRunPage({ params }: { params: Promise<{ runId:
   if (!detail) notFound();
   const { run, errors, connection } = detail;
   const s = readStats(run.stats);
+  const needsReconnect = connection?.status === "expired" || connection?.status === "pending";
+  const canRetry = canWrite(ctx.role) && Boolean(connection) && (connection?.status === "connected" || connection?.status === "error");
 
   return (
     <>
@@ -31,9 +34,34 @@ export default async function SyncRunPage({ params }: { params: Promise<{ runId:
         description={`${PROVIDER_LABEL[run.provider] ?? run.provider}${connection?.external_username ? ` · ${connection.external_username}` : ""} · déclenchement ${SYNC_TRIGGER_LABEL[run.trigger]?.toLowerCase() ?? run.trigger}`}
         actions={<ButtonLink href="/settings/sync" variant="secondary">Historique</ButtonLink>}
       />
-      {run.status === "failed" && run.error_summary ? (
-        <Callout tone="danger" title="Échec" className="mb-5" action={connection?.status === "expired" ? <ButtonLink href="/settings/integrations" variant="secondary" size="sm">Reconnecter eBay</ButtonLink> : null}>
-          {run.error_summary}
+      {run.status === "failed" || run.status === "partial" ? (
+        <Callout
+          tone={run.status === "failed" ? "danger" : "warning"}
+          title={run.status === "failed" ? "Échec de la synchronisation" : "Synchronisation partielle"}
+          className="mb-5"
+          action={
+            needsReconnect ? (
+              <ButtonLink href="/settings/integrations" variant="secondary" size="sm">
+                Reconnecter eBay
+              </ButtonLink>
+            ) : canRetry ? (
+              <SyncNowForm connectionId={connection!.id} label="Relancer la synchronisation" pendingText="Synchronisation en cours…" variant="secondary" size="sm" />
+            ) : null
+          }
+        >
+          {run.error_summary ?? (run.status === "failed" ? "La synchronisation a échoué." : "Certaines données n'ont pas pu être traitées.")}
+          <span className="mt-1 block text-xs">
+            {run.status === "partial"
+              ? "Les éléments traités sont enregistrés ; les éléments en erreur (listés ci-dessous) seront repris automatiquement au prochain run."
+              : needsReconnect
+                ? "L'autorisation eBay n'est plus valide : reconnectez le compte depuis la page Intégrations."
+                : "Aucune commande n'est perdue : la prochaine synchronisation reprend à partir du dernier point validé."}
+          </span>
+        </Callout>
+      ) : null}
+      {run.status === "running" ? (
+        <Callout tone="info" title="Synchronisation en cours" className="mb-5">
+          Ce run n'est pas terminé. Rechargez la page pour voir son résultat (un run sans fin enregistrée après 15 min est marqué interrompu).
         </Callout>
       ) : null}
 

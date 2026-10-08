@@ -50,7 +50,7 @@ async function tokenRequest(config: EbayConfig, body: URLSearchParams, label: st
     },
     { provider: EBAY_PROVIDER, label, retries: 2, timeoutMs: 20_000 },
   );
-  const json = await readJson(res);
+  const json = await readJson(res, EBAY_PROVIDER);
   if (!res.ok) {
     const err = tokenErrorSchema.safeParse(json);
     const code = err.success ? err.data.error : `http_${res.status}`;
@@ -58,6 +58,14 @@ async function tokenRequest(config: EbayConfig, body: URLSearchParams, label: st
     // invalid_client arrive aussi en HTTP 401 : il concerne l'application, pas le vendeur.
     if (code === "invalid_client" || code === "unauthorized_client") {
       throw new ConnectorError("NOT_CONFIGURED", EBAY_PROVIDER, "eBay refuse les identifiants de l'application (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET invalides ou environnement production/sandbox incohérent).", {
+        httpStatus: res.status,
+        details: { oauthError: code, description: description ?? null, step: label },
+        retryable: false,
+      });
+    }
+    if (code === "invalid_scope" && label === "oauth:refresh_token") {
+      // Les scopes demandés dépassent ceux accordés (nouvelle autorisation requise après une évolution de MON STOCK).
+      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "eBay refuse les autorisations demandées : de nouvelles autorisations sont nécessaires. Reconnectez votre compte eBay pour les accorder.", {
         httpStatus: res.status,
         details: { oauthError: code, description: description ?? null, step: label },
         retryable: false,

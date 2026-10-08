@@ -25,13 +25,16 @@ export function ActionForm<T = void>({
   className?: string;
   inline?: boolean;
 }) {
-  const [state, formAction] = useActionState<ActionResult<T> | null, FormData>(action, null);
+  const [state, formAction, pending] = useActionState<ActionResult<T> | null, FormData>(action, null);
   return (
-    <form action={formAction} className={cn(inline ? "inline-flex flex-col gap-2" : "space-y-2", className)}>
+    <form action={formAction} aria-busy={pending || undefined} className={cn(inline ? "inline-flex flex-col gap-2" : "space-y-2", className)}>
       {Object.entries(hidden ?? {}).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
-      {children}
+      {/* Pendant l'envoi, les boutons sont désactivés (retour visuel + pas de double soumission). */}
+      <fieldset disabled={pending} className="contents">
+        {children}
+      </fieldset>
       {state && !state.ok ? <FormError message={state.error} action={state.action} /> : null}
       {state?.ok && renderSuccess ? renderSuccess(state.data) : state?.ok && successMessage ? <FormSuccess message={successMessage} /> : null}
     </form>

@@ -11,19 +11,19 @@
   --border: #e4e4e7;
   --border-strong: #d4d4d8;
   --foreground: #18181b;
-  --muted: #71717a;
+  --muted: #6b6b73; /* ≥ 4.5:1 sur surface et surface-muted (WCAG AA) */
   --muted-strong: #52525b;
   --accent: #4f46e5;
   --accent-soft: #eef2ff;
-  --success: #16a34a;
+  --success: #15803d; /* lisible en texte sur fond blanc (≥ 4.5:1) */
   --success-soft: #f0fdf4;
-  --warning: #d97706;
+  --warning: #b45309; /* lisible en texte sur fond blanc (≥ 4.5:1) */
   --warning-soft: #fffbeb;
   --danger: #dc2626;
   --danger-soft: #fef2f2;
   --info: #2563eb;
   --info-soft: #eff6ff;
-  --ring: #a5b4fc;
+  --ring: #6366f1; /* indicateur de focus ≥ 3:1 */
 }
 
 @theme inline {
@@ -77,4 +77,33 @@ body {
 
 dialog::backdrop {
   background: rgba(24, 24, 27, 0.35);
+}
+
+/* Modale ouverte (dialog natif ou tiroir mobile) : la page derrière ne défile plus. */
+html:has(dialog[open]),
+html[data-scroll-locked] {
+  overflow: hidden;
+}
+
+@layer base {
+  /* Focus clavier visible par défaut (les composants du kit définissent leur propre anneau). */
+  :where(a, button, summary, select, input, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Textes longs (noms fournisseurs, titres d'offres, URL) : jamais de débordement horizontal. */
+  :where(h1, h2, h3, p, dd, td, li) {
+    overflow-wrap: break-word;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

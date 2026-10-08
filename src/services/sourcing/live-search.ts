@@ -5,7 +5,7 @@ import { createLogger } from "@/lib/logger";
 import type { Json } from "@/db/database.types";
 import type { SourceType, TaxType } from "@/db/types";
 import type { OrgContext } from "@/features/auth/dal";
-import type { ParsedQuery } from "@/domain/sourcing/query-parser";
+import { parseQuery, type ParsedQuery } from "@/domain/sourcing/query-parser";
 import { normalizeText } from "@/domain/sourcing/normalizer";
 import type { RawOffer } from "@/domain/sourcing/types";
 import type { AccessLevel, AdapterRunContext, AdapterSearchResult, AdapterSourceConfig, RetrievalMethod, SourceAdapter } from "@/integrations/sourcing/core";
@@ -35,13 +35,43 @@ export const LIVE_SEARCH_MAX_SOURCES = 10;
 export const LIVE_SEARCH_PARALLELISM = 10;
 export const LIVE_SEARCH_PUBLIC_MIN_DELAY_MS = 2_000;
 export const LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS = 500;
+/** reformulations « adapter_search » envoyées au plus à chaque source (dans le même budget de temps) */
+export const LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE = 2;
+/** budget minimal restant pour tenter une reformulation supplémentaire */
+export const LIVE_SEARCH_MIN_VARIANT_BUDGET_MS = 1_000;
 
 export interface LiveSearchInput {
   rawQuery: string;
   parsed: ParsedQuery;
+  /** reformulations à envoyer aux adaptateurs (expandQuery → « adapter_search »), dans l'ordre de priorité ; défaut : rawQuery */
+  variants?: string[];
   skuId?: string | null;
   maxSources?: number;
   timeoutMs?: number;
+}
+
+export interface LiveSearchVariant {
+  text: string;
+  parsed: ParsedQuery;
+}
+
+/**
+ * Reformulations réellement envoyées à chaque source : au plus LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE,
+ * dédupliquées (texte normalisé), la requête brute à défaut. Pur.
+ */
+export function liveSearchVariants(input: Pick<LiveSearchInput, "rawQuery" | "parsed" | "variants">, max = LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE): LiveSearchVariant[] {
+  const out: LiveSearchVariant[] = [];
+  const seen = new Set<string>();
+  for (const text of [...(input.variants ?? []), ...(input.variants && input.variants.length > 0 ? [] : [input.rawQuery])]) {
+    const t = text.replace(/\s+/g, " ").trim();
+    const key = normalizeText(t);
+    if (!t || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ text: t, parsed: t === input.rawQuery.trim() ? input.parsed : parseQuery(t) });
+    if (out.length >= Math.max(1, max)) break;
+  }
+  if (out.length === 0) out.push({ text: input.rawQuery, parsed: input.parsed });
+  return out;
 }
 
 export type LiveSearchContext = OrgContext | { organizationId: string; admin: AdminSupabaseClient; userId?: string | null };
@@ -142,6 +172,7 @@ function report(c: LiveSourceCandidate, status: LiveSourceStatus, message: strin
     rejected: 0,
     durationMs: 0,
     requests: [],
+    queries: [],
     checkedAt: now.toISOString(),
     ...extra,
   };
@@ -179,9 +210,10 @@ async function querySource(c: LiveSourceCandidate, input: LiveSearchInput, rt: L
     return { ...cached.report, status: "cached", message: `Résultat récent réutilisé (interrogée il y a ${Math.round((startedAt.getTime() - cached.at) / 1000)} s).`, durationMs: 0, checkedAt: startedAt.toISOString() };
   }
 
+  const variants = liveSearchVariants(input);
   let disallowedUrls: string[] = [];
   if (adapter.access === "public" && attestationRequired(adapter.method)) {
-    const urls = adapter.urlsForQuery?.(c.config, input.parsed, input.rawQuery) ?? [];
+    const urls = Array.from(new Set(variants.flatMap((v) => adapter.urlsForQuery?.(c.config, v.parsed, v.text) ?? [])));
     if (urls.length === 0) return report(c, "no_search", "Aucune URL de recherche configurée pour cette source : recherche en direct impossible.", {}, startedAt);
     const robots = await rt.checkRobots(c, urls);
     if (rt.recordRobots) await rt.recordRobots(c, robots).catch((e: unknown) => log.warn("robots status not recorded", { sourceId: c.sourceId, error: e instanceof Error ? e.message : String(e) }));
@@ -196,39 +228,85 @@ async function querySource(c: LiveSourceCandidate, input: LiveSearchInput, rt: L
     credentials = creds;
   }
 
-  const ctx: AdapterRunContext = {
-    userAgent: rt.userAgent,
-    fetchImpl: scheduler.wrapFetch(rt.fetchImpl),
-    resolver: rt.resolver,
-    sleep: rt.sleep,
-    credentials,
-    minDelayMs: adapter.access === "public" ? rt.publicMinDelayMs : rt.accountMinDelayMs,
-    timeoutMs: rt.perSourceTimeoutMs,
-    disallowedUrls,
-    now: rt.now,
-  };
-
-  let result: AdapterSearchResult | "timeout";
-  try {
-    result = await withTimeout(adapter.search(c.config, input.parsed, input.rawQuery, ctx), rt.perSourceTimeoutMs + 500);
-  } catch (e) {
-    const r = report(c, "error", e instanceof Error ? e.message : String(e), { durationMs: Date.now() - t0 }, startedAt);
-    await rt.recordRun(c, r, startedAt);
-    return r;
+  const fetchImpl = scheduler.wrapFetch(rt.fetchImpl);
+  // Reformulations successives dans UN SEUL budget de temps par source (perSourceTimeoutMs).
+  const deadline = t0 + rt.perSourceTimeoutMs;
+  const minVariantBudget = Math.min(LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, rt.perSourceTimeoutMs / 4);
+  const collected: Array<{ offer: RawOffer; requestUrl: string | null }> = [];
+  const seenOfferIds = new Set<string>();
+  const requests: AdapterSearchResult["requests"] = [];
+  const errors: string[] = [];
+  const sent: string[] = [];
+  let method: RetrievalMethod = adapter.method;
+  let truncated = false;
+  let firstVariantFailed = false;
+  for (const [i, v] of variants.entries()) {
+    const remaining = deadline - Date.now();
+    if (i > 0) {
+      // pas d'insistance après un échec, ni hors budget
+      if (firstVariantFailed) break;
+      if (remaining < minVariantBudget) {
+        truncated = true;
+        break;
+      }
+    }
+    sent.push(v.text);
+    const ctx: AdapterRunContext = {
+      userAgent: rt.userAgent,
+      fetchImpl,
+      resolver: rt.resolver,
+      sleep: rt.sleep,
+      credentials,
+      minDelayMs: adapter.access === "public" ? rt.publicMinDelayMs : rt.accountMinDelayMs,
+      timeoutMs: Math.max(1, remaining),
+      disallowedUrls,
+      now: rt.now,
+    };
+    let result: AdapterSearchResult | "timeout";
+    try {
+      result = await withTimeout(adapter.search(c.config, v.parsed, v.text, ctx), Math.max(1, remaining) + 500);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (i === 0) {
+        const r = report(c, "error", message, { durationMs: Date.now() - t0, queries: sent }, startedAt);
+        await rt.recordRun(c, r, startedAt);
+        return r;
+      }
+      errors.push(`reformulation « ${v.text} » : ${message}`);
+      break;
+    }
+    if (result === "timeout") {
+      if (i === 0) {
+        const r = report(c, "timeout", `Délai dépassé (${Math.round(rt.perSourceTimeoutMs / 1000)} s) : la source n'a pas répondu à temps.`, { durationMs: Date.now() - t0, queries: sent }, startedAt);
+        await rt.recordRun(c, r, startedAt);
+        return r;
+      }
+      truncated = true;
+      errors.push(`reformulation « ${v.text} » interrompue : budget de ${Math.round(rt.perSourceTimeoutMs / 1000)} s atteint`);
+      break;
+    }
+    method = result.method;
+    requests.push(...result.requests);
+    truncated = truncated || result.truncated;
+    if (result.error) {
+      errors.push(result.error);
+      if (i === 0 && result.offers.length === 0) firstVariantFailed = true;
+    }
+    const requestUrl = result.requests.find((q) => q.offers > 0)?.url ?? result.requests[0]?.url ?? null;
+    for (const o of result.offers) {
+      if (seenOfferIds.has(o.externalOfferId)) continue;
+      seenOfferIds.add(o.externalOfferId);
+      collected.push({ offer: o, requestUrl });
+    }
   }
-  if (result === "timeout") {
-    const r = report(c, "timeout", `Délai dépassé (${Math.round(rt.perSourceTimeoutMs / 1000)} s) : la source n'a pas répondu à temps.`, { durationMs: Date.now() - t0 }, startedAt);
-    await rt.recordRun(c, r, startedAt);
-    return r;
-  }
-  if (result.error && result.offers.length === 0) {
-    const r = report(c, "error", result.error, { durationMs: Date.now() - t0, requests: result.requests }, startedAt);
+  if (firstVariantFailed && collected.length === 0) {
+    const r = report(c, "error", errors.join(" · "), { durationMs: Date.now() - t0, requests, queries: sent }, startedAt);
     await rt.recordRun(c, r, startedAt);
     return r;
   }
 
   const retrievedAt = rt.now();
-  const traced = result.offers.map((o) => withProvenance(o, { adapterKey: adapter.key, method: result.method, retrievedAt: retrievedAt.toISOString(), requestUrl: result.requests.find((q) => q.offers > 0)?.url ?? result.requests[0]?.url ?? null, sourceUrl: o.url ?? null }));
+  const traced = collected.map(({ offer: o, requestUrl }) => withProvenance(o, { adapterKey: adapter.key, method, retrievedAt: retrievedAt.toISOString(), requestUrl, sourceUrl: o.url ?? null }));
   let stored = 0;
   let rejected = 0;
   let offerIds: string[] = [];
@@ -241,11 +319,12 @@ async function querySource(c: LiveSourceCandidate, input: LiveSearchInput, rt: L
   } catch (e) {
     storeError = e instanceof Error ? e.message : String(e);
   }
-  const messageParts = [`${result.offers.length} offre(s) trouvée(s), ${stored} enregistrée(s), ${rejected} rejetée(s)`];
-  if (result.truncated) messageParts.push("résultat partiel (limite de pages ou de temps atteinte)");
-  if (result.error) messageParts.push(result.error);
+  const messageParts = [`${collected.length} offre(s) trouvée(s), ${stored} enregistrée(s), ${rejected} rejetée(s)`];
+  if (sent.length > 1) messageParts.push(`${sent.length} reformulations`);
+  if (truncated) messageParts.push("résultat partiel (limite de pages ou de temps atteinte)");
+  for (const err of errors) messageParts.push(err);
   if (storeError) messageParts.push(`enregistrement : ${storeError}`);
-  const r = report(c, storeError && stored === 0 ? "error" : "ok", `${messageParts.join(" · ")}.`, { found: result.offers.length, stored, rejected, durationMs: Date.now() - t0, requests: result.requests }, startedAt);
+  const r = report(c, storeError && stored === 0 ? "error" : "ok", `${messageParts.join(" · ")}.`, { found: collected.length, stored, rejected, durationMs: Date.now() - t0, requests, queries: sent }, startedAt);
   await rt.recordRun(c, r, startedAt);
   rt.cache.set(key, { at: retrievedAt.getTime(), report: r, offerIds });
   return r;
@@ -365,6 +444,8 @@ async function loadCandidates(admin: AdminSupabaseClient, organizationId: string
 
   for (const s of bySource.values()) {
     if (s.supplier?.is_archived) continue;
+    // source découverte non validée : jamais interrogée (elle figure dans « Découvertes — à valider »)
+    if (isUnvalidatedDiscovered(s.config, s.automated_access_confirmed)) continue;
     const connection = connectionBySource.get(s.id) ?? null;
     const adapterKey = connection?.connector_key ?? adapterKeyOf(s.config);
     const adapter = getSourceAdapter(adapterKey);
@@ -390,6 +471,12 @@ async function loadCandidates(admin: AdminSupabaseClient, organizationId: string
     });
   }
   return out;
+}
+
+/** Source découverte automatiquement et pas encore validée (attestation) par l'utilisateur. */
+export function isUnvalidatedDiscovered(config: Json | null | undefined, attested: boolean): boolean {
+  const c = config && typeof config === "object" && !Array.isArray(config) ? (config as Record<string, unknown>) : {};
+  return c.discovered === true && !attested;
 }
 
 /** Sources de l'organisation et leur interrogeabilité en direct (pour l'interface). */

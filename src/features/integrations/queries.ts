@@ -96,8 +96,17 @@ export interface MappingListingRow extends ChannelListing {
 
 export const MAPPING_PAGE_SIZE = 50;
 
-function escapeLike(s: string): string {
-  return s.replace(/[%_\\]/g, (m) => `\\${m}`);
+/**
+ * Filtre `or()` PostgREST de recherche texte. La saisie est insérée dans une syntaxe de filtre :
+ * les caractères structurants (virgule, parenthèses, guillemets, antislash) et les jokers `%`/`*`
+ * sont neutralisés, puis la valeur est placée entre guillemets — la recherche ne peut ni casser
+ * la requête ni y ajouter des conditions. `_` reste un joker d'un caractère (il se reconnaît lui-même).
+ */
+export function listingSearchFilter(q: string): string | null {
+  const term = q.replace(/[%*\\,()"]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!term) return null;
+  const v = `"%${term}%"`;
+  return `title.ilike.${v},external_sku.ilike.${v},external_listing_id.ilike.${v}`;
 }
 
 export async function listListingsForMapping(ctx: OrgContext, params: MappingParams) {
@@ -118,10 +127,8 @@ export async function listListingsForMapping(ctx: OrgContext, params: MappingPar
 
   if (params.tab === "unmapped") {
     let q = ctx.supabase.from("v_unmapped_listings").select("*", { count: "exact" }).eq("organization_id", orgId);
-    if (params.q) {
-      const term = escapeLike(params.q);
-      q = q.or(`title.ilike.%${term}%,external_sku.ilike.%${term}%,external_listing_id.ilike.%${term}%`);
-    }
+    const search = params.q ? listingSearchFilter(params.q) : null;
+    if (search) q = q.or(search);
     const res = await q.order("pending_suggestions", { ascending: false }).order("first_seen_at", { ascending: false }).range(from, to);
     if (res.error) error = toUserMessage(res.error);
     total = res.count ?? 0;
@@ -132,10 +139,8 @@ export async function listListingsForMapping(ctx: OrgContext, params: MappingPar
       .select("*, sales_channel:sales_channels(name), sku:skus(code, product:products(name), inventory(quantity_available))", { count: "exact" })
       .eq("organization_id", orgId)
       .eq("mapping_status", params.tab);
-    if (params.q) {
-      const term = escapeLike(params.q);
-      q = q.or(`title.ilike.%${term}%,external_sku.ilike.%${term}%,external_listing_id.ilike.%${term}%`);
-    }
+    const search = params.q ? listingSearchFilter(params.q) : null;
+    if (search) q = q.or(search);
     const res = await q.order("last_synced_at", { ascending: false }).range(from, to);
     if (res.error) error = toUserMessage(res.error);
     total = res.count ?? 0;

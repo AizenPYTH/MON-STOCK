@@ -12,6 +12,8 @@ import { ConnectEbayButton } from "@/features/integrations/components/connect-eb
 import { SyncNowForm } from "@/features/integrations/components/sync-now-form";
 import { DisconnectForm } from "@/features/integrations/components/disconnect-form";
 import { ConnectionSettingsForm } from "@/features/integrations/components/connection-settings-form";
+import { isUuid, oauthErrorMessage } from "@/features/integrations/oauth-flow";
+import { RUNNING_STALE_MINUTES } from "@/services/sync/engine";
 
 export const metadata: Metadata = { title: "Intégrations" };
 
@@ -20,7 +22,10 @@ const STATUS_BADGE: Record<string, "success" | "warning" | "danger" | "neutral" 
 
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<{ error?: string; connected?: string }> }) {
   const ctx = await requireOrgContext();
-  const { error: urlError, connected } = await searchParams;
+  const params = await searchParams;
+  // Seul un code d'erreur est accepté dans l'URL : jamais de texte libre recopié dans la page.
+  const urlError = oauthErrorMessage(params.error);
+  const connected = isUuid(params.connected) ? params.connected : null;
   const overview = await getIntegrationsOverview(ctx);
   const admin = isAdmin(ctx.role);
   const writer = canWrite(ctx.role);
@@ -150,9 +155,18 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   );
 }
 
+/** Run « en cours » récent (un run plus ancien que RUNNING_STALE_MINUTES est considéré interrompu). */
+function runningSince(view: ConnectionView): string | null {
+  const r = view.lastRun;
+  if (!r || r.status !== "running") return null;
+  const ageMin = (Date.now() - new Date(r.started_at).getTime()) / 60_000;
+  return ageMin < RUNNING_STALE_MINUTES ? r.started_at : null;
+}
+
 function EbayConnectionPanel({ view, admin, writer, environment }: { view: ConnectionView; admin: boolean; writer: boolean; environment: "production" | "sandbox" | null }) {
   const c = view.connection;
   const needsReconnect = c.status === "expired" || c.status === "pending";
+  const running = runningSince(view);
   const envLabel = c.environment === "sandbox" ? "sandbox" : "production";
   const envMismatch = environment && c.environment !== environment;
   return (
@@ -172,6 +186,11 @@ function EbayConnectionPanel({ view, admin, writer, environment }: { view: Conne
         </div>
       </div>
 
+      {running ? (
+        <Callout tone="info" title="Synchronisation en cours">
+          Démarrée {formatRelative(running)} ({formatTime(running)}). Les résultats s'afficheront ici à la fin du run ; rechargez la page pour suivre l'avancement.
+        </Callout>
+      ) : null}
       {envMismatch ? (
         <Callout tone="warning">
           Cette connexion a été établie en {c.environment} alors que le serveur est configuré en {environment} : les appels échoueront. Reconnectez le compte.
@@ -200,7 +219,11 @@ function EbayConnectionPanel({ view, admin, writer, environment }: { view: Conne
 
       <div className="flex flex-wrap items-start gap-3">
         {writer ? (
-          <SyncNowForm connectionId={c.id} disabled={needsReconnect} disabledReason={needsReconnect ? "Reconnectez eBay avant de synchroniser." : undefined} />
+          <SyncNowForm
+            connectionId={c.id}
+            disabled={needsReconnect || Boolean(running)}
+            disabledReason={needsReconnect ? "Reconnectez eBay avant de synchroniser." : running ? "Une synchronisation est déjà en cours pour cette connexion." : undefined}
+          />
         ) : (
           <p className="text-xs text-muted">Votre rôle (lecture seule) ne permet pas de lancer une synchronisation.</p>
         )}

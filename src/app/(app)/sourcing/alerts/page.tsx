@@ -5,11 +5,12 @@ import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { PageHeader, EmptyState } from "@/components/ui/page";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { listSourcingAlerts, getSourcingAlert, parseCriteria } from "@/features/sourcing/queries";
 import { AlertForm, type AlertFormValues } from "@/features/sourcing/components/alert-form";
 import { EvaluateAlertsButton } from "@/features/sourcing/components/evaluate-alerts-button";
 import { deleteAlertAction, markAlertEventsSeenAction, toggleAlertAction } from "@/features/sourcing/actions";
+import { ActionButtonForm } from "@/features/sourcing/components/action-button-form";
 import { formatDateTime, formatMoney, formatRelative } from "@/lib/format";
 import { EVENT_KIND_LABEL } from "@/features/sourcing/labels";
 
@@ -50,11 +51,9 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
             <>
               <EvaluateAlertsButton />
               {totalUnseen > 0 ? (
-                <form action={markAlertEventsSeenAction}>
-                  <Button type="submit" variant="ghost">
-                    Tout marquer comme vu ({totalUnseen})
-                  </Button>
-                </form>
+                <ActionButtonForm action={markAlertEventsSeenAction} variant="ghost" size="md">
+                  Tout marquer comme vu ({totalUnseen})
+                </ActionButtonForm>
               ) : null}
               <ButtonLink href="/sourcing/alerts?new=1">
                 <Plus className="h-4 w-4" /> Nouvelle alerte
@@ -100,27 +99,17 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
                         <ButtonLink href={`/sourcing/alerts?edit=${a.id}`} variant="ghost" size="sm">
                           Modifier
                         </ButtonLink>
-                        <form action={toggleAlertAction}>
-                          <input type="hidden" name="alert_id" value={a.id} />
-                          <input type="hidden" name="active" value={a.is_active ? "false" : "true"} />
-                          <Button type="submit" variant="ghost" size="sm">
-                            {a.is_active ? "Mettre en pause" : "Réactiver"}
-                          </Button>
-                        </form>
+                        <ActionButtonForm action={toggleAlertAction} fields={{ alert_id: a.id, active: a.is_active ? "false" : "true" }} variant="ghost">
+                          {a.is_active ? "Mettre en pause" : "Réactiver"}
+                        </ActionButtonForm>
                         {a.unseenCount > 0 ? (
-                          <form action={markAlertEventsSeenAction}>
-                            <input type="hidden" name="alert_id" value={a.id} />
-                            <Button type="submit" variant="ghost" size="sm">
-                              Marquer vu
-                            </Button>
-                          </form>
+                          <ActionButtonForm action={markAlertEventsSeenAction} fields={{ alert_id: a.id }} variant="ghost">
+                            Marquer vu
+                          </ActionButtonForm>
                         ) : null}
-                        <form action={deleteAlertAction}>
-                          <input type="hidden" name="alert_id" value={a.id} />
-                          <Button type="submit" variant="ghost" size="sm" className="text-danger">
-                            Supprimer
-                          </Button>
-                        </form>
+                        <ActionButtonForm action={deleteAlertAction} fields={{ alert_id: a.id }} confirmMessage="Supprimer cette alerte et son historique ?" variant="ghost" buttonClassName="text-danger">
+                          Supprimer
+                        </ActionButtonForm>
                       </div>
                     ) : null
                   }

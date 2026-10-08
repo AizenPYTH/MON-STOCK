@@ -18,15 +18,19 @@ export function LinkOfferDialog({ offerId, currentSkuCode, label = "Associer à 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SkuSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const [state, action] = useActionState<ActionResult<{ skuCode: string }> | null, FormData>(linkOfferToSkuAction, null);
 
   useEffect(() => {
     if (!open || suggestions !== null) return;
     startTransition(async () => {
       try {
-        setSuggestions(await suggestMatchesAction(offerId));
+        const r = await suggestMatchesAction(offerId);
+        setSuggestions(r.ok ? r.data : []);
+        if (!r.ok) setLookupError(r.error);
       } catch {
         setSuggestions([]);
+        setLookupError("Suggestions indisponibles : réessayez.");
       }
     });
   }, [open, suggestions, offerId]);
@@ -35,7 +39,11 @@ export function LinkOfferDialog({ offerId, currentSkuCode, label = "Associer à 
     setSearching(true);
     startTransition(async () => {
       try {
-        setResults(await searchSkusAction(query));
+        const r = await searchSkusAction(query);
+        setResults(r.ok ? r.data : []);
+        setLookupError(r.ok ? null : r.error);
+      } catch {
+        setLookupError("Recherche indisponible : réessayez.");
       } finally {
         setSearching(false);
       }
@@ -51,7 +59,7 @@ export function LinkOfferDialog({ offerId, currentSkuCode, label = "Associer à 
       <Dialog open={open} onClose={() => setOpen(false)} title="Associer cette offre à un SKU" className="max-w-2xl">
         <div className="space-y-4 text-sm">
           {currentSkuCode ? <p className="text-muted">Actuellement associée au SKU <code className="font-mono text-foreground">{currentSkuCode}</code>. Choisir un autre SKU remplacera l'association.</p> : null}
-          <FormError message={err?.error} />
+          <FormError message={err?.error ?? lookupError} />
           {state?.ok ? <FormSuccess message={`Offre associée au SKU ${state.data.skuCode}.`} /> : null}
 
           <section>

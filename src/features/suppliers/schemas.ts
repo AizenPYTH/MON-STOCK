@@ -101,6 +101,14 @@ export const manualOfferSchema = z.object({
   external_offer_id: optionalText,
 });
 
+// Commandes fournisseurs : bornes de bon sens (la base refuse au-delà d'1 000 000 d'unités par mouvement,
+// et le total numeric(12,2) ne doit pas déborder).
+const PO_MAX_QUANTITY = 100_000;
+const PO_MAX_UNIT_COST = 1_000_000;
+const poQuantity = z.coerce.number().int("Nombre entier attendu.").min(1, "La quantité doit être au moins 1.").max(PO_MAX_QUANTITY, "Quantité trop élevée (100 000 maximum).");
+const poOptionalQuantity = z.union([z.literal(""), poQuantity]).optional();
+const poOptionalUnitCost = z.union([z.literal(""), z.coerce.number().min(0, "Le coût ne peut pas être négatif.").max(PO_MAX_UNIT_COST, "Coût unitaire trop élevé.")]).optional();
+
 export const createPurchaseOrderSchema = z.object({
   supplier_id: z.string().uuid(),
   reference: optionalText,
@@ -108,17 +116,24 @@ export const createPurchaseOrderSchema = z.object({
   expected_at: z.string().trim().regex(/^(\d{4}-\d{2}-\d{2})?$/, "Date invalide.").optional().or(z.literal("")),
   notes: optionalLong,
   sku_id: z.string().uuid().optional().or(z.literal("")),
-  quantity: optionalPositiveInt,
-  unit_cost: optionalMoney,
+  quantity: poOptionalQuantity,
+  unit_cost: poOptionalUnitCost,
   offer_id: z.string().uuid().optional().or(z.literal("")),
 });
 
 export const addPurchaseOrderItemSchema = z.object({
   purchase_order_id: z.string().uuid(),
   sku_id: z.string().uuid("Choisissez un SKU."),
-  quantity: z.coerce.number().int().min(1, "La quantité doit être au moins 1."),
-  unit_cost: optionalMoney,
+  quantity: poQuantity,
+  unit_cost: poOptionalUnitCost,
   offer_id: z.string().uuid().optional().or(z.literal("")),
+});
+
+/** Réception : quantité saisie + quantité déjà reçue affichée (jeton anti double envoi). */
+export const receiptLineSchema = z.object({
+  item_id: z.string().uuid(),
+  quantity: z.coerce.number().int().min(0).max(PO_MAX_QUANTITY),
+  expected_received: z.coerce.number().int().min(0).max(PO_MAX_QUANTITY).optional(),
 });
 
 export const purchaseOrderStatusSchema = z.object({

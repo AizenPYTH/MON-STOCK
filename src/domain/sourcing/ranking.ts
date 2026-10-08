@@ -30,6 +30,8 @@ export interface RankableOffer {
   minimumOrderValue: number | null;
   stockKnown: boolean;
   availableQuantity: number | null;
+  /** rupture annoncée par la source (statut « out_of_stock ») ; une quantité connue à 0 vaut aussi rupture */
+  outOfStock?: boolean;
   deliveryDays: number | null;
   grade: string | null;
   condition: ProductCondition;
@@ -264,9 +266,15 @@ function conditionLabel(o: RankableOffer): string | null {
 
 type Comparator<T> = (a: T, b: T) => number;
 
+/** Rupture de stock connue (statut ou quantité à 0) : l'offre n'est pas achetable en l'état. */
+export function isOutOfStock(o: Pick<RankableOffer, "outOfStock" | "stockKnown" | "availableQuantity">): boolean {
+  return o.outOfStock === true || (o.stockKnown && o.availableQuantity === 0);
+}
+
 /**
- * Classe les offres et attribue le podium. Tri : score composite décroissant, puis bénéfice estimé
- * décroissant, coût effectif croissant, identifiant croissant (déterministe).
+ * Classe les offres et attribue le podium. Tri : offres en rupture connue en dernier, puis score
+ * composite décroissant, bénéfice estimé décroissant, coût effectif croissant, identifiant
+ * croissant (déterministe). Le podium privilégie les offres disponibles.
  */
 export function rankOpportunities<T extends RankableOffer>(offers: T[], context: RankingContext): RankingResult<T> {
   const n = Math.max(1, Math.floor(context.requestedQuantity));
@@ -360,7 +368,8 @@ export function rankOpportunities<T extends RankableOffer>(offers: T[], context:
     if (reliability.known) why.push(o.supplierReliability! >= 70 ? `Fournisseur fiable (score ${Math.round(o.supplierReliability!)}/100)` : reliability.note);
     else why.push("Fiabilité fournisseur inconnue");
     if (delivery.known) why.push(delivery.note);
-    if (procurement.stockSufficient === false) why.push(`Stock insuffisant : ${o.availableQuantity} disponible(s)`);
+    if (isOutOfStock(o)) why.unshift("Rupture de stock annoncée par la source : classée après les offres disponibles");
+    else if (procurement.stockSufficient === false) why.push(`Stock insuffisant : ${o.availableQuantity} disponible(s)`);
     else if (procurement.stockSufficient === null) why.push("Stock non communiqué");
     if (freshness.known) why.push(freshness.note);
 
@@ -387,7 +396,8 @@ export function rankOpportunities<T extends RankableOffer>(offers: T[], context:
       }
       return 0;
     };
-  const tieBreak = chain(nullsLast((r) => r.score, false), nullsLast((r) => r.procurement.expectedProfit, false), nullsLast((r) => r.effectiveUnitCost, true), byId);
+  const availableFirst: Comparator<RankedOffer<T>> = (a, b) => (isOutOfStock(a.offer) ? 1 : 0) - (isOutOfStock(b.offer) ? 1 : 0);
+  const tieBreak = chain(availableFirst, nullsLast((r) => r.score, false), nullsLast((r) => r.procurement.expectedProfit, false), nullsLast((r) => r.effectiveUnitCost, true), byId);
   items.sort(tieBreak);
   items.forEach((r, i) => (r.rank = i + 1));
 
@@ -409,7 +419,7 @@ export function rankOpportunities<T extends RankableOffer>(offers: T[], context:
     return { winner: w, hadCandidates: candidates.length > 0 };
   };
   const notAwarded = (detail: string, hadCandidates: boolean) => (hadCandidates ? "non attribué : aucune autre offre éligible" : `${NOT_AWARDED} (${detail})`);
-  const feasibleFirst: Comparator<RankedOffer<T>> = (a, b) => (a.procurement.moqFeasible === false ? 1 : 0) - (b.procurement.moqFeasible === false ? 1 : 0);
+  const feasibleFirst: Comparator<RankedOffer<T>> = (a, b) => availableFirst(a, b) || (a.procurement.moqFeasible === false ? 1 : 0) - (b.procurement.moqFeasible === false ? 1 : 0);
 
   // 🥇 meilleure opportunité : bénéfice estimé le plus élevé (MOQ réalisable en priorité), sinon meilleur score
   const podium: Award[] = [];
@@ -419,7 +429,7 @@ export function rankOpportunities<T extends RankableOffer>(offers: T[], context:
     podium.push(award("best_opportunity", winner, winner ? `Bénéfice estimé le plus élevé : ${formatMoney(winner.procurement.expectedProfit as number, currency)} pour ${n} unité(s)${winner.procurement.moqFeasible === false ? ` (MOQ ${winner.offer.moq} : ${winner.procurement.overstockUnits} unité(s) en surplus)` : ""}` : NOT_AWARDED, "profit"));
   } else {
     const eligible = items.filter((r) => r.components.price.known);
-    const { winner, hadCandidates } = pick(eligible, nullsLast((r) => r.score, false), true);
+    const { winner, hadCandidates } = pick(eligible, chain(availableFirst, nullsLast((r) => r.score, false)), true);
     podium.push(award("best_opportunity", winner, winner ? `Meilleur score global (${winner.score}/100) — marge inconnue : bénéfice non calculable` : notAwarded("aucun prix comparable", hadCandidates), "composite"));
   }
 
@@ -440,7 +450,7 @@ export function rankOpportunities<T extends RankableOffer>(offers: T[], context:
   {
     const eligible = items.filter((r) => known(r.offer.supplierReliability));
     const reliabilityScore = (r: RankedOffer<T>) => (r.offer.supplierReliability as number) * 0.7 + (r.components.freshness.points / RANKING_WEIGHTS.freshness) * 20 + (r.procurement.stockSufficient !== null ? 10 : 0);
-    const { winner, hadCandidates } = pick(eligible, nullsLast(reliabilityScore, false), true);
+    const { winner, hadCandidates } = pick(eligible, chain(availableFirst, nullsLast(reliabilityScore, false)), true);
     podium.push(
       award(
         "most_reliable",

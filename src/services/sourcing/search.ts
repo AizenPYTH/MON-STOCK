@@ -1,11 +1,12 @@
 import "server-only";
 import { escapeLike } from "@/services/sourcing/offer-query";
-import type { OrgContext } from "@/features/auth/dal";
+import { canWrite, isAdmin, type OrgContext } from "@/features/auth/dal";
 import type { Json } from "@/db/database.types";
 import { parseQuery, type ParsedQuery } from "@/domain/sourcing/query-parser";
 import { normalizeProduct } from "@/domain/sourcing/normalizer";
 import { comparablePrice, freshness, normalizeTax, type ComparablePrice, type Freshness } from "@/domain/sourcing/pricing";
 import { computeDataCompleteness, rankOffers, scoreOffers, type OfferScore, type RankingMode } from "@/domain/sourcing/scoring";
+import { ANOMALY_LABEL, type AnomalyCode } from "@/domain/sourcing/validation";
 import { computeLandedCost, computeMargin, type LandedCostResult, type MarginResult } from "@/domain/pricing/margin";
 import { getMarginContext } from "@/features/stock/queries";
 import { baseOfferQuery, findOffers, type OfferFilters, type OfferQueryStage, type OfferWithRelations } from "@/services/sourcing/offer-query";
@@ -15,6 +16,15 @@ import { runLiveSearch } from "@/services/sourcing/live-search";
 import type { LiveSearchSummary } from "@/services/sourcing/live-search.types";
 import type { RetrievalMethod } from "@/integrations/sourcing/core";
 import { createLogger } from "@/lib/logger";
+import { expandQuery, queriesFor, type ExpandedQuery } from "@/domain/sourcing/query-expansion";
+import { criteriaFromParsedQuery, type FilterReason } from "@/domain/sourcing/offer-filter";
+import { runOfferPipeline, savingsOf, type BestSavings, type OfferSavings, type RejectionGroup } from "@/domain/sourcing/search-pipeline";
+import type { Award, AwardKey, ProcurementPlan, RankingComponent, RankingComponentKey } from "@/domain/sourcing/ranking";
+import { assessOfferConfidence, type OfferConfidence } from "@/domain/sourcing/confidence";
+import { computePriceInsights, type PriceInsights } from "@/domain/sourcing/price-insights";
+import { groupPriceHistory } from "@/domain/sourcing/price-history";
+import { discoverSources } from "@/services/sourcing/discovery/discovery-service";
+import { currentDiscoveryConfig, discoveryDecision, runDiscoveryWithTimeout, type DiscoveryPanelData } from "@/services/sourcing/discovery/search-discovery";
 
 const log = createLogger("SOURCING_SEARCH");
 
@@ -79,6 +89,53 @@ export interface SearchOfferView {
   score: OfferScore;
   dataCompleteness: number;
   savingsPerUnit: number | null;
+  /** classement multicritère (rankOpportunities) : rang, score /100 détaillé, « pourquoi », distinctions */
+  ranking: OfferRankingView;
+  /** niveau de confiance de la donnée (🟢 ⚪ 🟡 🟠 🔴) + « Dernière vérification : il y a … » */
+  confidenceBadge: OfferConfidence;
+  /** avertissements du filtre (offre conservée) : « grade non communiqué », couleur différente… */
+  filterWarnings: FilterReason[];
+  /** prix habituel observé (historique de l'offre) ; null si non chargé */
+  priceInsights: PriceInsights | null;
+  /** économie pour N unités vs coût actuel du SKU (null sans coût actuel ou sans prix) */
+  savings: OfferSavings | null;
+  /** source découverte automatiquement (et donc validée, puisqu'elle a produit une offre) */
+  sourceDiscovered: boolean;
+}
+
+export interface OfferRankingView {
+  rank: number;
+  score: number;
+  components: Record<RankingComponentKey, RankingComponent>;
+  unknownFactors: string[];
+  why: string[];
+  awards: AwardKey[];
+  procurement: ProcurementPlan;
+}
+
+export interface RejectedOfferView {
+  id: string;
+  title: string;
+  supplierId: string;
+  supplierName: string;
+  comparableUnitPrice: number | null;
+  sourceUrl: string | null;
+  reasons: FilterReason[];
+}
+
+export interface SearchRejections {
+  count: number;
+  groups: RejectionGroup[];
+  /** au plus REJECTED_LIST_LIMIT offres listées */
+  offers: RejectedOfferView[];
+  /** médiane de prix utilisée pour les prix aberrants (null si moins de 3 prix) */
+  referenceMedian: number | null;
+}
+
+export interface AwardOfferRef {
+  title: string;
+  supplierName: string;
+  comparableUnitPrice: number | null;
 }
 
 export interface SearchAggregates {
@@ -118,6 +175,45 @@ export interface SearchResult {
   requestedQuantity: number;
   /** résultat de la recherche en direct (null si désactivée, requête vide ou aucune source) */
   live: LiveSearchSummary | null;
+  /** reformulations de la requête (adapter_search envoyées aux sources, discovery à l'API web) */
+  expandedQueries: ExpandedQuery[];
+  /** offres écartées par le filtre de pertinence (raison par offre) */
+  rejected: SearchRejections;
+  /** 🥇 🥈 🥉 (sur toutes les offres conservées, pas seulement la page) */
+  podium: Award[];
+  /** Prix le plus bas · Livraison la plus rapide · MOQ le plus faible */
+  highlights: Award[];
+  priceBasisNote: string;
+  /** offres citées par le podium / les distinctions */
+  awardOffers: Record<string, AwardOfferRef>;
+  /** coût unitaire actuel (SKU) utilisé pour les économies ; null si inconnu ou hors mode SKU */
+  currentUnitCost: number | null;
+  /** plus forte économie positive pour la quantité demandée (offres réelles uniquement) */
+  bestSavings: BestSavings | null;
+  /** découverte de nouvelles sources (panneau « Sources découvertes ») */
+  discovery: DiscoveryPanelData;
+  /** mode SKU : meilleures offres réelles (ordre du classement) à prix comparable connu */
+  skuTopOffers: SkuTopOffer[];
+}
+
+export const REJECTED_LIST_LIMIT = 100;
+export const SKU_TOP_OFFERS = 3;
+
+/** Meilleures offres réelles (classement) comparées au coût actuel du SKU (mode « Trouver moins cher »). */
+export interface SkuTopOffer {
+  id: string;
+  title: string;
+  supplierId: string;
+  supplierName: string;
+  comparableUnitPrice: number;
+  /** prix − coût actuel par unité (négatif = moins cher) ; null si coût actuel inconnu */
+  deltaPerUnit: number | null;
+  savings: OfferSavings | null;
+  rank: number;
+  score: number;
+  awards: AwardKey[];
+  why: string[];
+  confidence: OfferConfidence;
 }
 
 export interface SearchInput {
@@ -126,6 +222,8 @@ export interface SearchInput {
   filters: OfferFilters;
   /** interroger les sources connectées en direct avant la lecture en base (défaut : oui dès qu'une source est interrogeable) */
   live?: boolean;
+  /** lancer la découverte de sources si elle est configurée (défaut : oui) */
+  discover?: boolean;
 }
 
 export function provenanceOf(offer: Pick<OfferWithRelations, "raw" | "source_url">): SearchOfferProvenance | null {
@@ -216,12 +314,23 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
     skuIdsForCategory = (data ?? []).map((d) => d.sku_id).filter((x): x is string => Boolean(x));
   }
 
-  // 1. Recherche en direct sur les sources connectées (avant la lecture en base, pour inclure les offres fraîchement récupérées).
-  let live: LiveSearchSummary | null = null;
+  // 1. Reformulations, découverte (en parallèle, délai propre) et recherche en direct sur les sources connectées.
+  const expandedQueries = parsed.kind !== "empty" ? expandQuery(parsed) : [];
+  const variants = queriesFor(expandedQueries, "adapter_search");
   const liveQuery = liveQueryText(input.query, sku);
-  if (input.live !== false && liveQuery && (parsed.kind !== "empty" || sku)) {
+  const liveWanted = input.live !== false && Boolean(liveQuery) && (parsed.kind !== "empty" || Boolean(sku));
+
+  const discoveryConfig = currentDiscoveryConfig();
+  const admin = isAdmin(ctx.role);
+  const decision = discoveryDecision({ config: discoveryConfig, canWrite: canWrite(ctx.role), isAdmin: admin, parsed, live: input.live !== false && input.discover !== false });
+  const discoveryPromise: Promise<DiscoveryPanelData> = decision.run
+    ? runDiscoveryWithTimeout(() => discoverSources({ organizationId: orgId }, parsed), { isAdmin: admin, provider: discoveryConfig.provider, onLateError: (e) => log.warn("late discovery failed", { orgId, error: e instanceof Error ? e.message : String(e) }) })
+    : Promise.resolve(decision.panel);
+
+  let live: LiveSearchSummary | null = null;
+  if (liveWanted) {
     try {
-      const summary = await runLiveSearch(ctx, { rawQuery: liveQuery, parsed, skuId: sku?.id ?? null });
+      const summary = await runLiveSearch(ctx, { rawQuery: liveQuery, parsed, variants, skuId: sku?.id ?? null });
       live = summary.sources.length > 0 ? summary : null;
     } catch (e) {
       log.warn("live search failed", { orgId, error: e instanceof Error ? e.message : String(e) });
@@ -292,6 +401,13 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
       condition: o.condition,
     });
     const savingsPerUnit = sku && sku.costPrice !== null && comparableUnitPrice !== null ? Math.round((sku.costPrice - comparableUnitPrice) * 100) / 100 : null;
+    const sourceConfig = (o.source?.config ?? {}) as Record<string, unknown>;
+    const sourceDiscovered = sourceConfig.discovered === true;
+    const sourceAttested = o.source?.automated_access_confirmed ?? false;
+    const conf = (o.confidence ?? {}) as Record<string, unknown>;
+    const confNum = (k: string): number | null => (typeof conf[k] === "number" && Number.isFinite(conf[k]) ? (conf[k] as number) : null);
+    const stockKnown = o.available_quantity !== null || o.stock_status !== "unknown";
+    const lastSeenMs = Date.parse(o.last_seen_at);
     return {
       id: o.id,
       offer: o,
@@ -318,26 +434,81 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
       moq: o.moq,
       deliveryDays: o.delivery_max_days ?? o.delivery_min_days,
       potentialMargin: margin?.result.netProfit ?? null,
+      sourceDiscovered,
+      // --- champs du pipeline (filtre de pertinence + classement)
+      title: o.title_original,
+      brand: o.brand,
+      model: o.model,
+      modelInferred: modelIsInferred(o.model),
+      storage: o.storage,
+      color: o.color,
+      grade: o.grade,
+      condition: o.condition,
+      price: comparableUnitPrice,
+      status: o.status,
+      anomalies: (o.anomalies ?? []).map((code) => ({ code, severity: "warning" as const, message: ANOMALY_LABEL[code as AnomalyCode] ?? code })),
+      expiresAt: null,
+      supplierVerified: !(sourceDiscovered && !sourceAttested) && (o.source_type !== "PUBLIC_WEB" || sourceAttested),
+      linkedToTarget: Boolean(sku && o.sku_id === sku.id),
+      unitPrice: comparableUnitPrice,
+      landedUnitCost: landedCost?.unitLandedCost ?? null,
+      shippingPerOrder: null,
+      minimumOrderValue: o.minimum_order_value,
+      stockKnown,
+      availableQuantity: o.available_quantity,
+      outOfStock: o.stock_status === "out_of_stock",
+      supplierReliability: supplier?.internal_score ?? null,
+      freshnessHours: Number.isFinite(lastSeenMs) ? Math.max(0, (now.getTime() - lastSeenMs) / 3_600_000) : null,
+      marginPerUnit: margin?.result.netProfit ?? null,
+      confidenceBadge: assessOfferConfidence({ lastSeenAt: o.last_seen_at, status: o.status, expiresAt: null, priceConfidence: confNum("price"), stockConfidence: confNum("stock"), stockKnown, sourceDiscovered, sourceValidated: sourceDiscovered || o.source_type === "PUBLIC_WEB" ? sourceAttested : undefined }, now),
     };
   });
 
-  // 3. Déduplication : une offre par (fournisseur, produit normalisé), la moins chère conservée.
-  const deduped = dedupeOffers(prelim);
-  const unique = deduped.kept;
+  // 3. Filtre de pertinence (conservées / écartées avec raison) → déduplication → classement multicritère.
+  const currentUnitCost = sku?.costPrice ?? null;
+  const pipeline = runOfferPipeline(criteriaFromParsedQuery(parsed), prelim, { now, requestedQuantity, currentUnitCost, currency: orgCurrency, dedupe: (kept) => dedupeOffers(kept).kept });
+  const deduped = dedupeOffers(pipeline.filter.kept.map((k) => k.offer));
+  const unique = pipeline.unique;
   const scores = scoreOffers(unique);
   const sort: RankingMode = filters.sort ?? "best_offer";
-  const ranked = rankOffers(unique, sort, scores);
+  const rankedById = new Map(pipeline.ranking.ranked.map((r) => [r.offer.id, r] as const));
+  const ranked = sort === "best_offer" ? pipeline.ranking.ranked.map((r) => r.offer) : rankOffers(unique, sort, scores);
   const total = ranked.length;
   const page = Math.max(1, filters.page ?? 1);
   const slice = ranked.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE);
-  const views: SearchOfferView[] = slice.map((p) => ({ ...p, score: scores.get(p.id)!, duplicatesCollapsed: deduped.collapsed.get(p.id) ?? 0 }));
+  const insights = await loadPriceInsights(ctx, slice.map((p) => ({ id: p.id, currentPrice: p.normalizedUnitPrice })), orgCurrency, now);
+  const views: SearchOfferView[] = slice.map((p) => {
+    const r = rankedById.get(p.id)!;
+    return {
+      ...p,
+      score: scores.get(p.id)!,
+      duplicatesCollapsed: deduped.collapsed.get(p.id) ?? 0,
+      ranking: { rank: r.rank, score: r.score, components: r.components, unknownFactors: r.unknownFactors, why: r.why, awards: r.awards, procurement: r.procurement },
+      filterWarnings: pipeline.warnings.get(p.id) ?? [],
+      priceInsights: insights.get(p.id) ?? null,
+      savings: currentUnitCost !== null ? savingsOf(r, currentUnitCost) : null,
+    };
+  });
+
+  const byId = new Map(prelim.map((p) => [p.id, p] as const));
+  const awardOffers: Record<string, AwardOfferRef> = {};
+  for (const a of [...pipeline.ranking.podium, ...pipeline.ranking.highlights]) {
+    const p = a.offerId ? byId.get(a.offerId) : null;
+    if (p) awardOffers[p.id] = { title: p.offer.title_original, supplierName: p.supplierName, comparableUnitPrice: p.comparableUnitPrice };
+  }
+  const rejected: SearchRejections = {
+    count: pipeline.rejection.count,
+    groups: pipeline.rejection.groups,
+    referenceMedian: pipeline.filter.referenceMedian,
+    offers: pipeline.filter.rejected.slice(0, REJECTED_LIST_LIMIT).map((r) => ({ id: r.offer.id, title: r.offer.offer.title_original, supplierId: r.offer.supplierId, supplierName: r.offer.supplierName, comparableUnitPrice: r.offer.comparableUnitPrice, sourceUrl: r.offer.offer.source_url, reasons: r.reasons })),
+  };
 
   const prices = unique.map((p) => p.comparableUnitPrice).filter((x): x is number => x !== null);
   const margins = unique.map((p) => p.potentialMargin).filter((x): x is number => x !== null);
   const aggregates: SearchAggregates = {
     count: total,
     bestPrice: prices.length ? Math.min(...prices) : null,
-    bestOfferScore: total ? Math.max(...Array.from(scores.values()).map((s) => s.total)) : null,
+    bestOfferScore: pipeline.ranking.ranked.length ? Math.max(...pipeline.ranking.ranked.map((r) => r.score)) : null,
     bestMargin: margins.length ? Math.max(...margins) : null,
     averagePrice: prices.length ? Math.round((prices.reduce((a, b) => a + b, 0) / prices.length) * 100) / 100 : null,
     maxPrice: prices.length ? Math.max(...prices) : null,
@@ -349,5 +520,84 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
     if (error) log.debug("search not recorded", { error: error.message });
   }
 
-  return { parsed, stage, sku, views, page, pageSize: SEARCH_PAGE_SIZE, total, aggregates, sources, connectedSources: sources.filter((s) => s.connected).length, vatRate, requestedQuantity, live };
+  const skuTopOffers: SkuTopOffer[] = sku
+    ? pipeline.ranking.ranked
+        .filter((r) => r.offer.comparableUnitPrice !== null)
+        .slice(0, SKU_TOP_OFFERS)
+        .map((r) => ({
+          id: r.offer.id,
+          title: r.offer.offer.title_original,
+          supplierId: r.offer.supplierId,
+          supplierName: r.offer.supplierName,
+          comparableUnitPrice: r.offer.comparableUnitPrice as number,
+          deltaPerUnit: currentUnitCost !== null ? Math.round(((r.offer.comparableUnitPrice as number) - currentUnitCost) * 100) / 100 : null,
+          savings: savingsOf(r, currentUnitCost),
+          rank: r.rank,
+          score: r.score,
+          awards: r.awards,
+          why: r.why,
+          confidence: r.offer.confidenceBadge,
+        }))
+    : [];
+  const discovery = await discoveryPromise;
+  return {
+    parsed,
+    stage,
+    sku,
+    views,
+    page,
+    pageSize: SEARCH_PAGE_SIZE,
+    total,
+    aggregates,
+    sources,
+    connectedSources: sources.filter((s) => s.connected).length,
+    vatRate,
+    requestedQuantity,
+    live,
+    expandedQueries,
+    rejected,
+    podium: pipeline.ranking.podium,
+    highlights: pipeline.ranking.highlights,
+    priceBasisNote: pipeline.ranking.priceBasisNote,
+    awardOffers,
+    currentUnitCost,
+    bestSavings: pipeline.bestSavings,
+    discovery,
+    skuTopOffers,
+  };
+}
+
+/** Modèle stocké reconnu par un motif du normaliseur (sinon : déduit du texte libre, correspondance à vérifier). */
+function modelIsInferred(model: string | null): boolean {
+  if (!model) return false;
+  const n = normalizeProduct(model);
+  return !n.model || n.inferred.includes("model");
+}
+
+export const PRICE_INSIGHT_WINDOW_DAYS = 90;
+const PRICE_HISTORY_BATCH_LIMIT = 5_000;
+
+/**
+ * Prix habituel observé des offres visibles : UNE requête groupée sur supplier_price_history
+ * (90 jours), relevés ramenés dans la devise de l'organisation (sinon ignorés : aucune conversion inventée).
+ */
+export async function loadPriceInsights(ctx: OrgContext, offers: Array<{ id: string; currentPrice: number | null }>, orgCurrency: string, now: Date): Promise<Map<string, PriceInsights>> {
+  const out = new Map<string, PriceInsights>();
+  if (offers.length === 0) return out;
+  const since = new Date(now.getTime() - PRICE_INSIGHT_WINDOW_DAYS * 86_400_000).toISOString();
+  const { data, error } = await ctx.supabase
+    .from("supplier_price_history")
+    .select("offer_id, original_price, original_currency, normalized_price, normalized_currency, recorded_at")
+    .eq("organization_id", ctx.organization.id)
+    .in("offer_id", offers.map((o) => o.id))
+    .gte("recorded_at", since)
+    .order("recorded_at", { ascending: true })
+    .limit(PRICE_HISTORY_BATCH_LIMIT);
+  if (error) {
+    log.debug("price history not loaded", { error: error.message });
+    return out;
+  }
+  const byOffer = groupPriceHistory(data ?? [], orgCurrency);
+  for (const o of offers) out.set(o.id, computePriceInsights(byOffer.get(o.id) ?? [], o.currentPrice, { now, currency: orgCurrency, windowDays: PRICE_INSIGHT_WINDOW_DAYS }));
+  return out;
 }

@@ -4,14 +4,13 @@ import { notFound } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/page";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { getPurchaseOrder, getSupplier, getSupplierPurchaseOrders, getSupplierTabCounts, leadTimeDays } from "@/features/suppliers/queries";
 import { getStockRowById, searchSkus } from "@/features/stock/queries";
 import { SupplierHeader } from "@/features/suppliers/components/supplier-header";
-import { AddItemForm, CreatePurchaseOrderForm, ReceiveForm, type OrderPrefill } from "@/features/suppliers/components/purchase-order-forms";
-import { removePurchaseOrderItemAction, updatePurchaseOrderStatusAction } from "@/features/suppliers/actions";
+import { AddItemForm, CreatePurchaseOrderForm, PurchaseOrderActionButton, ReceiveForm, type OrderPrefill } from "@/features/suppliers/components/purchase-order-forms";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { PO_STATUS_LABEL } from "@/features/sourcing/labels";
 
@@ -48,10 +47,11 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
     let unitCost: number | null = null;
     const offerId = typeof sp.offer === "string" ? sp.offer : null;
     if (offerId) {
-      const { data: offer } = await ctx.supabase.from("sourcing_offers").select("normalized_price, original_price, original_currency").eq("organization_id", ctx.organization.id).eq("id", offerId).maybeSingle();
-      if (offer) unitCost = offer.original_currency === supplier.currency ? Number(offer.original_price) : offer.normalized_price;
+      const { data: offer } = await ctx.supabase.from("sourcing_offers").select("normalized_price, normalized_currency, original_price, original_currency").eq("organization_id", ctx.organization.id).eq("id", offerId).maybeSingle();
+      // Coût prérempli uniquement dans la devise de la commande (celle du fournisseur) : jamais de prix converti présenté comme tel.
+      if (offer) unitCost = offer.original_currency === supplier.currency ? Number(offer.original_price) : offer.normalized_currency === supplier.currency ? offer.normalized_price : null;
     }
-    prefill = { skuId: prefillRow.sku_id, skuLabel: `${prefillRow.code} — ${prefillRow.product_name ?? ""}`, quantity: Math.max(1, Number(sp.qty ?? "1") || 1), unitCost, offerId };
+    prefill = { skuId: prefillRow.sku_id, skuLabel: `${prefillRow.code} — ${prefillRow.product_name ?? ""}`, quantity: Math.min(100_000, Math.max(1, Math.floor(Number(sp.qty ?? "1")) || 1)), unitCost, offerId };
   }
   const base = `/suppliers/${supplier.id}/orders`;
 
@@ -79,31 +79,31 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
                 writable ? (
                   <div className="flex flex-wrap gap-2">
                     {selected.status === "draft" ? (
-                      <form action={updatePurchaseOrderStatusAction}>
-                        <input type="hidden" name="purchase_order_id" value={selected.id} />
-                        <input type="hidden" name="status" value="sent" />
-                        <Button type="submit" size="sm" disabled={selected.items.length === 0}>
-                          Marquer envoyée
-                        </Button>
-                      </form>
+                      <PurchaseOrderActionButton kind="status" fields={{ purchase_order_id: selected.id, status: "sent" }} disabled={selected.items.length === 0} pendingText="Envoi…">
+                        Marquer envoyée
+                      </PurchaseOrderActionButton>
                     ) : null}
                     {selected.status === "sent" ? (
-                      <form action={updatePurchaseOrderStatusAction}>
-                        <input type="hidden" name="purchase_order_id" value={selected.id} />
-                        <input type="hidden" name="status" value="confirmed" />
-                        <Button type="submit" size="sm" variant="secondary">
+                      <>
+                        <PurchaseOrderActionButton kind="status" fields={{ purchase_order_id: selected.id, status: "confirmed" }} variant="secondary" pendingText="Enregistrement…">
                           Marquer confirmée
-                        </Button>
-                      </form>
+                        </PurchaseOrderActionButton>
+                        <PurchaseOrderActionButton kind="status" fields={{ purchase_order_id: selected.id, status: "draft" }} variant="ghost" pendingText="Enregistrement…">
+                          Repasser en brouillon
+                        </PurchaseOrderActionButton>
+                      </>
                     ) : null}
                     {["draft", "sent", "confirmed", "partially_received"].includes(selected.status) ? (
-                      <form action={updatePurchaseOrderStatusAction}>
-                        <input type="hidden" name="purchase_order_id" value={selected.id} />
-                        <input type="hidden" name="status" value="cancelled" />
-                        <Button type="submit" size="sm" variant="ghost" className="text-danger">
-                          Annuler
-                        </Button>
-                      </form>
+                      <PurchaseOrderActionButton
+                        kind="status"
+                        fields={{ purchase_order_id: selected.id, status: "cancelled" }}
+                        confirmMessage={selected.status === "partially_received" ? "Annuler le reste de cette commande ? Les quantités déjà reçues restent en stock." : "Annuler cette commande fournisseur ?"}
+                        variant="ghost"
+                        className="text-danger"
+                        pendingText="Annulation…"
+                      >
+                        Annuler
+                      </PurchaseOrderActionButton>
                     ) : null}
                   </div>
                 ) : null
@@ -143,12 +143,9 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
                         <TD align="right">{it.unit_cost === null ? "—" : formatMoney(it.unit_cost * it.quantity_ordered, it.currency ?? selected.currency)}</TD>
                         <TD>
                           {writable && selected.status === "draft" ? (
-                            <form action={removePurchaseOrderItemAction}>
-                              <input type="hidden" name="item_id" value={it.id} />
-                              <Button type="submit" variant="ghost" size="sm">
-                                Retirer
-                              </Button>
-                            </form>
+                            <PurchaseOrderActionButton kind="remove_item" fields={{ item_id: it.id }} variant="ghost" pendingText="Retrait…">
+                              Retirer
+                            </PurchaseOrderActionButton>
                           ) : null}
                         </TD>
                       </TR>
@@ -157,13 +154,16 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
                 </Table>
               )}
               <p className="text-sm">
-                Total : <span className="font-semibold tnum">{selected.total === null ? "Non calculable (coût inconnu sur une ligne)" : formatMoney(selected.total, selected.currency)}</span>
+                Total : <span className="font-semibold tnum">{selected.total === null ? (selected.items.length === 0 ? "—" : "Non calculable (coût inconnu ou ligne dans une autre devise)") : formatMoney(selected.total, selected.currency)}</span>
               </p>
               {writable && selected.status === "draft" ? <AddItemForm purchaseOrderId={selected.id} skus={skuOptions} /> : null}
               {writable && ["sent", "confirmed", "partially_received"].includes(selected.status) ? (
                 <div className="rounded-lg border border-border p-4">
                   <h4 className="mb-2 text-sm font-semibold">Réception</h4>
-                  <ReceiveForm purchaseOrderId={selected.id} items={selected.items.map((it) => ({ id: it.id, label: `${it.sku?.code ?? ""} ${it.sku?.product?.name ?? ""}`.trim(), ordered: it.quantity_ordered, received: it.quantity_received }))} />
+                  <ReceiveForm
+                    key={selected.items.map((it) => `${it.id}:${it.quantity_received}`).join("|")}
+                    purchaseOrderId={selected.id}
+                    items={selected.items.map((it) => ({ id: it.id, label: `${it.sku?.code ?? ""} ${it.sku?.product?.name ?? ""}`.trim(), ordered: it.quantity_ordered, received: it.quantity_received }))} />
                 </div>
               ) : null}
               {selected.notes ? <p className="text-xs text-muted">Notes : {selected.notes}</p> : null}

@@ -8,8 +8,8 @@ import { createLogger } from "@/lib/logger";
 import { serverEnv } from "@/lib/env";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Json } from "@/db/database.types";
-import type { SupplierSource } from "@/db/types";
-import { addPurchaseOrderItemSchema, connectAccountSchema, connectionIdSchema, createPurchaseOrderSchema, emptyToNull, feedSchema, fieldErrorsOf, fieldMappingFromFormData, manualOfferSchema, parseUrlLines, publicWebSourceSchema, purchaseOrderStatusSchema, supplierSchema, updateSupplierSchema } from "@/features/suppliers/schemas";
+import { addPurchaseOrderItemSchema, connectAccountSchema, connectionIdSchema, createPurchaseOrderSchema, emptyToNull, feedSchema, fieldErrorsOf, fieldMappingFromFormData, manualOfferSchema, parseUrlLines, publicWebSourceSchema, purchaseOrderStatusSchema, receiptLineSchema, supplierSchema, updateSupplierSchema } from "@/features/suppliers/schemas";
+import { stockErrorMessage } from "@/features/stock/db-errors";
 import { adapterSourceConfigFromRow, attestationRequired, settingsFromFormData, urlsFromSettings } from "@/features/suppliers/adapter-config";
 import { getSourceAdapter } from "@/integrations/sourcing/registry";
 import { getConnectorDescriptor } from "@/integrations/suppliers/core";
@@ -21,6 +21,7 @@ import { ingestFeed, previewFeedSource } from "@/services/sourcing/feed-ingestio
 import { suggestMapping, type FeedPreview, type FieldMapping } from "@/services/sourcing/feed-parsers";
 import { storeOffer } from "@/services/sourcing/offer-storage";
 import { applyConfirmedMatch } from "@/services/sourcing/matching-service";
+import { ensureManualSource } from "@/features/suppliers/manual-source";
 import { connectorsStatusMessage, createSupplierConnection, syncSupplierConnection, testSupplierConnection } from "@/services/sourcing/supplier-connectors";
 import type { RawOffer } from "@/domain/sourcing/types";
 
@@ -88,27 +89,44 @@ export async function updateSupplierAction(_prev: ActionResult | null, formData:
   }
 }
 
-export async function archiveSupplierAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const id = String(formData.get("supplier_id") ?? "");
-  const archive = String(formData.get("archive") ?? "true") === "true";
-  await ctx.supabase.from("suppliers").update({ is_archived: archive }).eq("id", id).eq("organization_id", ctx.organization.id);
+type MessageResult = ActionResult<{ message: string }>;
+
+export async function archiveSupplierAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  let id: string;
+  let archive: boolean;
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    id = String(formData.get("supplier_id") ?? "");
+    archive = String(formData.get("archive") ?? "true") === "true";
+    const { data, error } = await ctx.supabase.from("suppliers").update({ is_archived: archive }).eq("id", id).eq("organization_id", ctx.organization.id).select("id");
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    if (!data || data.length === 0) return fail("Fournisseur introuvable.");
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
   revalidatePath("/suppliers");
   redirect(archive ? "/suppliers" : supplierPath(id));
 }
 
-export async function recomputeSupplierScoreAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const id = String(formData.get("supplier_id") ?? "");
-  const { data: supplier } = await ctx.supabase.from("suppliers").select("*").eq("organization_id", ctx.organization.id).eq("id", id).maybeSingle();
-  if (!supplier) return;
-  const perf = await getSupplierPerformance(ctx, supplier);
-  await ctx.supabase
-    .from("suppliers")
-    .update({ internal_score: perf.score.score, score_breakdown: (perf.score.breakdown ?? { reason: perf.score.reason }) as unknown as NonNullable<Json>, score_computed_at: new Date().toISOString() })
-    .eq("id", id);
-  revalidatePath(supplierPath(id, "performance"));
-  revalidatePath("/suppliers");
+export async function recomputeSupplierScoreAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const id = String(formData.get("supplier_id") ?? "");
+    const { data: supplier } = await ctx.supabase.from("suppliers").select("*").eq("organization_id", ctx.organization.id).eq("id", id).maybeSingle();
+    if (!supplier) return fail("Fournisseur introuvable.");
+    const perf = await getSupplierPerformance(ctx, supplier);
+    const { error } = await ctx.supabase
+      .from("suppliers")
+      .update({ internal_score: perf.score.score, score_breakdown: (perf.score.breakdown ?? { reason: perf.score.reason }) as unknown as NonNullable<Json>, score_computed_at: new Date().toISOString() })
+      .eq("organization_id", ctx.organization.id)
+      .eq("id", id);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath(supplierPath(id, "performance"));
+    revalidatePath("/suppliers");
+    return ok({ message: perf.score.score === null ? `Score non calculable : ${perf.score.reason ?? "données insuffisantes"}.` : `Score recalculé : ${Math.round(perf.score.score)}/100.` });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -220,25 +238,38 @@ export async function checkRobotsAction(_prev: ActionResult<{ message: string }>
   }
 }
 
-export async function toggleSourceAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const sourceId = String(formData.get("source_id") ?? "");
-  const paused = String(formData.get("paused") ?? "false") === "true";
-  const { data } = await ctx.supabase.from("supplier_sources").select("supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", sourceId).maybeSingle();
-  if (!data) return;
-  await ctx.supabase.from("supplier_sources").update({ status: paused ? "paused" : data.status === "paused" ? "not_connected" : data.status }).eq("id", sourceId);
-  revalidatePath(supplierPath(data.supplier_id, "sources"));
+export async function toggleSourceAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const sourceId = String(formData.get("source_id") ?? "");
+    const paused = String(formData.get("paused") ?? "false") === "true";
+    const { data } = await ctx.supabase.from("supplier_sources").select("supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", sourceId).maybeSingle();
+    if (!data) return fail("Source introuvable.");
+    const { error } = await ctx.supabase.from("supplier_sources").update({ status: paused ? "paused" : data.status === "paused" ? "not_connected" : data.status }).eq("organization_id", ctx.organization.id).eq("id", sourceId);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath(supplierPath(data.supplier_id, "sources"));
+    return ok({ message: paused ? "Source mise en pause." : "Source réactivée." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
-export async function deleteSourceAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const sourceId = String(formData.get("source_id") ?? "");
-  const { data } = await ctx.supabase.from("supplier_sources").select("supplier_id").eq("organization_id", ctx.organization.id).eq("id", sourceId).maybeSingle();
-  if (!data) return;
-  // Les offres de la source sont conservées (expirées), jamais supprimées : on met la source en pause définitive.
-  await ctx.supabase.from("sourcing_offers").update({ status: "expired", expired_at: new Date().toISOString() }).eq("source_id", sourceId).in("status", ["active", "suspicious"]);
-  await ctx.supabase.from("supplier_sources").update({ status: "paused", sync_frequency: "manual", automated_access_confirmed: false }).eq("id", sourceId);
-  revalidatePath(supplierPath(data.supplier_id, "sources"));
+export async function deleteSourceAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const sourceId = String(formData.get("source_id") ?? "");
+    const { data } = await ctx.supabase.from("supplier_sources").select("supplier_id").eq("organization_id", ctx.organization.id).eq("id", sourceId).maybeSingle();
+    if (!data) return fail("Source introuvable.");
+    // Les offres de la source sont conservées (expirées), jamais supprimées : on met la source en pause définitive.
+    const expired = await ctx.supabase.from("sourcing_offers").update({ status: "expired", expired_at: new Date().toISOString() }).eq("organization_id", ctx.organization.id).eq("source_id", sourceId).in("status", ["active", "suspicious"]);
+    if (expired.error) return fail(toUserMessage(fromPostgrestError(expired.error)));
+    const { error } = await ctx.supabase.from("supplier_sources").update({ status: "paused", sync_frequency: "manual", automated_access_confirmed: false }).eq("organization_id", ctx.organization.id).eq("id", sourceId);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath(supplierPath(data.supplier_id, "sources"));
+    return ok({ message: "Source désactivée (offres conservées, marquées expirées)." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
 export async function runSourceCrawlAction(_prev: ActionResult<{ message: string }> | null, formData: FormData): Promise<ActionResult<{ message: string }>> {
@@ -356,14 +387,20 @@ export async function runFeedSyncAction(_prev: ActionResult<{ message: string }>
   }
 }
 
-export async function toggleFeedAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const feedId = String(formData.get("feed_id") ?? "");
-  const paused = String(formData.get("paused") ?? "false") === "true";
-  const { data } = await ctx.supabase.from("supplier_feeds").select("supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", feedId).maybeSingle();
-  if (!data) return;
-  await ctx.supabase.from("supplier_feeds").update({ status: paused ? "paused" : data.status === "paused" ? "not_connected" : data.status }).eq("id", feedId);
-  revalidatePath(supplierPath(data.supplier_id, "sources"));
+export async function toggleFeedAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const feedId = String(formData.get("feed_id") ?? "");
+    const paused = String(formData.get("paused") ?? "false") === "true";
+    const { data } = await ctx.supabase.from("supplier_feeds").select("supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", feedId).maybeSingle();
+    if (!data) return fail("Flux introuvable.");
+    const { error } = await ctx.supabase.from("supplier_feeds").update({ status: paused ? "paused" : data.status === "paused" ? "not_connected" : data.status }).eq("organization_id", ctx.organization.id).eq("id", feedId);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath(supplierPath(data.supplier_id, "sources"));
+    return ok({ message: paused ? "Flux mis en pause." : "Flux réactivé." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -437,18 +474,6 @@ export async function syncSupplierConnectionAction(_prev: ActionResult<{ message
 // ---------------------------------------------------------------------------
 // Offre saisie manuellement (source MANUAL créée à la demande)
 // ---------------------------------------------------------------------------
-export async function ensureManualSource(ctx: OrgContext, supplierId: string, supplierName: string): Promise<SupplierSource> {
-  const { data: existing } = await ctx.supabase.from("supplier_sources").select("*").eq("supplier_id", supplierId).eq("source_type", "MANUAL").maybeSingle();
-  if (existing) return existing;
-  const { data, error } = await ctx.supabase
-    .from("supplier_sources")
-    .insert({ organization_id: ctx.organization.id, supplier_id: supplierId, name: `Saisie manuelle — ${supplierName}`, source_type: "MANUAL", automated_access_confirmed: true, access_conditions: "Données saisies par l'utilisateur.", status: "active", sync_frequency: "manual" })
-    .select("*")
-    .single();
-  if (error || !data) throw new Error(`Source manuelle non créée : ${error?.message ?? "inconnu"}`);
-  return data;
-}
-
 export async function createManualOfferAction(_prev: ActionResult<{ offerId: string; warnings: string[] }> | null, formData: FormData): Promise<ActionResult<{ offerId: string; warnings: string[] }>> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
@@ -504,15 +529,10 @@ export async function createManualOfferAction(_prev: ActionResult<{ offerId: str
 
 // ---------------------------------------------------------------------------
 // Commandes fournisseurs
+// Règles métier appliquées EN BASE (migration 20261008002000) : total dérivé des lignes,
+// machine à états, lignes figées après confirmation, réception idempotente. Les actions
+// ci-dessous traduisent les refus en messages et donnent un retour à chaque clic.
 // ---------------------------------------------------------------------------
-async function refreshPurchaseOrderTotal(ctx: OrgContext, poId: string): Promise<void> {
-  const { data: items } = await ctx.supabase.from("purchase_order_items").select("quantity_ordered, unit_cost").eq("purchase_order_id", poId);
-  const list = items ?? [];
-  const allKnown = list.every((i) => i.unit_cost !== null);
-  const total = allKnown && list.length > 0 ? list.reduce((s, i) => s + i.quantity_ordered * Number(i.unit_cost ?? 0), 0) : null;
-  await ctx.supabase.from("purchase_orders").update({ total: total === null ? null : Math.round(total * 100) / 100 }).eq("id", poId);
-}
-
 export async function createPurchaseOrderAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   let supplierId: string;
   let poId: string;
@@ -521,19 +541,25 @@ export async function createPurchaseOrderAction(_prev: ActionResult | null, form
     const parsed = createPurchaseOrderSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return fail("Vérifiez les champs du formulaire.", { fieldErrors: fieldErrorsOf(parsed.error.issues) });
     const d = parsed.data;
+    const skuId = emptyToNull(d.sku_id);
+    const qty = emptyToNull(d.quantity);
+    if ((skuId && !qty) || (!skuId && qty)) {
+      return fail("Vérifiez les champs du formulaire.", { fieldErrors: skuId ? { quantity: ["Indiquez la quantité de la première ligne."] } : { sku_id: ["Choisissez le SKU de la première ligne."] } });
+    }
     await assertSupplier(ctx, d.supplier_id);
     const { data: po, error } = await ctx.supabase
       .from("purchase_orders")
       .insert({ organization_id: ctx.organization.id, supplier_id: d.supplier_id, reference: emptyToNull(d.reference), currency: d.currency, expected_at: emptyToNull(d.expected_at), notes: emptyToNull(d.notes), status: "draft", created_by: ctx.user.id })
       .select("id")
       .single();
-    if (error || !po) return fail(toUserMessage(fromPostgrestError(error ?? { message: "Commande non créée" })));
-    const skuId = emptyToNull(d.sku_id);
-    const qty = emptyToNull(d.quantity);
+    if (error || !po) return fail(stockErrorMessage(error ?? { message: "Commande non créée" }));
     if (skuId && qty) {
       const { error: iErr } = await ctx.supabase.from("purchase_order_items").insert({ organization_id: ctx.organization.id, purchase_order_id: po.id, sku_id: skuId, offer_id: emptyToNull(d.offer_id), quantity_ordered: qty, unit_cost: emptyToNull(d.unit_cost), currency: d.currency });
-      if (iErr) return fail(toUserMessage(fromPostgrestError(iErr)));
-      await refreshPurchaseOrderTotal(ctx, po.id);
+      if (iErr) {
+        // Pas de brouillon orphelin : la commande vide est retirée (un brouillon est supprimable).
+        await ctx.supabase.from("purchase_orders").delete().eq("id", po.id).eq("organization_id", ctx.organization.id);
+        return fail(stockErrorMessage(iErr));
+      }
     }
     supplierId = d.supplier_id;
     poId = po.id;
@@ -554,8 +580,7 @@ export async function addPurchaseOrderItemAction(_prev: ActionResult | null, for
     if (!po) return fail("Commande introuvable.");
     if (po.status !== "draft") return fail("Seule une commande en brouillon peut être modifiée.");
     const { error } = await ctx.supabase.from("purchase_order_items").insert({ organization_id: ctx.organization.id, purchase_order_id: po.id, sku_id: d.sku_id, offer_id: emptyToNull(d.offer_id), quantity_ordered: d.quantity, unit_cost: emptyToNull(d.unit_cost), currency: po.currency });
-    if (error) return fail(toUserMessage(fromPostgrestError(error)));
-    await refreshPurchaseOrderTotal(ctx, po.id);
+    if (error) return fail(stockErrorMessage(error));
     revalidatePath(supplierPath(po.supplier_id, "orders"));
     return ok(undefined);
   } catch (e) {
@@ -563,27 +588,53 @@ export async function addPurchaseOrderItemAction(_prev: ActionResult | null, for
   }
 }
 
-export async function removePurchaseOrderItemAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const itemId = String(formData.get("item_id") ?? "");
-  const { data: item } = await ctx.supabase.from("purchase_order_items").select("id, purchase_order_id, purchase_order:purchase_orders(supplier_id, status)").eq("organization_id", ctx.organization.id).eq("id", itemId).maybeSingle();
-  if (!item || item.purchase_order?.status !== "draft") return;
-  await ctx.supabase.from("purchase_order_items").delete().eq("id", itemId);
-  await refreshPurchaseOrderTotal(ctx, item.purchase_order_id);
-  revalidatePath(supplierPath(item.purchase_order.supplier_id, "orders"));
+export async function removePurchaseOrderItemAction(_prev: ActionResult<{ message: string }> | null, formData: FormData): Promise<ActionResult<{ message: string }>> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const itemId = String(formData.get("item_id") ?? "");
+    const { data: item } = await ctx.supabase.from("purchase_order_items").select("id, purchase_order_id, purchase_order:purchase_orders(supplier_id, status)").eq("organization_id", ctx.organization.id).eq("id", itemId).maybeSingle();
+    if (!item || !item.purchase_order) return fail("Ligne introuvable (déjà retirée ?).");
+    if (item.purchase_order.status !== "draft") return fail("Seule une commande en brouillon peut être modifiée.");
+    const { error } = await ctx.supabase.from("purchase_order_items").delete().eq("id", itemId).eq("organization_id", ctx.organization.id);
+    if (error) return fail(stockErrorMessage(error));
+    revalidatePath(supplierPath(item.purchase_order.supplier_id, "orders"));
+    return ok({ message: "Ligne retirée." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
-export async function updatePurchaseOrderStatusAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const parsed = purchaseOrderStatusSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
-  const { data: po } = await ctx.supabase.from("purchase_orders").select("id, supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", parsed.data.purchase_order_id).maybeSingle();
-  if (!po) return;
-  const allowed: Record<string, string[]> = { draft: ["sent", "cancelled"], sent: ["confirmed", "cancelled", "draft"], confirmed: ["cancelled"], partially_received: ["cancelled"] };
-  if (!(allowed[po.status] ?? []).includes(parsed.data.status)) return;
-  await ctx.supabase.from("purchase_orders").update({ status: parsed.data.status, ...(parsed.data.status === "sent" ? { sent_at: new Date().toISOString() } : {}) }).eq("id", po.id);
-  revalidatePath(supplierPath(po.supplier_id, "orders"));
+const PO_STATUS_DONE: Record<string, string> = {
+  draft: "Commande repassée en brouillon.",
+  sent: "Commande marquée envoyée.",
+  confirmed: "Commande marquée confirmée.",
+  cancelled: "Commande annulée.",
+};
+
+export async function updatePurchaseOrderStatusAction(_prev: ActionResult<{ message: string }> | null, formData: FormData): Promise<ActionResult<{ message: string }>> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const parsed = purchaseOrderStatusSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return fail("Statut invalide.");
+    const { data: po } = await ctx.supabase.from("purchase_orders").select("id, supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", parsed.data.purchase_order_id).maybeSingle();
+    if (!po) return fail("Commande introuvable.");
+    if (po.status === parsed.data.status) return ok({ message: "Statut déjà à jour." });
+    // La base valide la transition (PURCHASE_ORDER_INVALID_TRANSITION / EMPTY / CLOSED) : pas de double règle ici.
+    const { error } = await ctx.supabase.from("purchase_orders").update({ status: parsed.data.status }).eq("id", po.id).eq("organization_id", ctx.organization.id);
+    if (error) return fail(stockErrorMessage(error));
+    revalidatePath(supplierPath(po.supplier_id, "orders"));
+    revalidatePath(supplierPath(po.supplier_id, "performance"));
+    revalidatePath("/insights");
+    return ok({ message: PO_STATUS_DONE[parsed.data.status] ?? "Statut mis à jour." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
+
+const PO_STATUS_TEXT: Record<string, string> = {
+  partially_received: "partiellement reçue",
+  received: "entièrement reçue",
+};
 
 export async function receivePurchaseOrderAction(_prev: ActionResult<{ message: string }> | null, formData: FormData): Promise<ActionResult<{ message: string }>> {
   try {
@@ -591,19 +642,25 @@ export async function receivePurchaseOrderAction(_prev: ActionResult<{ message: 
     const poId = String(formData.get("purchase_order_id") ?? "");
     const { data: po } = await ctx.supabase.from("purchase_orders").select("id, supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", poId).maybeSingle();
     if (!po) return fail("Commande introuvable.");
-    const receipts: Array<{ item_id: string; quantity: number }> = [];
+    const receipts: Array<{ item_id: string; quantity: number; expected_received?: number }> = [];
     for (const [key, value] of formData.entries()) {
       if (!key.startsWith("receive_")) continue;
-      const qty = Number(value);
-      if (Number.isInteger(qty) && qty > 0) receipts.push({ item_id: key.slice("receive_".length), quantity: qty });
+      const itemId = key.slice("receive_".length);
+      const expectedRaw = formData.get(`expected_${itemId}`);
+      const line = receiptLineSchema.safeParse({ item_id: itemId, quantity: value, expected_received: expectedRaw === null || expectedRaw === "" ? undefined : expectedRaw });
+      if (!line.success) return fail("Quantité reçue invalide (nombre entier entre 0 et 100 000).");
+      if (line.data.quantity > 0) receipts.push(line.data);
     }
     if (receipts.length === 0) return fail("Indiquez au moins une quantité reçue.");
     const { data, error } = await ctx.supabase.rpc("receive_purchase_order_items", { p_purchase_order_id: po.id, p_receipts: receipts });
-    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    if (error) return fail(stockErrorMessage(error));
     revalidatePath(supplierPath(po.supplier_id, "orders"));
     revalidatePath(supplierPath(po.supplier_id, "performance"));
     revalidatePath("/stock");
-    return ok({ message: `Réception enregistrée : stock mis à jour. Statut de la commande : ${data?.status ?? "mis à jour"}.` });
+    revalidatePath("/dashboard");
+    revalidatePath("/insights");
+    const units = receipts.reduce((sum, r) => sum + r.quantity, 0);
+    return ok({ message: `Réception enregistrée (${units} unité(s) saisie(s), plafonnées au reste à recevoir) : stock mis à jour. Commande ${PO_STATUS_TEXT[data?.status ?? ""] ?? "mise à jour"}.` });
   } catch (e) {
     return fail(toUserMessage(e));
   }

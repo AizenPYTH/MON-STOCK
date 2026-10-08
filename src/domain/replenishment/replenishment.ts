@@ -82,14 +82,27 @@ export function computeReplenishment(input: ReplenishmentInput): ReplenishmentRe
   }
 
   const daysOfCover = input.dailyVelocity > 0 ? input.availableStock / input.dailyVelocity : Number.POSITIVE_INFINITY;
-  const coverText = Number.isFinite(daysOfCover) ? `${daysOfCover.toFixed(1)} jour(s)` : "plus de 90 jours";
+  const coverText =
+    input.availableStock < 0
+      ? `aucun jour (stock négatif : ${input.availableStock})`
+      : input.availableStock === 0
+        ? "aucun jour (rupture)"
+        : Number.isFinite(daysOfCover)
+          ? `${daysOfCover.toFixed(1)} jour(s)`
+          : "plus de 90 jours";
+  const stockTerm = input.availableStock < 0 ? `+ ${-input.availableStock} (stock négatif à compenser)` : `− ${input.availableStock} (stock)`;
 
   const explanation =
     raw === 0
       ? `Aucune commande nécessaire : votre stock (${input.availableStock}${onOrder ? ` + ${onOrder} en commande` : ""}) couvre environ ${coverText}, soit plus que le délai fournisseur (${leadTime} j) et l'horizon de ${coverDays} j avec un stock de sécurité de ${input.safetyStock}.`
-      : `Nous recommandons ${recommended} unité(s) car votre vitesse moyenne est de ${input.dailyVelocity.toFixed(1)}/jour, votre fournisseur livre en ${leadTime} jour(s)${usedDefaultLeadTime ? " (délai par défaut)" : ""} et votre stock actuel couvre environ ${coverText}. Calcul : ${Math.ceil(demandDuringLeadTime)} (délai) + ${Math.ceil(demandDuringCover)} (${coverDays} j de couverture) + ${input.safetyStock} (sécurité) − ${input.availableStock} (stock)${onOrder ? ` − ${onOrder} (en commande)` : ""} = ${raw}${moqNote(raw, recommended, input.moq)}.`;
+      : `Nous recommandons ${recommended} unité(s) car votre vitesse moyenne est de ${formatVelocity(input.dailyVelocity)}/jour, votre fournisseur livre en ${leadTime} jour(s)${usedDefaultLeadTime ? " (délai par défaut)" : ""} et votre stock actuel couvre environ ${coverText}. Calcul : ${Math.ceil(demandDuringLeadTime)} (délai) + ${Math.ceil(demandDuringCover)} (${coverDays} j de couverture) + ${input.safetyStock} (sécurité) ${stockTerm}${onOrder ? ` − ${onOrder} (en commande)` : ""} = ${raw}${moqNote(raw, recommended, input.moq)}.`;
 
   return { targetQuantity: target, recommendedQuantity: recommended, rawQuantity: raw, needed: recommended > 0, explanation, usedDefaultLeadTime, warnings };
+}
+
+/** Vitesse lisible : 2 décimales sous 1 unité/jour (0,03 ≠ « 0,0 »), 1 décimale au-delà. */
+export function formatVelocity(v: number): string {
+  return v.toFixed(Math.abs(v) < 1 ? 2 : 1);
 }
 
 /** Arrondi au MOQ (et au multiple de MOQ si le besoin dépasse le MOQ). */

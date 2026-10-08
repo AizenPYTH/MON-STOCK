@@ -6,12 +6,12 @@ import { AppError, fromPostgrestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { describeError, isConnectorError, RECONNECT_ACTION } from "@/integrations/core/errors";
 import { getConnector } from "@/integrations/core/registry";
-import { computeOrdersWindow, nextOrdersCursor } from "@/integrations/ebay/cursor";
+import { computeOrdersWindow, resolveOrdersCursor } from "@/integrations/ebay/cursor";
 import { connectorAuthFor, markConnectionExpired } from "@/services/channels/connection-store";
 import { connectionExpiredKey, resolveAlerts, syncFailedKey, upsertAlert } from "@/services/sync/alerts";
-import { chunk, sanitizeDetails, type SyncContext, type SyncErrorInput } from "@/services/sync/context";
-import { syncListings } from "@/services/sync/listings";
-import { syncOrders } from "@/services/sync/orders";
+import { chunk, sanitizeDetails, sanitizeMessage, type SyncContext, type SyncErrorInput } from "@/services/sync/context";
+import { emptyListingsResult, syncListings } from "@/services/sync/listings";
+import { emptyOrdersResult, syncOrders, type SyncOrdersOptions } from "@/services/sync/orders";
 import { pushInventory } from "@/services/sync/inventory-push";
 
 const log = createLogger("SYNC");
@@ -25,6 +25,8 @@ export interface RunChannelSyncOptions {
   trigger: SyncTrigger;
   userId?: string | null;
   scope?: SyncScope;
+  /** Réglages de l'import des commandes (tests, CLI). */
+  orders?: SyncOrdersOptions;
 }
 
 export interface SyncStats {
@@ -158,38 +160,36 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
   };
 
   if (scope === "full" || scope === "listings") {
+    // Accumulateur : si la phase est interrompue (API indisponible à la page 3…), les compteurs
+    // de ce qui a réellement été écrit restent exacts dans le run.
+    const r = emptyListingsResult();
     await runPhase("listings", async () => {
-      const r = await syncListings(ctx);
-      stats.listings_fetched = r.fetched;
-      stats.listings_upserted = r.upserted;
-      stats.listings_ended = r.ended;
-      stats.listings_auto_mapped = r.autoMapped;
-      stats.suggestions_created = r.suggestionsCreated;
+      await syncListings(ctx, r);
       log.info(`${label} listings synced`, { runId, fetched: r.fetched, upserted: r.upserted, ended: r.ended, autoMapped: r.autoMapped, suggestions: r.suggestionsCreated, invalid: r.invalid });
     });
+    stats.listings_fetched = r.fetched;
+    stats.listings_upserted = r.upserted;
+    stats.listings_ended = r.ended;
+    stats.listings_auto_mapped = r.autoMapped;
+    stats.suggestions_created = r.suggestionsCreated;
   }
 
   if (scope === "full" || scope === "orders") {
+    const window = computeOrdersWindow(connection.last_orders_cursor, startedAt);
+    const r = emptyOrdersResult();
+    log.info(`${label} orders window`, { runId, since: window.since.toISOString(), until: window.until.toISOString(), initial: window.initial });
     await runPhase("orders", async () => {
-      const window = computeOrdersWindow(connection.last_orders_cursor, startedAt);
-      log.info(`${label} orders window`, { runId, since: window.since.toISOString(), until: window.until.toISOString(), initial: window.initial });
-      const r = await syncOrders(ctx, window);
-      stats.orders_fetched = r.fetched;
-      stats.orders_created = r.created;
-      stats.orders_updated = r.updated;
-      stats.items_unmapped = r.itemsUnmapped;
-      stats.inventory_changes = r.movements;
-      if (r.failed === 0) {
-        state.newCursor = nextOrdersCursor(window, r.maxModifiedSeen, { truncated: r.truncated });
-      } else if (r.minFailedModified) {
-        // Des commandes ont échoué : le curseur ne dépasse pas la plus ancienne d'entre elles,
-        // afin qu'elles soient reprises (fenêtre avec chevauchement) au prochain run.
-        const candidate = nextOrdersCursor(window, r.maxModifiedSeen, { truncated: r.truncated });
-        state.newCursor = new Date(Math.min(candidate.getTime(), r.minFailedModified.getTime()));
-      }
-      // Sinon (échecs sans date connue) : le curseur n'avance pas.
-      log.info(`${label} orders synced`, { runId, fetched: r.fetched, created: r.created, updated: r.updated, itemsUnmapped: r.itemsUnmapped, movements: r.movements, failed: r.failed, invalid: r.invalid, truncated: r.truncated });
+      await syncOrders(ctx, window, r, options.orders);
+      log.info(`${label} orders synced`, { runId, fetched: r.fetched, created: r.created, updated: r.updated, itemsUnmapped: r.itemsUnmapped, movements: r.movements, failed: r.failed, invalid: r.invalid, truncated: r.truncated, pages: r.pages });
     });
+    stats.orders_fetched = r.fetched;
+    stats.orders_created = r.created;
+    stats.orders_updated = r.updated;
+    stats.items_unmapped = r.itemsUnmapped;
+    stats.inventory_changes = r.movements;
+    // Curseur : jamais au-delà d'une commande en échec ni d'une tranche non lue en entier,
+    // y compris si la phase a été interrompue (on garde la progression acquise).
+    state.newCursor = resolveOrdersCursor(window, r, connection.last_orders_cursor);
   }
 
   if (scope === "full" && connection.push_inventory) {
@@ -204,16 +204,16 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
   const finishedAt = new Date();
   const durationMs = finishedAt.getTime() - startedAt.getTime();
   const status: SyncStatus = state.fatal || state.phasesCompleted === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
-  const errorSummary = errors.length === 0 ? null : `${errors[0]?.message ?? "Erreur"}${errors.length > 1 ? ` (+${errors.length - 1} autre(s))` : ""}`;
+  const errorSummary = errors.length === 0 ? null : sanitizeMessage(`${errors[0]?.message ?? "Erreur"}${errors.length > 1 ? ` (+${errors.length - 1} autre(s))` : ""}`, 1000);
 
-  // Persistance des erreurs (jamais de secret dans details).
+  // Persistance des erreurs (jamais de secret dans le message ni dans details).
   for (const part of chunk(errors, 200)) {
     const { error } = await admin.from("sync_errors").insert(
       part.map((e) => ({
         organization_id: connection.organization_id,
         sync_run_id: runId,
         code: e.code,
-        message: e.message.slice(0, 2000),
+        message: sanitizeMessage(e.message),
         entity_type: e.entityType ?? null,
         entity_ref: e.entityRef ?? null,
         details: sanitizeDetails(e.details) as NonNullable<Json>,
@@ -236,26 +236,30 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
     .eq("id", runId);
   if (finishError) log.error("impossible de finaliser le run", { runId, error: finishError.message });
 
-  // État de la connexion + alertes.
-  const connectionPatch: Partial<ChannelConnection> = { last_sync_at: finishedAt.toISOString(), last_error: errorSummary };
-  if (status === "success") {
-    connectionPatch.last_successful_sync_at = finishedAt.toISOString();
-    connectionPatch.status = "connected";
-  } else if (status === "partial") {
-    connectionPatch.status = "connected";
-  } else if (!state.authExpired) {
-    connectionPatch.status = "error";
-  }
+  // État de la connexion + alertes. Une connexion déconnectée PENDANT le run n'est jamais « réveillée ».
+  // Les runs déclenchés par webhook (périmètre partiel, fréquents) ne repoussent pas la
+  // synchronisation planifiée complète : last_sync_at n'est mis à jour que par les autres runs.
+  const connectionPatch: Partial<ChannelConnection> = { last_error: errorSummary };
+  if (options.trigger !== "webhook") connectionPatch.last_sync_at = finishedAt.toISOString();
+  if (status === "success") connectionPatch.last_successful_sync_at = finishedAt.toISOString();
   if (state.newCursor) connectionPatch.last_orders_cursor = state.newCursor.toISOString();
   if (state.authExpired) {
     // Le statut 'expired' et l'alerte critique ont été posés par le gestionnaire de tokens ; on s'assure qu'ils le sont.
     await markConnectionExpired(connection.id, state.fatal?.message ?? "Token d'autorisation expiré.");
-    delete connectionPatch.status;
   }
-  const { error: patchError } = await admin.from("channel_connections").update(connectionPatch).eq("id", connection.id);
+  const { data: patched, error: patchError } = await admin.from("channel_connections").update(connectionPatch).eq("id", connection.id).neq("status", "disconnected").select("id").maybeSingle();
   if (patchError) log.error("impossible de mettre à jour la connexion", { connectionId, error: patchError.message });
+  const stillActive = Boolean(patched) || Boolean(patchError);
+  if (stillActive && !state.authExpired) {
+    // Statut : seulement depuis connected/error (jamais par-dessus 'expired' posé entre-temps).
+    const nextStatus = status === "failed" ? "error" : "connected";
+    const { error: statusError } = await admin.from("channel_connections").update({ status: nextStatus }).eq("id", connection.id).in("status", ["connected", "error"]);
+    if (statusError) log.error("impossible de mettre à jour le statut de la connexion", { connectionId, error: statusError.message });
+  }
 
-  if (status === "success") {
+  if (!stillActive) {
+    log.warn("connexion déconnectée pendant le run : état et alertes inchangés", { runId, connectionId });
+  } else if (status === "success") {
     await resolveAlerts(admin, connection.organization_id, [connectionExpiredKey(connection.id), syncFailedKey(connection.id)]);
   } else if (status === "partial") {
     await resolveAlerts(admin, connection.organization_id, [connectionExpiredKey(connection.id)]);

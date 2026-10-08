@@ -23,3 +23,11 @@ export const changeRoleSchema = z.object({
   user_id: z.string().uuid(),
   role: z.enum(["owner", "admin", "member", "viewer"]),
 });
+
+/** Références transmises par les formulaires d'administration (identifiants et jeton d'invitation). */
+export const memberRefSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  token: z.string().regex(/^[A-Za-z0-9_-]{16,128}$/),
+});

@@ -5,7 +5,7 @@ import { createLogger } from "@/lib/logger";
 import { describeError } from "@/integrations/core/errors";
 import type { ConnectorAuth, MarketplaceConnector } from "@/integrations/core/connector";
 import type { ListingRef } from "@/integrations/core/types";
-import type { SyncContext } from "@/services/sync/context";
+import { fetchAllRows, type SyncContext } from "@/services/sync/context";
 
 const log = createLogger("SYNC");
 
@@ -59,17 +59,21 @@ export async function pushQuantityToChannel(
 export async function pushInventory(ctx: SyncContext): Promise<InventoryPushResult> {
   const { admin } = ctx;
   const result: InventoryPushResult = { checked: 0, changed: 0, pushed: 0, failed: 0 };
-  const { data: listings, error } = await admin
-    .from("channel_listings")
-    .select("id, external_listing_id, external_variation_id, external_sku, sku_id, quantity_available, title")
-    .eq("sales_channel_id", ctx.salesChannelId)
-    .eq("organization_id", ctx.organizationId)
-    .eq("status", "active")
-    .eq("mapping_status", "mapped")
-    .not("sku_id", "is", null)
-    .limit(5000);
-  if (error) throw fromPostgrestError(error);
-  const rows = (listings ?? []) as MappedListingRow[];
+  const listings = await fetchAllRows((from, to) =>
+    admin
+      .from("channel_listings")
+      .select("id, external_listing_id, external_variation_id, external_sku, sku_id, quantity_available, title")
+      .eq("sales_channel_id", ctx.salesChannelId)
+      .eq("organization_id", ctx.organizationId)
+      .eq("status", "active")
+      .eq("mapping_status", "mapped")
+      .not("sku_id", "is", null)
+      .order("id")
+      .range(from, to),
+  ).catch((e: { code?: string; message: string }) => {
+    throw fromPostgrestError(e);
+  });
+  const rows = listings as MappedListingRow[];
   result.checked = rows.length;
   if (rows.length === 0) return result;
 
@@ -99,6 +103,11 @@ export async function pushInventory(ctx: SyncContext): Promise<InventoryPushResu
       if (d.code === "AUTH_EXPIRED") throw e;
       result.failed++;
       ctx.recordError({ code: `INVENTORY_PUSH_${d.code}`, message: d.message, entityType: "listing", entityRef: row.external_listing_id + (row.external_variation_id ? ` / ${row.external_variation_id}` : ""), details: d.details });
+      if (d.code === "RATE_LIMITED") {
+        // Quota atteint : inutile d'enchaîner les appels (et les attentes) ; la suite au prochain run.
+        ctx.recordError({ code: "INVENTORY_PUSH_STOPPED", message: "Envoi des quantités interrompu : quota d'appels eBay atteint. Les annonces restantes seront mises à jour au prochain run.", entityType: "channel" });
+        break;
+      }
     }
   }
   if (result.changed > MAX_PUSH_PER_RUN) {

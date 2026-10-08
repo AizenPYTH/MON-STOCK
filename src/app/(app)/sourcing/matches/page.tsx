@@ -3,11 +3,11 @@ import Link from "next/link";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { PageHeader, EmptyState } from "@/components/ui/page";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { listPendingMatches } from "@/features/sourcing/queries";
 import { decideMatchAction } from "@/features/sourcing/actions";
+import { ActionButtonForm } from "@/features/sourcing/components/action-button-form";
 import { formatMoney } from "@/lib/format";
 import { MATCH_METHOD_LABEL } from "@/domain/sourcing/matching";
 
@@ -82,20 +82,12 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
                     <TD>
                       {writable ? (
                         <div className="flex gap-1">
-                          <form action={decideMatchAction}>
-                            <input type="hidden" name="match_id" value={m.id} />
-                            <input type="hidden" name="decision" value="confirm" />
-                            <Button type="submit" size="sm">
-                              Confirmer
-                            </Button>
-                          </form>
-                          <form action={decideMatchAction}>
-                            <input type="hidden" name="match_id" value={m.id} />
-                            <input type="hidden" name="decision" value="reject" />
-                            <Button type="submit" size="sm" variant="ghost">
-                              Rejeter
-                            </Button>
-                          </form>
+                          <ActionButtonForm action={decideMatchAction} fields={{ match_id: m.id, decision: "confirm" }} variant="primary">
+                            Confirmer
+                          </ActionButtonForm>
+                          <ActionButtonForm action={decideMatchAction} fields={{ match_id: m.id, decision: "reject" }} variant="ghost">
+                            Rejeter
+                          </ActionButtonForm>
                         </div>
                       ) : null}
                     </TD>

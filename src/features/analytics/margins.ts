@@ -51,7 +51,7 @@ export async function getMarginsData(ctx: OrgContext, params: MarginsParams): Pr
     lines = lines.filter((l) => l.margin.netMarginPercent !== null && l.margin.netMarginPercent >= min);
   }
   const sorted = sortMarginLines(lines, params.sort);
-  const aggregate = aggregateMargins(sorted);
+  const aggregate = aggregateMargins(sorted, ctx.organization.default_currency);
   const from = (params.page - 1) * MARGINS_PAGE_SIZE;
   return {
     channels: channels.map((c) => {
@@ -73,5 +73,8 @@ export async function getMarginsData(ctx: OrgContext, params: MarginsParams): Pr
 /** Bénéfice estimé sur 30 jours avec le contexte de marge principal (dashboard). */
 export async function getProfitEstimate(ctx: OrgContext): Promise<MarginAggregate> {
   const bundle = await loadStockViews(ctx);
-  return aggregateMargins(bundle.views.map((v) => buildMarginLine(v.row, bundle.marginCtx)));
+  return aggregateMargins(
+    bundle.views.map((v) => buildMarginLine(v.row, bundle.marginCtx)),
+    ctx.organization.default_currency,
+  );
 }

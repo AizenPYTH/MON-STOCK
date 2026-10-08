@@ -177,6 +177,25 @@ Aucun changement de schéma n'a été nécessaire.
 - CAPTCHA, défi anti-bot, 401 / 403 / 429 → « Compte requis / protégé », jamais contourné.
 - Les sites exigeant un compte sont étiquetés « Compte requis » ; prix derrière connexion → « Prix après connexion ».
 
+## 2 bis. Intégration à la recherche et validation
+
+- **Pendant une recherche** (`services/sourcing/discovery/search-discovery.ts`) : si `SOURCING_DISCOVERY_PROVIDER`
+  est configuré ET que l'utilisateur a le droit d'écriture ET que la requête n'est pas vide, `discoverSources`
+  est lancé **en parallèle** de la recherche en direct, avec son propre délai (12 s) ; au-delà, il se poursuit en
+  arrière-plan et le panneau le dit. Panneau « Sources découvertes » : domaine, type, plateforme, accès
+  (public / compte requis / protégé), visibilité des prix, robots.txt, statut (nouvelle / déjà connue / écartée /
+  non analysée) et raison, lien, CTA « À valider ». Sans API : « Découverte désactivée : aucune API de recherche
+  configurée » (les administrateurs voient la procédure d'activation).
+- **Validation** (`features/suppliers/discovered.ts`, `discovered-actions.ts`) : les sources `config.discovered = true`,
+  non attestées et non ignorées sont listées « Découvertes — à valider » (page `/sourcing`, liste `/suppliers`,
+  onglet Sources du fournisseur). « Valider et activer » exige la case d'attestation des conditions d'utilisation,
+  un accès **public** (compte requis / protégé / non déterminé → « Compte requis », jamais activable comme source
+  publique), robots.txt vérifié et non bloquant, un adaptateur public suggéré disponible ; puis
+  `config.adapter = config.suggested_adapter`, `automated_access_confirmed = true`, `status = active`
+  (trace `validated_at` / `validated_by`). « Ignorer » : `status = paused`, `config.dismissed = true`.
+  robots.txt reste revérifié à chaque interrogation en direct.
+- Testé contre le vrai schéma (garde « même organisation », RLS) : `tests/integration/sourcing-discovery.test.ts`.
+
 ## 3. Les quatre niveaux de statut d'une source
 
 | Niveau | Signification | Où |
@@ -214,6 +233,7 @@ Coût par recherche : au plus 6 appels API (en pratique 2 à 3 requêtes de déc
 | `tests/unit/sourcing-ranking.test.ts` | plan d'achat (MOQ, minimum de commande, port), économies, score, départages, podium, « non attribué » |
 | `tests/unit/sourcing-confidence.test.ts` | 5 niveaux, seuils exacts, formatage relatif français |
 | `tests/unit/sourcing-price-insights.test.ts` | seuils de fiabilité, P25–P75, tendance, opportunité, prix anormalement bas, fusion multi-offres |
+| `tests/unit/sourcing-discovered-validation.test.ts`, `sourcing-search-discovery.test.ts` | règles d'activation (compte requis, robots, adaptateur), configuration validée / ignorée, décision et délai de la découverte pendant la recherche |
 | `tests/unit/sourcing-discovery.test.ts` | configuration, réponse Brave construite d'après la documentation, requête et en-têtes, cache, bornes, exclusions, classification, détection de plateforme / connexion / CAPTCHA, robots.txt, anti-SSRF (résolveur public 93.184.216.34 simulé), service complet avec fournisseur et `fetch` simulés, payloads Supabase |
 
 Non testé : appels réels à l'API Brave, pages réelles de fournisseurs, comportement des protections

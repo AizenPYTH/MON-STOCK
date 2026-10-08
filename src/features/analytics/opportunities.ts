@@ -132,7 +132,16 @@ export async function findOpportunities(ctx: OrgContext, opts: { limit?: number 
     const salePrice = row.avg_sale_price_30d ?? row.sale_price ?? null;
     const landed = landedUnitCost(offer.normalized_price, offer.shipping_cost, offer.moq);
     const supplier = one(offer.supplier);
-    const evaluation = evaluateOpportunity({ salePrice, salePriceBasis, supplierPrice: offer.normalized_price, landedUnitCost: landed, taxType: offer.tax_type, fees: bundle.marginCtx });
+    const evaluation = evaluateOpportunity({
+      salePrice,
+      salePriceBasis,
+      supplierPrice: offer.normalized_price,
+      landedUnitCost: landed,
+      taxType: offer.tax_type,
+      fees: bundle.marginCtx,
+      saleCurrency: row.currency ?? ctx.organization.default_currency,
+      supplierCurrency: offer.normalized_currency,
+    });
     items.push({
       skuId,
       code: row.code ?? "",

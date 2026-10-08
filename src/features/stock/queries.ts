@@ -23,8 +23,19 @@ export async function getMarginContext(ctx: OrgContext): Promise<MarginContext> 
   return marginContextFromChannels(data ?? [], ctx.organization.settings);
 }
 
-function escapeLike(s: string): string {
+/** Échappe les jokers ILIKE (%, _ et \\). */
+export function escapeLike(s: string): string {
   return s.replace(/[%_\\]/g, (m) => `\\${m}`);
+}
+
+/**
+ * Terme de recherche utilisable dans un filtre `or=(...)` PostgREST : les caractères
+ * structurants de cette syntaxe (virgule, parenthèses, guillemets) sont remplacés par
+ * des espaces — sinon « iPhone 13, Pro » casse la requête (erreur 400 → page d'erreur).
+ */
+export function orSearchTerm(raw: string): string {
+  // `*` est aussi un joker PostgREST : retiré plutôt qu'interprété.
+  return escapeLike(raw.replace(/[,()"*]/g, " ").replace(/\s+/g, " ").trim());
 }
 
 export interface StockListResult {
@@ -33,26 +44,17 @@ export interface StockListResult {
   page: number;
   pageSize: number;
   facets: { brands: string[]; categories: string[]; suppliers: Array<{ id: string; name: string }> };
+  /** Statuts calculés (à risque / faible / normal) : seules les POST_FILTER_LIMIT premières lignes sont analysées. */
+  truncated: boolean;
 }
+
+/** Les statuts dépendant de la vitesse sont calculés côté serveur sur un ensemble borné. */
+export const POST_FILTER_LIMIT = 2000;
 
 export async function listStock(ctx: OrgContext, params: StockListParams): Promise<StockListResult> {
   const orgId = ctx.organization.id;
   const supabase = ctx.supabase;
   const marginCtx = await getMarginContext(ctx);
-
-  // Restrictions par identifiants (canal / fournisseur) résolues en amont.
-  let skuIdFilter: string[] | null = null;
-  if (params.channel) {
-    const { data } = await supabase.from("channel_listings").select("sku_id").eq("organization_id", orgId).eq("provider", params.channel).not("sku_id", "is", null).limit(2000);
-    skuIdFilter = Array.from(new Set((data ?? []).map((d) => d.sku_id).filter((x): x is string => Boolean(x))));
-  }
-  if (params.supplier) {
-    const { data } = await supabase.from("sourcing_offers").select("sku_id").eq("organization_id", orgId).eq("supplier_id", params.supplier).not("sku_id", "is", null).limit(2000);
-    const ids = new Set((data ?? []).map((d) => d.sku_id).filter((x): x is string => Boolean(x)));
-    const { data: def } = await supabase.from("skus").select("id").eq("organization_id", orgId).eq("default_supplier_id", params.supplier).limit(2000);
-    for (const d of def ?? []) ids.add(d.id);
-    skuIdFilter = skuIdFilter ? skuIdFilter.filter((id) => ids.has(id)) : Array.from(ids);
-  }
 
   const needsPostFilter = params.status === "at_risk" || params.status === "normal";
   const page = params.page;
@@ -61,10 +63,13 @@ export async function listStock(ctx: OrgContext, params: StockListParams): Promi
   let query = supabase.from("v_stock_overview").select("*", { count: "exact" }).eq("organization_id", orgId);
   query = params.archived ? query.eq("is_active", false) : query.eq("is_active", true);
 
-  if (params.q) {
-    const q = escapeLike(params.q);
+  const q = params.q ? orSearchTerm(params.q) : "";
+  if (q) {
     query = query.or(`product_name.ilike.%${q}%,code.ilike.%${q}%,barcode.ilike.%${q}%,brand.ilike.%${q}%,variant_name.ilike.%${q}%`);
   }
+  // Canal / fournisseur : filtrés en base sur les tableaux de la vue (pas de liste d'identifiants dans l'URL).
+  if (params.channel) query = query.contains("channel_providers", [params.channel]);
+  if (params.supplier) query = query.contains("supplier_ids", [params.supplier]);
   if (params.brand) query = query.eq("brand", params.brand);
   if (params.category) query = query.eq("category", params.category);
   if (params.min_margin !== undefined && Number.isFinite(params.min_margin)) query = query.gte("unit_margin", params.min_margin);
@@ -75,10 +80,6 @@ export async function listStock(ctx: OrgContext, params: StockListParams): Promi
   if (params.status === "low") query = query.gt("quantity_available", 0);
   if (params.status === "at_risk") query = query.gt("quantity_available", 0).gt("units_90d", 0);
   if (params.status === "normal") query = query.gt("quantity_available", 0);
-  if (skuIdFilter) {
-    if (skuIdFilter.length === 0) return { rows: [], total: 0, page, pageSize: STOCK_PAGE_SIZE, facets: await facets() };
-    query = query.in("sku_id", skuIdFilter.slice(0, 1000));
-  }
 
   switch (params.sort) {
     case "low_stock":
@@ -93,6 +94,10 @@ export async function listStock(ctx: OrgContext, params: StockListParams): Promi
     case "last_sale":
       query = query.order("last_sale_at", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
       break;
+    case "oldest_sale":
+      // Stock dormant : jamais vendu d'abord, puis la dernière vente la plus ancienne.
+      query = query.order("last_sale_at", { ascending: true, nullsFirst: true }).order("product_name", { ascending: true });
+      break;
     case "name":
       query = query.order("product_name", { ascending: true }).order("code", { ascending: true });
       break;
@@ -101,24 +106,29 @@ export async function listStock(ctx: OrgContext, params: StockListParams): Promi
       query = query.order("units_30d", { ascending: false, nullsFirst: false }).order("units_90d", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
   }
 
+  // Départage final stable : sans lui, deux lignes ex æquo peuvent changer de page d'une requête à l'autre.
+  query = query.order("sku_id", { ascending: true });
+
   if (needsPostFilter || params.status === "low") {
     // Statuts dépendant de la vitesse : calcul côté serveur sur un ensemble borné, puis pagination.
-    const { data, error } = await query.limit(1500);
+    const { data, error } = await query.limit(POST_FILTER_LIMIT + 1);
     if (error) throw error;
-    const all = (data ?? []).map((r) => enrichStockRow(r, marginCtx)).filter((v) => v.classification.level === params.status);
+    const scanned = data ?? [];
+    const truncated = scanned.length > POST_FILTER_LIMIT;
+    const all = scanned.slice(0, POST_FILTER_LIMIT).map((r) => enrichStockRow(r, marginCtx)).filter((v) => v.classification.level === params.status);
     const rows = all.slice(from, from + STOCK_PAGE_SIZE);
-    return { rows, total: all.length, page, pageSize: STOCK_PAGE_SIZE, facets: await facets() };
+    return { rows, total: all.length, page, pageSize: STOCK_PAGE_SIZE, facets: await facets(), truncated };
   }
 
   const { data, error, count } = await query.range(from, from + STOCK_PAGE_SIZE - 1);
   if (error) throw error;
   const rows = (data ?? []).map((r) => enrichStockRow(r, marginCtx));
-  return { rows, total: count ?? rows.length, page, pageSize: STOCK_PAGE_SIZE, facets: await facets() };
+  return { rows, total: count ?? rows.length, page, pageSize: STOCK_PAGE_SIZE, facets: await facets(), truncated: false };
 
   async function facets() {
     const [{ data: brands }, { data: cats }, { data: sups }] = await Promise.all([
-      supabase.from("products").select("brand").eq("organization_id", orgId).not("brand", "is", null).limit(1000),
-      supabase.from("products").select("category").eq("organization_id", orgId).not("category", "is", null).limit(1000),
+      supabase.from("products").select("brand").eq("organization_id", orgId).eq("is_archived", false).not("brand", "is", null).limit(1000),
+      supabase.from("products").select("category").eq("organization_id", orgId).eq("is_archived", false).not("category", "is", null).limit(1000),
       supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("is_archived", false).order("name").limit(500),
     ]);
     return {
@@ -139,38 +149,57 @@ export async function getStockRowById(ctx: OrgContext, skuId: string): Promise<S
   return data ?? null;
 }
 
+export interface SkuRotation {
+  /** jours effectivement couverts par la fenêtre (≤ 30, moins si le SKU est récent) */
+  windowDays: number;
+  avgOnHand: number | null;
+  unitsSold: number;
+}
+
 export async function getSkuDetail(ctx: OrgContext, code: string) {
   const row = await getStockRowByCode(ctx, code);
   if (!row || !row.sku_id) return null;
   const orgId = ctx.organization.id;
   const skuId = row.sku_id;
-  const [movements, listings, offers, orderItems, priceHistory, siblings, suppliers, pendingSales, marginCtx, product, variant, purchaseItems] = await Promise.all([
-    ctx.supabase.from("inventory_movements").select("*").eq("sku_id", skuId).order("occurred_at", { ascending: false }).limit(100),
-    ctx.supabase.from("channel_listings").select("*, sales_channel:sales_channels(name)").eq("sku_id", skuId).order("last_synced_at", { ascending: false }),
+  const [movements, listings, offers, orderItems, priceHistory, siblings, suppliers, pendingSales, marginCtx, product, variant, purchaseItems, skuMeta, rotation, defaultSupplier] = await Promise.all([
+    ctx.supabase.from("inventory_movements").select("*").eq("sku_id", skuId).order("occurred_at", { ascending: false }).order("created_at", { ascending: false }).limit(100),
+    ctx.supabase.from("channel_listings").select("*, sales_channel:sales_channels(name)").eq("sku_id", skuId).order("last_synced_at", { ascending: false }).limit(100),
     ctx.supabase
       .from("sourcing_offers")
-      .select("*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days)")
+      .select("*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, default_moq)")
       .eq("sku_id", skuId)
       .eq("status", "active")
       .order("normalized_price", { ascending: true, nullsFirst: false })
       .limit(20),
     ctx.supabase.from("order_items").select("*, order:orders(id, provider, order_number, external_order_id, placed_at, status)").eq("sku_id", skuId).order("created_at", { ascending: false }).limit(20),
     ctx.supabase.from("price_history").select("*").eq("sku_id", skuId).order("recorded_at", { ascending: false }).limit(30),
-    ctx.supabase.from("v_stock_overview").select("*").eq("organization_id", orgId).eq("product_id", row.product_id ?? "").order("code"),
-    ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("is_archived", false).order("name"),
-    ctx.supabase.from("order_items").select("id", { count: "exact", head: true }).eq("sku_id", skuId).eq("inventory_applied", false),
+    ctx.supabase.from("v_stock_overview").select("sku_id, code, variant_name, quantity_available").eq("organization_id", orgId).eq("product_id", row.product_id ?? "").order("code").limit(200),
+    ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("is_archived", false).order("name").limit(500),
+    // Ventes rattachées mais non déduites — hors commandes annulées / remboursées (que
+    // apply_pending_sales_for_sku ignore : les compter afficherait une alerte impossible à traiter).
+    ctx.supabase
+      .from("order_items")
+      .select("id, order:orders!inner(status)", { count: "exact", head: true })
+      .eq("sku_id", skuId)
+      .eq("inventory_applied", false)
+      .not("order.status", "in", "(cancelled,refunded)"),
     getMarginContext(ctx),
     ctx.supabase.from("products").select("*").eq("id", row.product_id ?? "").maybeSingle(),
     ctx.supabase.from("product_variants").select("*").eq("id", row.variant_id ?? "").maybeSingle(),
-    ctx.supabase.from("purchase_order_items").select("quantity_ordered, quantity_received, purchase_order:purchase_orders(status)").eq("sku_id", skuId),
+    ctx.supabase
+      .from("purchase_order_items")
+      .select("quantity_ordered, quantity_received, purchase_order:purchase_orders!inner(status)")
+      .eq("sku_id", skuId)
+      .in("purchase_order.status", ["sent", "confirmed", "partially_received"]),
+    ctx.supabase.from("skus").select("updated_at").eq("id", skuId).maybeSingle(),
+    ctx.supabase.rpc("sku_rotation", { p_organization_id: orgId, p_sku_ids: [skuId] }),
+    row.default_supplier_id
+      ? ctx.supabase.from("suppliers").select("id, name, average_lead_time_days, default_moq").eq("id", row.default_supplier_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
-  const onOrder = (purchaseItems.data ?? [])
-    .filter((pi) => {
-      const po = pi.purchase_order as { status: string } | null;
-      return po && ["sent", "confirmed", "partially_received"].includes(po.status);
-    })
-    .reduce((sum, pi) => sum + Math.max(0, pi.quantity_ordered - pi.quantity_received), 0);
+  const onOrder = (purchaseItems.data ?? []).reduce((sum, pi) => sum + Math.max(0, pi.quantity_ordered - pi.quantity_received), 0);
+  const rot = rotation.data?.[0];
 
   return {
     row,
@@ -187,6 +216,9 @@ export async function getSkuDetail(ctx: OrgContext, code: string) {
     suppliers: suppliers.data ?? [],
     pendingSalesCount: pendingSales.count ?? 0,
     onOrder,
+    skuUpdatedAt: skuMeta.data?.updated_at ?? null,
+    rotation: rot ? ({ windowDays: Number(rot.window_days), avgOnHand: rot.avg_on_hand === null ? null : Number(rot.avg_on_hand), unitsSold: rot.units_sold } satisfies SkuRotation) : null,
+    defaultSupplier: defaultSupplier.data ?? null,
   };
 }
 

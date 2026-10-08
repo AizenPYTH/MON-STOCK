@@ -46,7 +46,7 @@ export function LoginForm({ next, initialError }: { next?: string; initialError?
   );
 }
 
-export function SignupForm() {
+export function SignupForm({ next }: { next?: string } = {}) {
   const [state, action] = useActionState<ActionResult<{ needsConfirmation: boolean }> | null, FormData>(signUpAction, null);
   const err = state && !state.ok ? state : null;
   if (state?.ok && state.data.needsConfirmation) {
@@ -63,6 +63,7 @@ export function SignupForm() {
     <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
       <Title title="Créer un compte" subtitle="Votre espace vendeur en moins d'une minute." />
       <form action={action} className="space-y-4">
+        {next ? <input type="hidden" name="next" value={next} /> : null}
         <FormError message={err?.error} />
         <Field label="Nom complet" htmlFor="full_name" error={err?.fieldErrors?.full_name}>
           <Input id="full_name" name="full_name" autoComplete="name" required />

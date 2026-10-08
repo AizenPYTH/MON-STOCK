@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { publicEnv } from "@/lib/env";
+import { safeInternalPath } from "@/lib/utils";
 import { fail, ok, type ActionResult } from "@/lib/result";
 import { createLogger } from "@/lib/logger";
 import { resetPasswordSchema, signInSchema, signUpSchema, updatePasswordSchema } from "@/features/auth/schemas";
@@ -18,8 +19,8 @@ function fieldErrors(issues: Array<{ path: PropertyKey[]; message: string }>): R
 }
 
 function safeNext(next: string | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/dashboard";
-  return next;
+  // Refuse aussi `/\evil.com` et les caractères de contrôle (normalisés en `//` par les navigateurs).
+  return safeInternalPath(next, "/dashboard");
 }
 
 function translateAuthError(message: string): string {
@@ -54,7 +55,8 @@ export async function signUpAction(_prev: ActionResult<{ needsConfirmation: bool
     password: parsed.data.password,
     options: {
       data: { full_name: parsed.data.full_name },
-      emailRedirectTo: `${publicEnv().NEXT_PUBLIC_APP_URL}/auth/callback?next=/onboarding`,
+      // Après confirmation : retour vers la page d'origine (ex. invitation) si elle est interne, sinon l'onboarding.
+      emailRedirectTo: `${publicEnv().NEXT_PUBLIC_APP_URL}/auth/callback?next=${encodeURIComponent(safeInternalPath(parsed.data.next, "/onboarding"))}`,
     },
   });
   if (error) {
@@ -62,7 +64,7 @@ export async function signUpAction(_prev: ActionResult<{ needsConfirmation: bool
     return fail(translateAuthError(error.message));
   }
   // Si la confirmation d'email est désactivée côté Supabase, une session existe déjà.
-  if (data.session) redirect("/onboarding");
+  if (data.session) redirect(safeInternalPath(parsed.data.next, "/onboarding"));
   return ok({ needsConfirmation: true });
 }
 

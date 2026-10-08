@@ -16,6 +16,7 @@ import { LinkOfferDialog } from "@/features/sourcing/components/link-offer-dialo
 import { freshness } from "@/domain/sourcing/pricing";
 import { formatMoney, formatNumber, NOT_PROVIDED } from "@/lib/format";
 import { OFFER_STATUS_LABEL, SOURCE_TYPE_LABEL, STOCK_STATUS_LABEL, TAX_LABEL } from "@/features/sourcing/labels";
+import { safeExternalUrl } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Offres fournisseur" };
 
@@ -75,8 +76,8 @@ export default async function SupplierOffersPage({ params, searchParams }: { par
                       <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
                         {o.status !== "active" ? <Badge variant={o.status === "expired" ? "neutral" : o.status === "rejected" ? "danger" : "warning"}>{OFFER_STATUS_LABEL[o.status]}</Badge> : null}
                         {o.external_product_id ? <span className="font-mono">{o.external_product_id}</span> : null}
-                        {o.source_url ? (
-                          <a href={o.source_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:text-foreground">
+                        {safeExternalUrl(o.source_url) ? (
+                          <a href={safeExternalUrl(o.source_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:text-foreground">
                             <ExternalLink className="h-3 w-3" /> source
                           </a>
                         ) : null}

@@ -20,6 +20,9 @@ export interface OpportunityInput {
   landedUnitCost: number | null;
   taxType: "ht" | "ttc" | "unknown";
   fees: MarginContext;
+  /** devise du prix de vente (SKU) et du prix fournisseur normalisé : comparées, jamais mélangées */
+  saleCurrency?: string | null;
+  supplierCurrency?: string | null;
 }
 
 export interface OpportunityEvaluation {
@@ -37,6 +40,9 @@ export function evaluateOpportunity(input: OpportunityInput): OpportunityEvaluat
   const missing: string[] = [];
   if (input.salePrice === null) missing.push("prix de vente : aucune vente sur 30 jours et aucun prix de vente renseigné sur le SKU");
   if (input.supplierPrice === null) missing.push("prix fournisseur : prix non normalisé (devise ou prix manquant)");
+  if (input.saleCurrency && input.supplierCurrency && input.saleCurrency.toUpperCase() !== input.supplierCurrency.toUpperCase()) {
+    missing.push(`devises différentes : prix de vente en ${input.saleCurrency.toUpperCase()}, prix fournisseur en ${input.supplierCurrency.toUpperCase()} (aucune conversion supposée)`);
+  }
   if (missing.length > 0) {
     return { status: "insufficient_data", missing, notes: [], margin: null, unitCost: null, costBasis: null };
   }

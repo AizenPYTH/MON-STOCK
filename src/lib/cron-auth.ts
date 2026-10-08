@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 export const CRON_SECRET_MIN_LENGTH = 16;
@@ -17,9 +17,11 @@ export function authorizeCron(request: Request): { ok: true } | { ok: false; res
   }
   const header = request.headers.get("authorization") ?? "";
   const expected = `Bearer ${secret}`;
-  const a = Buffer.from(header);
-  const b = Buffer.from(expected);
-  const valid = a.length === b.length && timingSafeEqual(a, b);
+  // Comparaison des empreintes SHA-256 (longueur fixe) : ni le contenu ni la LONGUEUR du secret
+  // ne fuient par le temps de réponse (timingSafeEqual exige deux tampons de même taille).
+  const a = createHash("sha256").update(header, "utf8").digest();
+  const b = createHash("sha256").update(expected, "utf8").digest();
+  const valid = timingSafeEqual(a, b);
   if (!valid) return { ok: false, response: NextResponse.json({ ok: false, error: "Non autorisé : en-tête Authorization Bearer invalide." }, { status: 401 }) };
   return { ok: true };
 }

@@ -47,12 +47,13 @@ export function StockFilters({ params, facets }: { params: StockListParams; face
       <Select name="sort" defaultValue={params.sort}>
         <option value="best_sellers">Plus vendus</option>
         <option value="low_stock">Stock faible</option>
-        <option value="margin">Marge</option>
+        <option value="margin">Marge brute (€)</option>
         <option value="stock_value">Valeur de stock</option>
-        <option value="last_sale">Dernière vente</option>
+        <option value="last_sale">Vendu récemment</option>
+        <option value="oldest_sale">Sans vente depuis longtemps</option>
         <option value="name">Nom</option>
       </Select>
-      <Input name="min_margin" type="number" step="1" defaultValue={params.min_margin ?? ""} placeholder="Marge min. (€)" />
+      <Input name="min_margin" type="number" step="1" defaultValue={params.min_margin ?? ""} placeholder="Marge brute min." />
       <Select name="stock" defaultValue={params.stock ?? ""}>
         <option value="">Stock</option>
         <option value="in_stock">En stock</option>
@@ -64,7 +65,7 @@ export function StockFilters({ params, facets }: { params: StockListParams; face
         <Button type="submit" variant="secondary">
           Filtrer
         </Button>
-        <ButtonLink href="/stock" variant="ghost">
+        <ButtonLink href={params.archived ? "/stock?archived=1" : "/stock"} variant="ghost">
           Réinitialiser
         </ButtonLink>
       </div>

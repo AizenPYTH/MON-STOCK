@@ -3,5 +3,5 @@ export { createEbayConfig, EBAY_SCOPES, ebayScopeList, EBAY_PROVIDER, type EbayC
 export { buildAuthorizeUrl, exchangeAuthorizationCode, refreshAccessToken, getApplicationAccessToken } from "@/integrations/ebay/oauth";
 export { normalizeEbayOrder, mapEbayOrderStatus, buildLastModifiedFilter } from "@/integrations/ebay/fulfillment";
 export { parseGetMyeBaySellingResponse, parseReviseInventoryStatusResponse, buildGetMyeBaySellingRequest, buildReviseInventoryStatusRequest } from "@/integrations/ebay/trading";
-export { computeOrdersWindow, nextOrdersCursor, ORDERS_OVERLAP_HOURS } from "@/integrations/ebay/cursor";
+export { computeOrdersWindow, nextOrdersCursor, resolveOrdersCursor, splitOrdersWindow, ORDERS_OVERLAP_HOURS, ORDERS_SLICE_HOURS } from "@/integrations/ebay/cursor";
 export * from "@/integrations/ebay/webhook-verify";

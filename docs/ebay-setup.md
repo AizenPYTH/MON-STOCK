@@ -112,7 +112,14 @@ La route `GET|POST /api/cron/sync` exécute, séquentiellement, les connexions `
   `npm run sync:run -- --connection <uuid>`, `npm run sync:run -- --all` ou `npm run sync:run -- --due`.
 
 Chaque exécution crée une ligne `sync_runs` (statut `running` → `success` / `partial` / `failed`, statistiques réelles, erreurs
-détaillées dans `sync_errors`). Un run encore `running` depuis moins de 15 min bloque un nouveau run sur la même connexion.
+détaillées dans `sync_errors`). Un run encore `running` depuis moins de 15 min bloque un nouveau run sur la même connexion
+(index unique partiel : même deux démarrages simultanés n'en créent qu'un ; l'autre reçoit « Une synchronisation … est déjà en
+cours »). Au-delà de 15 min, le run est considéré interrompu et marqué `failed`.
+
+Le cron ne démarre plus de nouveau run après ~200 s (budget de temps) : les connexions restantes sont reportées au passage
+suivant (`deferred` dans la réponse JSON) plutôt que coupées en plein run par la limite de la plateforme.
+Les runs déclenchés par webhook (périmètre partiel) ne modifient pas `last_sync_at` : ils ne repoussent jamais la
+synchronisation complète planifiée.
 
 ## 7. Ce que fait une synchronisation
 
@@ -122,13 +129,40 @@ détaillées dans `sync_errors`). Un run encore `running` depuis moins de 15 min
    (`mapping_source = auto_sku_match`). Sinon, des **suggestions** (EAN, SKU proche, titre + attributs) sont calculées avec une
    confiance 0–1 et doivent être validées dans *Intégrations → Associations*.
 2. **Commandes** : `GET /sell/fulfillment/v1/order?filter=lastmodifieddate:[…]` depuis `last_orders_cursor` moins 3 h de
-   chevauchement (90 jours lors du premier import). Ingestion idempotente via `ingest_external_order` : création des commandes,
-   mouvements de stock `sale` pour les lignes associées, recrédit en cas d'annulation/remboursement.
+   chevauchement (90 jours lors du premier import). La fenêtre est lue par **tranches de 7 jours, de la plus ancienne à la plus
+   récente** ; une tranche qui atteint la limite de pages est redécoupée (jusqu'à 1 h). Le curseur n'avance que jusqu'à la fin
+   de la dernière tranche lue **en entier**, et jamais au-delà d'une commande dont l'ingestion a échoué : aucune commande n'est
+   sautée. Ingestion idempotente et transactionnelle (tout ou rien par commande) via `ingest_external_order` : création des
+   commandes, mouvements de stock `sale` pour les lignes associées, recrédit en cas d'annulation/remboursement. Deux ingestions
+   simultanées de la même commande (webhook + cron) produisent une seule commande et un seul mouvement par ligne.
    Correspondance des statuts : `cancelState = CANCELED` → annulée ; `FULLY_REFUNDED` → remboursée ; `FULFILLED` → expédiée ;
    `PAID`/`PARTIALLY_REFUNDED` → payée ; `PENDING`/`FAILED` → en attente.
 3. **Quantités** (opt-in `push_inventory`, désactivé par défaut) : pour les annonces associées dont la quantité eBay diffère du
    stock disponible, `ReviseInventoryStatus` (200 maximum par run). Une action manuelle **« Pousser la quantité vers eBay »**
    existe par annonce, avec confirmation.
+
+### Tokens
+
+- L'access token (2 h) est rafraîchi automatiquement s'il expire dans moins de 5 min, et une fois de force après un 401.
+- Les rafraîchissements simultanés d'un même processus sont fusionnés ; l'écriture en base est un *compare-and-set*
+  (`store_refreshed_access_token`) : un rafraîchissement concurrent d'une déconnexion ou d'une reconnexion ne ressuscite ni
+  n'écrase aucun token.
+- `invalid_grant`, refresh token expiré (date eBay ~18 mois enregistrée à la connexion) ou secret indéchiffrable
+  (`TOKEN_ENCRYPTION_KEY` modifiée) → connexion **Expirée**, alerte critique et bouton **Reconnecter eBay**.
+- Aucun token n'est écrit dans les journaux, `sync_errors`, `error_summary` ou `last_error` (masquage des clés ET des valeurs
+  ressemblant à un secret : `Bearer …`, `v^1.1#…`, JWT, `access_token=…`).
+
+### Webhook
+
+- Corps limité à 64 Ko (413 au-delà). Signature absente/invalide ou `kid` inconnu d'eBay → 401 ; vérification impossible
+  (clé publique injoignable, panne eBay) → 503 **sans consommer l'identifiant d'événement** (eBay redélivre).
+- Un événement déjà reçu répond `duplicate` (200), sauf si son traitement précédent a échoué : il est alors repris.
+- Suppression de compte : pseudo acheteur anonymisé dans les commandes, notifications stockées purgées, compte vendeur
+  déconnecté (tokens supprimés, pseudo et nom du canal anonymisés, alertes anonymisées). En cas d'erreur d'écriture : 500,
+  eBay redélivre.
+- Notification de commande pendant une synchronisation manuelle : le webhook attend la fin du run (3 × 15 s) puis relance ;
+  sinon l'événement passe en `failed` avec un message explicite, et la commande est reprise par la synchronisation suivante
+  grâce au chevauchement de la fenêtre.
 
 ## 8. Limites connues
 
@@ -138,8 +172,12 @@ détaillées dans `sync_errors`). Un run encore `running` depuis moins de 15 min
 - **Variations sans SKU** : impossibles à cibler pour l'envoi de quantité (eBay exige le SKU de variation).
 - **Quotas** : Trading API ~5 000 appels/jour par application par défaut ; Fulfillment API 50 000–100 000/jour. Les appels sont
   réessayés sur 429/5xx avec attente bornée ; au-delà, le run est marqué partiel/échoué avec « Quota API eBay atteint ».
-- **Fenêtre de commandes** : eBay ne renvoie pas plus de 90 jours d'historique lors du premier import ; 5 000 commandes maximum
-  par run (le curseur reprend au run suivant).
+- **Fenêtre de commandes** : eBay ne renvoie pas plus de 90 jours d'historique lors du premier import ; 200 pages (20 000
+  commandes) maximum par run, au-delà le run est « partiel » (`ORDERS_TRUNCATED`) et le curseur reprend au run suivant.
+- **Commandes au format inattendu** (`INVALID_ORDER`) : comptées et listées dans le détail du run, mais le curseur les dépasse
+  (une commande toujours illisible bloquerait sinon la synchronisation) : vérifiez-les dans eBay.
+- **Quota Trading API (code 518)** ou `Retry-After` supérieur à 32 s : pas de nouvelle tentative, run partiel
+  « Quota … atteint » ; l'envoi des quantités s'interrompt pour le run.
 - **Révocation** : eBay n'offre pas d'API publique pour révoquer un token utilisateur. « Déconnecter » supprime les tokens de
   MON STOCK ; pour retirer l'autorisation côté eBay : *Mon eBay → Compte → Préférences du site → Autorisations tierces*.
 - **Site** : les appels Trading utilisent `X-EBAY-API-SITEID: 0` ; `GetMyeBaySelling` renvoie les annonces de tous les sites du
@@ -153,6 +191,7 @@ détaillées dans `sync_errors`). Un run encore `running` depuis moins de 15 min
 | « Intégration eBay non configurée sur ce serveur » | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` ou `EBAY_RU_NAME` manquants (liste affichée aux admins). Redémarrez le serveur après modification. |
 | `invalid_client` / « eBay refuse les identifiants de l'application » | Clés d'un autre environnement (`EBAY_ENV` ≠ keyset) ou Cert ID erroné. |
 | eBay affiche « Invalid RuName » / redirection vers une page d'erreur eBay | `EBAY_RU_NAME` ne correspond pas au keyset, ou l'URL « auth accepted » n'est pas HTTPS/publique. |
+| URL `?error=browser_mismatch` / « ne provient pas du navigateur qui a lancé la connexion » | Le retour eBay a été ouvert dans un autre navigateur (ou cookies bloqués) : relancez **Connecter eBay** depuis le même navigateur. |
 | « État de connexion inconnu ou déjà utilisé » | Le lien de retour a été ouvert deux fois ou après 15 min : relancez **Connecter eBay**. |
 | Statut **Expirée** / « le token d'autorisation a expiré » | Refresh token expiré (18 mois), autorisation révoquée par le vendeur, ou `TOKEN_ENCRYPTION_KEY` modifiée : cliquez **Reconnecter eBay**. |
 | « eBay a refusé l'appel GetMyeBaySelling : … » | Message exact d'eBay (ex. scope insuffisant → reconnectez pour accorder `sell.inventory`). |

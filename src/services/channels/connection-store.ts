@@ -9,11 +9,10 @@ import type { ConnectorAuth } from "@/integrations/core/connector";
 import type { AccountInfo, TokenSet } from "@/integrations/core/types";
 import { getConnector } from "@/integrations/core/registry";
 import { connectionExpiredKey, resolveAlerts, syncFailedKey, upsertAlert } from "@/services/sync/alerts";
+import { sanitizeMessage } from "@/services/sync/context";
 
 const log = createLogger("CONNECTIONS");
 
-/** Marge avant expiration de l'access token au-delà de laquelle on rafraîchit (eBay : tokens de 2 h). */
-const ACCESS_TOKEN_SAFETY_MS = 2 * 60_000;
 const PROVIDER_LABEL: Record<ChannelProvider, string> = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "Ventes manuelles" };
 
 /**
@@ -174,52 +173,85 @@ export async function upsertOAuthConnection(input: UpsertConnectionInput): Promi
   return { connection, isNew };
 }
 
+/**
+ * Passe la connexion en 'expired' et crée l'alerte critique « Reconnecter ». Sans effet sur une
+ * connexion déconnectée volontairement (une synchronisation en cours ne doit pas la « réveiller »).
+ */
 export async function markConnectionExpired(connectionId: string, reason: string): Promise<void> {
   const admin = createAdminSupabaseClient();
-  const { data } = await admin.from("channel_connections").update({ status: "expired", last_error: reason }).eq("id", connectionId).select("organization_id, provider, external_username").maybeSingle();
+  const cleanReason = sanitizeMessage(reason, 500);
+  const { data } = await admin
+    .from("channel_connections")
+    .update({ status: "expired", last_error: cleanReason })
+    .eq("id", connectionId)
+    .neq("status", "disconnected")
+    .select("organization_id, provider, external_username")
+    .maybeSingle();
   if (data) {
     await upsertAlert(admin, {
       organizationId: data.organization_id,
       type: "connection_expired",
       severity: "critical",
       title: `Connexion ${PROVIDER_LABEL[data.provider]} expirée`,
-      message: `${reason} Reconnectez votre compte ${PROVIDER_LABEL[data.provider]}${data.external_username ? ` (${data.external_username})` : ""} pour reprendre la synchronisation.`,
+      message: `${cleanReason} Reconnectez votre compte ${PROVIDER_LABEL[data.provider]}${data.external_username ? ` (${data.external_username})` : ""} pour reprendre la synchronisation.`,
       dedupeKey: connectionExpiredKey(connectionId),
       entityType: "channel_connection",
       entityId: connectionId,
       actionHref: "/settings/integrations",
     });
+    log.warn("connexion marquée expirée", { connectionId, reason: cleanReason });
   }
-  log.warn("connexion marquée expirée", { connectionId, reason });
 }
 
 function expired(connectionId: string, message: string, details: Record<string, unknown> = {}): ConnectorError {
   return new ConnectorError("AUTH_EXPIRED", "ebay", message, { details: { connectionId, ...details }, retryable: false });
 }
 
-/**
- * Renvoie un access token valide pour la connexion : déchiffre, rafraîchit automatiquement
- * si expiré (ou si `forceRefresh`), persiste le nouveau token. En cas d'invalid_grant la
- * connexion passe en statut 'expired' et l'erreur AUTH_EXPIRED est levée.
- */
-export async function getValidAccessToken(connectionId: string, options: { forceRefresh?: boolean } = {}): Promise<string> {
+/** Marge avant expiration de l'access token en deçà de laquelle on rafraîchit (eBay : tokens de 2 h ; un run peut durer 5 min). */
+export const ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 60_000;
+
+/** Rafraîchissements en cours dans ce processus : deux appels simultanés partagent le même rafraîchissement. */
+const inflightRefresh = new Map<string, Promise<string>>();
+
+interface TokenState {
+  connection: ChannelConnection;
+  secrets: { access_token_enc: string | null; refresh_token_enc: string | null } | null;
+}
+
+async function loadTokenState(connectionId: string): Promise<TokenState> {
   const admin = createAdminSupabaseClient();
   const connection = await loadConnection(connectionId);
   if (!connection) throw new AppError("NOT_FOUND", "Connexion introuvable.");
+  const { data: secrets, error } = await admin.from("channel_connection_secrets").select("access_token_enc, refresh_token_enc").eq("connection_id", connectionId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  return { connection, secrets: secrets ?? null };
+}
+
+function accessTokenIsFresh(state: TokenState, now: number): boolean {
+  const expiresAt = state.connection.token_expires_at ? new Date(state.connection.token_expires_at).getTime() : 0;
+  return Boolean(state.secrets?.access_token_enc) && expiresAt - now > ACCESS_TOKEN_REFRESH_MARGIN_MS;
+}
+
+/**
+ * Renvoie un access token valide pour la connexion : déchiffre, rafraîchit automatiquement
+ * s'il expire dans moins de 5 min (ou si `forceRefresh`, après un 401), persiste le nouveau
+ * token de façon atomique (compare-and-set). En cas d'invalid_grant / refresh token expiré /
+ * secret indéchiffrable, la connexion passe en 'expired' (alerte critique « Reconnecter eBay »)
+ * et l'erreur AUTH_EXPIRED est levée.
+ */
+export async function getValidAccessToken(connectionId: string, options: { forceRefresh?: boolean } = {}): Promise<string> {
+  const state = await loadTokenState(connectionId);
+  const { connection, secrets } = state;
   if (connection.status === "disconnected") {
     throw expired(connectionId, "Cette connexion a été déconnectée : reconnectez votre compte pour reprendre la synchronisation.");
   }
-  const { data: secrets, error } = await admin.from("channel_connection_secrets").select("*").eq("connection_id", connectionId).maybeSingle();
-  if (error) throw fromPostgrestError(error);
   if (!secrets || (!secrets.access_token_enc && !secrets.refresh_token_enc)) {
     await markConnectionExpired(connectionId, "Aucun token enregistré pour cette connexion.");
     throw expired(connectionId, "Impossible de synchroniser : aucun token d'autorisation enregistré. Reconnectez votre compte.");
   }
 
   const now = Date.now();
-  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-  const accessFresh = !options.forceRefresh && Boolean(secrets.access_token_enc) && expiresAt - now > ACCESS_TOKEN_SAFETY_MS;
-  if (accessFresh && secrets.access_token_enc) {
+  if (!options.forceRefresh && accessTokenIsFresh(state, now) && secrets.access_token_enc) {
     return safeDecrypt(connectionId, secrets.access_token_enc);
   }
 
@@ -228,29 +260,76 @@ export async function getValidAccessToken(connectionId: string, options: { force
     throw expired(connectionId, "Impossible de synchroniser eBay : le token d'autorisation a expiré.");
   }
   if (connection.refresh_token_expires_at && new Date(connection.refresh_token_expires_at).getTime() <= now) {
-    await markConnectionExpired(connectionId, "Le refresh token (validité ~18 mois) a expiré.");
+    await markConnectionExpired(connectionId, "L'autorisation eBay (refresh token, validité ~18 mois) a expiré.");
     throw expired(connectionId, "Impossible de synchroniser eBay : l'autorisation accordée a expiré (refresh token de 18 mois). Reconnectez votre compte.");
   }
 
+  const pending = inflightRefresh.get(connectionId);
+  if (pending) return pending;
+  const refreshEnc = secrets.refresh_token_enc;
+  const promise = refreshAndStore(connection, refreshEnc).finally(() => inflightRefresh.delete(connectionId));
+  inflightRefresh.set(connectionId, promise);
+  return promise;
+}
+
+async function refreshAndStore(connection: ChannelConnection, refreshEnc: string): Promise<string> {
+  const admin = createAdminSupabaseClient();
+  const connectionId = connection.id;
   const connector = getConnector(connection.provider);
+  const refreshToken = await safeDecrypt(connectionId, refreshEnc);
+  let tokens: TokenSet;
   try {
-    const tokens = await connector.refreshToken(safeDecrypt(connectionId, secrets.refresh_token_enc));
-    await saveConnectionTokens(connectionId, { ...tokens, refreshToken: null, refreshTokenExpiresAt: null });
-    log.info("access token rafraîchi", { connectionId, provider: connection.provider, expiresAt: tokens.accessTokenExpiresAt.toISOString() });
-    return tokens.accessToken;
+    tokens = await connector.refreshToken(refreshToken);
   } catch (e) {
     if (isConnectorError(e) && e.code === "AUTH_EXPIRED") {
+      // Une reconnexion a pu remplacer le refresh token pendant l'appel : on ne marque pas expirée
+      // une connexion fraîchement réautorisée, on relit simplement ses tokens.
+      const latest = await loadTokenState(connectionId).catch(() => null);
+      if (latest?.secrets?.refresh_token_enc && latest.secrets.refresh_token_enc !== refreshEnc && latest.connection.status !== "disconnected") {
+        log.info("refresh token remplacé pendant le rafraîchissement (reconnexion) : la connexion n'est pas marquée expirée", { connectionId });
+        if (latest.secrets.access_token_enc && accessTokenIsFresh(latest, Date.now())) return safeDecrypt(connectionId, latest.secrets.access_token_enc);
+        throw e;
+      }
       await markConnectionExpired(connectionId, e.message);
     }
     throw e;
   }
+
+  const { data: outcome, error } = await admin.rpc("store_refreshed_access_token", {
+    p_connection_id: connectionId,
+    p_access_token_enc: encryptSecret(tokens.accessToken),
+    p_expires_at: tokens.accessTokenExpiresAt.toISOString(),
+    p_refresh_token_enc_used: refreshEnc,
+  });
+  if (error) {
+    // Le token obtenu reste valide : la synchronisation peut continuer ; il sera redemandé au prochain run.
+    log.error("token rafraîchi mais non enregistré", { connectionId, error: error.message });
+    return tokens.accessToken;
+  }
+  if (outcome === "disconnected") {
+    throw expired(connectionId, "La connexion a été déconnectée pendant la synchronisation : aucun token n'a été conservé.");
+  }
+  if (outcome === "stale") {
+    // Un autre processus a enregistré un token plus récent, ou le compte a été reconnecté : on utilise le token en base.
+    const latest = await loadTokenState(connectionId);
+    if (latest.secrets?.access_token_enc && accessTokenIsFresh(latest, Date.now())) {
+      log.info("token plus récent déjà enregistré par un autre processus", { connectionId });
+      return safeDecrypt(connectionId, latest.secrets.access_token_enc);
+    }
+    return tokens.accessToken;
+  }
+  log.info("access token rafraîchi", { connectionId, provider: connection.provider, expiresAt: tokens.accessTokenExpiresAt.toISOString() });
+  return tokens.accessToken;
 }
 
-function safeDecrypt(connectionId: string, payload: string): string {
+/** Déchiffre un secret ; en cas d'échec (clé TOKEN_ENCRYPTION_KEY changée, donnée corrompue) la connexion passe en 'expired'. */
+async function safeDecrypt(connectionId: string, payload: string): Promise<string> {
   try {
     return decryptSecret(payload);
   } catch {
-    throw new ConnectorError("AUTH_EXPIRED", "ebay", "Les tokens enregistrés ne peuvent pas être déchiffrés (TOKEN_ENCRYPTION_KEY modifiée ?). Reconnectez votre compte.", { details: { connectionId }, retryable: false });
+    const message = "Les tokens eBay enregistrés ne peuvent pas être déchiffrés (la clé TOKEN_ENCRYPTION_KEY du serveur a probablement changé). Reconnectez votre compte eBay.";
+    await markConnectionExpired(connectionId, message);
+    throw new ConnectorError("AUTH_EXPIRED", "ebay", message, { details: { connectionId, reason: "decrypt_failed" }, retryable: false });
   }
 }
 

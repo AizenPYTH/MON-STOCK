@@ -4,18 +4,20 @@ import { PageHeader, Callout } from "@/components/ui/page";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { Select } from "@/components/ui/form";
 import { InviteMemberForm } from "@/features/organizations/invite-form";
 import { changeMemberRoleAction, removeMemberAction, revokeInvitationAction } from "@/features/organizations/actions";
+import { feedbackFor } from "@/features/organizations/feedback";
 import { formatDate } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Utilisateurs" };
 
 const ROLE_LABEL: Record<string, string> = { owner: "Propriétaire", admin: "Administrateur", member: "Membre", viewer: "Lecture seule" };
 
-export default async function UsersPage() {
+export default async function UsersPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const ctx = await requireOrgContext();
+  const feedback = feedbackFor((await searchParams).status);
   const admin = isAdmin(ctx.role);
   const [{ data: members }, { data: invitations }] = await Promise.all([
     ctx.supabase.from("organization_members").select("user_id, role, created_at, profile:user_profiles(email, full_name)").eq("organization_id", ctx.organization.id).order("created_at"),
@@ -25,6 +27,13 @@ export default async function UsersPage() {
   return (
     <>
       <PageHeader title="Utilisateurs" description="Membres de votre organisation et invitations en attente." />
+      {feedback ? (
+        <div role="status" aria-live="polite">
+          <Callout tone={feedback.tone} className="mb-5">
+            {feedback.message}
+          </Callout>
+        </div>
+      ) : null}
       {!admin ? <Callout tone="neutral" className="mb-5">Seuls les administrateurs peuvent inviter ou modifier des membres.</Callout> : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
@@ -47,23 +56,29 @@ export default async function UsersPage() {
                     return (
                       <TR key={m.user_id}>
                         <TD>
-                          <div className="font-medium">{profile?.full_name ?? profile?.email ?? m.user_id}</div>
-                          <div className="text-xs text-muted">{profile?.email}</div>
+                          <div className="max-w-[16rem] truncate font-medium" title={profile?.full_name ?? profile?.email ?? undefined}>
+                            {profile?.full_name ?? profile?.email ?? m.user_id}
+                            {self ? <span className="ml-1.5 text-xs font-normal text-muted">(vous)</span> : null}
+                          </div>
+                          <div className="max-w-[16rem] truncate text-xs text-muted">{profile?.email}</div>
                         </TD>
                         <TD>
-                          {admin && !(self && m.role === "owner") ? (
+                          {/* Personne ne modifie son propre rôle ; seul un propriétaire touche au rôle propriétaire (règles doublées en base). */}
+                          {admin && !self && (ctx.role === "owner" || m.role !== "owner") ? (
                             <form action={changeMemberRoleAction} className="flex items-center gap-2">
                               <input type="hidden" name="user_id" value={m.user_id} />
-                              <Select name="role" defaultValue={m.role} className="h-8 w-40">
-                                {Object.entries(ROLE_LABEL).map(([k, v]) => (
-                                  <option key={k} value={k}>
-                                    {v}
-                                  </option>
-                                ))}
+                              <Select name="role" defaultValue={m.role} className="h-8 w-40" aria-label={`Rôle de ${profile?.full_name ?? profile?.email ?? "ce membre"}`}>
+                                {Object.entries(ROLE_LABEL)
+                                  .filter(([k]) => ctx.role === "owner" || k !== "owner")
+                                  .map(([k, v]) => (
+                                    <option key={k} value={k}>
+                                      {v}
+                                    </option>
+                                  ))}
                               </Select>
-                              <Button type="submit" variant="secondary" size="sm">
-                                OK
-                              </Button>
+                              <SubmitButton variant="secondary" size="sm" title="Enregistrer le rôle">
+                                Enregistrer
+                              </SubmitButton>
                             </form>
                           ) : (
                             <Badge variant={m.role === "owner" ? "accent" : "neutral"}>{ROLE_LABEL[m.role] ?? m.role}</Badge>
@@ -75,9 +90,9 @@ export default async function UsersPage() {
                             {!self ? (
                               <form action={removeMemberAction}>
                                 <input type="hidden" name="user_id" value={m.user_id} />
-                                <Button type="submit" variant="ghost" size="sm" className="text-danger">
+                                <SubmitButton confirmMessage="Retirer ce membre de l'organisation ?" variant="ghost" size="sm" className="text-danger">
                                   Retirer
-                                </Button>
+                                </SubmitButton>
                               </form>
                             ) : null}
                           </TD>
@@ -115,9 +130,9 @@ export default async function UsersPage() {
                           <TD align="right">
                             <form action={revokeInvitationAction}>
                               <input type="hidden" name="id" value={inv.id} />
-                              <Button type="submit" variant="ghost" size="sm" className="text-danger">
+                              <SubmitButton confirmMessage="Révoquer cette invitation ? Le lien ne fonctionnera plus." variant="ghost" size="sm" className="text-danger">
                                 Révoquer
-                              </Button>
+                              </SubmitButton>
                             </form>
                           </TD>
                         </TR>

@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bell, GitMerge } from "lucide-react";
-import { requireOrgContext } from "@/features/auth/dal";
+import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { PageHeader, EmptyState, Callout } from "@/components/ui/page";
 import { ButtonLink } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { searchOffers, type SearchOfferView } from "@/services/sourcing/search";
+import { searchOffers } from "@/services/sourcing/search";
 import { SUPPLIER_CONNECTORS } from "@/integrations/suppliers/core";
 import { sourcingSearchParamsSchema, toOfferFilters } from "@/features/sourcing/schemas";
 import { countPendingMatches, countUnseenAlertEvents } from "@/features/sourcing/queries";
@@ -16,21 +15,16 @@ import { OfferCard } from "@/features/sourcing/components/offer-card";
 import { SourcesPanel } from "@/features/sourcing/components/sources-panel";
 import { LiveSourcesPanel } from "@/features/sourcing/components/live-sources-panel";
 import { PipelineStrip } from "@/features/sourcing/components/pipeline-strip";
-import { SavingsCalculator } from "@/features/sourcing/components/savings-calculator";
-import { fromSearchProvenance, retrievalMethodLabel } from "@/features/sourcing/provenance";
-import { formatMoney, formatRelative } from "@/lib/format";
+import { CurrentSupplierComparison } from "@/features/sourcing/components/current-supplier";
+import { PodiumPanel } from "@/features/sourcing/components/podium";
+import { RejectedOffersPanel } from "@/features/sourcing/components/rejected-offers";
+import { DiscoveryPanel } from "@/features/sourcing/components/discovery-panel";
+import { SourcingStatusCard } from "@/features/sourcing/components/status-card";
+import { loadSourcingStatus } from "@/features/sourcing/status-queries";
+import { listPendingDiscoveredSources } from "@/features/suppliers/discovered-queries";
+import { DiscoveredSourcesPanel } from "@/features/suppliers/components/discovered-sources";
 
 export const metadata: Metadata = { title: "Sourcing" };
-
-/** Offre au prix comparable le plus bas parmi celles affichées (données réelles uniquement). */
-function cheapestView(views: SearchOfferView[]): SearchOfferView | null {
-  let best: SearchOfferView | null = null;
-  for (const v of views) {
-    if (v.comparableUnitPrice === null) continue;
-    if (!best || v.comparableUnitPrice < best.comparableUnitPrice!) best = v;
-  }
-  return best;
-}
 
 export default async function SourcingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await requireOrgContext();
@@ -44,12 +38,15 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
   const params = parsedParams.success ? parsedParams.data : sourcingSearchParamsSchema.parse({});
   const filters = toOfferFilters(params);
   const liveEnabled = params.live !== "0";
-  const [result, { data: supplierRows }, pendingMatches, unseenEvents] = await Promise.all([
+  const [result, { data: supplierRows }, pendingMatches, unseenEvents, pendingDiscovered, status] = await Promise.all([
     searchOffers(ctx, { query: params.q ?? "", skuCode: params.sku ?? null, filters, live: liveEnabled }),
     ctx.supabase.from("suppliers").select("id, name").eq("organization_id", ctx.organization.id).eq("is_archived", false).order("name").limit(300),
     countPendingMatches(ctx),
     countUnseenAlertEvents(ctx),
+    listPendingDiscoveredSources(ctx),
+    loadSourcingStatus(ctx),
   ]);
+  const writable = canWrite(ctx.role);
   const currency = ctx.organization.default_currency;
   const hasQuery = Boolean(params.q) || Boolean(result.sku);
   const makeHref = (overrides: Record<string, string | null>) => {
@@ -79,11 +76,6 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
   const duplicatesCollapsed = result.views.reduce((acc, v) => acc + (v.duplicatesCollapsed ?? 0), 0);
   const toggleLiveHref = makeHref({ live: liveEnabled ? "0" : null, page: null });
   const accountConnectors = SUPPLIER_CONNECTORS.length;
-
-  // Bloc de comparaison : meilleure offre réellement affichée (prix comparable le plus bas).
-  const bestView = cheapestView(result.views);
-  const bestProvenance = bestView ? fromSearchProvenance(bestView.provenance, { sourceType: bestView.offer.source_type, sourceUrl: bestView.offer.source_url, lastSeenAt: bestView.offer.last_seen_at }) : null;
-  const cheaperElsewhere = bestView && result.aggregates.bestPrice !== null && bestView.comparableUnitPrice !== null && result.aggregates.bestPrice < bestView.comparableUnitPrice;
 
   return (
     <>
@@ -124,44 +116,7 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
           </Callout>
         ) : null}
 
-        {skuMode ? (
-          <Card>
-            <CardHeader
-              title={skuMode.costPrice !== null ? "Comparaison avec votre coût actuel" : "Coût d'achat actuel inconnu"}
-              description={skuMode.costPrice !== null ? "Uniquement des offres réellement récupérées : aucune économie n'est affichée sans offre." : "Renseignez le coût d'achat du SKU pour comparer les offres trouvées à votre prix actuel."}
-            />
-            <CardContent>
-              {skuMode.costPrice !== null && bestView && bestView.comparableUnitPrice !== null && bestProvenance ? (
-                <>
-                  <SavingsCalculator
-                    costPrice={skuMode.costPrice}
-                    best={{ price: bestView.comparableUnitPrice, supplierName: bestView.supplierName, supplierId: bestView.offer.supplier?.id ?? bestView.offer.supplier_id, offerId: bestView.offer.id, verifiedLabel: formatRelative(bestProvenance.retrievedAt ?? bestView.offer.last_seen_at), methodLabel: retrievalMethodLabel(bestProvenance) }}
-                    currency={currency}
-                    defaultQuantity={result.requestedQuantity}
-                  />
-                  {cheaperElsewhere ? (
-                    <p className="mt-2 text-xs text-muted">
-                      Une offre à {formatMoney(result.aggregates.bestPrice, currency)} figure sur une autre page de résultats :{" "}
-                      <Link href={makeHref({ sort: "lowest_price", page: null }) as never} className="underline">
-                        classer par prix
-                      </Link>
-                      .
-                    </p>
-                  ) : null}
-                </>
-              ) : skuMode.costPrice !== null ? (
-                <p className="text-sm text-muted">
-                  Prix actuel (votre coût) : <span className="font-semibold text-foreground">{formatMoney(skuMode.costPrice, skuMode.currency)}</span>.{" "}
-                  {result.total === 0 ? "Aucune offre trouvée pour ce SKU : aucune comparaison ni économie possible." : "Aucune offre affichée n'a de prix comparable (devise non convertible) : aucune économie calculable."}
-                </p>
-              ) : (
-                <ButtonLink href={`/stock/${encodeURIComponent(skuMode.code)}/edit`} variant="secondary" size="sm">
-                  Renseigner le coût d&apos;achat
-                </ButtonLink>
-              )}
-            </CardContent>
-          </Card>
-        ) : null}
+        {skuMode ? <CurrentSupplierComparison sku={skuMode} offers={result.skuTopOffers} bestSavings={result.bestSavings} requestedQuantity={result.requestedQuantity} currency={currency} totalOffers={result.total} /> : null}
 
         <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
           <div className="space-y-4">
@@ -169,6 +124,7 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
             {!hasQuery && result.total === 0 ? (
               <EmptyState title="Que recherchez-vous ?" description="Saisissez un produit (ex. « iPhone 13 128 Go noir grade A »), un EAN ou une référence fabricant : vos sources connectées sont interrogées en direct. Les filtres avancés permettent aussi de parcourir toutes les offres d'un fournisseur ou d'une source." />
             ) : result.total === 0 ? (
+              <>
               <EmptyState
                 title="Aucune offre trouvée."
                 description={
@@ -188,13 +144,17 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
                   </div>
                 }
               />
+              <RejectedOffersPanel rejected={result.rejected} currency={currency} />
+              </>
             ) : (
               <>
+                <PodiumPanel podium={result.podium} highlights={result.highlights} awardOffers={result.awardOffers} currency={currency} priceBasisNote={result.priceBasisNote} bestSavings={skuMode ? null : result.bestSavings} requestedQuantity={result.requestedQuantity} />
                 <ResultsHeader aggregates={result.aggregates} sort={params.sort} makeHref={makeHref} />
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                   <span>
                     Recherche {result.stage === "identifier" ? "par identifiant exact (EAN / MPN)" : result.stage === "structured" ? `par attributs normalisés (${[result.parsed.criteria.brand, result.parsed.criteria.model, result.parsed.criteria.storage, result.parsed.criteria.color, result.parsed.criteria.grade ? `grade ${result.parsed.criteria.grade}` : null].filter(Boolean).join(" · ")})` : result.stage === "text" ? "par texte" : "par filtres"}
                     {liveEnabled ? "" : " · offres enregistrées uniquement"} · page {result.page} / {Math.max(1, Math.ceil(result.total / result.pageSize))}
+                    {result.expandedQueries.some((q) => q.useFor === "adapter_search") ? ` · reformulations envoyées aux sources : ${result.expandedQueries.filter((q) => q.useFor === "adapter_search").slice(0, 2).map((q) => `« ${q.text} »`).join(", ")}` : ""}
                   </span>
                   <Link href={alertHref as never} className="font-medium text-foreground underline-offset-2 hover:underline">
                     Créer une alerte pour cette recherche
@@ -206,12 +166,15 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
                   ))}
                 </div>
                 <Pagination page={result.page} pageSize={result.pageSize} total={result.total} makeHref={(p) => makeHref({ page: String(p) })} />
+                <RejectedOffersPanel rejected={result.rejected} currency={currency} />
               </>
             )}
           </div>
           <div className="space-y-4">
             <LiveSourcesPanel summary={live} liveEnabled={liveEnabled} toggleHref={toggleLiveHref} hasQuery={hasQuery} />
+            {hasQuery || !result.discovery.configured ? <DiscoveryPanel discovery={result.discovery} /> : null}
             <SourcesPanel sources={result.sources} accountConnectors={accountConnectors} />
+            <SourcingStatusCard items={status.items} offersTruncated={status.offersTruncated} />
             {result.vatRate === null ? (
               <Callout tone="neutral" title="TVA non renseignée">
                 Les prix TTC ne peuvent pas être ramenés en HT pour la comparaison. <Link href="/settings/organization" className="underline">Renseigner le taux de TVA</Link>.
@@ -219,6 +182,7 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
             ) : null}
           </div>
         </div>
+        {pendingDiscovered.length > 0 || result.discovery.configured ? <DiscoveredSourcesPanel sources={pendingDiscovered} writable={writable} /> : null}
       </div>
     </>
   );

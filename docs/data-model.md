@@ -31,7 +31,8 @@ Toutes les tables vivent dans le schéma `public` de PostgreSQL (Supabase) et po
 
 - `v_sku_sales_stats` : unités vendues 7/30/90 j, fenêtres précédentes, CA 30 j, prix de vente moyen 30 j, première/dernière vente.
 - `v_stock_overview` : une ligne par SKU avec produit, variante, stock, statistiques de vente, valeur de stock, marge unitaire, meilleur prix fournisseur, nombre d'annonces actives.
-- `v_daily_sales` : CA / commandes / unités par jour.
+- `v_daily_sales` : CA / commandes / unités par jour **civil Europe/Paris** et par devise (le CA n'est jamais additionné entre devises ; les autres devises sont affichées à part, non converties).
+- `sku_rotation(org, sku_ids?, days=30)` : rotation = unités vendues / stock moyen, stock moyen reconstitué depuis le journal des mouvements (« Pas assez de données » si fenêtre < 7 j ou stock moyen ≤ 0).
 - `v_unmapped_listings` : annonces actives sans SKU (+ nombre de suggestions en attente).
 
 ## Fonctions transactionnelles (`security definer`, vérifient l'appartenance à l'organisation)
@@ -46,7 +47,13 @@ Toutes les tables vivent dans le schéma `public` de PostgreSQL (Supabase) et po
 | `ingest_external_order(...)` | idempotence commande, déduction unique du stock, annulation → recrédit unique |
 | `map_listing_to_sku(listing, sku, source)` | association annonce ↔ SKU ; rattache les lignes passées sans toucher au stock |
 | `apply_pending_sales_for_sku(sku)` | applique explicitement les ventes passées non déduites |
-| `receive_purchase_order_items(po, receipts)` | réception → mouvements `receipt`, coût de référence |
+| `receive_purchase_order_items(po, receipts)` | réception → mouvements `receipt` ; refusée si brouillon / annulée / déjà reçue ; sur-réception plafonnée ; `expected_received` (quantité déjà reçue vue par l'utilisateur) refuse un double envoi (`PURCHASE_ORDER_STALE`) ; coût de référence fixé seulement s'il était inconnu et dans la devise du SKU |
+
+## Règles métier stock / achats (migration 20261008002000)
+
+- Stock : disponible = en main − réservé. Seules les ventes réelles (`sale`) peuvent rendre le stock négatif ; ajustements, corrections, transferts sortants et réceptions sont refusés (`INSUFFICIENT_STOCK`). Passage sous zéro → alerte `negative_stock` ouverte, résolue automatiquement au retour ≥ 0. Mouvement ≤ 1 000 000 unités, stock ≤ 1 milliard.
+- Suppression : l'archivage est le modèle. Un produit / une variante / un SKU ayant des mouvements, ventes ou lignes d'achat ne peut pas être supprimé par un client (`SKU_HAS_HISTORY`).
+- Commandes fournisseurs : total toujours dérivé des lignes (NULL si coût inconnu ou ligne dans une autre devise) ; transitions client `draft→sent|cancelled`, `sent→draft|confirmed|cancelled`, `confirmed|partially_received→cancelled` ; `partially_received` / `received` uniquement via la réception ; lignes figées après confirmation ; seule une commande brouillon (ou annulée sans réception) est supprimable.
 
 ## Règles de sécurité
 

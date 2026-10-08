@@ -1327,7 +1327,7 @@ isOneToOne: false
                   ]
                 },"v_daily_sales": {
                   Row: {
-                    "day": string | null,"orders_count": number | null,"organization_id": string | null,"revenue": number | null,"units": number | null
+                    "currency": string | null,"day": string | null,"orders_count": number | null,"organization_id": string | null,"revenue": number | null,"units": number | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -1341,7 +1341,7 @@ isOneToOne: false
                   ]
                 },"v_sku_sales_stats": {
                   Row: {
-                    "avg_sale_price_30d": number | null,"first_sale_at": string | null,"last_sale_at": string | null,"organization_id": string | null,"revenue_30d": number | null,"sku_id": string | null,"units_30d": number | null,"units_7d": number | null,"units_90d": number | null,"units_prev_30d": number | null,"units_prev_7d": number | null
+                    "avg_sale_price_30d": number | null,"first_sale_at": string | null,"foreign_currency_units_30d": number | null,"last_sale_at": string | null,"organization_id": string | null,"revenue_30d": number | null,"sku_id": string | null,"units_30d": number | null,"units_7d": number | null,"units_90d": number | null,"units_prev_30d": number | null,"units_prev_7d": number | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -1355,7 +1355,7 @@ isOneToOne: false
                   ]
                 },"v_stock_overview": {
                   Row: {
-                    "active_listings_count": number | null,"avg_sale_price_30d": number | null,"barcode": string | null,"best_supplier_price": number | null,"brand": string | null,"category": string | null,"code": string | null,"condition": Database["public"]['Enums']["product_condition"] | null,"cost_price": number | null,"currency": string | null,"default_supplier_id": string | null,"first_sale_at": string | null,"grade": string | null,"image_url": string | null,"is_active": boolean | null,"last_movement_at": string | null,"last_sale_at": string | null,"lead_time_days": number | null,"location": string | null,"organization_id": string | null,"product_id": string | null,"product_name": string | null,"quantity_available": number | null,"quantity_on_hand": number | null,"quantity_reserved": number | null,"reorder_point": number | null,"revenue_30d": number | null,"safety_stock": number | null,"sale_price": number | null,"sku_id": string | null,"stock_value": number | null,"supplier_offers_count": number | null,"unit_margin": number | null,"units_30d": number | null,"units_7d": number | null,"units_90d": number | null,"units_prev_30d": number | null,"units_prev_7d": number | null,"variant_id": string | null,"variant_name": string | null
+                    "active_listings_count": number | null,"avg_sale_price_30d": number | null,"barcode": string | null,"best_supplier_price": number | null,"brand": string | null,"category": string | null,"channel_providers": (string)[] | null,"code": string | null,"condition": Database["public"]['Enums']["product_condition"] | null,"cost_price": number | null,"currency": string | null,"default_supplier_id": string | null,"first_sale_at": string | null,"foreign_currency_units_30d": number | null,"grade": string | null,"image_url": string | null,"is_active": boolean | null,"last_movement_at": string | null,"last_sale_at": string | null,"lead_time_days": number | null,"location": string | null,"organization_id": string | null,"product_archived": boolean | null,"product_id": string | null,"product_name": string | null,"quantity_available": number | null,"quantity_on_hand": number | null,"quantity_reserved": number | null,"reorder_point": number | null,"revenue_30d": number | null,"safety_stock": number | null,"sale_price": number | null,"sku_id": string | null,"stock_value": number | null,"supplier_ids": (string)[] | null,"supplier_offers_count": number | null,"unit_margin": number | null,"units_30d": number | null,"units_7d": number | null,"units_90d": number | null,"units_prev_30d": number | null,"units_prev_7d": number | null,"variant_id": string | null,"variant_name": string | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -1486,6 +1486,12 @@ isOneToOne: false
 "ingest_external_order":
 { Args: { "p_connection_id": string,"p_items": Json,"p_order": Json,"p_organization_id": string,"p_provider": Database["public"]['Enums']["channel_provider"],"p_sales_channel_id": string }; Returns: Json
                            },
+"install_same_org_guards":
+{ Args: { "p_table": unknown }; Returns: undefined
+                           },
+"is_client_role":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
 "is_org_admin":
 { Args: { "p_org_id": string }; Returns: boolean
                            },
@@ -1542,6 +1548,9 @@ isOneToOne: false
 "pgp_armor_headers":
 { Args: { "": string }; Returns: Record<string, unknown>[]
                            },
+"purchase_order_computed_total":
+{ Args: { "p_currency": string,"p_purchase_order_id": string }; Returns: number
+                           },
 "receive_purchase_order_items":
 { Args: { "p_purchase_order_id": string,"p_receipts": Json }; Returns: {
               "created_at": string,
@@ -1575,6 +1584,17 @@ isOneToOne: false
                            },
 "show_trgm":
 { Args: { "": string }; Returns: (string)[]
+                           },
+"sku_has_history":
+{ Args: { "p_sku_id": string }; Returns: boolean
+                           },
+"sku_rotation":
+{ Args: { "p_days"?: number,"p_organization_id": string,"p_sku_ids"?: (string)[] }; Returns: {
+              "avg_on_hand": number,"sku_id": string,"units_sold": number,"window_days": number,"window_start": string
+            }[]
+                           },
+"store_refreshed_access_token":
+{ Args: { "p_access_token_enc": string,"p_connection_id": string,"p_expires_at": string,"p_refresh_token_enc_used": string }; Returns: string
                            },
 "unaccent":
 { Args: { "": string }; Returns: string

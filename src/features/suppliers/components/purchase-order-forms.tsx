@@ -1,10 +1,11 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, type ReactNode } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Field, FormError, FormSuccess, Input, Select, Textarea } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { ActionResult } from "@/lib/result";
-import { addPurchaseOrderItemAction, createPurchaseOrderAction, receivePurchaseOrderAction } from "@/features/suppliers/actions";
+import type { ButtonProps } from "@/components/ui/button";
+import { addPurchaseOrderItemAction, createPurchaseOrderAction, receivePurchaseOrderAction, removePurchaseOrderItemAction, updatePurchaseOrderStatusAction } from "@/features/suppliers/actions";
 import type { SkuOption } from "@/features/suppliers/components/manual-offer-form";
 
 export interface OrderPrefill {
@@ -49,10 +50,10 @@ export function CreatePurchaseOrderForm({ supplierId, currency, skus, prefill }:
             </Select>
           </Field>
           <Field label="Quantité" htmlFor="po_qty" error={fe?.quantity}>
-            <Input id="po_qty" name="quantity" type="number" min={1} step={1} defaultValue={prefill?.quantity ?? ""} />
+            <Input id="po_qty" name="quantity" type="number" min={1} max={100000} step={1} defaultValue={prefill?.quantity ?? ""} />
           </Field>
           <Field label="Coût unitaire" htmlFor="po_cost" error={fe?.unit_cost} hint="Vide = inconnu">
-            <Input id="po_cost" name="unit_cost" type="number" min={0} step="0.01" defaultValue={prefill?.unitCost ?? ""} />
+            <Input id="po_cost" name="unit_cost" type="number" min={0} max={1000000} step="0.01" defaultValue={prefill?.unitCost ?? ""} />
           </Field>
           <Field label="Notes" htmlFor="po_notes" error={fe?.notes} className="sm:col-span-2">
             <Textarea id="po_notes" name="notes" className="min-h-9" />
@@ -83,10 +84,10 @@ export function AddItemForm({ purchaseOrderId, skus }: { purchaseOrderId: string
         </Select>
       </Field>
       <Field label="Quantité" htmlFor={`ai_qty_${purchaseOrderId}`} error={err?.fieldErrors?.quantity}>
-        <Input id={`ai_qty_${purchaseOrderId}`} name="quantity" type="number" min={1} step={1} required className="w-24" />
+        <Input id={`ai_qty_${purchaseOrderId}`} name="quantity" type="number" min={1} max={100000} step={1} required className="w-24" />
       </Field>
       <Field label="Coût unitaire" htmlFor={`ai_cost_${purchaseOrderId}`} error={err?.fieldErrors?.unit_cost}>
-        <Input id={`ai_cost_${purchaseOrderId}`} name="unit_cost" type="number" min={0} step="0.01" className="w-28" />
+        <Input id={`ai_cost_${purchaseOrderId}`} name="unit_cost" type="number" min={0} max={1000000} step="0.01" className="w-28" />
       </Field>
       <SubmitButton size="md" variant="secondary" pendingText="Ajout…">
         Ajouter la ligne
@@ -106,17 +107,61 @@ export function ReceiveForm({ purchaseOrderId, items }: { purchaseOrderId: strin
       <input type="hidden" name="purchase_order_id" value={purchaseOrderId} />
       <FormError message={err?.error} />
       {state?.ok ? <FormSuccess message={state.data.message} /> : null}
-      <p className="text-xs text-muted">Chaque quantité reçue crée un mouvement de stock « réception fournisseur » et devient le coût de référence du SKU s'il était inconnu.</p>
+      <p className="text-xs text-muted">
+        Chaque quantité reçue crée un mouvement de stock « réception fournisseur ». Une quantité supérieure au reste à recevoir est plafonnée. Le coût unitaire devient le coût de référence du SKU uniquement s'il était inconnu et dans la même devise.
+      </p>
       <ul className="space-y-2">
         {remaining.map((i) => (
           <li key={i.id} className="flex flex-wrap items-center gap-3 text-sm">
             <span className="min-w-[220px] flex-1">{i.label}</span>
             <span className="text-xs text-muted">reste {i.ordered - i.received} / {i.ordered}</span>
+            {/* Jeton anti double envoi : la base refuse la réception si la quantité déjà reçue a changé. */}
+            <input type="hidden" name={`expected_${i.id}`} value={i.received} />
             <Input name={`receive_${i.id}`} type="number" min={0} max={i.ordered - i.received} step={1} defaultValue={i.ordered - i.received} className="w-24" aria-label={`Quantité reçue pour ${i.label}`} />
           </li>
         ))}
       </ul>
       <SubmitButton pendingText="Réception…">Enregistrer la réception</SubmitButton>
+    </form>
+  );
+}
+
+/**
+ * Bouton d'action sur une commande (changement de statut, retrait de ligne) avec retour
+ * visible : message de succès ou raison du refus (transition interdite, commande vide…).
+ */
+export function PurchaseOrderActionButton({
+  kind,
+  fields,
+  children,
+  confirmMessage,
+  pendingText,
+  variant,
+  size = "sm",
+  className,
+  disabled,
+}: {
+  kind: "status" | "remove_item";
+  fields: Record<string, string>;
+  children: ReactNode;
+  confirmMessage?: string;
+  pendingText?: string;
+  variant?: ButtonProps["variant"];
+  size?: ButtonProps["size"];
+  className?: string;
+  disabled?: boolean;
+}) {
+  const [state, action] = useActionState<ActionResult<{ message: string }> | null, FormData>(kind === "status" ? updatePurchaseOrderStatusAction : removePurchaseOrderItemAction, null);
+  return (
+    <form action={action} className="inline-flex flex-col items-end gap-1">
+      {Object.entries(fields).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
+      <SubmitButton size={size} variant={variant} className={className} disabled={disabled} confirmMessage={confirmMessage} pendingText={pendingText}>
+        {children}
+      </SubmitButton>
+      {state && !state.ok ? <span role="alert" className="max-w-xs text-right text-xs text-danger">{state.error}</span> : null}
+      {state?.ok ? <span role="status" className="text-xs text-success">{state.data.message}</span> : null}
     </form>
   );
 }

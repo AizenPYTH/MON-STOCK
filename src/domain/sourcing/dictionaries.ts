@@ -97,23 +97,34 @@ export const MODEL_PATTERNS: ModelPattern[] = [
   },
   {
     brand: "apple",
-    regex: /\bipad\s?(pro|air|mini)?\s?(\d{1,2}(?:[.,]\d)?)?\s?(?:(?:pouces?|inch|")\s?)?(?:(20\d{2}))?/,
+    // taille (décimale, ou 11 / 12 / 13 pouces), génération (1–10, « 9e gén. », « 9th generation »), année.
+    // Chaque nombre est borné (?![a-z0-9]) : « iPad Air 2022 » ne donne jamais « ipad air 20 ».
+    regex: /\bipad\s?(pro|air|mini)?(?:\s?(\d{1,2}[.,]\d|1[1-3])(?![a-z0-9])(?:\s?(?:pouces?|inch))?)?(?:\s?(\d{1,2})(?:\s?(?:e|eme|th|nd|rd|st))?(?:\s?gen(?:eration)?)?(?![a-z0-9]))?(?:\s?(20[12]\d)(?![a-z0-9]))?/,
     build: (m) => {
       const v = m[1] ?? "";
       const size = m[2]?.replace(",", ".") ?? "";
-      const year = m[3] ?? "";
-      const model = ["ipad", v, size, year].filter(Boolean).join(" ");
-      const display = ["iPad", v ? cap(v) : "", size ? `${size}"` : "", year].filter(Boolean).join(" ");
+      const gen = m[3] && Number(m[3]) >= 1 && Number(m[3]) <= 10 ? String(Number(m[3])) : "";
+      if (m[3] && !gen) return null;
+      const year = m[4] ?? "";
+      const model = ["ipad", v, size, gen, year].filter(Boolean).join(" ");
+      const display = ["iPad", v ? cap(v) : "", size ? `${size}"` : "", gen, year].filter(Boolean).join(" ");
       return { model, display };
     },
   },
   {
     brand: "apple",
-    regex: /\bmacbook\s?(air|pro)?\s?(1[3-6])?\b/,
+    // puce Apple Silicon (M1–M4, Pro / Max / Ultra) conservée dans le modèle : « MacBook Air M2 » ≠ « MacBook Air M1 ».
+    // L'année n'entre dans le modèle qu'en l'absence de puce (générations Intel).
+    regex: /\bmacbook\s?(air|pro)?(?:\s?(1[3-6](?:[.,]\d)?)(?![a-z0-9])(?:\s?(?:pouces?|inch))?)?(?:\s?(m[1-4](?:\s?(?:pro|max|ultra))?)(?![a-z0-9]))?(?:\s?(20[012]\d)(?![a-z0-9]))?(?![a-z0-9])/,
     build: (m) => {
       const v = m[1] ?? "";
-      const size = m[2] ?? "";
-      return { model: ["macbook", v, size].filter(Boolean).join(" "), display: ["MacBook", v ? cap(v) : "", size ? `${size}"` : ""].filter(Boolean).join(" ") };
+      const size = m[2]?.replace(",", ".") ?? "";
+      const chip = m[3]?.replace(/\s+/g, " ") ?? "";
+      const year = !chip && m[4] ? m[4] : "";
+      return {
+        model: ["macbook", v, size, chip, year].filter(Boolean).join(" "),
+        display: ["MacBook", v ? cap(v) : "", size ? `${size}"` : "", chip ? chip.toUpperCase().replace(/ (PRO|MAX|ULTRA)$/, (x) => cap(x.toLowerCase())) : "", year].filter(Boolean).join(" "),
+      };
     },
   },
   {
@@ -140,7 +151,7 @@ export const MODEL_PATTERNS: ModelPattern[] = [
   // ---- Samsung ----
   {
     brand: "samsung",
-    regex: /\bgalaxy\s?s(\d{2})\s?(ultra|plus|\+|fe|edge)?\b/,
+    regex: /\bgalaxy\s?s(\d{2})\s?(ultra|plus|\+|fe|edge)?(?![a-z0-9])/,
     build: (m) => {
       const v = variantWord(m[2]);
       return { model: `galaxy s${m[1]}${v ? ` ${v}` : ""}`, display: `Galaxy S${m[1]}${v ? ` ${v === "fe" ? "FE" : cap(v)}` : ""}` };
@@ -148,7 +159,7 @@ export const MODEL_PATTERNS: ModelPattern[] = [
   },
   {
     brand: "samsung",
-    regex: /\bgalaxy\s?note\s?(\d{1,2})\s?(ultra|plus|\+)?\b/,
+    regex: /\bgalaxy\s?note\s?(\d{1,2})\s?(ultra|plus|\+)?(?![a-z0-9])/,
     build: (m) => {
       const v = variantWord(m[2]);
       return { model: `galaxy note ${m[1]}${v ? ` ${v}` : ""}`, display: `Galaxy Note ${m[1]}${v ? ` ${cap(v)}` : ""}` };
@@ -161,7 +172,7 @@ export const MODEL_PATTERNS: ModelPattern[] = [
   },
   {
     brand: "samsung",
-    regex: /\bgalaxy\s?tab\s?(s|a)\s?(\d{1,2})\s?(ultra|plus|\+|fe|lite)?\b/,
+    regex: /\bgalaxy\s?tab\s?(s|a)\s?(\d{1,2})\s?(ultra|plus|\+|fe|lite)?(?![a-z0-9])/,
     build: (m) => {
       const v = variantWord(m[3]);
       return { model: `galaxy tab ${m[1]}${m[2]}${v ? ` ${v}` : ""}`, display: `Galaxy Tab ${(m[1] ?? "").toUpperCase()}${m[2]}${v ? ` ${v === "fe" ? "FE" : cap(v)}` : ""}` };
@@ -199,7 +210,7 @@ export const MODEL_PATTERNS: ModelPattern[] = [
   // ---- Xiaomi ----
   {
     brand: "xiaomi",
-    regex: /\bredmi\s?(note)?\s?(\d{1,2})\s?(pro\s?\+|pro\s?plus|pro|s|t|c|lite|ultra)?\b/,
+    regex: /\bredmi\s?(note)?\s?(\d{1,2})\s?(pro\s?\+|pro\s?plus|pro|s|t|c|lite|ultra)?(?![a-z0-9])/,
     build: (m) => {
       const v = (m[3] ?? "").replace(/\s+/g, " ").replace("pro +", "pro plus");
       return { model: ["redmi", m[1], m[2], v].filter(Boolean).join(" "), display: ["Redmi", m[1] ? "Note" : "", m[2], v ? cap(v) : ""].filter(Boolean).join(" ") };
@@ -221,7 +232,7 @@ export const MODEL_PATTERNS: ModelPattern[] = [
   // ---- Huawei / Honor ----
   {
     brand: "huawei",
-    regex: /\bhuawei\s+(p|mate|nova)\s?(\d{1,2})\s?(pro\s?\+|pro|lite)?\b/,
+    regex: /\bhuawei\s+(p|mate|nova)\s?(\d{1,2})\s?(pro\s?\+|pro|lite)?(?![a-z0-9])/,
     build: (m) => ({ model: [`${m[1]}${m[2]}`, m[3]?.replace(/\s+/g, "")].filter(Boolean).join(" "), display: [`${(m[1] ?? "").toUpperCase()}${m[2]}`, m[3] ? cap(m[3]) : ""].filter(Boolean).join(" ") }),
   },
   {

@@ -7,6 +7,8 @@ import { ButtonLink } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { listSuppliers } from "@/features/suppliers/queries";
+import { listPendingDiscoveredSources } from "@/features/suppliers/discovered-queries";
+import { DiscoveredSourcesPanel } from "@/features/suppliers/components/discovered-sources";
 import { formatRelative } from "@/lib/format";
 import { SOURCE_TYPE_LABEL } from "@/features/sourcing/labels";
 
@@ -16,7 +18,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   const ctx = await requireOrgContext();
   const sp = await searchParams;
   const archived = sp.archived === "1";
-  const rows = await listSuppliers(ctx, { archived });
+  const [rows, pendingDiscovered] = await Promise.all([listSuppliers(ctx, { archived }), archived ? Promise.resolve([]) : listPendingDiscoveredSources(ctx)]);
   const writable = canWrite(ctx.role);
   return (
     <>
@@ -36,6 +38,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
           </>
         }
       />
+      {pendingDiscovered.length > 0 ? <div className="mb-5"><DiscoveredSourcesPanel sources={pendingDiscovered} writable={writable} /></div> : null}
       {rows.length === 0 ? (
         <EmptyState
           title={archived ? "Aucun fournisseur archivé." : "Vous n'avez encore ajouté aucun fournisseur."}

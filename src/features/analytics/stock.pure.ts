@@ -19,6 +19,8 @@ export interface StockTotals {
   skusUnknownCost: number;
   /** parmi eux, ceux qui ont du stock (donc exclus de la valorisation) */
   skusUnknownCostWithStock: number;
+  /** SKU valorisés dans une autre devise que celle de l'organisation (exclus de stockValueKnown) */
+  skusOtherCurrency: number;
 }
 
 export interface StockAnalytics {
@@ -54,9 +56,9 @@ export function isDeadStock(view: StockRowView, now: Date, days = DEAD_STOCK_DAY
   return since === null || since >= days;
 }
 
-export function groupStockViews(views: readonly StockRowView[], now: Date = new Date(), opts: { topN?: number; truncated?: boolean } = {}): StockAnalytics {
+export function groupStockViews(views: readonly StockRowView[], now: Date = new Date(), opts: { topN?: number; truncated?: boolean; currency?: string } = {}): StockAnalytics {
   const byLevel: Record<StockLevel, StockRowView[]> = { out_of_stock: [], at_risk: [], low: [], normal: [] };
-  const totals: StockTotals = { skus: views.length, unitsOnHand: 0, stockValueKnown: 0, skusValued: 0, skusUnknownCost: 0, skusUnknownCostWithStock: 0 };
+  const totals: StockTotals = { skus: views.length, unitsOnHand: 0, stockValueKnown: 0, skusValued: 0, skusUnknownCost: 0, skusUnknownCostWithStock: 0, skusOtherCurrency: 0 };
   const negativeStock: StockRowView[] = [];
   const deadStock: StockRowView[] = [];
 
@@ -68,8 +70,13 @@ export function groupStockViews(views: readonly StockRowView[], now: Date = new 
       totals.skusUnknownCost++;
       if (onHand > 0) totals.skusUnknownCostWithStock++;
     } else if (onHand > 0) {
-      totals.stockValueKnown += v.row.cost_price * onHand;
-      totals.skusValued++;
+      if (opts.currency && v.row.currency && v.row.currency.toUpperCase() !== opts.currency.toUpperCase()) {
+        // Jamais d'addition entre devises : signalé à part.
+        totals.skusOtherCurrency++;
+      } else {
+        totals.stockValueKnown += v.row.cost_price * onHand;
+        totals.skusValued++;
+      }
     }
     if (onHand < 0 || (v.row.quantity_available ?? 0) < 0) negativeStock.push(v);
     if (isDeadStock(v, now)) deadStock.push(v);

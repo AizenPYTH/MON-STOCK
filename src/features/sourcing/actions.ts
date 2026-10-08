@@ -21,21 +21,33 @@ export interface SkuSearchResult {
   salePrice: number | null;
 }
 
+type MessageResult = ActionResult<{ message: string }>;
+
 /** Recherche de SKU pour l'association manuelle (appelée depuis un composant client). */
-export async function searchSkusAction(q: string): Promise<SkuSearchResult[]> {
-  const ctx = await requireOrgContextForAction();
-  const rows = await searchSkus(ctx, q.slice(0, 120), 20);
-  return rows
-    .filter((r) => r.sku_id && r.code)
-    .map((r) => ({ skuId: r.sku_id!, code: r.code!, label: `${r.product_name ?? ""}${r.variant_name && r.variant_name !== "Standard" ? ` · ${r.variant_name}` : ""}`, costPrice: r.cost_price, salePrice: r.sale_price }));
+export async function searchSkusAction(q: string): Promise<ActionResult<SkuSearchResult[]>> {
+  try {
+    const ctx = await requireOrgContextForAction();
+    const rows = await searchSkus(ctx, String(q ?? "").slice(0, 120), 20);
+    return ok(
+      rows
+        .filter((r) => r.sku_id && r.code)
+        .map((r) => ({ skuId: r.sku_id!, code: r.code!, label: `${r.product_name ?? ""}${r.variant_name && r.variant_name !== "Standard" ? ` · ${r.variant_name}` : ""}`, costPrice: r.cost_price, salePrice: r.sale_price })),
+    );
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
 /** Suggestions de correspondance calculées à l'ouverture du dialogue d'association. */
-export async function suggestMatchesAction(offerId: string): Promise<OfferMatchSuggestion[]> {
-  const ctx = await requireOrgContextForAction();
-  const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, title_original, ean, mpn, external_product_id, brand").eq("organization_id", ctx.organization.id).eq("id", offerId).maybeSingle();
-  if (!offer) return [];
-  return getOfferMatchSuggestions(ctx, offer);
+export async function suggestMatchesAction(offerId: string): Promise<ActionResult<OfferMatchSuggestion[]>> {
+  try {
+    const ctx = await requireOrgContextForAction();
+    const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, title_original, ean, mpn, external_product_id, brand").eq("organization_id", ctx.organization.id).eq("id", String(offerId ?? "")).maybeSingle();
+    if (!offer) return ok([]);
+    return ok(await getOfferMatchSuggestions(ctx, offer));
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
 async function confirmLink(ctxOrgId: string, supabase: Awaited<ReturnType<typeof requireOrgContextForAction>>["supabase"], userId: string, offerId: string, skuId: string, sourcingProductId: string | null): Promise<void> {
@@ -71,46 +83,65 @@ export async function linkOfferToSkuAction(_prev: ActionResult<{ skuCode: string
   }
 }
 
-export async function unlinkOfferAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const offerId = String(formData.get("offer_id") ?? "");
-  const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, supplier_id, sku_id").eq("organization_id", ctx.organization.id).eq("id", offerId).maybeSingle();
-  if (!offer || !offer.sku_id) return;
-  await ctx.supabase.from("sourcing_offers").update({ sku_id: null }).eq("id", offer.id);
-  await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: new Date().toISOString() }).eq("offer_id", offer.id).eq("sku_id", offer.sku_id);
-  revalidatePath(`/sourcing/offers/${offer.id}`);
-  revalidatePath(`/suppliers/${offer.supplier_id}/offers`);
-}
-
-export async function setOfferStatusAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const parsed = offerStatusSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
-  const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, supplier_id").eq("organization_id", ctx.organization.id).eq("id", parsed.data.offer_id).maybeSingle();
-  if (!offer) return;
-  await ctx.supabase.from("sourcing_offers").update({ status: parsed.data.status, expired_at: null }).eq("id", offer.id);
-  revalidatePath(`/sourcing/offers/${offer.id}`);
-  revalidatePath(`/suppliers/${offer.supplier_id}/offers`);
-  revalidatePath("/sourcing");
-}
-
-export async function decideMatchAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const parsed = matchDecisionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
-  const { data: match } = await ctx.supabase.from("product_matches").select("id, offer_id, sku_id, sourcing_product_id, status").eq("organization_id", ctx.organization.id).eq("id", parsed.data.match_id).maybeSingle();
-  if (!match || match.status !== "suggested") return;
-  const now = new Date().toISOString();
-  if (parsed.data.decision === "reject") {
-    await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: now }).eq("id", match.id);
-  } else if (match.offer_id) {
-    await confirmLink(ctx.organization.id, ctx.supabase, ctx.user.id, match.offer_id, match.sku_id, match.sourcing_product_id);
-  } else {
-    await ctx.supabase.from("product_matches").update({ status: "confirmed", decided_by: ctx.user.id, decided_at: now }).eq("id", match.id);
-    await applyConfirmedMatch(ctx.supabase, ctx.organization.id, { offerId: null, skuId: match.sku_id, sourcingProductId: match.sourcing_product_id });
+export async function unlinkOfferAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const offerId = String(formData.get("offer_id") ?? "");
+    const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, supplier_id, sku_id").eq("organization_id", ctx.organization.id).eq("id", offerId).maybeSingle();
+    if (!offer) return fail("Offre introuvable.");
+    if (!offer.sku_id) return ok({ message: "Cette offre n'est associée à aucun SKU." });
+    const { error } = await ctx.supabase.from("sourcing_offers").update({ sku_id: null }).eq("organization_id", ctx.organization.id).eq("id", offer.id);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: new Date().toISOString() }).eq("organization_id", ctx.organization.id).eq("offer_id", offer.id).eq("sku_id", offer.sku_id);
+    revalidatePath(`/sourcing/offers/${offer.id}`);
+    revalidatePath(`/suppliers/${offer.supplier_id}/offers`);
+    return ok({ message: "Offre dissociée du SKU." });
+  } catch (e) {
+    return fail(toUserMessage(e));
   }
-  revalidatePath("/sourcing/matches");
-  if (match.offer_id) revalidatePath(`/sourcing/offers/${match.offer_id}`);
+}
+
+export async function setOfferStatusAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const parsed = offerStatusSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return fail("Statut d'offre invalide.");
+    const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, supplier_id").eq("organization_id", ctx.organization.id).eq("id", parsed.data.offer_id).maybeSingle();
+    if (!offer) return fail("Offre introuvable.");
+    const { error } = await ctx.supabase.from("sourcing_offers").update({ status: parsed.data.status, expired_at: null }).eq("organization_id", ctx.organization.id).eq("id", offer.id);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath(`/sourcing/offers/${offer.id}`);
+    revalidatePath(`/suppliers/${offer.supplier_id}/offers`);
+    revalidatePath("/sourcing");
+    return ok({ message: parsed.data.status === "rejected" ? "Offre rejetée : exclue des recherches." : "Offre réactivée." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
+}
+
+export async function decideMatchAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const parsed = matchDecisionSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return fail("Décision invalide.");
+    const { data: match } = await ctx.supabase.from("product_matches").select("id, offer_id, sku_id, sourcing_product_id, status").eq("organization_id", ctx.organization.id).eq("id", parsed.data.match_id).maybeSingle();
+    if (!match) return fail("Correspondance introuvable.");
+    if (match.status !== "suggested") return fail("Cette correspondance a déjà été traitée.");
+    const now = new Date().toISOString();
+    if (parsed.data.decision === "reject") {
+      await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: now }).eq("organization_id", ctx.organization.id).eq("id", match.id);
+    } else if (match.offer_id) {
+      await confirmLink(ctx.organization.id, ctx.supabase, ctx.user.id, match.offer_id, match.sku_id, match.sourcing_product_id);
+    } else {
+      await ctx.supabase.from("product_matches").update({ status: "confirmed", decided_by: ctx.user.id, decided_at: now }).eq("organization_id", ctx.organization.id).eq("id", match.id);
+      await applyConfirmedMatch(ctx.supabase, ctx.organization.id, { offerId: null, skuId: match.sku_id, sourcingProductId: match.sourcing_product_id });
+    }
+    revalidatePath("/sourcing/matches");
+    if (match.offer_id) revalidatePath(`/sourcing/offers/${match.offer_id}`);
+    return ok({ message: parsed.data.decision === "reject" ? "Correspondance rejetée." : "Correspondance confirmée." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -161,28 +192,46 @@ export async function saveAlertAction(_prev: ActionResult | null, formData: Form
   redirect("/sourcing/alerts");
 }
 
-export async function toggleAlertAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const id = String(formData.get("alert_id") ?? "");
-  const active = String(formData.get("active") ?? "true") === "true";
-  await ctx.supabase.from("sourcing_alerts").update({ is_active: active }).eq("organization_id", ctx.organization.id).eq("id", id);
-  revalidatePath("/sourcing/alerts");
+export async function toggleAlertAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const id = String(formData.get("alert_id") ?? "");
+    const active = String(formData.get("active") ?? "true") === "true";
+    const { error } = await ctx.supabase.from("sourcing_alerts").update({ is_active: active }).eq("organization_id", ctx.organization.id).eq("id", id);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath("/sourcing/alerts");
+    return ok({ message: active ? "Alerte réactivée." : "Alerte mise en pause." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
-export async function deleteAlertAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const id = String(formData.get("alert_id") ?? "");
-  await ctx.supabase.from("sourcing_alerts").delete().eq("organization_id", ctx.organization.id).eq("id", id);
-  revalidatePath("/sourcing/alerts");
+export async function deleteAlertAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const id = String(formData.get("alert_id") ?? "");
+    const { error } = await ctx.supabase.from("sourcing_alerts").delete().eq("organization_id", ctx.organization.id).eq("id", id);
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath("/sourcing/alerts");
+    return ok({ message: "Alerte supprimée." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
-export async function markAlertEventsSeenAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const alertId = String(formData.get("alert_id") ?? "");
-  let q = ctx.supabase.from("sourcing_alert_events").update({ seen_at: new Date().toISOString() }).eq("organization_id", ctx.organization.id).is("seen_at", null);
-  if (alertId) q = q.eq("alert_id", alertId);
-  await q;
-  revalidatePath("/sourcing/alerts");
+export async function markAlertEventsSeenAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const alertId = String(formData.get("alert_id") ?? "");
+    let q = ctx.supabase.from("sourcing_alert_events").update({ seen_at: new Date().toISOString() }).eq("organization_id", ctx.organization.id).is("seen_at", null);
+    if (alertId) q = q.eq("alert_id", alertId);
+    const { error } = await q;
+    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    revalidatePath("/sourcing/alerts");
+    return ok({ message: "Événements marqués comme vus." });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
 export async function evaluateAlertsNowAction(_prev: ActionResult<{ message: string }> | null, _formData: FormData): Promise<ActionResult<{ message: string }>> {

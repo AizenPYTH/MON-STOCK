@@ -47,7 +47,7 @@ export async function ebayRestGet(auth: ConnectorAuth, url: string, label: strin
       },
       { provider: EBAY_PROVIDER, label },
     );
-    const json = await readJson(res);
+    const json = await readJson(res, EBAY_PROVIDER);
     if (res.status === 401) {
       if (attempt === 0) continue;
       const { message, errorIds } = summarizeRestErrors(json);

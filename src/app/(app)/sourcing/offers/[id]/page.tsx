@@ -6,7 +6,7 @@ import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { PageHeader, DescriptionList, Stat, Callout } from "@/components/ui/page";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { getOfferDetail } from "@/features/sourcing/queries";
 import { LinkOfferDialog } from "@/features/sourcing/components/link-offer-dialog";
 import { Sparkline } from "@/features/sourcing/components/sparkline";
@@ -14,11 +14,38 @@ import { deliveryLabel } from "@/features/sourcing/delivery";
 import { OfferTraceability } from "@/features/sourcing/components/offer-traceability";
 import { retrievalMethodLabel } from "@/features/sourcing/provenance";
 import { setOfferStatusAction, unlinkOfferAction } from "@/features/sourcing/actions";
+import { ActionButtonForm } from "@/features/sourcing/components/action-button-form";
 import { formatDateTime, formatMoney, formatNumber, NOT_PROVIDED } from "@/lib/format";
 import { ANOMALY_LABEL, type AnomalyCode } from "@/domain/sourcing/validation";
 import { MATCH_METHOD_LABEL } from "@/domain/sourcing/matching";
 import { OPPORTUNITY_LABEL } from "@/domain/sourcing/opportunities";
 import { CONDITION_LABEL, OFFER_STATUS_LABEL, SOURCE_TYPE_LABEL, STOCK_STATUS_LABEL, TAX_LABEL } from "@/features/sourcing/labels";
+import { safeExternalUrl } from "@/lib/utils";
+import { ConfidenceBadge } from "@/features/sourcing/components/confidence-badge";
+import type { PriceInsights } from "@/domain/sourcing/price-insights";
+
+function InsightsBlock({ insights, currency, title }: { insights: PriceInsights; currency: string; title: string }) {
+  return (
+    <div className="space-y-1 text-sm">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
+      {!insights.reliable ? (
+        <p className="text-muted">{insights.reason ?? "Historique insuffisant"}</p>
+      ) : (
+        <>
+          {insights.usualRange ? (
+            <p>
+              Prix habituel observé : <span className="font-semibold tnum">{insights.usualRange.label}</span> <span className="text-xs text-muted">(médiane {formatMoney(insights.usualRange.median, currency)}, {insights.pointCount} relevés sur {Math.floor(insights.spanDays)} jours)</span>
+            </p>
+          ) : null}
+          {insights.trend ? <p className="text-xs text-muted-strong">{insights.trend.label}</p> : null}
+          {insights.opportunity ? <p className="font-medium text-orange-700">{insights.opportunity.message}</p> : null}
+          {insights.abnormalLow ? <p className="font-medium text-amber-700">{insights.abnormalLow.message}</p> : null}
+        </>
+      )}
+      {insights.bestObserved ? <p className="text-xs text-muted">{insights.bestObserved.label}</p> : null}
+    </div>
+  );
+}
 
 export const metadata: Metadata = { title: "Offre fournisseur" };
 
@@ -60,6 +87,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
             {o.source?.name ? ` · ${o.source.name}` : ""}
             {" · "}
             {retrievalMethodLabel(d.provenance)}
+            {" · "}
+            <ConfidenceBadge confidence={d.confidenceBadge} showReasons />
             {" · "}
             <span className={d.freshness.stale ? "text-amber-700" : ""}>
               {d.freshness.label}
@@ -145,7 +174,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   { label: "Dernier changement de prix", value: formatDateTime(o.last_price_at) },
                   { label: "Dernier changement de stock", value: o.last_stock_at ? formatDateTime(o.last_stock_at) : NOT_PROVIDED },
                   { label: "SKU associé", value: o.sku ? <Link href={`/stock/${encodeURIComponent(o.sku.code)}` as never} className="font-mono hover:underline">{o.sku.code}</Link> : "Aucun" },
-                  { label: "Source", value: <span>{SOURCE_TYPE_LABEL[o.source_type]}{o.source_url ? <> · <a href={o.source_url} target="_blank" rel="noopener noreferrer" className="underline">{o.source_url}</a></> : " · URL non communiquée"}</span> },
+                  { label: "Source", value: <span>{SOURCE_TYPE_LABEL[o.source_type]}{safeExternalUrl(o.source_url) ? <> · <a href={safeExternalUrl(o.source_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="break-all underline">{o.source_url}</a></> : " · URL non communiquée"}</span> },
                 ]}
               />
             </CardContent>
@@ -165,6 +194,42 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                         {formatMoney(Number(p.original_price), p.original_currency)} <span className="text-xs text-muted">{TAX_LABEL[p.tax_type]}</span>
                         {p.normalized_price !== null && p.normalized_currency && p.normalized_currency !== p.original_currency ? <span className="ml-2 text-xs text-muted">≈ {formatMoney(p.normalized_price, p.normalized_currency)}</span> : null}
                       </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader title="Prix habituel observé" description={`Relevés réels des ${90} derniers jours (supplier_price_history), dans la devise de l'organisation. Aucune conclusion sans au moins 5 relevés sur 14 jours.`} />
+            <CardContent className="space-y-4">
+              <InsightsBlock insights={d.priceInsights.offerInsights} currency={currency} title="Cette offre" />
+              {d.priceInsights.productInsights ? <InsightsBlock insights={d.priceInsights.productInsights} currency={currency} title={`Ce produit, tous fournisseurs (${d.priceInsights.siblingCount} offres)`} /> : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader title="Historique des prix par fournisseur" description="Même produit normalisé, toutes sources confondues (90 jours)." />
+            <CardContent className="p-0">
+              {d.priceInsights.supplierHistories.every((h) => h.pointCount === 0) ? (
+                <p className="px-5 py-5 text-sm text-muted">Historique insuffisant : aucun relevé exploitable sur la période.</p>
+              ) : (
+                <ul className="divide-y divide-border text-sm">
+                  {d.priceInsights.supplierHistories.map((h) => (
+                    <li key={h.supplierId} className="flex flex-wrap items-center justify-between gap-3 px-5 py-2">
+                      <div className="min-w-0">
+                        <Link href={`/suppliers/${h.supplierId}` as never} className="font-medium hover:underline">
+                          {h.supplierName}
+                        </Link>
+                        <div className="text-xs text-muted">
+                          {h.pointCount === 0 ? "Aucun relevé" : `${h.pointCount} relevé(s) · min ${formatMoney(h.minPrice, currency)} · max ${formatMoney(h.maxPrice, currency)} · dernier ${formatDateTime(h.lastRecordedAt)}`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {h.points.length > 1 ? <Sparkline points={h.points} label={`Prix ${h.supplierName}`} /> : null}
+                        <span className="tnum font-medium">{h.lastPrice === null ? "—" : formatMoney(h.lastPrice, currency)}</span>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -233,12 +298,9 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                 </ul>
               )}
               {writable && o.sku_id ? (
-                <form action={unlinkOfferAction} className="border-t border-border px-5 py-2">
-                  <input type="hidden" name="offer_id" value={o.id} />
-                  <Button type="submit" variant="ghost" size="sm">
-                    Dissocier du SKU
-                  </Button>
-                </form>
+                <ActionButtonForm action={unlinkOfferAction} fields={{ offer_id: o.id }} variant="ghost" className="border-t border-border px-5 py-2">
+                  Dissocier du SKU
+                </ActionButtonForm>
               ) : null}
             </CardContent>
           </Card>
@@ -247,14 +309,14 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
             <Card>
               <CardHeader title="Statut" />
               <CardContent>
-                <form action={setOfferStatusAction} className="flex items-center justify-between gap-3 text-sm">
-                  <input type="hidden" name="offer_id" value={o.id} />
-                  <input type="hidden" name="status" value={o.status === "rejected" ? "active" : "rejected"} />
-                  <span className="text-muted">{o.status === "rejected" ? "Offre rejetée : exclue des recherches." : "Exclure cette offre des recherches (données erronées, fournisseur non pertinent…)."}</span>
-                  <Button type="submit" variant={o.status === "rejected" ? "secondary" : "danger"} size="sm">
-                    {o.status === "rejected" ? "Réactiver" : "Rejeter"}
-                  </Button>
-                </form>
+                <ActionButtonForm
+                  action={setOfferStatusAction}
+                  fields={{ offer_id: o.id, status: o.status === "rejected" ? "active" : "rejected" }}
+                  variant={o.status === "rejected" ? "secondary" : "danger"}
+                  before={<span className="text-muted">{o.status === "rejected" ? "Offre rejetée : exclue des recherches." : "Exclure cette offre des recherches (données erronées, fournisseur non pertinent…)."}</span>}
+                >
+                  {o.status === "rejected" ? "Réactiver" : "Rejeter"}
+                </ActionButtonForm>
                 {d.freshness.stale ? (
                   <p className="mt-3 flex items-start gap-1 text-xs text-amber-700">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {d.freshness.warning} : synchronisez la source pour actualiser cette offre.

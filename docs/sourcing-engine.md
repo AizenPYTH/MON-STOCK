@@ -11,6 +11,10 @@ obsolète », aucune source → « Source non connectée », aucun résultat →
 src/domain/sourcing/            logique pure, testée (vitest), sans réseau ni base
   dictionaries.ts               marques, motifs de modèles, couleurs, grades, états, ISO 4217 (extensibles)
   normalizer.ts                 ProductNormalizer : texte → {brand, model, storage, color, condition, grade, ean, mpn}, clé normalisée
+                                (iPad : taille / génération / année distinctes — « iPad Air 2022 » ≠ « ipad air 20 » ; MacBook : puce M1–M4 ;
+                                Galaxy S22+ / Tab S8+ : « plus » conservé)
+  search-pipeline.ts            filtre de pertinence + associations confirmées → dédup → rankOpportunities → économies (pur)
+  price-history.ts              historique de prix par offre / fournisseur dans la devise de l'organisation (pur)
   query-parser.ts               requête utilisateur → critères structurés + EAN/MPN + tokens texte
   matching.ts                   ProductMatchingService : offre ↔ SKU, confiance 0–1, seuils 0,9 / 0,6
   scoring.ts                    OfferScoreService (/100 : prix 30, MOQ 20, délai 20, fournisseur 20, données 10), classements, score fournisseur
@@ -113,12 +117,58 @@ requête → sources de l'organisation (supplier_sources non en pause, types PUB
     (source_kind supplier_source ou supplier_connection, trigger manual, stats.kind = "live_search") visible dans /settings/sync
 ```
 
-`searchOffers(ctx, { query, skuCode, filters, live })` : recherche en direct d'abord (par défaut dès
-que la requête n'est pas vide ; `live: false` pour l'ignorer), puis lecture en base (les offres venant
-d'être enregistrées sont incluses), déduplication (`domain/sourcing/dedupe.ts` : une offre par
-(fournisseur, produit normalisé), la moins chère conservée, `duplicatesCollapsed` sur la vue), score,
-classement. `SearchResult.live` porte le résumé ; `listLiveSearchableSources(ctx)` décrit pour l'interface
-l'interrogeabilité de chaque source (adaptateur, méthode, accès, attestation, robots, connexion).
+Reformulations : `searchOffers` calcule `expandQuery(parsed)` et passe les requêtes `adapter_search`
+(`LiveSearchInput.variants`). Chaque source reçoit **au plus 2 reformulations**
+(`LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE`, ex. « Apple iPhone 13 128GB Grade A » puis « iPhone 13 128 Go Grade A »),
+séquentiellement et dans **le même budget de 8 s** : la 2ᵉ n'est tentée que s'il reste ≥ 1 s (ou ¼ du budget)
+et jamais après un échec de la 1ʳᵉ ; robots.txt est vérifié sur les URLs de toutes les reformulations ;
+les offres sont fusionnées par `externalOfferId`. `LiveSourceReport.queries` liste les requêtes réellement
+envoyées (affichées dans « Sources interrogées »). Une source découverte non validée (`config.discovered`
+sans attestation) n'est jamais chargée comme candidate.
+
+`searchOffers(ctx, { query, skuCode, filters, live, discover })` :
+
+```
+expandQuery ──► découverte (en parallèle, délai propre 12 s, rôle écriture, si SOURCING_DISCOVERY_PROVIDER)
+           └──► recherche en direct (≤ 2 reformulations / source, 8 s / source)
+  → lecture en base (offres existantes + offres venant d'être enregistrées)
+  → enrichissement (prix comparable, coût rendu, marge, fraîcheur, assessOfferConfidence)
+  → runOfferPipeline (domain/sourcing/search-pipeline.ts) :
+       filterOffers (+ associations SKU confirmées) → conservées / écartées avec raison
+       → dedupeOffers → rankOpportunities (requestedQuantity = filtre qty, currentUnitCost = coût du SKU en mode ?sku=)
+       → économie pour N unités (coût rendu si connu, sinon prix unitaire signalé) — offres réelles uniquement
+  → tri : « best_offer » = ordre de rankOpportunities ; autres tris = classements historiques (scoring.ts)
+  → prix habituel observé des offres de la page : UNE requête groupée sur supplier_price_history (90 j)
+```
+
+`SearchResult` expose en plus : `expandedQueries`, `rejected` (`count`, `groups` par raison, `offers` ≤ 100 avec
+leurs raisons, `referenceMedian`), `podium` / `highlights` / `awardOffers` / `priceBasisNote`, `bestSavings`,
+`currentUnitCost`, `skuTopOffers` (mode SKU), `discovery` (panneau). Chaque `SearchOfferView` porte `ranking`
+(rang, score /100 détaillé, « pourquoi », distinctions, plan d'achat), `confidenceBadge`, `filterWarnings`,
+`priceInsights`, `savings`. Une offre en rupture connue (statut ou quantité 0) est classée après les offres
+disponibles et n'obtient pas le podium (la distinction factuelle « Prix le plus bas » reste possible).
+
+Interface (`/sourcing`) : podium 🥇 🥈 🥉 + distinctions, « Pour N unités : jusqu'à X € d'économie potentielle »
+(mode SKU), cartes avec rang, distinctions, badge de confiance (🟢 ⚪ 🟡 🟠 🔴 + « Dernière vérification : il y a … »),
+« Pourquoi cette position », avertissements du filtre, « 🔥 Opportunité détectée » **uniquement** si l'historique est
+fiable ; « n offres écartées » (liste dépliable, raison par offre) ; « Sources découvertes » ; « Découvertes — à valider » ;
+« État des sources » (`services/sourcing/status-summary.ts`, calculé : catalogue, registre, sources attestées et actives,
+avec prix, avec stock, compte requis, API / flux, utilisables immédiatement — chaque chiffre avec sa définition).
+Fiche offre : badge de confiance, « Prix habituel observé » (offre et produit tous fournisseurs, sinon
+« Historique insuffisant : … »), historique des prix par fournisseur. Fiche SKU : section « Trouver moins cher »
+→ `/sourcing?sku=…&qty=<réappro recommandé ou 1>` ; en mode SKU, « Ton fournisseur actuel : X € » puis les meilleures
+offres réelles « Y € ↓ Δ € » avec l'explication du classement, sinon un message simple.
+
+`listLiveSearchableSources(ctx)` décrit pour l'interface l'interrogeabilité de chaque source (adaptateur,
+méthode, accès, attestation, robots, connexion).
+
+### Recherches de référence (`npm run sourcing:test-searches`)
+
+`scripts/sourcing-test-searches.ts` (banc : `services/sourcing/test-searches.ts`) : organisation dédiée
+« TEST — recherches sourcing » (créée si absente, `DATABASE_URL`, défaut base locale de test), sources configurées
+par l'opérateur, `executeLiveSearch` avec adaptateurs et `fetch` réels, puis filtre et classement **en mémoire (aucune
+offre insérée)**, pour 5 requêtes ; puis les mêmes requêtes sur les fixtures des adaptateurs (section
+« FIXTURES — pas des offres réelles »). Résultat écrit dans `docs/sourcing-test-searches.md`.
 
 ## Recherche
 
@@ -179,4 +229,4 @@ l'interrogeabilité de chaque source (adaptateur, méthode, accès, attestation,
 
 - Cron : `GET|POST /api/cron/sourcing` avec `Authorization: Bearer $CRON_SECRET` (503 si non configuré, 401 si invalide) → taux BCE, flux échus, crawls échus, alertes. Chaque flux / crawl / évaluation d'alertes écrit une ligne `sync_runs` (par organisation) et ses `sync_errors`.
 - Depuis l'interface : « Synchroniser maintenant » (flux, page publique), « Importer le fichier » (flux sans URL), « Vérifier robots.txt », « Évaluer maintenant » (alertes).
-- Tests : `npx vitest run tests/unit/sourcing-` (normaliseur, parseur de requête, matching, score, validation, prix/fraîcheur, opportunités, flux CSV/XML/JSON, JSON-LD, robots.txt, BCE, adaptateurs sur fixtures `sourcing-adapter-*`, orchestration de la recherche en direct `sourcing-live-search`, déduplication / provenance `sourcing-dedupe`) — aucun accès réseau.
+- Tests : `npx vitest run tests/unit/sourcing-` (normaliseur dont années / générations `sourcing-normalizer-generations`, reformulations envoyées aux sources `sourcing-live-variants`, pipeline filtre → classement → économies `sourcing-search-pipeline`, validation des sources découvertes, état des sources, découverte pendant la recherche, historique de prix, actions sans exception `sourcing-actions-errors`, parseur de requête, matching, score, validation, prix/fraîcheur, opportunités, flux CSV/XML/JSON, JSON-LD, robots.txt, BCE, adaptateurs sur fixtures `sourcing-adapter-*`, orchestration de la recherche en direct `sourcing-live-search`, déduplication / provenance `sourcing-dedupe`) — aucun accès réseau.

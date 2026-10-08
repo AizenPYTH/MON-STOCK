@@ -3,6 +3,7 @@
  * listes priorisées construites uniquement à partir de compteurs et de faits observés.
  */
 import { plural } from "@/features/analytics/util.pure";
+import { formatVelocity } from "@/domain/replenishment/replenishment";
 
 export interface TodoCounts {
   toReplenish: number;
@@ -87,7 +88,7 @@ export function buildInsights(input: InsightInput): InsightItem[] {
       key: `oos:${s.code}`,
       severity: "critical",
       title: `Rupture : ${s.name}`,
-      detail: s.dailyVelocity !== null ? `${s.dailyVelocity.toFixed(1)} vente(s)/jour perdue(s) tant que le stock est à zéro.` : "Aucune vente récente enregistrée : vitesse inconnue (pas assez de données).",
+      detail: s.dailyVelocity !== null ? `${formatVelocity(s.dailyVelocity)} vente(s)/jour perdue(s) tant que le stock est à zéro.` : "Aucune vente récente enregistrée : vitesse inconnue (pas assez de données).",
       href: `/sourcing?sku=${encodeURIComponent(s.code)}`,
       action: "Trouver du stock",
     });
@@ -104,7 +105,7 @@ export function buildInsights(input: InsightInput): InsightItem[] {
       key: `risk:${s.code}`,
       severity: "critical",
       title: days !== null ? `Rupture estimée dans ${days} ${plural(days, "jour")} : ${s.name}` : `Risque de rupture : ${s.name}`,
-      detail: s.dailyVelocity !== null ? `Vitesse moyenne ${s.dailyVelocity.toFixed(1)}/jour, inférieure au délai de réapprovisionnement.` : null,
+      detail: s.dailyVelocity !== null ? `Au rythme de ${formatVelocity(s.dailyVelocity)} vente(s)/jour, le stock ne couvre pas le délai de réapprovisionnement.` : null,
       href: skuHref(s.code),
       action: "Voir la recommandation",
     });
@@ -139,7 +140,7 @@ export function buildInsights(input: InsightInput): InsightItem[] {
     items.push({ key: "fees", severity: "info", title: `Frais non renseignés : ${input.channelsMissingFees.join(", ")}`, detail: "Les marges nettes restent partielles tant que commissions et frais de paiement sont inconnus.", href: "/settings/organization", action: "Renseigner les frais" });
   }
   if (input.deadStock > 0) {
-    items.push({ key: "dead", severity: "info", title: `${input.deadStock} ${plural(input.deadStock, "SKU")} sans vente depuis 60 jours`, detail: "Du capital immobilisé : baisse de prix, mise en avant ou déstockage ?", href: "/stock?sort=last_sale", action: "Voir le stock dormant" });
+    items.push({ key: "dead", severity: "info", title: `${input.deadStock} ${plural(input.deadStock, "SKU")} sans vente depuis 60 jours`, detail: "Du capital immobilisé : baisse de prix, mise en avant ou déstockage ?", href: "/stock?sort=oldest_sale&stock=in_stock", action: "Voir le stock dormant" });
   }
 
   return items.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);

@@ -125,7 +125,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
           hint={agg.included > 0 ? `Sur ${agg.included} SKU (${formatNumber(agg.unitsIncluded)} unités) au coût connu` : "Aucun SKU avec prix de vente et coût connus."}
           tone={agg.profit30d !== null && agg.profit30d < 0 ? "danger" : undefined}
         />
-        <Stat label="SKU exclus" value={formatNumber(agg.excludedUnknownCost + agg.excludedUnknownSalePrice)} hint={agg.caveat ?? "Aucune exclusion."} tone={agg.excludedUnknownCost > 0 ? "warning" : undefined} />
+        <Stat label="SKU exclus" value={formatNumber(agg.excludedUnknownCost + agg.excludedUnknownSalePrice + agg.excludedOtherCurrency)} hint={agg.caveat ?? "Aucune exclusion."} tone={agg.excludedUnknownCost > 0 ? "warning" : undefined} />
         <Stat
           label="Frais déduits"
           value={agg.missingFees.length === 0 ? "Complets" : <span className="text-base font-medium text-warning">Partiels</span>}

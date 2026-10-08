@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { ConnectorError } from "@/integrations/core/errors";
 import type { ConnectorAuth } from "@/integrations/core/connector";
-import { fetchWithRetry } from "@/integrations/core/http";
+import { fetchWithRetry, readBodyText } from "@/integrations/core/http";
 import { normalizedListingSchema, type ListingRef, type NormalizedListing, type NormalizedListingVariation, type UpdateInventoryResult } from "@/integrations/core/types";
 import { EBAY_PROVIDER, EBAY_TRADING_COMPATIBILITY_LEVEL, type EbayConfig } from "@/integrations/ebay/config";
 
@@ -14,6 +14,10 @@ import { EBAY_PROVIDER, EBAY_TRADING_COMPATIBILITY_LEVEL, type EbayConfig } from
 export const EBAY_TRADING_NS = "urn:ebay:apis:eBLBaseComponents";
 /** Codes d'erreur Trading API signalant un token invalide / expiré. */
 export const TRADING_AUTH_ERROR_CODES = new Set(["931", "932", "17470", "21916984", "21917053", "21916017", "21916018"]);
+/** Codes Trading API de quota d'appels atteint (518 : « Call usage limit has been reached »). */
+export const TRADING_RATE_LIMIT_ERROR_CODES = new Set(["518"]);
+/** Erreurs internes eBay transitoires (10007 : « Internal error to the application »). */
+export const TRADING_TRANSIENT_ERROR_CODES = new Set(["10007"]);
 /** Site eBay utilisé pour les appels (0 = US ; GetMyeBaySelling renvoie les annonces de tous les sites). */
 export const EBAY_TRADING_SITE_ID = "0";
 export const GET_MY_EBAY_SELLING_PAGE_SIZE = 200;
@@ -121,9 +125,16 @@ export function assertTradingAck(callName: string, response: Node | null): { war
   }
   const first = failures[0] ?? errors[0];
   const message = first ? first.longMessage || first.shortMessage : `Ack=${ack || "absent"}`;
+  const errorSummary = failures.map((e) => ({ code: e.code, message: e.shortMessage }));
+  if (failures.some((e) => TRADING_RATE_LIMIT_ERROR_CODES.has(e.code) || /usage limit|call limit/i.test(`${e.shortMessage} ${e.longMessage}`))) {
+    throw new ConnectorError("RATE_LIMITED", EBAY_PROVIDER, `Quota d'appels de la Trading API eBay atteint (${callName}) : la synchronisation reprendra au prochain run.`, {
+      details: { callName, ack, errors: errorSummary },
+      retryable: true,
+    });
+  }
   throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `eBay a refusé l'appel ${callName} : ${message}`, {
-    details: { callName, ack, errors: failures.map((e) => ({ code: e.code, message: e.shortMessage })) },
-    retryable: false,
+    details: { callName, ack, errors: errorSummary },
+    retryable: failures.some((e) => TRADING_TRANSIENT_ERROR_CODES.has(e.code)),
   });
 }
 
@@ -280,7 +291,7 @@ async function tradingCall(config: EbayConfig, auth: ConnectorAuth, callName: st
       },
       { provider: EBAY_PROVIDER, label: `trading:${callName}`, timeoutMs: 60_000 },
     );
-    const xml = await res.text();
+    const xml = await readBodyText(res, EBAY_PROVIDER, `trading:${callName}`);
     if (res.status === 401 && attempt === 0) continue;
     if (!res.ok) {
       throw new ConnectorError(res.status === 401 ? "AUTH_EXPIRED" : "API_ERROR", EBAY_PROVIDER, `La Trading API eBay a répondu HTTP ${res.status} pour ${callName}.`, { httpStatus: res.status, details: { callName } });

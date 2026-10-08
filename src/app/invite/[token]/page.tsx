@@ -8,6 +8,7 @@ import { acceptInvitationAction } from "@/features/organizations/actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { FormError } from "@/components/ui/form";
 import { ButtonLink } from "@/components/ui/button";
+import { inviteErrorMessage } from "@/features/organizations/feedback";
 
 export const metadata: Metadata = { title: "Invitation" };
 
@@ -27,7 +28,8 @@ export default async function InvitePage({ params, searchParams }: { params: Pro
           <h1 className="text-xl font-semibold tracking-tight">Rejoindre une organisation</h1>
           <p className="mt-1 text-sm text-muted">Vous avez été invité à rejoindre une organisation sur MON STOCK.</p>
           <div className="mt-5 space-y-3">
-            <FormError message={error} />
+            {/* `error` est un code (jamais un texte libre affiché tel quel : pas d'injection de contenu par lien forgé). */}
+            <FormError message={inviteErrorMessage(error)} />
             {user ? (
               <form action={acceptInvitationAction}>
                 <input type="hidden" name="token" value={token} />
@@ -38,10 +40,10 @@ export default async function InvitePage({ params, searchParams }: { params: Pro
               </form>
             ) : (
               <>
-                <ButtonLink href={`/login?next=/invite/${token}`} className="w-full">
+                <ButtonLink href={`/login?next=${encodeURIComponent(`/invite/${encodeURIComponent(token)}`)}`} className="w-full">
                   Se connecter pour accepter
                 </ButtonLink>
-                <ButtonLink href={`/signup`} variant="secondary" className="w-full">
+                <ButtonLink href={`/signup?next=${encodeURIComponent(`/invite/${encodeURIComponent(token)}`)}`} variant="secondary" className="w-full">
                   Créer un compte
                 </ButtonLink>
               </>

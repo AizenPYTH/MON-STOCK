@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge, StatusDot } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Callout, EmptyState } from "@/components/ui/page";
 import { getSupplier, getSupplierSources, getSupplierTabCounts } from "@/features/suppliers/queries";
 import { SupplierHeader } from "@/features/suppliers/components/supplier-header";
@@ -12,11 +11,15 @@ import { FeedForm } from "@/features/suppliers/components/feed-form";
 import { ConnectAccountDialog } from "@/features/suppliers/components/connect-account-dialog";
 import { CheckRobotsButton, CrawlSourceButton, SyncConnectionButton, SyncFeedButton, TestConnectionButton, TestSourceButton } from "@/features/suppliers/components/source-sync-buttons";
 import { deleteSourceAction, toggleFeedAction, toggleSourceAction } from "@/features/suppliers/actions";
+import { ActionButtonForm } from "@/features/sourcing/components/action-button-form";
 import { attestationRequired, readStoredSourceConfig, type AccountConnectorOption, type PublicAdapterOption } from "@/features/suppliers/adapter-config";
 import { listSourceAdapters } from "@/integrations/sourcing/registry";
 import { NO_CONNECTOR_MESSAGE, SUPPLIER_CONNECTORS } from "@/integrations/suppliers/core";
 import { PARTNER_FEED_STATUS } from "@/integrations/suppliers/partner-feed";
 import { formatRelative } from "@/lib/format";
+import { isPendingDiscovered, readDiscoveredConfig } from "@/features/suppliers/discovered";
+import { listPendingDiscoveredSources } from "@/features/suppliers/discovered-queries";
+import { DiscoveredSourcesPanel } from "@/features/suppliers/components/discovered-sources";
 import { CONNECTION_STATUS_LABEL, RETRIEVAL_METHOD_LABEL, SOURCE_STATUS_LABEL, SOURCE_TYPE_LABEL, SYNC_FREQUENCY_LABEL } from "@/features/sourcing/labels";
 
 export const metadata: Metadata = { title: "Sources & flux" };
@@ -34,14 +37,15 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
   const { id } = await params;
   const supplier = await getSupplier(ctx, id);
   if (!supplier) notFound();
-  const [counts, view] = await Promise.all([getSupplierTabCounts(ctx, supplier.id), getSupplierSources(ctx, supplier.id)]);
+  const [counts, view, pendingDiscovered] = await Promise.all([getSupplierTabCounts(ctx, supplier.id), getSupplierSources(ctx, supplier.id), listPendingDiscoveredSources(ctx, { supplierId: supplier.id })]);
   const writable = canWrite(ctx.role);
   const allAdapters = listSourceAdapters();
   const publicAdapters: PublicAdapterOption[] = allAdapters.filter((a) => a.access === "public").map((a) => ({ key: a.key, label: a.label, description: a.description, method: a.method, configFields: a.configFields, capabilities: a.capabilities, verification: a.verification }));
   const connectors: AccountConnectorOption[] = SUPPLIER_CONNECTORS.map((c) => ({ key: c.key, label: c.label, description: c.description, accessConditions: c.accessConditions, credentialFields: c.credentialFields }));
   const adapterByKey = new Map(allAdapters.map((a) => [a.key, a] as const));
   const connectorByKey = new Map(connectors.map((c) => [c.key, c] as const));
-  const webSources = view.sources.filter((s) => s.source_type === "PUBLIC_WEB");
+  // les sources découvertes non validées sont présentées à part (« Découvertes — à valider »)
+  const webSources = view.sources.filter((s) => s.source_type === "PUBLIC_WEB" && !isPendingDiscovered(s));
   const feedSources = view.sources.filter((s) => s.source_type === "CSV" || s.source_type === "XML" || s.source_type === "JSON");
 
   return (
@@ -51,6 +55,8 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
         <Callout tone="neutral" title="Règles d'accès">
           Les offres proviennent uniquement de données que vous êtes autorisé à utiliser : flux transmis par le fournisseur, pages / JSON publics dont les conditions d&apos;utilisation autorisent l&apos;accès automatisé (robots.txt respecté), API officielles ou compte fournisseur connecté par vous-même, saisie manuelle. Aucun contournement de connexion, de CAPTCHA ou de protection anti-bot n&apos;est effectué.
         </Callout>
+
+        {pendingDiscovered.length > 0 ? <DiscoveredSourcesPanel sources={pendingDiscovered} writable={writable} showSupplier={false} /> : null}
 
         <Card>
           <CardHeader title="Flux CSV / XML / JSON" description="Fichier ou URL fourni par le fournisseur, avec mapping des colonnes." actions={writable ? <FeedForm supplierId={supplier.id} defaultCurrency={supplier.currency} /> : null} />
@@ -79,13 +85,9 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                       {writable ? (
                         <div className="flex flex-wrap items-start gap-2">
                           <SyncFeedButton feedId={f.id} hasUrl={Boolean(f.url)} />
-                          <form action={toggleFeedAction}>
-                            <input type="hidden" name="feed_id" value={f.id} />
-                            <input type="hidden" name="paused" value={f.status === "paused" ? "false" : "true"} />
-                            <Button type="submit" variant="ghost" size="sm">
-                              {f.status === "paused" ? "Réactiver" : "Mettre en pause"}
-                            </Button>
-                          </form>
+                          <ActionButtonForm action={toggleFeedAction} fields={{ feed_id: f.id, paused: f.status === "paused" ? "false" : "true" }} variant="ghost">
+                            {f.status === "paused" ? "Réactiver" : "Mettre en pause"}
+                          </ActionButtonForm>
                         </div>
                       ) : null}
                     </li>
@@ -130,6 +132,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                           <Badge variant={tone(s.status) === "neutral" ? "neutral" : tone(s.status)}>{SOURCE_STATUS_LABEL[s.status] ?? s.status}</Badge>
                           {s.robots_allowed === false ? <Badge variant="danger">Interdit par robots.txt</Badge> : s.robots_allowed === true ? <Badge variant="success">robots.txt OK</Badge> : <Badge variant="neutral">robots.txt non vérifié</Badge>}
                           {needsAttestation && !s.automated_access_confirmed ? <Badge variant="warning">Accès non attesté</Badge> : null}
+                          {readDiscoveredConfig(s.config).discovered ? <Badge variant="outline">{readDiscoveredConfig(s.config).dismissed ? "Découverte — ignorée" : "Découverte — validée"}</Badge> : null}
                           {adapter && !adapter.capabilities.search ? <Badge variant="neutral">Catalogue synchronisé uniquement</Badge> : null}
                           {adapter?.verification === "fixtures" ? <Badge variant="warning">Non testé en conditions réelles</Badge> : null}
                         </div>
@@ -146,19 +149,12 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                           <CheckRobotsButton sourceId={s.id} />
                           {adapter ? <TestSourceButton sourceId={s.id} disabled={blocked} reason={blocked ? "Accès non autorisé (attestation manquante ou robots.txt)" : undefined} /> : null}
                           <CrawlSourceButton sourceId={s.id} disabled={blocked} reason={blocked ? "Accès non autorisé (attestation manquante ou robots.txt)" : undefined} />
-                          <form action={toggleSourceAction}>
-                            <input type="hidden" name="source_id" value={s.id} />
-                            <input type="hidden" name="paused" value={s.status === "paused" ? "false" : "true"} />
-                            <Button type="submit" variant="ghost" size="sm">
-                              {s.status === "paused" ? "Réactiver" : "Mettre en pause"}
-                            </Button>
-                          </form>
-                          <form action={deleteSourceAction}>
-                            <input type="hidden" name="source_id" value={s.id} />
-                            <Button type="submit" variant="ghost" size="sm" className="text-danger">
-                              Désactiver
-                            </Button>
-                          </form>
+                          <ActionButtonForm action={toggleSourceAction} fields={{ source_id: s.id, paused: s.status === "paused" ? "false" : "true" }} variant="ghost">
+                            {s.status === "paused" ? "Réactiver" : "Mettre en pause"}
+                          </ActionButtonForm>
+                          <ActionButtonForm action={deleteSourceAction} fields={{ source_id: s.id }} confirmMessage="Désactiver cette source ? Elle ne sera plus explorée." variant="ghost" buttonClassName="text-danger">
+                            Désactiver
+                          </ActionButtonForm>
                         </div>
                       ) : null}
                     </li>

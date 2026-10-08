@@ -10,6 +10,43 @@ import { matchOfferToSkus, type MatchResult } from "@/domain/sourcing/matching";
 import { normalizeProduct } from "@/domain/sourcing/normalizer";
 import { loadMatchCandidates } from "@/services/sourcing/matching-service";
 import { readOfferProvenance } from "@/features/sourcing/provenance";
+import { computePriceInsights, mergeHistories, type PriceInsights } from "@/domain/sourcing/price-insights";
+import { groupPriceHistory, summarizeSupplierHistories, type SupplierHistorySummary } from "@/domain/sourcing/price-history";
+import { assessOfferConfidence } from "@/domain/sourcing/confidence";
+
+export const DETAIL_HISTORY_WINDOW_DAYS = 90;
+export const DETAIL_SIBLING_OFFERS = 30;
+
+/**
+ * Prix habituel observé (offre seule, et produit normalisé tous fournisseurs confondus) + historique
+ * par fournisseur, à partir d'UNE requête groupée sur supplier_price_history (90 jours).
+ */
+async function loadDetailPriceInsights(ctx: OrgContext, offer: { id: string; normalized_product_id: string | null; supplier_id: string; supplierName: string }, currentPrice: number | null): Promise<{ offerInsights: PriceInsights; productInsights: PriceInsights | null; supplierHistories: SupplierHistorySummary[]; siblingCount: number }> {
+  const orgId = ctx.organization.id;
+  const orgCurrency = ctx.organization.default_currency;
+  const now = new Date();
+  let siblings: Array<{ id: string; supplierId: string; supplierName: string; sourceId: string }> = [{ id: offer.id, supplierId: offer.supplier_id, supplierName: offer.supplierName, sourceId: "" }];
+  if (offer.normalized_product_id) {
+    const { data } = await ctx.supabase.from("sourcing_offers").select("id, supplier_id, source_id, supplier:suppliers(name)").eq("organization_id", orgId).eq("normalized_product_id", offer.normalized_product_id).order("last_seen_at", { ascending: false }).limit(DETAIL_SIBLING_OFFERS);
+    const list = (data ?? []).map((o) => ({ id: o.id, supplierId: o.supplier_id, supplierName: o.supplier?.name ?? "Fournisseur", sourceId: o.source_id }));
+    if (!list.some((o) => o.id === offer.id)) list.push(siblings[0]!);
+    siblings = list;
+  }
+  const since = new Date(now.getTime() - DETAIL_HISTORY_WINDOW_DAYS * 86_400_000).toISOString();
+  const { data: rows } = await ctx.supabase
+    .from("supplier_price_history")
+    .select("offer_id, original_price, original_currency, normalized_price, normalized_currency, recorded_at")
+    .eq("organization_id", orgId)
+    .in("offer_id", siblings.map((o) => o.id))
+    .gte("recorded_at", since)
+    .order("recorded_at", { ascending: true })
+    .limit(5_000);
+  const byOffer = groupPriceHistory(rows ?? [], orgCurrency);
+  const options = { now, currency: orgCurrency, windowDays: DETAIL_HISTORY_WINDOW_DAYS };
+  const offerInsights = computePriceInsights(byOffer.get(offer.id) ?? [], currentPrice, options);
+  const productInsights = siblings.length > 1 ? computePriceInsights(mergeHistories(siblings.map((o) => ({ offerId: o.id, sourceId: o.sourceId || null, points: byOffer.get(o.id) ?? [] }))), currentPrice, options) : null;
+  return { offerInsights, productInsights, supplierHistories: summarizeSupplierHistories(siblings, byOffer), siblingCount: siblings.length };
+}
 
 export const MATCHES_PAGE_SIZE = 30;
 
@@ -17,7 +54,7 @@ export async function getOfferDetail(ctx: OrgContext, offerId: string) {
   const orgId = ctx.organization.id;
   const { data: offer } = await ctx.supabase
     .from("sourcing_offers")
-    .select("*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, website), source:supplier_sources(id, name, source_type, status, base_url, config, last_successful_sync_at), sku:skus(id, code, sale_price, cost_price, currency, product:products(name), variant:product_variants(name))")
+    .select("*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, website), source:supplier_sources(id, name, source_type, status, base_url, config, last_successful_sync_at, automated_access_confirmed), sku:skus(id, code, sale_price, cost_price, currency, product:products(name), variant:product_variants(name))")
     .eq("organization_id", orgId)
     .eq("id", offerId)
     .maybeSingle();
@@ -41,6 +78,12 @@ export async function getOfferDetail(ctx: OrgContext, offerId: string) {
   const comparableUnitPrice = tax?.amount ?? null;
   const landed = comparableUnitPrice !== null ? computeLandedCost({ unitPrice: comparableUnitPrice, quantity: Math.max(1, offer.moq ?? 1), shippingCost: offer.shipping_cost, importFees: null }) : null;
   const salePrice = stats?.sale_price ?? stats?.avg_sale_price_30d ?? null;
+  const sourceCfg = (offer.source?.config ?? {}) as Record<string, unknown>;
+  const conf = (offer.confidence ?? {}) as Record<string, unknown>;
+  const confNum = (k: string): number | null => (typeof conf[k] === "number" && Number.isFinite(conf[k]) ? (conf[k] as number) : null);
+  const sourceDiscovered = sourceCfg.discovered === true;
+  const confidenceBadge = assessOfferConfidence({ lastSeenAt: offer.last_seen_at, status: offer.status, priceConfidence: confNum("price"), stockConfidence: confNum("stock"), stockKnown: offer.available_quantity !== null || offer.stock_status !== "unknown", sourceDiscovered, sourceValidated: sourceDiscovered ? offer.source?.automated_access_confirmed ?? false : undefined });
+  const priceInsights = await loadDetailPriceInsights(ctx, { id: offer.id, normalized_product_id: offer.normalized_product_id, supplier_id: offer.supplier_id, supplierName: offer.supplier?.name ?? "Fournisseur" }, normalizedUnitPrice);
   const margin = salePrice !== null && comparableUnitPrice !== null ? computeMargin({ salePrice, costPrice: landed && landed.unitLandedCost !== null ? landed.unitLandedCost : comparableUnitPrice, feePercent: marginCtx.feePercent, paymentFeePercent: marginCtx.paymentFeePercent, paymentFeeFixed: marginCtx.paymentFeeFixed, shippingCost: marginCtx.shippingCost }) : null;
   return {
     offer,
@@ -62,6 +105,8 @@ export async function getOfferDetail(ctx: OrgContext, offerId: string) {
     orgCurrency,
     confidence: (offer.confidence ?? {}) as Record<string, number>,
     provenance: readOfferProvenance(offer, offer.source),
+    confidenceBadge,
+    priceInsights,
   };
 }
 

@@ -77,8 +77,8 @@ export function ProductForm({ product, suppliers, currency, defaults }: { produc
           <Field label="Nom de la variante" htmlFor="variant_name" hint="Optionnel." error={fe?.variant_name} className="sm:col-span-2">
             <Input id="variant_name" name="variant_name" placeholder="128 Go / Noir / Grade A" />
           </Field>
-          <Field label="EAN / GTIN" htmlFor="ean" error={fe?.ean}>
-            <Input id="ean" name="ean" inputMode="numeric" />
+          <Field label="EAN / GTIN" htmlFor="ean" error={fe?.ean} hint="8, 12, 13 ou 14 chiffres.">
+            <Input id="ean" name="ean" inputMode="numeric" maxLength={14} />
           </Field>
           <Field label="MPN" htmlFor="mpn" error={fe?.mpn}>
             <Input id="mpn" name="mpn" />
@@ -96,13 +96,13 @@ export function ProductForm({ product, suppliers, currency, defaults }: { produc
             <Input id="barcode" name="barcode" />
           </Field>
           <Field label={`Coût d'achat (${currency})`} htmlFor="cost_price" error={fe?.cost_price}>
-            <Input id="cost_price" name="cost_price" type="number" step="0.01" min="0" />
+            <Input id="cost_price" name="cost_price" type="number" step="0.01" min="0" max="1000000" />
           </Field>
           <Field label={`Prix de vente (${currency})`} htmlFor="sale_price" error={fe?.sale_price}>
-            <Input id="sale_price" name="sale_price" type="number" step="0.01" min="0" defaultValue={defaults?.sale_price ?? ""} />
+            <Input id="sale_price" name="sale_price" type="number" step="0.01" min="0" max="1000000" defaultValue={defaults?.sale_price ?? ""} />
           </Field>
           <Field label="Stock initial" htmlFor="initial_quantity" error={fe?.initial_quantity}>
-            <Input id="initial_quantity" name="initial_quantity" type="number" step="1" min="0" defaultValue={0} />
+            <Input id="initial_quantity" name="initial_quantity" type="number" step="1" min="0" max="1000000" defaultValue={0} />
           </Field>
           <Field label="Emplacement" htmlFor="location" error={fe?.location}>
             <Input id="location" name="location" placeholder="A-12" />
@@ -114,7 +114,7 @@ export function ProductForm({ product, suppliers, currency, defaults }: { produc
             <Input id="safety_stock" name="safety_stock" type="number" step="1" min="0" defaultValue={0} />
           </Field>
           <Field label="Délai fournisseur (jours)" htmlFor="lead_time_days" error={fe?.lead_time_days}>
-            <Input id="lead_time_days" name="lead_time_days" type="number" step="1" min="0" />
+            <Input id="lead_time_days" name="lead_time_days" type="number" step="1" min="0" max="365" />
           </Field>
           <Field label="Fournisseur par défaut" htmlFor="default_supplier_id" error={fe?.default_supplier_id}>
             <Select id="default_supplier_id" name="default_supplier_id" defaultValue="">

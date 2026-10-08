@@ -32,6 +32,8 @@ export default async function DashboardPage() {
   const currency = ctx.organization.default_currency;
   const writable = canWrite(ctx.role);
   const greeting = data.firstName ? `Bonjour ${data.firstName}, voici ce qui se passe aujourd'hui.` : "Bonjour, voici ce qui se passe aujourd'hui.";
+  const noOrders = data.counts.ordersTotal === 0;
+  const foreign = data.windows.otherCurrencies.map((f) => formatMoney(f.revenue, f.currency)).join(" + ");
   const profitHint = data.profit.profit30d === null ? "Aucun SKU avec coût et prix connus : bénéfice non calculable." : data.profit.caveat ? `Sur ${data.profit.included} SKU · ${data.profit.caveat}` : `Sur ${data.profit.included} SKU, tous frais connus.`;
 
   return (
@@ -61,16 +63,28 @@ export default async function DashboardPage() {
         <Stat
           label="Chiffre d'affaires (30 j)"
           value={
-            <span className="flex items-center justify-between gap-3">
-              {formatMoney(data.windows.last30d.revenue, currency)}
-              <span className="text-muted">
-                <Sparkline values={data.daily.map((p) => p.revenue)} label="Tendance du chiffre d'affaires sur 30 jours" />
+            noOrders ? (
+              <span className="text-base font-medium text-muted">Pas encore de vente</span>
+            ) : (
+              <span className="flex items-center justify-between gap-3">
+                {formatMoney(data.windows.last30d.revenue, currency)}
+                <span className="text-muted">
+                  <Sparkline values={data.daily.map((p) => p.revenue)} label="Tendance du chiffre d'affaires sur 30 jours" />
+                </span>
               </span>
-            </span>
+            )
           }
-          hint={`Aujourd'hui ${formatMoney(data.windows.today.revenue, currency)} · 7 j ${formatMoney(data.windows.last7d.revenue, currency)}`}
+          hint={
+            noOrders
+              ? "Aucune commande importée ou saisie."
+              : `Aujourd'hui ${formatMoney(data.windows.today.revenue, currency)} · 7 j ${formatMoney(data.windows.last7d.revenue, currency)}${foreign ? ` · hors ventes en autre devise (${foreign}, non converties)` : ""}`
+          }
         />
-        <Stat label="Commandes (30 j)" value={formatNumber(data.windows.last30d.orders)} hint={`${formatNumber(data.windows.last30d.units)} produit(s) vendu(s) · hors commandes annulées / remboursées`} />
+        <Stat
+          label="Commandes (30 j)"
+          value={noOrders ? <span className="text-base font-medium text-muted">Pas encore de vente</span> : formatNumber(data.windows.last30d.orders)}
+          hint={noOrders ? undefined : `${formatNumber(data.windows.last30d.units)} produit(s) vendu(s) · hors commandes annulées / remboursées`}
+        />
         <Stat
           label="Bénéfice estimé (30 j)"
           value={data.profit.profit30d === null ? <span className="text-base font-medium text-muted">Pas assez de données</span> : formatMoney(data.profit.profit30d, currency)}
@@ -80,7 +94,7 @@ export default async function DashboardPage() {
         <Stat
           label="Valeur de stock"
           value={data.stock.totals.skusValued === 0 ? <span className="text-base font-medium text-muted">{data.stock.totals.skus === 0 ? "Aucun SKU" : "Coût inconnu"}</span> : formatMoney(data.stock.totals.stockValueKnown, currency)}
-          hint={`${formatNumber(data.stock.totals.skus)} SKU · ${formatNumber(data.stock.totals.unitsOnHand)} unités${data.stock.totals.skusUnknownCostWithStock > 0 ? ` · ${data.stock.totals.skusUnknownCostWithStock} SKU non valorisé(s) (coût inconnu)` : ""}${data.stock.truncated ? " · liste tronquée" : ""}`}
+          hint={`${formatNumber(data.stock.totals.skus)} SKU · ${formatNumber(data.stock.totals.unitsOnHand)} unités${data.stock.totals.skusUnknownCostWithStock > 0 ? ` · ${data.stock.totals.skusUnknownCostWithStock} SKU non valorisé(s) (coût inconnu)` : ""}${data.stock.totals.skusOtherCurrency > 0 ? ` · ${data.stock.totals.skusOtherCurrency} SKU dans une autre devise, non additionné(s)` : ""}${data.stock.truncated ? " · liste tronquée" : ""}`}
         />
       </div>
 
@@ -113,7 +127,10 @@ export default async function DashboardPage() {
           </Card>
 
           <Card>
-            <CardHeader title="Chiffre d'affaires quotidien" description="30 derniers jours, commandes annulées et remboursées exclues." />
+            <CardHeader
+              title="Chiffre d'affaires quotidien"
+              description={`30 derniers jours (jours civils, heure de Paris), commandes annulées et remboursées exclues${foreign ? ` · ventes en autre devise non incluses (${foreign})` : ""}.`}
+            />
             <CardContent>
               <RevenueChart points={data.daily} currency={currency} />
             </CardContent>

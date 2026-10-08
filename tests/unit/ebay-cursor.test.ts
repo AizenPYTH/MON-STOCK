@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeOrdersWindow, nextOrdersCursor, ORDERS_INITIAL_LOOKBACK_DAYS, ORDERS_OVERLAP_HOURS } from "@/integrations/ebay/cursor";
+import { computeOrdersWindow, nextOrdersCursor, resolveOrdersCursor, splitOrdersWindow, ORDERS_INITIAL_LOOKBACK_DAYS, ORDERS_OVERLAP_HOURS, type OrdersProgress } from "@/integrations/ebay/cursor";
 
 const now = new Date("2026-10-07T12:00:00.000Z");
 
@@ -42,9 +42,50 @@ describe("nextOrdersCursor", () => {
     expect(nextOrdersCursor(window, null)).toEqual(window.until);
   });
 
-  it("ne dépasse jamais la borne haute, sauf run tronqué où l'on reste sur la dernière vue", () => {
+  it("ne dépasse jamais la borne haute", () => {
     expect(nextOrdersCursor(window, new Date("2026-10-07T13:00:00.000Z"))).toEqual(window.until);
-    const seen = new Date("2026-10-07T10:00:00.000Z");
-    expect(nextOrdersCursor(window, seen, { truncated: true })).toEqual(seen);
+  });
+});
+
+describe("splitOrdersWindow", () => {
+  it("découpe la fenêtre en tranches contiguës, de la plus ancienne à la plus récente", () => {
+    const w = computeOrdersWindow(null, now);
+    const slices = splitOrdersWindow(w, 24 * 7);
+    expect(slices[0]!.since).toEqual(w.since);
+    expect(slices.at(-1)!.until).toEqual(w.until);
+    for (let i = 1; i < slices.length; i++) expect(slices[i]!.since).toEqual(slices[i - 1]!.until);
+    expect(slices.length).toBe(Math.ceil(ORDERS_INITIAL_LOOKBACK_DAYS / 7));
+  });
+  it("une fenêtre courte reste une seule tranche", () => {
+    const w = computeOrdersWindow("2026-10-07T09:00:00.000Z", now);
+    expect(splitOrdersWindow(w, 24)).toEqual([w]);
+  });
+});
+
+describe("resolveOrdersCursor", () => {
+  const window = computeOrdersWindow("2026-10-07T09:00:00.000Z", now);
+  const base: OrdersProgress = { completedUntil: window.until, windowComplete: true, maxModifiedSeen: null, failed: 0, minFailedModified: null, failedWithoutDate: false };
+
+  it("fenêtre complète sans échec : comme nextOrdersCursor", () => {
+    expect(resolveOrdersCursor(window, base, "2026-10-07T09:00:00.000Z")).toEqual(window.until);
+    expect(resolveOrdersCursor(window, { ...base, maxModifiedSeen: new Date("2026-10-07T11:00:00.000Z") }, "2026-10-07T09:00:00.000Z")!.toISOString()).toBe("2026-10-07T11:00:00.000Z");
+  });
+
+  it("fenêtre tronquée : jamais au-delà de la dernière tranche lue EN ENTIER (même si une commande plus récente a été vue)", () => {
+    const completedUntil = new Date("2026-10-07T10:00:00.000Z");
+    const r = resolveOrdersCursor(window, { ...base, windowComplete: false, completedUntil, maxModifiedSeen: new Date("2026-10-07T11:59:00.000Z") }, "2026-10-07T09:00:00.000Z");
+    expect(r).toEqual(completedUntil);
+    // Aucune tranche complète : le curseur ne bouge pas.
+    expect(resolveOrdersCursor(window, { ...base, windowComplete: false, completedUntil: null }, "2026-10-07T09:00:00.000Z")).toBeNull();
+  });
+
+  it("une commande en échec retient le curseur à sa date ; un échec sans date le bloque", () => {
+    const failedAt = new Date("2026-10-07T07:30:00.000Z");
+    expect(resolveOrdersCursor(window, { ...base, failed: 1, minFailedModified: failedAt }, "2026-10-07T09:00:00.000Z")).toEqual(failedAt);
+    expect(resolveOrdersCursor(window, { ...base, failed: 1, failedWithoutDate: true }, "2026-10-07T09:00:00.000Z")).toBeNull();
+  });
+
+  it("sans échec, le curseur ne recule jamais", () => {
+    expect(resolveOrdersCursor(window, { ...base, maxModifiedSeen: new Date("2026-10-07T07:00:00.000Z") }, "2026-10-07T09:00:00.000Z")).toBeNull();
   });
 });

@@ -28,6 +28,8 @@ export interface LiveSourceReport {
   rejected: number;
   durationMs: number;
   requests: Array<{ url: string; status: number | null; durationMs: number; offers: number; error: string | null }>;
+  /** reformulations réellement envoyées à la source (au plus 2, voir query-expansion) */
+  queries: string[];
   checkedAt: string;
 }
 

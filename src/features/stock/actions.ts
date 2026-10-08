@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireOrgContextForAction } from "@/features/auth/dal";
 import { fail, ok, type ActionResult } from "@/lib/result";
-import { fromPostgrestError, toUserMessage, AppError } from "@/lib/errors";
+import { toUserMessage } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { addSkuSchema, adjustStockSchema, createProductSchema, emptyToNull, fieldErrorsOf, updateProductSchema, updateSkuSchema } from "@/features/stock/schemas";
 import type { Json } from "@/db/database.types";
+import { stockErrorMessage } from "@/features/stock/db-errors";
 
 const log = createLogger("STOCK");
 
@@ -43,10 +44,9 @@ function skuPayload(d: { code: string; barcode?: string; cost_price?: number | "
   };
 }
 
-function translateCreateError(e: { code?: string; message?: string }): string {
-  if (e.message?.includes("SKU_CODE_EXISTS")) return "Ce code SKU existe déjà dans votre organisation.";
-  if (e.message?.includes("PRODUCT_NOT_FOUND")) return "Produit introuvable.";
-  return toUserMessage(fromPostgrestError(e));
+function translateCreateError(e: { code?: string; message?: string; details?: string | null }): string {
+  // SKU_CODE_EXISTS (contrôle de create_sku) ou violation de l'index unique en cas de création simultanée.
+  return stockErrorMessage(e);
 }
 
 export async function createProductAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
@@ -102,7 +102,7 @@ export async function updateSkuAction(_prev: ActionResult | null, formData: Form
     const parsed = updateSkuSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return fail("Vérifiez les champs du formulaire.", { fieldErrors: fieldErrorsOf(parsed.error.issues) });
     const d = parsed.data;
-    const { data: sku, error: skuErr } = await ctx.supabase
+    let update = ctx.supabase
       .from("skus")
       .update({
         barcode: emptyToNull(d.barcode),
@@ -116,24 +116,41 @@ export async function updateSkuAction(_prev: ActionResult | null, formData: Form
         ...(d.is_active ? { is_active: d.is_active === "true" } : {}),
       })
       .eq("id", d.sku_id)
-      .eq("organization_id", ctx.organization.id)
-      .select("code, variant_id")
-      .single();
-    if (skuErr || !sku) return fail(toUserMessage(fromPostgrestError(skuErr ?? { message: "SKU introuvable" })));
-
-    if (d.variant_name !== undefined || d.condition || d.grade !== undefined || d.ean !== undefined || d.mpn !== undefined) {
-      const { error: vErr } = await ctx.supabase
-        .from("product_variants")
-        .update({
-          ...(d.variant_name ? { name: d.variant_name } : {}),
-          ...(d.condition ? { condition: d.condition } : {}),
-          grade: emptyToNull(d.grade),
-          ean: emptyToNull(d.ean),
-          mpn: emptyToNull(d.mpn),
-        })
-        .eq("id", sku.variant_id);
-      if (vErr) return fail(toUserMessage(fromPostgrestError(vErr)));
+      .eq("organization_id", ctx.organization.id);
+    // Verrou optimiste : si le SKU a été modifié depuis l'ouverture du formulaire (autre onglet,
+    // autre utilisateur, réception fournisseur qui fixe le coût…), rien n'est écrasé.
+    if (d.expected_updated_at) update = update.eq("updated_at", d.expected_updated_at);
+    const { data: rows, error: skuErr } = await update.select("code, variant_id");
+    if (skuErr) return fail(stockErrorMessage(skuErr));
+    const sku = rows?.[0];
+    if (!sku) {
+      const { data: exists } = await ctx.supabase.from("skus").select("id").eq("id", d.sku_id).eq("organization_id", ctx.organization.id).maybeSingle();
+      return exists
+        ? fail("Ce SKU a été modifié entre-temps (autre onglet ou autre utilisateur). Rechargez la page pour voir la dernière version : vos changements n'ont pas été enregistrés.", { code: "CONFLICT" })
+        : fail("SKU introuvable.");
     }
+
+    const { data: current } = await ctx.supabase.from("product_variants").select("attributes").eq("id", sku.variant_id).maybeSingle();
+    const attributes: Record<string, Json> = { ...((current?.attributes ?? {}) as Record<string, Json>) };
+    // Les attributs structurés suivent les champs du formulaire (une valeur vide retire l'attribut).
+    for (const [key, value] of [["storage", d.storage], ["color", d.color], ["grade", d.grade]] as const) {
+      if (value === undefined) continue;
+      if (value === "") delete attributes[key];
+      else attributes[key] = value;
+    }
+    const { error: vErr } = await ctx.supabase
+      .from("product_variants")
+      .update({
+        ...(d.variant_name ? { name: d.variant_name } : {}),
+        ...(d.condition ? { condition: d.condition } : {}),
+        ...(d.grade !== undefined ? { grade: emptyToNull(d.grade) } : {}),
+        ...(d.ean !== undefined ? { ean: emptyToNull(d.ean) } : {}),
+        ...(d.mpn !== undefined ? { mpn: emptyToNull(d.mpn) } : {}),
+        attributes,
+      })
+      .eq("id", sku.variant_id)
+      .eq("organization_id", ctx.organization.id);
+    if (vErr) return fail(stockErrorMessage(vErr));
     revalidatePath("/stock");
     revalidatePath(`/stock/${encodeURIComponent(sku.code)}`);
     return ok(undefined);
@@ -153,7 +170,7 @@ export async function updateProductAction(_prev: ActionResult | null, formData: 
       .update({ name: d.name, brand: emptyToNull(d.brand), category: emptyToNull(d.category), description: emptyToNull(d.description), image_url: emptyToNull(d.image_url) })
       .eq("id", d.product_id)
       .eq("organization_id", ctx.organization.id);
-    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    if (error) return fail(stockErrorMessage(error));
     revalidatePath("/stock");
     return ok(undefined);
   } catch (e) {
@@ -161,7 +178,7 @@ export async function updateProductAction(_prev: ActionResult | null, formData: 
   }
 }
 
-export async function adjustStockAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+export async function adjustStockAction(_prev: ActionResult<{ quantityAfter: number | null }> | null, formData: FormData): Promise<ActionResult<{ quantityAfter: number | null }>> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
     const parsed = adjustStockSchema.safeParse(Object.fromEntries(formData));
@@ -179,34 +196,53 @@ export async function adjustStockAction(_prev: ActionResult | null, formData: Fo
       p_note: emptyToNull(d.note) ?? undefined,
       p_occurred_at: new Date().toISOString(),
     });
-    if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    if (error) return fail(stockErrorMessage(error));
     const { data: sku } = await ctx.supabase.from("skus").select("code").eq("id", d.sku_id).single();
     log.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
     revalidatePath("/stock");
     if (sku) revalidatePath(`/stock/${encodeURIComponent(sku.code)}`);
     revalidatePath("/dashboard");
-    return ok(undefined);
+    revalidatePath("/stock/alerts");
+    return ok({ quantityAfter: data?.quantity_after ?? null });
   } catch (e) {
     return fail(toUserMessage(e));
   }
 }
 
-export async function applyPendingSalesAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const skuId = String(formData.get("sku_id") ?? "");
-  const code = String(formData.get("code") ?? "");
-  const { error } = await ctx.supabase.rpc("apply_pending_sales_for_sku", { p_sku_id: skuId });
-  if (error) throw new AppError("INTERNAL", toUserMessage(fromPostgrestError(error)));
-  revalidatePath(`/stock/${encodeURIComponent(code)}`);
-  revalidatePath("/stock");
+export async function applyPendingSalesAction(_prev: ActionResult<{ message: string }> | null, formData: FormData): Promise<ActionResult<{ message: string }>> {
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const skuId = String(formData.get("sku_id") ?? "");
+    const code = String(formData.get("code") ?? "");
+    const { data, error } = await ctx.supabase.rpc("apply_pending_sales_for_sku", { p_sku_id: skuId });
+    if (error) return fail(stockErrorMessage(error));
+    revalidatePath(`/stock/${encodeURIComponent(code)}`);
+    revalidatePath("/stock");
+    revalidatePath("/dashboard");
+    const n = typeof data === "number" ? data : 0;
+    return ok({ message: n === 0 ? "Aucune vente à déduire : tout était déjà appliqué." : `${n} vente(s) déduite(s) du stock.` });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
 }
 
-export async function archiveProductAction(formData: FormData): Promise<void> {
-  const ctx = await requireOrgContextForAction({ write: true });
-  const productId = String(formData.get("product_id") ?? "");
-  const archive = String(formData.get("archive") ?? "true") === "true";
-  await ctx.supabase.from("products").update({ is_archived: archive }).eq("id", productId).eq("organization_id", ctx.organization.id);
-  await ctx.supabase.from("skus").update({ is_active: !archive }).eq("product_id", productId).eq("organization_id", ctx.organization.id);
+/** Archivage (ou réactivation) d'un produit et de toutes ses variantes — le modèle de « suppression ». */
+export async function archiveProductAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  let archive: boolean;
+  try {
+    const ctx = await requireOrgContextForAction({ write: true });
+    const productId = String(formData.get("product_id") ?? "");
+    archive = String(formData.get("archive") ?? "true") === "true";
+    const { data: product, error } = await ctx.supabase.from("products").update({ is_archived: archive }).eq("id", productId).eq("organization_id", ctx.organization.id).select("id").maybeSingle();
+    if (error) return fail(stockErrorMessage(error));
+    if (!product) return fail("Produit introuvable.");
+    const { error: skuErr } = await ctx.supabase.from("skus").update({ is_active: !archive }).eq("product_id", productId).eq("organization_id", ctx.organization.id);
+    if (skuErr) return fail(stockErrorMessage(skuErr));
+    log.info(archive ? "product archived" : "product restored", { orgId: ctx.organization.id, productId });
+  } catch (e) {
+    return fail(toUserMessage(e));
+  }
   revalidatePath("/stock");
-  redirect("/stock");
+  revalidatePath("/dashboard");
+  redirect(archive ? "/stock?archived=1" : "/stock");
 }

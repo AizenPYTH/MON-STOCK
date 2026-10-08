@@ -35,11 +35,10 @@ export interface OrgContext {
 }
 
 export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getCurrentUser() est mis en cache pour la requête : un seul aller-retour de validation du JWT.
+  const user = await getCurrentUser();
   if (!user) return null;
+  const supabase = await createServerSupabaseClient();
 
   const [{ data: profile }, { data: members }] = await Promise.all([
     supabase.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
@@ -81,10 +80,23 @@ export async function requireOrgContext(): Promise<OrgContext> {
   return ctx;
 }
 
-/** Pour les Server Actions : lève une AppError (pas de redirect dans une action de formulaire). */
+/** Message affiché lorsqu'une Server Action est appelée sans session valide (JWT expiré, déconnexion ailleurs…). */
+export const SESSION_EXPIRED_MESSAGE = "Votre session a expiré. Reconnectez-vous pour continuer : votre saisie n'a pas été enregistrée.";
+
+/**
+ * Pour les Server Actions : lève une AppError (pas de redirect dans une action de formulaire).
+ * Le proxy laisse passer les appels d'actions sans session : c'est ICI que l'authentification
+ * est vérifiée (getUser() valide le JWT auprès de Supabase), puis l'appartenance et le rôle.
+ */
 export async function requireOrgContextForAction(options: { write?: boolean; admin?: boolean } = {}): Promise<OrgContext> {
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new AppError("AUTH_REQUIRED", SESSION_EXPIRED_MESSAGE, { action: { label: "Se reconnecter", href: "/login" } });
+  }
   const ctx = await getOrgContext();
-  if (!ctx) throw new AppError("AUTH_REQUIRED", "Connexion requise.");
+  if (!ctx) {
+    throw new AppError("FORBIDDEN", "Vous n'êtes membre d'aucune organisation active (accès retiré ?).", { action: { label: "Choisir une organisation", href: "/onboarding" } });
+  }
   if (options.admin && !["owner", "admin"].includes(ctx.role)) {
     throw new AppError("FORBIDDEN", "Cette action est réservée aux administrateurs de l'organisation.");
   }

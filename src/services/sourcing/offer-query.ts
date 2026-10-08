@@ -33,7 +33,7 @@ export interface OfferFilters {
   page?: number;
 }
 
-export const OFFER_SELECT = "*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, currency), source:supplier_sources(id, name, source_type, status, last_successful_sync_at)";
+export const OFFER_SELECT = "*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, currency), source:supplier_sources(id, name, source_type, status, last_successful_sync_at, automated_access_confirmed, config)";
 export const OFFER_FETCH_LIMIT = 500;
 
 export type OfferQueryStage = "identifier" | "structured" | "text" | "filters_only" | "none";

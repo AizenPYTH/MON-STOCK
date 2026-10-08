@@ -1,12 +1,12 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { cn, safeExternalUrl } from "@/lib/utils";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "link";
 type Size = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
 
 const variants: Record<Variant, string> = {
   primary: "bg-foreground text-white hover:bg-zinc-800 shadow-sm",
@@ -35,6 +35,11 @@ export function Button({ variant = "primary", size = "md", className, type = "bu
   return <button type={type} className={buttonClasses(variant, size, className)} {...props} />;
 }
 
+/** Chemin interne relatif à l'application (`/stock`, `?page=2`, `#ancre`) — jamais `//hote`. */
+function isInternalHref(href: string): boolean {
+  return (href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\")) || href.startsWith("?") || href.startsWith("#");
+}
+
 export function ButtonLink({
   href,
   variant = "primary",
@@ -50,19 +55,37 @@ export function ButtonLink({
   children: ReactNode;
   target?: string;
   rel?: string;
+  "aria-label"?: string;
+  title?: string;
 }) {
-  const external = /^https?:\/\//.test(href);
-  if (external) {
+  if (isInternalHref(href)) {
+    // typedRoutes : les routes dynamiques construites sont validées à l'exécution.
     return (
-      <a href={href} className={buttonClasses(variant, size, className)} target={rest.target ?? "_blank"} rel={rest.rel ?? "noopener noreferrer"}>
+      <Link href={href as never} className={buttonClasses(variant, size, className)} {...rest}>
         {children}
-      </a>
+      </Link>
     );
   }
-  // typedRoutes : les routes dynamiques construites sont validées à l'exécution.
+  // Lien externe (souvent issu de données tierces : flux fournisseur, annonce…) :
+  // uniquement http(s), ouvert dans un nouvel onglet sans accès à `window.opener`.
+  const external = safeExternalUrl(href);
+  if (!external) {
+    return (
+      <span aria-disabled="true" title="Lien indisponible (URL non sûre ou invalide)" className={buttonClasses(variant, size, cn(className, "pointer-events-none opacity-50"))}>
+        {children}
+      </span>
+    );
+  }
   return (
-    <Link href={href as never} className={buttonClasses(variant, size, className)} {...rest}>
+    <a
+      href={external}
+      className={buttonClasses(variant, size, className)}
+      target={rest.target ?? "_blank"}
+      rel={rest.rel ?? "noopener noreferrer"}
+      aria-label={rest["aria-label"]}
+      title={rest.title}
+    >
       {children}
-    </Link>
+    </a>
   );
 }

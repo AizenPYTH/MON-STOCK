@@ -18,6 +18,7 @@ import { acceptSuggestionAction, ignoreListingAction, rejectSuggestionAction, re
 import { ActionForm } from "@/features/integrations/components/action-form";
 import { AssignSkuDialog } from "@/features/integrations/components/assign-sku-dialog";
 import { PushQuantityButton } from "@/features/integrations/components/push-quantity-button";
+import { safeExternalUrl } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Listings non associés" };
 
@@ -116,8 +117,8 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                         <div className="text-xs text-muted">
                           {PROVIDER_LABEL[l.provider] ?? l.provider} · <span className="font-mono">{l.external_listing_id}</span>
                           {l.external_variation_id ? <span className="font-mono"> / {l.external_variation_id}</span> : null}
-                          {l.listing_url ? (
-                            <a href={l.listing_url} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex align-middle hover:text-foreground">
+                          {safeExternalUrl(l.listing_url) ? (
+                            <a href={safeExternalUrl(l.listing_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex align-middle hover:text-foreground">
                               <ExternalLink className="h-3 w-3" />
                             </a>
                           ) : null}

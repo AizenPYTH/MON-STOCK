@@ -10,6 +10,7 @@ import { findOpportunities, type OpportunityView } from "@/features/analytics/op
 import { SOURCE_TYPE_LABEL, SOURCING_EVENT_LABEL, TAX_LABEL } from "@/features/analytics/labels";
 import { UNKNOWN_COST_LABEL } from "@/domain/pricing/margin";
 import { formatDays, formatMoney, formatNumber, formatPercent, formatRelative, NOT_PROVIDED } from "@/lib/format";
+import { safeExternalUrl } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Opportunités" };
 
@@ -117,8 +118,8 @@ function OpportunityCard({ o }: { o: OpportunityView }) {
           <ButtonLink href={`/stock/${encodeURIComponent(o.code)}`} variant="ghost" size="sm">
             Fiche SKU
           </ButtonLink>
-          {o.offer.sourceUrl ? (
-            <a href={o.offer.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 self-center text-xs text-muted hover:text-foreground">
+          {safeExternalUrl(o.offer.sourceUrl) ? (
+            <a href={safeExternalUrl(o.offer.sourceUrl) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 self-center text-xs text-muted hover:text-foreground">
               Source <ExternalLink className="h-3 w-3" />
             </a>
           ) : null}

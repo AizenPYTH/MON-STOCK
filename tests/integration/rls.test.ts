@@ -96,8 +96,11 @@ d("Protection du rôle propriétaire", () => {
       await asService(c);
       await c.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'admin')", [org, admin]);
       await asUser(c, admin);
-      // La clause WITH CHECK rejette la ligne modifiée (erreur RLS) : un admin ne peut pas s'attribuer le rôle owner.
-      await expectQueryError(c, "update public.organization_members set role = 'owner' where organization_id = $1 and user_id = $2", [org, admin], /row-level security/);
+      // Un utilisateur ne modifie jamais son propre rôle (clause USING : aucune ligne visible pour l'UPDATE).
+      const selfPromote = await c.query("update public.organization_members set role = 'owner' where organization_id = $1 and user_id = $2", [org, admin]);
+      expect(selfPromote.rowCount).toBe(0);
+      const still = await c.query("select role from public.organization_members where organization_id = $1 and user_id = $2", [org, admin]);
+      expect(still.rows[0].role).toBe("admin");
       const demote = await c.query("update public.organization_members set role = 'viewer' where organization_id = $1 and user_id = $2", [org, owner]);
       expect(demote.rowCount).toBe(0);
       const remove = await c.query("delete from public.organization_members where organization_id = $1 and user_id = $2", [org, owner]);
@@ -109,6 +112,8 @@ d("Protection du rôle propriétaire", () => {
       await asUser(c, admin);
       const ok = await c.query("update public.organization_members set role = 'viewer' where organization_id = $1 and user_id = $2", [org, member]);
       expect(ok.rowCount).toBe(1);
+      // … mais ne peut pas le promouvoir propriétaire (la clause WITH CHECK rejette la ligne modifiée).
+      await expectQueryError(c, "update public.organization_members set role = 'owner' where organization_id = $1 and user_id = $2", [org, member], /row-level security/);
       // Une invitation ne rétrograde jamais un membre existant.
       await asService(c);
       const { rows: inv } = await c.query("insert into public.organization_invitations (organization_id, email, role) values ($1, 'owner2@example.test', 'viewer') returning token", [org]);

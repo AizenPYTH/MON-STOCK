@@ -3,11 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { DescriptionList, Stat } from "@/components/ui/page";
-import { Button } from "@/components/ui/button";
 import { getSupplier, getSupplierTabCounts } from "@/features/suppliers/queries";
 import { SupplierHeader } from "@/features/suppliers/components/supplier-header";
 import { SupplierForm } from "@/features/suppliers/components/supplier-form";
 import { archiveSupplierAction } from "@/features/suppliers/actions";
+import { ActionButtonForm } from "@/features/sourcing/components/action-button-form";
 import { formatDate, formatMoney, NOT_PROVIDED } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Fournisseur" };
@@ -42,13 +42,9 @@ export default async function SupplierPage({ params, searchParams }: { params: P
           <Card>
             <CardHeader title={supplier.is_archived ? "Restaurer" : "Archiver"} description="Un fournisseur archivé disparaît des listes mais ses offres et commandes sont conservées." />
             <CardContent>
-              <form action={archiveSupplierAction}>
-                <input type="hidden" name="supplier_id" value={supplier.id} />
-                <input type="hidden" name="archive" value={supplier.is_archived ? "false" : "true"} />
-                <Button type="submit" variant={supplier.is_archived ? "secondary" : "danger"}>
-                  {supplier.is_archived ? "Restaurer ce fournisseur" : "Archiver ce fournisseur"}
-                </Button>
-              </form>
+              <ActionButtonForm action={archiveSupplierAction} fields={{ supplier_id: supplier.id, archive: supplier.is_archived ? "false" : "true" }} variant={supplier.is_archived ? "secondary" : "danger"} size="md">
+                {supplier.is_archived ? "Restaurer ce fournisseur" : "Archiver ce fournisseur"}
+              </ActionButtonForm>
             </CardContent>
           </Card>
         </div>

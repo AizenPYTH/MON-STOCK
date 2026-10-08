@@ -52,5 +52,5 @@ export const loadStockViews = cache(async (ctx: OrgContext): Promise<StockViewsB
 
 export const getStockAnalytics = cache(async (ctx: OrgContext): Promise<StockAnalytics> => {
   const bundle = await loadStockViews(ctx);
-  return groupStockViews(bundle.views, bundle.now, { truncated: bundle.truncated });
+  return groupStockViews(bundle.views, bundle.now, { truncated: bundle.truncated, currency: ctx.organization.default_currency });
 });

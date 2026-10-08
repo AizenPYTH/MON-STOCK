@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, FormError } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useToast } from "@/components/ui/toast";
 import type { ActionResult } from "@/lib/result";
 import { formatNumber } from "@/lib/format";
 import { mapListingAction, searchSkusAction, type SkuSearchRow } from "@/features/integrations/actions";
@@ -16,9 +17,13 @@ export function AssignSkuDialog({ listingId, listingTitle, externalSku, label = 
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<SkuSearchRow | null>(null);
   const [pending, startTransition] = useTransition();
+  const toast = useToast();
   const [state, action] = useActionState<ActionResult | null, FormData>(async (prev, formData) => {
     const result = await mapListingAction(prev, formData);
-    if (result.ok) setOpen(false);
+    if (result.ok) {
+      setOpen(false);
+      toast.success("Annonce associée au SKU.");
+    }
     return result;
   }, null);
 
@@ -51,7 +56,7 @@ export function AssignSkuDialog({ listingId, listingTitle, externalSku, label = 
           </p>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher par nom, code SKU ou code-barres…" className="pl-8" autoFocus />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher par nom, code SKU ou code-barres…" aria-label="Rechercher un SKU" className="pl-8" autoFocus />
           </div>
           {searchError ? <FormError message={searchError} /> : null}
           <div className="max-h-64 overflow-y-auto rounded-lg border border-border">

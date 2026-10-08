@@ -4,15 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, FormError, Input, Select, Textarea } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { useToast } from "@/components/ui/toast";
 import type { ActionResult } from "@/lib/result";
 import { adjustStockAction } from "@/features/stock/actions";
 
 export function AdjustStockButton({ skuId, available }: { skuId: string; available: number }) {
   const [open, setOpen] = useState(false);
-  const [state, action] = useActionState<ActionResult | null, FormData>(
+  const toast = useToast();
+  const [state, action] = useActionState<ActionResult<{ quantityAfter: number | null }> | null, FormData>(
     async (prev, fd) => {
       const r = await adjustStockAction(prev, fd);
-      if (r.ok) setOpen(false);
+      if (r.ok) {
+        setOpen(false);
+        toast.success(r.data.quantityAfter === null ? "Mouvement de stock enregistré." : `Mouvement de stock enregistré : stock en main ${r.data.quantityAfter}.`);
+      }
       return r;
     },
     null,
@@ -27,7 +32,7 @@ export function AdjustStockButton({ skuId, available }: { skuId: string; availab
         <form action={action} className="space-y-4">
           <input type="hidden" name="sku_id" value={skuId} />
           <FormError message={err?.error} />
-          <p className="text-sm text-muted">Stock disponible actuel : <span className="font-medium text-foreground tnum">{available}</span>. Chaque mouvement est journalisé et irréversible (créez un mouvement inverse pour corriger).</p>
+          <p className="text-sm text-muted">Stock disponible actuel : <span className="font-medium text-foreground tnum">{available}</span>. Chaque mouvement est journalisé et irréversible (créez un mouvement inverse pour corriger). Un mouvement manuel ne peut pas rendre le stock négatif.</p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type" htmlFor="mv_type" error={err?.fieldErrors?.type}>
               <Select id="mv_type" name="type" defaultValue="receipt">
@@ -47,7 +52,7 @@ export function AdjustStockButton({ skuId, available }: { skuId: string; availab
             </Field>
           </div>
           <Field label="Quantité" htmlFor="mv_qty" error={err?.fieldErrors?.quantity}>
-            <Input id="mv_qty" name="quantity" type="number" min="1" step="1" required />
+            <Input id="mv_qty" name="quantity" type="number" min="1" max="1000000" step="1" required />
           </Field>
           <Field label="Note" htmlFor="mv_note" error={err?.fieldErrors?.note}>
             <Textarea id="mv_note" name="note" placeholder="Bon de livraison, inventaire, casse…" />

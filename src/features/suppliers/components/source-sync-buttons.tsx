@@ -58,7 +58,7 @@ export function SyncFeedButton({ feedId, hasUrl }: { feedId: string; hasUrl: boo
     <form action={action} className="space-y-2">
       <input type="hidden" name="feed_id" value={feedId} />
       <div className="flex flex-wrap items-center gap-2">
-        {!hasUrl ? <Input type="file" name="file" accept=".csv,.txt,.xml,.json" className="h-8 max-w-xs text-xs" required /> : null}
+        {!hasUrl ? <Input type="file" name="file" accept=".csv,.txt,.xml,.json" aria-label="Fichier du flux (CSV, XML ou JSON)" className="h-8 max-w-xs text-xs" required /> : null}
         <SubmitButton size="sm" variant="secondary" pendingText="Synchronisation…">
           {hasUrl ? "Synchroniser maintenant" : "Importer le fichier"}
         </SubmitButton>

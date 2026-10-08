@@ -3,7 +3,7 @@ import type { Json, TablesInsert } from "@/db/database.types";
 import { fromPostgrestError } from "@/lib/errors";
 import { variationKey } from "@/integrations/core/variation";
 import type { NormalizedListing } from "@/integrations/core/types";
-import { chunk, type SyncContext } from "@/services/sync/context";
+import { chunk, fetchAllRows, type SyncContext } from "@/services/sync/context";
 import { suggestSkusForListing, type SkuCandidate } from "@/services/sync/matching";
 
 export interface ListingsPhaseResult {
@@ -78,10 +78,19 @@ export function listingToRows(ctx: Pick<SyncContext, "organizationId" | "salesCh
   });
 }
 
-export async function syncListings(ctx: SyncContext): Promise<ListingsPhaseResult> {
+export function emptyListingsResult(): ListingsPhaseResult {
+  return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
+}
+
+/**
+ * Lit toutes les annonces actives, les enregistre par paquets (upsert idempotent : une page en
+ * échec n'annule pas les paquets déjà écrits, et le run suivant les réécrit), puis marque
+ * « terminées » les annonces absentes — UNIQUEMENT si la liste lue est complète.
+ * `result` est un accumulateur conservé par l'appelant si une exception interrompt la phase.
+ */
+export async function syncListings(ctx: SyncContext, result: ListingsPhaseResult = emptyListingsResult()): Promise<ListingsPhaseResult> {
   const { admin, log } = ctx;
   const nowIso = new Date().toISOString();
-  const result: ListingsPhaseResult = { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
   const seen = new Set<string>();
   let truncated = false;
 
@@ -109,15 +118,21 @@ export async function syncListings(ctx: SyncContext): Promise<ListingsPhaseResul
   }
 
   // Annonces actives connues mais absentes de la liste active eBay → terminées (uniquement si la liste est complète).
-  const { data: active, error: activeError } = await admin
-    .from("channel_listings")
-    .select("id, external_listing_id, external_variation_id")
-    .eq("sales_channel_id", ctx.salesChannelId)
-    .eq("organization_id", ctx.organizationId)
-    .eq("status", "active")
-    .limit(20000);
-  if (activeError) throw fromPostgrestError(activeError);
-  const toEnd = result.complete ? (active ?? []).filter((r) => !seen.has(listingKey(r.external_listing_id, r.external_variation_id))).map((r) => r.id) : [];
+  const active = result.complete
+    ? await fetchAllRows((from, to) =>
+        admin
+          .from("channel_listings")
+          .select("id, external_listing_id, external_variation_id")
+          .eq("sales_channel_id", ctx.salesChannelId)
+          .eq("organization_id", ctx.organizationId)
+          .eq("status", "active")
+          .order("id")
+          .range(from, to),
+      ).catch((e: { code?: string; message: string }) => {
+        throw fromPostgrestError(e);
+      })
+    : [];
+  const toEnd = active.filter((r) => !seen.has(listingKey(r.external_listing_id, r.external_variation_id))).map((r) => r.id);
   for (const ids of chunk(toEnd, 500)) {
     const { error } = await admin.from("channel_listings").update({ status: "ended", ended_at: nowIso, last_synced_at: nowIso }).in("id", ids).eq("organization_id", ctx.organizationId);
     if (error) throw fromPostgrestError(error);
@@ -132,23 +147,27 @@ export async function syncListings(ctx: SyncContext): Promise<ListingsPhaseResul
 /** Association automatique UNIQUEMENT sur correspondance exacte (insensible à la casse) SKU eBay = code SKU interne. */
 async function autoMapBySku(ctx: SyncContext): Promise<number> {
   const { admin } = ctx;
-  const { data: unmapped, error } = await admin
-    .from("channel_listings")
-    .select("id, external_sku")
-    .eq("sales_channel_id", ctx.salesChannelId)
-    .eq("organization_id", ctx.organizationId)
-    .eq("status", "active")
-    .in("mapping_status", ["unmapped", "suggested"])
-    .not("external_sku", "is", null)
-    .limit(5000);
-  if (error) throw fromPostgrestError(error);
-  const candidates = (unmapped ?? []).filter((l) => l.external_sku && l.external_sku.trim().length > 0);
+  const toAppError = (e: { code?: string; message: string }) => {
+    throw fromPostgrestError(e);
+  };
+  const unmapped = await fetchAllRows((from, to) =>
+    admin
+      .from("channel_listings")
+      .select("id, external_sku")
+      .eq("sales_channel_id", ctx.salesChannelId)
+      .eq("organization_id", ctx.organizationId)
+      .eq("status", "active")
+      .in("mapping_status", ["unmapped", "suggested"])
+      .not("external_sku", "is", null)
+      .order("id")
+      .range(from, to),
+  ).catch(toAppError);
+  const candidates = unmapped.filter((l) => l.external_sku && l.external_sku.trim().length > 0);
   if (candidates.length === 0) return 0;
 
-  const { data: skus, error: skuError } = await admin.from("skus").select("id, code").eq("organization_id", ctx.organizationId).eq("is_active", true).limit(20000);
-  if (skuError) throw fromPostgrestError(skuError);
+  const skus = await fetchAllRows((from, to) => admin.from("skus").select("id, code").eq("organization_id", ctx.organizationId).eq("is_active", true).order("id").range(from, to)).catch(toAppError);
   const byCode = new Map<string, string>();
-  for (const s of skus ?? []) byCode.set(s.code.trim().toUpperCase(), s.id);
+  for (const s of skus) byCode.set(s.code.trim().toUpperCase(), s.id);
 
   let mapped = 0;
   for (const l of candidates) {

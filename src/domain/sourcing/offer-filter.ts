@@ -79,7 +79,8 @@ export type FilterReasonCode =
   | "price_unknown"
   | "price_low_verified"
   | "price_low_unverified"
-  | "price_high";
+  | "price_high"
+  | "confirmed_link";
 
 export interface FilterReason {
   code: FilterReasonCode;
@@ -378,4 +379,5 @@ export const FILTER_REASON_LABEL: Record<FilterReasonCode, string> = {
   price_low_verified: "Prix anormalement bas, à vérifier",
   price_low_unverified: "Prix anormalement bas (fournisseur non vérifié)",
   price_high: "Prix anormalement élevé",
+  confirmed_link: "Associée manuellement au SKU",
 };

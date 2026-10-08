@@ -49,6 +49,8 @@ export interface MarginLineInput {
   units_30d: number | null;
   revenue_30d: number | null;
   quantity_on_hand: number | null;
+  /** unités vendues sur 30 j dans une autre devise que celle du SKU (CA non compté) */
+  foreign_currency_units_30d?: number | null;
 }
 
 export interface MarginLine {
@@ -62,6 +64,7 @@ export interface MarginLine {
   units30d: number;
   revenue30d: number;
   quantityOnHand: number;
+  foreignCurrencyUnits30d: number;
   margin: MarginResult;
   /** units30d × bénéfice net unitaire ; null si le coût ou le prix est inconnu */
   profit30d: number | null;
@@ -91,6 +94,7 @@ export function buildMarginLine(row: MarginLineInput, ctx: MarginContext): Margi
     units30d,
     revenue30d: Number(row.revenue_30d ?? 0),
     quantityOnHand: row.quantity_on_hand ?? 0,
+    foreignCurrencyUnits30d: row.foreign_currency_units_30d ?? 0,
     margin,
     profit30d: margin.netProfit === null ? null : Math.round(margin.netProfit * units30d * 100) / 100,
   };
@@ -102,6 +106,10 @@ export interface MarginAggregate {
   included: number;
   excludedUnknownCost: number;
   excludedUnknownSalePrice: number;
+  /** SKU dans une autre devise que celle de l'organisation : exclus des montants (jamais additionnés) */
+  excludedOtherCurrency: number;
+  /** unités vendues dans une autre devise (CA non inclus dans revenue30d) */
+  foreignCurrencyUnits30d: number;
   units30d: number;
   /** unités vendues sur 30 j par les SKU inclus */
   unitsIncluded: number;
@@ -113,10 +121,12 @@ export interface MarginAggregate {
   caveat: string | null;
 }
 
-export function aggregateMargins(lines: readonly MarginLine[]): MarginAggregate {
+export function aggregateMargins(lines: readonly MarginLine[], currency?: string): MarginAggregate {
   let included = 0;
   let excludedUnknownCost = 0;
   let excludedUnknownSalePrice = 0;
+  let excludedOtherCurrency = 0;
+  let foreignCurrencyUnits30d = 0;
   let units30d = 0;
   let unitsIncluded = 0;
   let revenue30d = 0;
@@ -124,7 +134,12 @@ export function aggregateMargins(lines: readonly MarginLine[]): MarginAggregate 
   const missing = new Set<UnknownCost>();
   for (const l of lines) {
     units30d += l.units30d;
+    if (currency && l.currency.toUpperCase() !== currency.toUpperCase()) {
+      excludedOtherCurrency++;
+      continue;
+    }
     revenue30d += l.revenue30d;
+    foreignCurrencyUnits30d += l.foreignCurrencyUnits30d;
     if (l.costPrice === null) {
       excludedUnknownCost++;
       continue;
@@ -142,12 +157,16 @@ export function aggregateMargins(lines: readonly MarginLine[]): MarginAggregate 
   const parts: string[] = [];
   if (excludedUnknownCost > 0) parts.push(`${excludedUnknownCost} SKU exclu${excludedUnknownCost > 1 ? "s" : ""} : coût inconnu`);
   if (excludedUnknownSalePrice > 0) parts.push(`${excludedUnknownSalePrice} SKU exclu${excludedUnknownSalePrice > 1 ? "s" : ""} : prix de vente inconnu`);
+  if (excludedOtherCurrency > 0) parts.push(`${excludedOtherCurrency} SKU exclu${excludedOtherCurrency > 1 ? "s" : ""} : autre devise`);
+  if (foreignCurrencyUnits30d > 0) parts.push(`CA de ${foreignCurrencyUnits30d} unité${foreignCurrencyUnits30d > 1 ? "s" : ""} vendue${foreignCurrencyUnits30d > 1 ? "s" : ""} dans une autre devise non compté`);
   if (missingFees.length > 0) parts.push(`non déduit${missingFees.length > 1 ? "s" : ""} : ${missingFees.map((u) => UNKNOWN_COST_LABEL[u]).join(", ")}`);
   return {
     lines: lines.length,
     included,
     excludedUnknownCost,
     excludedUnknownSalePrice,
+    excludedOtherCurrency,
+    foreignCurrencyUnits30d,
     units30d,
     unitsIncluded,
     revenue30d: Math.round(revenue30d * 100) / 100,
