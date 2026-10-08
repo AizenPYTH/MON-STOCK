@@ -9,7 +9,25 @@ export const SYNC_TRIGGER_LABEL: Record<string, string> = { manual: "Manuelle", 
 export const CONNECTION_STATUS_LABEL: Record<string, string> = { pending: "En attente", connected: "Connecté", expired: "Expirée", error: "Erreur", disconnected: "Déconnecté" };
 export const MAPPING_SOURCE_LABEL: Record<string, string> = { auto_sku_match: "SKU identique (auto)", manual: "Manuelle", suggestion_accepted: "Suggestion validée" };
 export const SUGGESTION_METHOD_LABEL: Record<string, string> = { ean: "EAN identique", sku_partial: "SKU proche", attributes: "Titre + attributs", title_similarity: "Similarité du titre" };
-export const PROVIDER_LABEL: Record<string, string> = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "Ventes manuelles" };
+export const PROVIDER_LABEL: Record<string, string> = {
+  ebay: "eBay",
+  amazon: "Amazon",
+  shopify: "Shopify",
+  woocommerce: "WooCommerce",
+  manual: "Ventes manuelles",
+  // Sourcing (runs des sources fournisseurs et des recherches en direct, provider = clé d'adaptateur)
+  public_web: "Page publique",
+  csv: "Flux CSV",
+  xml: "Flux XML",
+  json: "Flux JSON",
+  live_search: "Recherche en direct",
+  "jsonld-public": "Page publique (JSON-LD)",
+  "shopify-storefront": "Boutique Shopify (JSON public)",
+  "woocommerce-store": "Boutique WooCommerce (Store API)",
+  "google-merchant-feed": "Flux Google Merchant",
+  bigbuy: "BigBuy (compte fournisseur)",
+  "ingram-micro": "Ingram Micro (compte fournisseur)",
+};
 
 export function readStats(stats: Json | null | undefined): SyncStats {
   const s = stats && typeof stats === "object" && !Array.isArray(stats) ? stats : {};

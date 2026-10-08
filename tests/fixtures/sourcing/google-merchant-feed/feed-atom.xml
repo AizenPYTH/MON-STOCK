@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:g="http://base.google.com/ns/1.0">
+<title>Boutique Exemple</title>
+<entry>
+  <g:id>ATOM-1</g:id>
+  <title>Apple iPhone 13 256 Go Bleu</title>
+  <link href="https://boutique.example/p/iphone-13-256-bleu" rel="alternate"/>
+  <g:price>279.00 EUR</g:price>
+  <g:availability>preorder</g:availability>
+  <g:brand>Apple</g:brand>
+  <g:gtin>0194252707029</g:gtin>
+</entry>
+</feed>

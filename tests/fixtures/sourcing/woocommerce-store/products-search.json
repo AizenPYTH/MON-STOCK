@@ -1,0 +1,12 @@
+[
+ {"id":501,"name":"Apple iPhone 13 128 Go Noir reconditionné","slug":"iphone-13-128-noir","parent":0,"type":"simple","variation":"","permalink":"https://woo.example/produit/iphone-13-128-noir/","sku":"WC-IP13-128-N","short_description":"<p>Reconditionné Grade A</p>","description":"<p>Smartphone reconditionné, garanti.</p>","on_sale":true,
+  "prices":{"price":"22900","regular_price":"24900","sale_price":"22900","price_range":null,"currency_code":"EUR","currency_symbol":"€","currency_minor_unit":2,"currency_decimal_separator":",","currency_thousand_separator":" ","currency_prefix":"","currency_suffix":" €"},
+  "price_html":"","average_rating":"0","review_count":0,"images":[],"categories":[{"id":12,"name":"Smartphones","slug":"smartphones","link":"https://woo.example/categorie/smartphones/"}],"tags":[],
+  "attributes":[{"id":3,"name":"Marque","taxonomy":"pa_marque","has_variations":false,"terms":[{"id":31,"name":"Apple","slug":"apple"}]},{"id":4,"name":"Stockage","taxonomy":"pa_stockage","has_variations":false,"terms":[{"id":41,"name":"128 Go","slug":"128-go"}]}],
+  "variations":[],"has_options":false,"is_purchasable":true,"is_in_stock":true,"is_on_backorder":false,"low_stock_remaining":3,"sold_individually":false,
+  "add_to_cart":{"text":"Ajouter au panier","description":"","url":"?add-to-cart=501","minimum":2,"maximum":9999,"multiple":1}},
+ {"id":502,"name":"Coque iPhone 13","slug":"coque-iphone-13","parent":0,"type":"simple","variation":"","permalink":"https://woo.example/produit/coque-iphone-13/","sku":"","short_description":"","description":"","on_sale":false,
+  "prices":{"price":"990","regular_price":"990","sale_price":"990","price_range":null,"currency_code":"EUR","currency_symbol":"€","currency_minor_unit":2,"currency_decimal_separator":",","currency_thousand_separator":" ","currency_prefix":"","currency_suffix":" €"},
+  "price_html":"","average_rating":"0","review_count":0,"images":[],"categories":[],"tags":[],"attributes":[],"variations":[],"has_options":false,"is_purchasable":true,"is_in_stock":false,"is_on_backorder":false,"low_stock_remaining":null,"sold_individually":false,
+  "add_to_cart":{"text":"Ajouter au panier","description":"","url":"?add-to-cart=502","minimum":1,"maximum":9999,"multiple":1}}
+]

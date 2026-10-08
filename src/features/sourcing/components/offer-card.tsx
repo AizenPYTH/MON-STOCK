@@ -2,17 +2,15 @@ import Link from "next/link";
 import { ExternalLink, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
-import { formatMoney, formatNumber, NOT_PROVIDED } from "@/lib/format";
+import { formatMoney, formatNumber, formatRelative, NOT_PROVIDED } from "@/lib/format";
 import type { SearchOfferView, SearchSku } from "@/services/sourcing/search";
 import { ScoreBreakdown } from "@/features/sourcing/components/score-breakdown";
+import { OfferTraceability } from "@/features/sourcing/components/offer-traceability";
+import { deliveryLabel } from "@/features/sourcing/delivery";
+import { fromSearchProvenance, retrievalMethodLabel } from "@/features/sourcing/provenance";
 import { CONDITION_LABEL, SOURCE_TYPE_LABEL, STOCK_STATUS_LABEL, TAX_LABEL } from "@/features/sourcing/labels";
 
-export function deliveryLabel(min: number | null, max: number | null): string {
-  if (min === null && max === null) return NOT_PROVIDED;
-  if (min !== null && max !== null && min !== max) return `${min}–${max} jours`;
-  const d = max ?? min;
-  return `${d} jour${d && d > 1 ? "s" : ""}`;
-}
+export { deliveryLabel };
 
 export function OfferCard({ view, currency, sku, requestedQuantity }: { view: SearchOfferView; currency: string; sku: SearchSku | null; requestedQuantity: number }) {
   const o = view.offer;
@@ -20,6 +18,8 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
   const skuForOrder = sku?.id ?? o.sku_id;
   const orderQty = Math.max(requestedQuantity, o.moq ?? 1);
   const sameCurrency = o.original_currency.toUpperCase() === currency.toUpperCase();
+  const provenance = fromSearchProvenance(view.provenance, { sourceType: o.source_type, sourceUrl: o.source_url, lastSeenAt: o.last_seen_at });
+  const duplicatesCollapsed = view.duplicatesCollapsed ?? 0;
   return (
     <article className="rounded-xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -49,6 +49,15 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
                 <Badge variant="warning">Données suspectes</Badge>
               </>
             ) : null}
+            {duplicatesCollapsed > 0 ? (
+              <>
+                {" · "}
+                <Badge variant="accent">{duplicatesCollapsed} identique{duplicatesCollapsed > 1 ? "s" : ""} fusionnée{duplicatesCollapsed > 1 ? "s" : ""}</Badge>
+              </>
+            ) : null}
+          </p>
+          <p className="mt-0.5 text-xs text-muted">
+            {retrievalMethodLabel(provenance)} · vérifié {formatRelative(provenance.retrievedAt ?? o.last_seen_at)}
           </p>
         </div>
         <div className="text-right">
@@ -138,6 +147,11 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
           )}
         </div>
       </div>
+
+      <details className="mt-3 rounded-lg border border-border bg-surface-muted/40 px-3 py-2 text-xs">
+        <summary className="cursor-pointer font-medium text-muted-strong hover:text-foreground">Traçabilité : données telles que récupérées</summary>
+        <OfferTraceability className="mt-2" offer={o} supplierName={view.supplierName} supplierCountry={view.supplierCountry} provenance={provenance} duplicatesCollapsed={duplicatesCollapsed} />
+      </details>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 text-xs">

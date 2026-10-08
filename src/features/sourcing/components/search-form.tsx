@@ -1,19 +1,32 @@
+import Link from "next/link";
 import { Search } from "lucide-react";
 import { Input, Select } from "@/components/ui/form";
 import { Button, ButtonLink } from "@/components/ui/button";
 import type { SourcingSearchParams } from "@/features/sourcing/schemas";
 import { SOURCE_TYPE_LABEL } from "@/features/sourcing/labels";
 
-export function SourcingSearchForm({ params, suppliers, skuCode }: { params: SourcingSearchParams; suppliers: Array<{ id: string; name: string }>; skuCode?: string | null }) {
+export function SourcingSearchForm({ params, suppliers, skuCode, liveEnabled = true, toggleLiveHref }: { params: SourcingSearchParams; suppliers: Array<{ id: string; name: string }>; skuCode?: string | null; liveEnabled?: boolean; toggleLiveHref?: string }) {
   return (
     <form method="get" action="/sourcing" className="rounded-xl border border-border bg-surface p-4">
       {skuCode ? <input type="hidden" name="sku" value={skuCode} /> : null}
+      {!liveEnabled ? <input type="hidden" name="live" value="0" /> : null}
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input name="q" defaultValue={params.q ?? ""} placeholder="Que recherchez-vous ? (ex. iPhone 13 128 Go noir grade A, EAN, référence…)" className="h-11 flex-1 text-base" autoFocus={!skuCode} />
         <Button type="submit" size="lg" className="h-11">
-          <Search className="h-4 w-4" /> Rechercher
+          <Search className="h-4 w-4" /> {liveEnabled ? "Rechercher en direct" : "Rechercher"}
         </Button>
       </div>
+      <p className="mt-2 text-xs text-muted">
+        {liveEnabled ? "Chaque recherche interroge vos sources connectées en direct (robots.txt respecté, aucun contournement)." : "Mode « offres enregistrées » : les sources ne sont pas interrogées."}
+        {toggleLiveHref ? (
+          <>
+            {" "}
+            <Link href={toggleLiveHref as never} className="font-medium text-muted-strong underline-offset-2 hover:underline">
+              {liveEnabled ? "Rechercher sans interroger les sources" : "Interroger les sources en direct"}
+            </Link>
+          </>
+        ) : null}
+      </p>
       <details className="mt-3" open={hasAdvanced(params)}>
         <summary className="cursor-pointer text-xs font-medium text-muted hover:text-foreground">Filtres avancés</summary>
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">

@@ -31,7 +31,7 @@ export function FeedForm({ supplierId, defaultCurrency }: { supplierId: string; 
 
   return (
     <Card>
-      <CardHeader title="Nouveau flux fournisseur (CSV / XML / JSON)" description="1. Indiquez l'URL ou choisissez un fichier. 2. Prévisualisez. 3. Vérifiez le mapping des colonnes puis enregistrez." actions={<Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Fermer</Button>} />
+      <CardHeader title="Nouveau flux fournisseur (CSV / XML / JSON)" description="1. Indiquez l'URL ou choisissez un fichier. 2. Prévisualisez. 3. Vérifiez le mapping des colonnes puis enregistrez. Pour un flux Google Merchant public, utilisez plutôt « Ajouter une source publique » avec l'adaptateur Flux Google Merchant (mapping automatique)." actions={<Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Fermer</Button>} />
       <CardContent>
         <form className="space-y-4">
           <input type="hidden" name="supplier_id" value={supplierId} />

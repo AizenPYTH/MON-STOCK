@@ -27,15 +27,19 @@ src/services/sourcing/          côté serveur (clients Supabase, réseau)
   crawler/robots.ts             robots.txt : groupe le plus spécifique, Allow/Disallow (motif le plus long, * et $), Crawl-delay
   crawler/source-crawler.ts     crawl borné : même hôte, pages max, délai ≥ max(2 s, Crawl-delay, config)
   crawler/crawler-manager.ts    planification des sources PUBLIC_WEB attestées, 1 requête à la fois par hôte, sync_runs
-  crawler/parsers/              SourceParser (parse(html, url) → RawOffer[]), parser générique JSON-LD schema.org, registre
+  crawler/parsers/              SourceParser (parse(html, url) → RawOffer[]), parser générique JSON-LD schema.org, registre (+ parsers HTML des adaptateurs)
+  adapter-runtime.ts            config d'adaptateur depuis supplier_sources, enveloppe de provenance (raw.provenance), planificateur par hôte
+  live-search.ts                PIPELINE DE RECHERCHE EN DIRECT : sources connectées → adaptateurs → OfferStorage → rapport par source, cache 10 min, sync_runs
+  live-search.types.ts          LiveSourceReport / LiveSearchSummary (consommés par l'interface)
   matching-service.ts           candidats SKU bornés, enregistrement des suggestions, confirmation auto des identifiants exacts seulement
   offer-query.ts                requête d'offres par étapes : EAN/MPN → attributs normalisés → texte (ilike, index pg_trgm) → filtres
   search.ts                     SourcingSearchService : prix normalisé/comparable, coût rendu, marge potentielle, fraîcheur, score, agrégats, sources
   alerts.ts                     évaluation des alertes → sourcing_alert_events (unique alerte/offre/type)
-  supplier-connectors.ts        connexions + secrets chiffrés (service_role) ; registre vide → « Aucun connecteur disponible »
+  supplier-connectors.ts        connexions + secrets chiffrés (service_role), testSupplierConnection, syncSupplierConnection (catalogue borné → OfferStorage → sync_runs)
   sync.ts                       runSourcingSync : fx → flux échus → crawls échus → alertes
 
-src/integrations/suppliers/     contrats SupplierAPIConnector, note PARTNER_FEED, dossiers de parsers par source (README)
+src/integrations/sourcing/      ADAPTATEURS DE SOURCE : core.ts (contrat SourceAdapter), registry.ts (SOURCE_ADAPTERS), shared.ts (HTTP tracé, filtrage par requête), un dossier par source
+src/integrations/suppliers/     connecteurs « compte » dérivés des adaptateurs access=account (SUPPLIER_CONNECTORS), note PARTNER_FEED
 src/app/api/cron/sourcing       cron protégé par `Authorization: Bearer ${CRON_SECRET}` (vercel.json : toutes les 6 h)
 src/features/suppliers, src/features/sourcing   schémas zod, requêtes, Server Actions, composants ; pages sous src/app/(app)/suppliers et /sourcing
 ```
@@ -55,6 +59,67 @@ Source (flux / page / saisie)
   → offres de la source non revues → status « expired » (jamais supprimées)
 ```
 
+## Adaptateurs de source (`src/integrations/sourcing/<key>/`)
+
+Chaque adaptateur est un dossier indépendant `{crawler,parser,mapper,index}.ts` :
+`crawler.ts` (URLs / endpoints, constantes regroupées en tête de fichier), `parser.ts` (validation Zod
+des payloads → structures typées, pur), `mapper.ts` (→ `RawOffer`, rien n'est deviné : absent → `null`),
+`index.ts` (objet `SourceAdapter` : `key`, `method`, `access`, `capabilities`, `credentialFields`,
+`configFields`, `urlsForQuery`, `urlsForCatalog`, `search`, `fetchCatalog`, `testConnection`, `verification`).
+Il est enregistré dans `registry.ts` (`SOURCE_ADAPTERS`) ; un adaptateur absent du registre n'est jamais proposé.
+
+| Clé | Méthode | Accès | search | catalog | quantité | Ce qui est lu | Vérification |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `jsonld-public` | `public_html` | public (attestation + robots.txt) | oui (`search_url` avec `{query}`) | oui (`urls`) | non | JSON-LD schema.org Product/Offer/ItemList (nom, SKU, GTIN, MPN, marque, prix, devise, disponibilité, état) | fixtures uniquement |
+| `shopify-storefront` | `public_json` | public (attestation + robots.txt) | oui (`search/suggest.json` → `products/{handle}.json`) | oui (`products.json?limit=250&page=N`) | seulement si `inventory_quantity` exposé | titre, vendor, SKU, barcode (si exposé), prix, `available`, options stockage/couleur ; devise et HT/TTC = réglages de la source ; état/grade déduits du titre + description (marqués `inferred`) | fixtures uniquement |
+| `woocommerce-store` | `public_json` | public (attestation + robots.txt) | oui (`wc/store/v1/products?search=`) | oui (paginé) | `low_stock_remaining` seulement | nom, SKU, prix + devise (unités mineures), promo, `is_in_stock`, MOQ (`add_to_cart.minimum`), attributs marque/stockage/couleur ; HT/TTC = réglage de la source | fixtures uniquement |
+| `google-merchant-feed` | `public_feed` | public | oui (filtrage local du flux, cache 10 min) | oui | `g:quantity` seulement | RSS 2.0 / Atom (g:) ou TSV/CSV : id, title, price « 229.00 EUR », sale_price, availability, gtin, mpn, brand, condition, link, shipping, item_group_id, color | fixtures uniquement |
+| `bigbuy` | `official_api` | compte (clé API Bearer) | oui (index local des premières pages, signalé partiel) | oui (`products.json` + `productsinformation.json` + `productsstockavailable.json` + `manufacturers.json`) | oui | nom, SKU, EAN13, marque, `wholesalePrice` (HT, EUR), `taxRate`, stock par entrepôt, délais de préparation | implémenté d'après la documentation publique, fixtures uniquement |
+| `ingram-micro` | `official_api` | compte (OAuth2 client credentials + IM-CustomerNumber / IM-CountryCode / IM-CorrelationID / IM-SenderID / Accept-Language) | oui (`GET /resellers/v6/catalog?keyword=` → `POST priceandavailability` ≤ 50) | oui (paginé) | oui (`totalAvailability`) | description, ingramPartNumber, vendorPartNumber (MPN), UPC, vendorName, `pricing.customerPrice` + `currencyCode` ; HT/TTC = réglage de la source | implémenté d'après la documentation publique, fixtures uniquement |
+
+**Statut de vérification : « fixtures »** pour tous. Le réseau sortant est bloqué dans l'environnement de
+développement : chaque adaptateur a été écrit d'après le format / la documentation publique de la
+plateforme et testé sur des documents construits selon ce format (`tests/fixtures/sourcing/<key>/`).
+Aucun n'a été exercé en conditions réelles depuis cet environnement ; les chemins d'endpoints des API
+« compte » sont isolés dans `crawler.ts` pour être corrigés sans toucher au reste.
+
+Configuration : `supplier_sources.config = { adapter: "<clé>", ...réglages, urls, parser, max_pages }`
+(`base_url`, `default_currency`, `default_tax_type`, `country` de la source servent de valeurs par
+défaut documentées par l'utilisateur, jamais devinées). Les comptes : `supplier_connections.connector_key`
+= clé de l'adaptateur, identifiants chiffrés dans `supplier_connection_secrets`, et une source
+`SUPPLIER_ACCOUNT` créée au premier besoin pour porter les offres.
+
+Provenance : chaque offre enregistrée porte `sourcing_offers.source_url` et
+`sourcing_offers.raw = { provenance: { adapter, method, retrieved_at, request_url, source_url }, payload }`
+(payload = données brutes bornées de l'adaptateur), relu par `SearchOfferView.provenance`.
+
+## Recherche en direct (pipeline)
+
+`runLiveSearch(ctx, { rawQuery, parsed, skuId?, maxSources?, timeoutMs? })` (`services/sourcing/live-search.ts`) :
+
+```
+requête → sources de l'organisation (supplier_sources non en pause, types PUBLIC_WEB/API/JSON/XML/CSV/SUPPLIER_ACCOUNT
+          + supplier_connections avec adaptateur « compte »)
+  → par source : adaptateur ? capacité search ?
+      pages / JSON publics : attestation (automated_access_confirmed) sinon « not_attested »,
+                             robots.txt sur adapter.urlsForQuery sinon « robots_disallowed » (colonnes robots_* mises à jour)
+      comptes : identifiants déchiffrés (loadConnectionCredentials) sinon « account_required »
+      cache 10 min par (source, requête normalisée) → « cached » sans nouvelle requête
+  → adapter.search avec budget (8 s par source), ≤ 10 sources en parallèle, 1 requête à la fois par hôte,
+    ≥ 2 s entre deux requêtes vers un même hôte public (HostScheduler)
+  → chaque RawOffer → enveloppe de provenance → OfferStorage (normalisation, validation, fx, upsert)
+  → LiveSourceReport par source (ok / cached / no_search / not_attested / robots_disallowed / account_required / error / timeout / skipped,
+    requêtes effectuées, durée, trouvées / enregistrées / rejetées) ; une ligne sync_runs par source réellement interrogée
+    (source_kind supplier_source ou supplier_connection, trigger manual, stats.kind = "live_search") visible dans /settings/sync
+```
+
+`searchOffers(ctx, { query, skuCode, filters, live })` : recherche en direct d'abord (par défaut dès
+que la requête n'est pas vide ; `live: false` pour l'ignorer), puis lecture en base (les offres venant
+d'être enregistrées sont incluses), déduplication (`domain/sourcing/dedupe.ts` : une offre par
+(fournisseur, produit normalisé), la moins chère conservée, `duplicatesCollapsed` sur la vue), score,
+classement. `SearchResult.live` porte le résumé ; `listLiveSearchableSources(ctx)` décrit pour l'interface
+l'interrogeabilité de chaque source (adaptateur, méthode, accès, attestation, robots, connexion).
+
 ## Recherche
 
 1. `parseQuery` : EAN (8/13 chiffres) ou MPN → recherche exacte ; sinon marque/modèle/stockage/couleur/grade normalisés ; sinon tokens texte.
@@ -64,11 +129,20 @@ Source (flux / page / saisie)
 5. Classements : prix le plus bas, meilleure offre, meilleure marge, livraison la plus rapide, MOQ le plus faible, meilleur fournisseur (inconnus en dernier).
 6. Mode SKU (`/sourcing?sku=CODE`) : critères issus du SKU (marque, nom, attributs, EAN/MPN), offres déjà associées incluses, « Votre fournisseur actuel » = coût d'achat du SKU, économies par unité et pour N unités.
 
-## Ajouter un parser de source publique
+## Ajouter un adaptateur de source
 
-Voir `src/integrations/suppliers/sources/README.md`. En résumé : un dossier `sources/<key>/{parser,mapper,crawler}.ts`,
-un objet `SourceParser` (`parse(html, url) → RawOffer[]`, pur, testé sur un HTML d'exemple), déclaré dans
-`sources/registry.ts`. Le parser générique `jsonld` lit les blocs JSON-LD schema.org `Product`/`Offer`.
+1. Créer `src/integrations/sourcing/<key>/` avec `crawler.ts` (endpoints / gabarits d'URL, constantes en tête),
+   `parser.ts` (schémas Zod du format officiel → types), `mapper.ts` (→ `RawOffer`, absent → `null`, état/grade
+   uniquement via le normaliseur, marqués `inferred`), `index.ts` (objet `SourceAdapter`, `verification: "fixtures"`
+   tant qu'il n'a pas été exercé en conditions réelles, description honnête des limites).
+2. Respecter le contrat : `search` retourne toujours `requests` (URL, statut, durée, offres, erreur) et `truncated` ;
+   `urlsForQuery` / `urlsForCatalog` listent les URLs à soumettre à robots.txt ; `testConnection` est sans effet de bord ;
+   un adaptateur `access: "account"` déclare ses `credentialFields` et lit `ctx.credentials`.
+3. L'enregistrer dans `src/integrations/sourcing/registry.ts` (`SOURCE_ADAPTERS`). Un adaptateur `access: "account"`
+   devient automatiquement un connecteur (`SUPPLIER_CONNECTORS`) ; un `htmlParser` est exposé au crawler d'URLs.
+4. Construire des fixtures d'après le format documenté dans `tests/fixtures/sourcing/<key>/` et un test
+   `tests/unit/sourcing-adapter-<key>.test.ts` (search, catalogue, testConnection, fetch simulé via `fetchImpl` +
+   `resolver` public) ; ajouter la ligne au tableau ci-dessus avec son statut de vérification.
 
 ## Format de mapping des flux (`supplier_feeds.field_mapping`)
 
@@ -96,7 +170,8 @@ un objet `SourceParser` (`parse(html, url) → RawOffer[]`, pur, testé sur un H
 ## Règles légales et de prudence
 
 - Pages publiques : l'utilisateur **atteste** que les conditions d'utilisation autorisent l'accès automatisé (`automated_access_confirmed`) ; `robots.txt` est lu et respecté (interdiction = refus, délai appliqué) ; User-Agent `SOURCING_USER_AGENT` identifiable ; aucun login, cookie, CAPTCHA, paywall ou protection anti-bot contournés ; adresses privées/locales refusées ; 1 requête à la fois par hôte, ≥ 2 s entre deux requêtes, nombre de pages borné.
-- Comptes fournisseurs / API : architecture en place (connexions, secrets chiffrés AES-256-GCM en table service_role), **aucun connecteur réel** : l'interface le dit explicitement.
+- Comptes fournisseurs / API : connexions + secrets chiffrés AES-256-GCM (table service_role) ; connecteurs `bigbuy` et `ingram-micro` implémentés d'après la documentation publique des API officielles, **vérifiés sur fixtures uniquement** (non exercés en conditions réelles depuis l'environnement de développement) : l'interface et les descriptions le disent explicitement. Les identifiants ne servent qu'aux appels de l'API officielle ; aucune automatisation d'un espace client web.
+- Recherche en direct : mêmes garde-fous (attestation, robots.txt, hôte public, délais, budget de temps) ; chaque interrogation est journalisée dans `sync_runs` et chaque offre conserve sa provenance (méthode, adaptateur, horodatage, URL de requête).
 - Flux partenaires (SFTP/EDI) : non implémentés, note dans `integrations/suppliers/partner-feed.ts`.
 - Données : rien n'est inventé ni supposé (coût inconnu ≠ 0, délai inconnu ≠ défaut, score fournisseur = null sans 3 commandes reçues).
 
@@ -104,4 +179,4 @@ un objet `SourceParser` (`parse(html, url) → RawOffer[]`, pur, testé sur un H
 
 - Cron : `GET|POST /api/cron/sourcing` avec `Authorization: Bearer $CRON_SECRET` (503 si non configuré, 401 si invalide) → taux BCE, flux échus, crawls échus, alertes. Chaque flux / crawl / évaluation d'alertes écrit une ligne `sync_runs` (par organisation) et ses `sync_errors`.
 - Depuis l'interface : « Synchroniser maintenant » (flux, page publique), « Importer le fichier » (flux sans URL), « Vérifier robots.txt », « Évaluer maintenant » (alertes).
-- Tests : `npx vitest run tests/unit/sourcing-` (normaliseur, parseur de requête, matching, score, validation, prix/fraîcheur, opportunités, flux CSV/XML/JSON, JSON-LD, robots.txt, BCE) — aucun accès réseau.
+- Tests : `npx vitest run tests/unit/sourcing-` (normaliseur, parseur de requête, matching, score, validation, prix/fraîcheur, opportunités, flux CSV/XML/JSON, JSON-LD, robots.txt, BCE, adaptateurs sur fixtures `sourcing-adapter-*`, orchestration de la recherche en direct `sourcing-live-search`, déduplication / provenance `sourcing-dedupe`) — aucun accès réseau.

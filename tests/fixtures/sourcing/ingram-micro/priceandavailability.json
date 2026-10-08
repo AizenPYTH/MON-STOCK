@@ -1,0 +1,6 @@
+[
+ {"productStatusCode":null,"productStatusMessage":null,"ingramPartNumber":"123456","vendorPartNumber":"MLPF3ZD/A","extendedVendorPartNumber":"MLPF3ZD/A","upc":"194252707012","partNumberType":"IM","vendorNumber":"0001","vendorName":"APPLE","description":"APPLE IPHONE 13 128GB BLACK","productClass":"S","uom":"EA","acceptBackOrder":true,"productAuthorized":true,"returnableProduct":true,"endUserInfoRequired":false,
+  "availability":{"available":true,"totalAvailability":42,"availabilityByWarehouse":[{"location":"Paris","warehouseId":10,"quantityAvailable":40,"quantityBackordered":0},{"location":"Lyon","warehouseId":11,"quantityAvailable":2,"quantityBackordered":0}]},
+  "pricing":{"currencyCode":"EUR","retailPrice":299,"customerPrice":"215.40","specialBidPricingAvailable":false,"webDiscountsAvailable":false}},
+ {"productStatusCode":"E","productStatusMessage":"Product not found","ingramPartNumber":"654321","vendorPartNumber":null,"upc":null,"availability":null,"pricing":null}
+]

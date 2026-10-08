@@ -6,7 +6,7 @@ import { formatRelative } from "@/lib/format";
 import type { SourceStatusItem } from "@/services/sourcing/search";
 import { SOURCE_STATUS_LABEL, SOURCE_TYPE_LABEL } from "@/features/sourcing/labels";
 
-export function SourcesPanel({ sources }: { sources: SourceStatusItem[] }) {
+export function SourcesPanel({ sources, accountConnectors = 0 }: { sources: SourceStatusItem[]; accountConnectors?: number }) {
   const connected = sources.filter((s) => s.connected).length;
   return (
     <Card>
@@ -35,7 +35,15 @@ export function SourcesPanel({ sources }: { sources: SourceStatusItem[] }) {
           </ul>
         )}
         <p className="border-t border-border px-5 py-2 text-xs text-muted">
-          Compte fournisseur / API : <Link href="/suppliers" className="underline">aucun connecteur disponible pour l'instant</Link>.
+          {accountConnectors > 0 ? (
+            <>
+              Compte fournisseur / API : {accountConnectors} connecteur(s) disponible(s) — <Link href="/suppliers" className="underline">connecter un compte</Link> (identifiants chiffrés côté serveur).
+            </>
+          ) : (
+            <>
+              Compte fournisseur / API : <Link href="/suppliers" className="underline">aucun connecteur disponible pour l&apos;instant</Link>.
+            </>
+          )}
         </p>
       </CardContent>
     </Card>

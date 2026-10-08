@@ -4,9 +4,12 @@ import { serverEnv } from "@/lib/env";
 import { createLogger } from "@/lib/logger";
 import type { Json } from "@/db/database.types";
 import type { SyncTrigger, TaxType } from "@/db/types";
+import type { AdapterRunContext, SourceAdapter } from "@/integrations/sourcing/core";
+import { getSourceAdapter } from "@/integrations/sourcing/registry";
+import { adapterConfigFromSource, adapterKeyOf, HostScheduler, withProvenance } from "@/services/sourcing/adapter-runtime";
 import { checkRobotsForUrls } from "@/services/sourcing/crawler/robots";
 import { getParser } from "@/services/sourcing/crawler/parsers/registry";
-import { crawlSource, parseCrawlConfig } from "@/services/sourcing/crawler/source-crawler";
+import { crawlSource, MIN_DELAY_SECONDS, parseCrawlConfig, type CrawlPageResult } from "@/services/sourcing/crawler/source-crawler";
 import { expireUnseenOffers, storeOffer } from "@/services/sourcing/offer-storage";
 import { finishSyncRun, isDue, recordSyncErrors, startSyncRun, type SyncErrorInput } from "@/services/sourcing/sync-runs";
 
@@ -39,14 +42,21 @@ export async function runSourceCrawl(sourceId: string, options: { trigger: SyncT
     return { sourceId, runId: null, status: "refused", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Accès automatisé non attesté : le crawl est refusé tant que vous n'avez pas confirmé que les conditions d'utilisation l'autorisent." };
   }
   const config = parseCrawlConfig(source.config);
-  if (config.urls.length === 0) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Aucune URL configurée pour cette source." };
-  const parser = getParser(config.parser);
-  if (!parser) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser « ${config.parser} » inconnu.` };
+  // Source pilotée par un adaptateur (config.adapter) : catalogue de l'adaptateur si disponible, sinon crawl d'URLs avec son parser HTML.
+  const adapterKey = adapterKeyOf(source.config);
+  const adapter: SourceAdapter | null = adapterKey ? getSourceAdapter(adapterKey) : null;
+  if (adapterKey && !adapter) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Adaptateur « ${adapterKey} » inconnu.` };
+  const adapterConfig = adapter ? adapterConfigFromSource(source) : null;
+  const useAdapterCatalog = Boolean(adapter && adapterConfig && adapter.capabilities.catalog && adapter.fetchCatalog);
+  const robotsUrls = Array.from(new Set([...(adapter && adapterConfig && useAdapterCatalog ? adapter.urlsForCatalog?.(adapterConfig) ?? [] : []), ...config.urls]));
+  if (robotsUrls.length === 0) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Aucune URL configurée pour cette source." };
+  const parser = useAdapterCatalog ? null : (adapter?.htmlParser ?? getParser(config.parser));
+  if (!useAdapterCatalog && !parser) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser « ${config.parser} » inconnu.` };
 
-  const run = await startSyncRun(admin, { organizationId: source.organization_id, sourceKind: "supplier_source", sourceRef: source.id, provider: "public_web", trigger: options.trigger, createdBy: options.createdBy ?? null });
+  const run = await startSyncRun(admin, { organizationId: source.organization_id, sourceKind: "supplier_source", sourceRef: source.id, provider: adapter?.key ?? "public_web", trigger: options.trigger, createdBy: options.createdBy ?? null });
   const errors: SyncErrorInput[] = [];
   try {
-    const robots = await checkRobotsForUrls(source.base_url ?? config.urls[0]!, config.urls, userAgent, options.fetchImpl);
+    const robots = await checkRobotsForUrls(source.base_url ?? robotsUrls[0]!, robotsUrls, userAgent, options.fetchImpl);
     await admin.from("supplier_sources").update({ robots_checked_at: new Date().toISOString(), robots_allowed: robots.allowed, crawl_delay_seconds: robots.crawlDelay === null ? source.crawl_delay_seconds : Math.ceil(robots.crawlDelay) }).eq("id", source.id);
     if (!robots.allowed) {
       const message = `robots.txt : ${robots.details}`;
@@ -56,7 +66,9 @@ export async function runSourceCrawl(sourceId: string, options: { trigger: SyncT
       return { sourceId, runId: run.id, status: "refused", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message };
     }
 
-    const crawl = await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls });
+    const crawl = useAdapterCatalog && adapter && adapterConfig
+      ? await crawlWithAdapter(adapter, adapterConfig, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls })
+      : await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser!, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls });
     for (const p of crawl.pages) if (p.error) errors.push({ code: "PAGE_FAILED", message: p.error, entityType: "page", entityRef: p.url });
     for (const u of crawl.skippedUrls) errors.push({ code: "URL_SKIPPED", message: "URL ignorée (hôte différent, interdite ou au-delà de la limite de pages).", entityType: "page", entityRef: u });
 
@@ -93,7 +105,7 @@ export async function runSourceCrawl(sourceId: string, options: { trigger: SyncT
     const status: CrawlRunResult["status"] = okPages === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
     const message = `${okPages}/${crawl.pages.length} page(s) lue(s), ${crawl.offers.length} offre(s) trouvée(s), ${stored} enregistrée(s), ${rejected} rejetée(s), ${expired} expirée(s).`;
     await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired, delaySeconds: crawl.delaySeconds, parser: parser.key } as unknown as NonNullable<Json>, errorSummary: status === "failed" ? message : null });
+    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired, delaySeconds: crawl.delaySeconds, parser: parser?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" } as unknown as NonNullable<Json>, errorSummary: status === "failed" ? message : null });
     await admin
       .from("supplier_sources")
       .update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? new Date().toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null })
@@ -107,6 +119,42 @@ export async function runSourceCrawl(sourceId: string, options: { trigger: SyncT
     await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
     return { sourceId, runId: run.id, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message };
   }
+}
+
+interface AdapterCrawlParams {
+  userAgent: string;
+  fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+  robotsCrawlDelay: number | null;
+  configDelay: number;
+  maxPages: number;
+  disallowedUrls: string[];
+}
+
+/** Parcours du catalogue d'un adaptateur (pages bornées, délai ≥ max(2 s, Crawl-delay, config), provenance par offre). */
+async function crawlWithAdapter(adapter: SourceAdapter, config: ReturnType<typeof adapterConfigFromSource>, params: AdapterCrawlParams) {
+  const delaySeconds = Math.max(MIN_DELAY_SECONDS, params.robotsCrawlDelay ?? 0, params.configDelay);
+  const scheduler = new HostScheduler(delaySeconds * 1000, params.sleep);
+  const ctx: AdapterRunContext = { userAgent: params.userAgent, fetchImpl: scheduler.wrapFetch(params.fetchImpl), sleep: params.sleep, minDelayMs: delaySeconds * 1000, disallowedUrls: params.disallowedUrls };
+  const pages: CrawlPageResult[] = [];
+  const offers: ReturnType<typeof withProvenance>[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  const maxPages = Math.min(Math.max(1, params.maxPages), 50);
+  for (let i = 0; i < maxPages; i++) {
+    const page = await adapter.fetchCatalog!(config, cursor, ctx);
+    const retrievedAt = new Date().toISOString();
+    const requestUrl = page.requests.find((q) => q.offers > 0)?.url ?? page.requests[0]?.url ?? null;
+    for (const q of page.requests) pages.push({ url: q.url, status: q.status, offers: q.offers, error: q.error });
+    for (const o of page.offers) {
+      if (seen.has(o.externalOfferId)) continue;
+      seen.add(o.externalOfferId);
+      offers.push(withProvenance(o, { adapterKey: adapter.key, method: page.method, retrievedAt, requestUrl, sourceUrl: o.url ?? null }));
+    }
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return { offers, pages, skippedUrls: [] as string[], delaySeconds };
 }
 
 /** Sources PUBLIC_WEB attestées dont la fréquence est échue, regroupées par hôte (1 à la fois par hôte). */

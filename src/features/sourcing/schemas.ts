@@ -29,6 +29,8 @@ export const sourcingSearchParamsSchema = z.object({
   availability: z.enum(["in_stock", "any"]).optional(),
   sort: z.enum(RANKING_MODES).default("best_offer"),
   page: z.coerce.number().int().min(1).default(1),
+  /** live=0 : recherche dans les offres enregistrées uniquement (sans interroger les sources) */
+  live: z.enum(["0", "1"]).optional(),
 });
 export type SourcingSearchParams = z.infer<typeof sourcingSearchParamsSchema>;
 

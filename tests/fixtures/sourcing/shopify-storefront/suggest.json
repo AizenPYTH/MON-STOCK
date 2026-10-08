@@ -1,0 +1,4 @@
+{"resources":{"results":{"products":[
+ {"available":true,"body":"<p>iPhone 13 reconditionné</p>","compare_at_price_max":"299.00","compare_at_price_min":"299.00","handle":"iphone-13-128-go","id":7001,"image":"https://cdn.example/i.jpg","price":"229.00","price_max":"249.00","price_min":"229.00","tags":["apple","reconditionne"],"title":"iPhone 13 128 Go reconditionné","type":"Smartphone","url":"/products/iphone-13-128-go","variants":[{"available":true,"compare_at_price":"299.00","id":9001,"image":null,"price":"229.00","sku":"IP13-128-NOIR","title":"Noir","url":"/products/iphone-13-128-go?variant=9001"}],"vendor":"Apple"},
+ {"available":false,"body":"","handle":"coque-iphone-13","id":7002,"image":null,"price":"9.90","title":"Coque iPhone 13","type":"Accessoire","url":"/products/coque-iphone-13","vendor":"Generic"}
+]}}}

@@ -1,0 +1,5 @@
+[
+ {"id":1001,"manufacturer":55,"sku":"S1234567","ean13":"0194252707012","weight":0.4,"height":10,"width":10,"depth":10,"dateAdd":"2026-01-01 00:00:00","dateUpd":"2026-10-01 00:00:00","intrastat":"85171200","wholesalePrice":199.5,"retailPrice":299,"inShopsPrice":289,"active":1,"taxId":1,"taxRate":21,"condition":"NEW","categories":[{"id":2,"position":1}],"images":[]},
+ {"id":1002,"manufacturer":56,"sku":"S7654321","ean13":"8806094722741","weight":0.3,"height":10,"width":10,"depth":10,"dateAdd":"2026-01-01 00:00:00","dateUpd":"2026-10-01 00:00:00","intrastat":"85171200","wholesalePrice":"410.00","retailPrice":520,"inShopsPrice":499,"active":1,"taxId":1,"taxRate":"21","condition":"NEW","categories":[],"images":[]},
+ {"id":1003,"manufacturer":55,"sku":"S0000001","ean13":"0194252700013","weight":0.1,"height":1,"width":1,"depth":1,"dateAdd":"2026-01-01 00:00:00","dateUpd":"2026-10-01 00:00:00","intrastat":"","wholesalePrice":5,"retailPrice":9,"inShopsPrice":9,"active":0,"taxId":1,"taxRate":21,"condition":"NEW","categories":[],"images":[]}
+]

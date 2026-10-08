@@ -97,3 +97,35 @@ export function isDue(frequency: keyof typeof FREQUENCY_MS, lastSyncAt: string |
   if (!lastSyncAt) return true;
   return now.getTime() - new Date(lastSyncAt).getTime() >= interval;
 }
+
+/**
+ * Journalise un run déjà terminé (recherche en direct) : une seule écriture, statut final,
+ * aucun verrou « running » (pas de conflit avec une synchronisation en cours sur la même source).
+ */
+export async function recordCompletedSyncRun(admin: AdminSupabaseClient, input: { organizationId: string; sourceKind: SourcingSyncKind; sourceRef: string | null; provider: string; trigger: SyncTrigger; status: Exclude<SyncStatus, "running">; startedAt: Date; finishedAt: Date; recordsProcessed: number; errorCount: number; stats?: Json; errorSummary?: string | null; createdBy?: string | null }): Promise<string | null> {
+  const { data, error } = await admin
+    .from("sync_runs")
+    .insert({
+      organization_id: input.organizationId,
+      source_kind: input.sourceKind,
+      source_ref: input.sourceRef,
+      provider: input.provider,
+      trigger: input.trigger,
+      status: input.status,
+      started_at: input.startedAt.toISOString(),
+      finished_at: input.finishedAt.toISOString(),
+      duration_ms: Math.max(0, input.finishedAt.getTime() - input.startedAt.getTime()),
+      records_processed: input.recordsProcessed,
+      error_count: input.errorCount,
+      stats: input.stats ?? {},
+      error_summary: input.errorSummary ?? null,
+      created_by: input.createdBy ?? null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    log.warn("completed sync run not recorded", { sourceRef: input.sourceRef, error: error?.message });
+    return null;
+  }
+  return data.id;
+}

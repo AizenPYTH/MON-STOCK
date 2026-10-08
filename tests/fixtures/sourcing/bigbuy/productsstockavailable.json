@@ -1,0 +1,4 @@
+[
+ {"id":1001,"sku":"S1234567","stocks":[{"quantity":12,"minHandlingDays":1,"maxHandlingDays":2,"warehouse":1},{"quantity":5,"minHandlingDays":2,"maxHandlingDays":4,"warehouse":2}]},
+ {"id":1002,"sku":"S7654321","stocks":[{"quantity":0,"minHandlingDays":1,"maxHandlingDays":3,"warehouse":1}]}
+]

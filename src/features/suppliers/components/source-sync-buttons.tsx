@@ -1,10 +1,9 @@
 "use client";
 import { useActionState } from "react";
-import { Button } from "@/components/ui/button";
 import { FormError, FormSuccess, Input } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { ActionResult } from "@/lib/result";
-import { checkRobotsAction, connectSupplierAccountAction, runFeedSyncAction, runSourceCrawlAction } from "@/features/suppliers/actions";
+import { checkRobotsAction, runFeedSyncAction, runSourceCrawlAction, syncSupplierConnectionAction, testSourceAction, testSupplierConnectionAction } from "@/features/suppliers/actions";
 
 type Msg = ActionResult<{ message: string }> | null;
 
@@ -20,6 +19,20 @@ export function CrawlSourceButton({ sourceId, disabled, reason }: { sourceId: st
       <input type="hidden" name="source_id" value={sourceId} />
       <SubmitButton size="sm" variant="secondary" pendingText="Lecture des pages…" disabled={disabled} title={reason}>
         Synchroniser maintenant
+      </SubmitButton>
+      <Feedback state={state} />
+    </form>
+  );
+}
+
+/** Test de configuration d'une source pilotée par un adaptateur (adapter.testConnection, sans enregistrement d'offres). */
+export function TestSourceButton({ sourceId, disabled, reason }: { sourceId: string; disabled?: boolean; reason?: string }) {
+  const [state, action] = useActionState<Msg, FormData>(testSourceAction, null);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="source_id" value={sourceId} />
+      <SubmitButton size="sm" variant="secondary" pendingText="Test en cours…" disabled={disabled} title={reason}>
+        Tester
       </SubmitButton>
       <Feedback state={state} />
     </form>
@@ -55,14 +68,29 @@ export function SyncFeedButton({ feedId, hasUrl }: { feedId: string; hasUrl: boo
   );
 }
 
-export function ConnectAccountButton() {
-  const [state, action] = useActionState<ActionResult | null, FormData>(connectSupplierAccountAction, null);
+export function TestConnectionButton({ connectionId }: { connectionId: string }) {
+  const [state, action] = useActionState<Msg, FormData>(testSupplierConnectionAction, null);
   return (
     <form action={action} className="space-y-2">
-      <Button type="submit" variant="secondary">
-        Connecter mon compte fournisseur
-      </Button>
-      {state && !state.ok ? <FormError message={state.error} /> : null}
+      <input type="hidden" name="connection_id" value={connectionId} />
+      <SubmitButton size="sm" variant="secondary" pendingText="Vérification des identifiants…">
+        Tester la connexion
+      </SubmitButton>
+      <Feedback state={state} />
     </form>
   );
 }
+
+export function SyncConnectionButton({ connectionId, disabled, reason }: { connectionId: string; disabled?: boolean; reason?: string }) {
+  const [state, action] = useActionState<Msg, FormData>(syncSupplierConnectionAction, null);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="connection_id" value={connectionId} />
+      <SubmitButton size="sm" variant="secondary" pendingText="Synchronisation du catalogue…" disabled={disabled} title={reason}>
+        Synchroniser le catalogue
+      </SubmitButton>
+      <Feedback state={state} />
+    </form>
+  );
+}
+

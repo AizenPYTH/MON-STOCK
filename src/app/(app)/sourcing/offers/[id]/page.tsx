@@ -10,7 +10,9 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { getOfferDetail } from "@/features/sourcing/queries";
 import { LinkOfferDialog } from "@/features/sourcing/components/link-offer-dialog";
 import { Sparkline } from "@/features/sourcing/components/sparkline";
-import { deliveryLabel } from "@/features/sourcing/components/offer-card";
+import { deliveryLabel } from "@/features/sourcing/delivery";
+import { OfferTraceability } from "@/features/sourcing/components/offer-traceability";
+import { retrievalMethodLabel } from "@/features/sourcing/provenance";
 import { setOfferStatusAction, unlinkOfferAction } from "@/features/sourcing/actions";
 import { formatDateTime, formatMoney, formatNumber, NOT_PROVIDED } from "@/lib/format";
 import { ANOMALY_LABEL, type AnomalyCode } from "@/domain/sourcing/validation";
@@ -56,6 +58,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
             {" · "}
             {SOURCE_TYPE_LABEL[o.source_type] ?? o.source_type}
             {o.source?.name ? ` · ${o.source.name}` : ""}
+            {" · "}
+            {retrievalMethodLabel(d.provenance)}
             {" · "}
             <span className={d.freshness.stale ? "text-amber-700" : ""}>
               {d.freshness.label}
@@ -114,6 +118,13 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader title="Traçabilité" description="Données telles que récupérées auprès de la source : rien n'est complété ni estimé." />
+            <CardContent>
+              <OfferTraceability offer={o} supplierName={o.supplier?.name ?? "Fournisseur"} supplierCountry={o.supplier?.country ?? null} provenance={d.provenance} duplicatesCollapsed={0} />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader title="Détail de l'offre" />
             <CardContent>

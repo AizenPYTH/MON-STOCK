@@ -37,7 +37,9 @@ export const publicWebSourceSchema = z.object({
   supplier_id: z.string().uuid(),
   name: z.string().trim().min(1, "Le nom de la source est requis.").max(200),
   base_url: z.url("URL de base invalide."),
-  urls: z.string().trim().min(1, "Indiquez au moins une URL de page à lire.").max(10000),
+  /** URLs de catalogue à lire lors d'une synchronisation (optionnel si l'adaptateur fournit une URL de recherche / de flux) */
+  urls: z.string().trim().max(10000).optional().or(z.literal("")),
+  adapter: z.string().trim().min(1, "Choisissez un adaptateur.").max(60),
   parser: z.string().trim().max(60).optional().or(z.literal("")),
   sync_frequency: syncFrequencySchema.default("manual"),
   default_currency: optionalCurrency,
@@ -47,6 +49,13 @@ export const publicWebSourceSchema = z.object({
   max_pages: z.union([z.literal(""), z.coerce.number().int().min(1).max(50)]).optional(),
   automated_access_confirmed: z.string().optional(),
 });
+
+export const connectAccountSchema = z.object({
+  supplier_id: z.string().uuid(),
+  connector_key: z.string().trim().min(1, "Choisissez un connecteur.").max(60),
+});
+
+export const connectionIdSchema = z.object({ connection_id: z.string().uuid() });
 
 export const feedSchema = z.object({
   supplier_id: z.string().uuid(),

@@ -1,0 +1,5 @@
+[
+ {"id":1001,"sku":"S1234567","name":"Apple iPhone 13 128GB Noir","description":"<p>Smartphone Apple iPhone 13.</p>","url":"https://www.bigbuy.eu/fr/apple-iphone-13-128gb-noir.html","isoCode":"fr"},
+ {"id":1002,"sku":"S7654321","name":"Samsung Galaxy S23 256GB Noir","description":"<p>Smartphone Samsung.</p>","url":"https://www.bigbuy.eu/fr/samsung-galaxy-s23.html","isoCode":"fr"},
+ {"id":1003,"sku":"S0000001","name":"Produit inactif","description":"","url":"","isoCode":"fr"}
+]

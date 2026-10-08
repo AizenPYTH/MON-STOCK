@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+<channel>
+<title>Boutique Exemple</title>
+<link>https://boutique.example</link>
+<description>Flux produits</description>
+<item>
+  <g:id>IP13-128-N-A</g:id>
+  <g:title>Apple iPhone 13 128 Go Noir reconditionné</g:title>
+  <g:description><![CDATA[iPhone 13 reconditionné Grade A]]></g:description>
+  <g:link>https://boutique.example/p/iphone-13-128-noir</g:link>
+  <g:price>249.00 EUR</g:price>
+  <g:sale_price>229.00 EUR</g:sale_price>
+  <g:availability>in_stock</g:availability>
+  <g:gtin>0194252707012</g:gtin>
+  <g:mpn>MLPF3ZD/A</g:mpn>
+  <g:brand>Apple</g:brand>
+  <g:condition>refurbished</g:condition>
+  <g:item_group_id>IP13-128</g:item_group_id>
+  <g:color>Noir</g:color>
+  <g:shipping><g:country>FR</g:country><g:service>Standard</g:service><g:price>4.99 EUR</g:price></g:shipping>
+</item>
+<item>
+  <g:id>S23-256-N</g:id>
+  <title>Samsung Galaxy S23 256 Go Noir</title>
+  <link>https://boutique.example/p/galaxy-s23-256</link>
+  <g:price>450,00 EUR</g:price>
+  <g:availability>out_of_stock</g:availability>
+  <g:brand>Samsung</g:brand>
+  <g:condition>new</g:condition>
+</item>
+<item>
+  <g:id>NO-TITLE</g:id>
+  <g:price>1.00 EUR</g:price>
+</item>
+</channel>
+</rss>

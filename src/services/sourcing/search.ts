@@ -8,7 +8,12 @@ import { comparablePrice, freshness, normalizeTax, type ComparablePrice, type Fr
 import { computeDataCompleteness, rankOffers, scoreOffers, type OfferScore, type RankingMode } from "@/domain/sourcing/scoring";
 import { computeLandedCost, computeMargin, type LandedCostResult, type MarginResult } from "@/domain/pricing/margin";
 import { getMarginContext } from "@/features/stock/queries";
-import { findOffers, type OfferFilters, type OfferQueryStage, type OfferWithRelations } from "@/services/sourcing/offer-query";
+import { baseOfferQuery, findOffers, type OfferFilters, type OfferQueryStage, type OfferWithRelations } from "@/services/sourcing/offer-query";
+import { dedupeOffers } from "@/domain/sourcing/dedupe";
+import { parseStoredProvenance } from "@/services/sourcing/adapter-runtime";
+import { runLiveSearch } from "@/services/sourcing/live-search";
+import type { LiveSearchSummary } from "@/services/sourcing/live-search.types";
+import type { RetrievalMethod } from "@/integrations/sourcing/core";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("SOURCING_SEARCH");
@@ -41,8 +46,21 @@ export interface MarginExplanation {
   formula: string;
 }
 
+/** Provenance d'une offre (enregistrée par le pipeline de recherche en direct / les synchronisations ; null si absente). */
+export interface SearchOfferProvenance {
+  method: RetrievalMethod | null;
+  adapterKey: string | null;
+  retrievedAt: string | null;
+  requestUrl: string | null;
+  sourceUrl: string | null;
+}
+
 export interface SearchOfferView {
   offer: OfferWithRelations;
+  /** provenance explicite (méthode, adaptateur, horodatage, URL de requête) ; null = non enregistrée */
+  provenance: SearchOfferProvenance | null;
+  /** offres identiques (même fournisseur, même produit normalisé) fusionnées derrière celle-ci */
+  duplicatesCollapsed: number;
   supplierName: string;
   supplierCountry: string | null;
   supplierScore: number | null;
@@ -98,12 +116,28 @@ export interface SearchResult {
   connectedSources: number;
   vatRate: number | null;
   requestedQuantity: number;
+  /** résultat de la recherche en direct (null si désactivée, requête vide ou aucune source) */
+  live: LiveSearchSummary | null;
 }
 
 export interface SearchInput {
   query: string;
   skuCode?: string | null;
   filters: OfferFilters;
+  /** interroger les sources connectées en direct avant la lecture en base (défaut : oui dès qu'une source est interrogeable) */
+  live?: boolean;
+}
+
+export function provenanceOf(offer: Pick<OfferWithRelations, "raw" | "source_url">): SearchOfferProvenance | null {
+  const stored = parseStoredProvenance(offer.raw);
+  if (!stored) return null;
+  return { method: stored.method, adapterKey: stored.adapterKey, retrievedAt: stored.retrievedAt, requestUrl: stored.requestUrl, sourceUrl: offer.source_url };
+}
+
+function liveQueryText(query: string, sku: SearchSku | null): string {
+  if (query.trim()) return query.trim();
+  if (!sku) return "";
+  return `${sku.brand ?? ""} ${sku.productName} ${sku.variantName && sku.variantName !== "Standard" ? sku.variantName : ""}`.replace(/\s+/g, " ").trim();
 }
 
 async function loadSku(ctx: OrgContext, code: string): Promise<SearchSku | null> {
@@ -182,7 +216,28 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
     skuIdsForCategory = (data ?? []).map((d) => d.sku_id).filter((x): x is string => Boolean(x));
   }
 
+  // 1. Recherche en direct sur les sources connectées (avant la lecture en base, pour inclure les offres fraîchement récupérées).
+  let live: LiveSearchSummary | null = null;
+  const liveQuery = liveQueryText(input.query, sku);
+  if (input.live !== false && liveQuery && (parsed.kind !== "empty" || sku)) {
+    try {
+      const summary = await runLiveSearch(ctx, { rawQuery: liveQuery, parsed, skuId: sku?.id ?? null });
+      live = summary.sources.length > 0 ? summary : null;
+    } catch (e) {
+      log.warn("live search failed", { orgId, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  // 2. Lecture en base (offres existantes + offres venant d'être enregistrées).
   const [{ offers, stage }, marginCtx, sources] = await Promise.all([findOffers(ctx.supabase, orgId, parsed, filters, { skuIdsForCategory, includeSkuId: sku?.id ?? null }), getMarginContext(ctx), listSourceStatuses(ctx)]);
+  if (live && live.offerIds.length > 0) {
+    const known = new Set(offers.map((o) => o.id));
+    const missing = live.offerIds.filter((id) => !known.has(id)).slice(0, 200);
+    if (missing.length > 0) {
+      const { data: extra } = await baseOfferQuery(ctx.supabase, orgId, filters, skuIdsForCategory).in("id", missing).limit(200);
+      for (const o of extra ?? []) if (!known.has(o.id)) offers.push(o);
+    }
+  }
 
   // Prix de vente connus pour les offres liées à un SKU (marge potentielle sans SKU explicite).
   const linkedSkuIds = Array.from(new Set(offers.map((o) => o.sku_id).filter((x): x is string => Boolean(x))));
@@ -240,6 +295,10 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
     return {
       id: o.id,
       offer: o,
+      provenance: provenanceOf(o),
+      supplierId: o.supplier_id,
+      productKey: o.normalized_product_id,
+      lastSeenAt: o.last_seen_at,
       supplierName: supplier?.name ?? "Fournisseur",
       supplierCountry: o.country ?? supplier?.country ?? null,
       supplierScore: supplier?.internal_score ?? null,
@@ -262,16 +321,19 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
     };
   });
 
-  const scores = scoreOffers(prelim);
+  // 3. Déduplication : une offre par (fournisseur, produit normalisé), la moins chère conservée.
+  const deduped = dedupeOffers(prelim);
+  const unique = deduped.kept;
+  const scores = scoreOffers(unique);
   const sort: RankingMode = filters.sort ?? "best_offer";
-  const ranked = rankOffers(prelim, sort, scores);
+  const ranked = rankOffers(unique, sort, scores);
   const total = ranked.length;
   const page = Math.max(1, filters.page ?? 1);
   const slice = ranked.slice((page - 1) * SEARCH_PAGE_SIZE, page * SEARCH_PAGE_SIZE);
-  const views: SearchOfferView[] = slice.map((p) => ({ ...p, score: scores.get(p.id)! }));
+  const views: SearchOfferView[] = slice.map((p) => ({ ...p, score: scores.get(p.id)!, duplicatesCollapsed: deduped.collapsed.get(p.id) ?? 0 }));
 
-  const prices = prelim.map((p) => p.comparableUnitPrice).filter((x): x is number => x !== null);
-  const margins = prelim.map((p) => p.potentialMargin).filter((x): x is number => x !== null);
+  const prices = unique.map((p) => p.comparableUnitPrice).filter((x): x is number => x !== null);
+  const margins = unique.map((p) => p.potentialMargin).filter((x): x is number => x !== null);
   const aggregates: SearchAggregates = {
     count: total,
     bestPrice: prices.length ? Math.min(...prices) : null,
@@ -287,5 +349,5 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
     if (error) log.debug("search not recorded", { error: error.message });
   }
 
-  return { parsed, stage, sku, views, page, pageSize: SEARCH_PAGE_SIZE, total, aggregates, sources, connectedSources: sources.filter((s) => s.connected).length, vatRate, requestedQuantity };
+  return { parsed, stage, sku, views, page, pageSize: SEARCH_PAGE_SIZE, total, aggregates, sources, connectedSources: sources.filter((s) => s.connected).length, vatRate, requestedQuantity, live };
 }

@@ -9,6 +9,7 @@ import { alertCriteriaSchema, type AlertCriteria } from "@/services/sourcing/ale
 import { matchOfferToSkus, type MatchResult } from "@/domain/sourcing/matching";
 import { normalizeProduct } from "@/domain/sourcing/normalizer";
 import { loadMatchCandidates } from "@/services/sourcing/matching-service";
+import { readOfferProvenance } from "@/features/sourcing/provenance";
 
 export const MATCHES_PAGE_SIZE = 30;
 
@@ -16,7 +17,7 @@ export async function getOfferDetail(ctx: OrgContext, offerId: string) {
   const orgId = ctx.organization.id;
   const { data: offer } = await ctx.supabase
     .from("sourcing_offers")
-    .select("*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, website), source:supplier_sources(id, name, source_type, status, base_url, last_successful_sync_at), sku:skus(id, code, sale_price, cost_price, currency, product:products(name), variant:product_variants(name))")
+    .select("*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, website), source:supplier_sources(id, name, source_type, status, base_url, config, last_successful_sync_at), sku:skus(id, code, sale_price, cost_price, currency, product:products(name), variant:product_variants(name))")
     .eq("organization_id", orgId)
     .eq("id", offerId)
     .maybeSingle();
@@ -60,6 +61,7 @@ export async function getOfferDetail(ctx: OrgContext, offerId: string) {
     vatRate,
     orgCurrency,
     confidence: (offer.confidence ?? {}) as Record<string, number>,
+    provenance: readOfferProvenance(offer, offer.source),
   };
 }
 

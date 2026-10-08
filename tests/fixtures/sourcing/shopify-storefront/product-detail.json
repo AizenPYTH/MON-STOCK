@@ -1,0 +1,7 @@
+{"product":{"id":7001,"title":"iPhone 13 128 Go reconditionné","handle":"iphone-13-128-go","body_html":"<p>Smartphone <strong>reconditionné</strong> Grade A, garanti 12 mois.</p>","published_at":"2026-01-10T09:00:00+01:00","created_at":"2026-01-10T09:00:00+01:00","updated_at":"2026-10-01T09:00:00+02:00","vendor":"Apple","product_type":"Smartphone","tags":["apple","reconditionne"],
+ "variants":[
+  {"id":9001,"title":"Noir","option1":"Noir","option2":null,"option3":null,"sku":"IP13-128-NOIR","requires_shipping":true,"taxable":true,"featured_image":null,"available":true,"price":"229.00","grams":173,"compare_at_price":"299.00","position":1,"product_id":7001,"created_at":"2026-01-10T09:00:00+01:00","updated_at":"2026-10-01T09:00:00+02:00"},
+  {"id":9002,"title":"Bleu","option1":"Bleu","option2":null,"option3":null,"sku":"IP13-128-BLEU","requires_shipping":true,"taxable":true,"featured_image":null,"available":false,"price":"249.00","grams":173,"compare_at_price":null,"position":2,"product_id":7001,"created_at":"2026-01-10T09:00:00+01:00","updated_at":"2026-10-01T09:00:00+02:00","barcode":"0194252707012","inventory_quantity":0}
+ ],
+ "options":[{"name":"Couleur","position":1,"values":["Noir","Bleu"]}],
+ "images":[]}}

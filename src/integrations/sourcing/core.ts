@@ -18,6 +18,7 @@
  */
 import type { RawOffer } from "@/domain/sourcing/types";
 import type { ParsedQuery } from "@/domain/sourcing/query-parser";
+import type { SourceParser } from "@/services/sourcing/crawler/parsers/types";
 
 /** Comment les données sont obtenues (affiché dans l'interface : traçabilité). */
 export type RetrievalMethod =
@@ -78,6 +79,10 @@ export interface AdapterRunContext {
   /** URLs interdites par robots.txt (déjà évaluées par l'appelant) */
   disallowedUrls?: string[];
   sleep?: (ms: number) => Promise<void>;
+  /** résolution DNS injectable (tests) ; par défaut la résolution système avec refus des adresses privées */
+  resolver?: (host: string) => Promise<Array<{ address: string }>>;
+  /** horloge injectable (horodatage `retrieved_at` des offres, caches) */
+  now?: () => Date;
 }
 
 export interface AdapterRequestTrace {
@@ -119,12 +124,18 @@ export interface SourceAdapter {
   configFields: ConfigField[];
   /** URLs à soumettre à robots.txt avant une recherche (sources HTML/JSON publiques) ; null = non applicable */
   urlsForQuery?(config: AdapterSourceConfig, query: ParsedQuery, rawQuery: string): string[];
+  /** URLs à soumettre à robots.txt avant une synchronisation de catalogue (première page / flux) */
+  urlsForCatalog?(config: AdapterSourceConfig): string[];
   /** recherche en direct d'offres pour une requête */
   search(config: AdapterSourceConfig, query: ParsedQuery, rawQuery: string, ctx: AdapterRunContext): Promise<AdapterSearchResult>;
   /** page de catalogue (synchronisation planifiée) */
   fetchCatalog?(config: AdapterSourceConfig, cursor: string | null, ctx: AdapterRunContext): Promise<AdapterCatalogPage>;
   /** vérification de la configuration / des identifiants (sans effet de bord) */
   testConnection(config: AdapterSourceConfig, ctx: AdapterRunContext): Promise<{ ok: boolean; message: string }>;
+  /** parser HTML dédié exposé au crawler générique (sources PUBLIC_WEB à liste d'URLs) */
+  htmlParser?: SourceParser;
+  /** statut de vérification honnête : « fixtures » = testé uniquement sur des documents construits depuis le format documenté */
+  verification: "fixtures" | "live";
 }
 
 /** Offre brute enrichie de sa provenance, telle que produite par le pipeline de recherche en direct. */
