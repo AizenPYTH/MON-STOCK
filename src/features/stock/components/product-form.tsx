@@ -6,7 +6,13 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import type { ActionResult } from "@/lib/result";
 import { addSkuAction, createProductAction } from "@/features/stock/actions";
 
-export function ProductForm({ product, suppliers, currency }: { product?: { id: string; name: string; brand: string | null } | null; suppliers: Array<{ id: string; name: string }>; currency: string }) {
+export interface ProductFormDefaults {
+  name?: string;
+  code?: string;
+  sale_price?: string;
+}
+
+export function ProductForm({ product, suppliers, currency, defaults }: { product?: { id: string; name: string; brand: string | null } | null; suppliers: Array<{ id: string; name: string }>; currency: string; defaults?: ProductFormDefaults }) {
   const [state, action] = useActionState<ActionResult | null, FormData>(product ? addSkuAction : createProductAction, null);
   const err = state && !state.ok ? state : null;
   const fe = err?.fieldErrors;
@@ -20,7 +26,7 @@ export function ProductForm({ product, suppliers, currency }: { product?: { id: 
           <CardHeader title="Produit" description="Le produit regroupe des variantes ; chaque variante possède un SKU et son propre stock." />
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <Field label="Nom du produit" htmlFor="name" error={fe?.name} className="sm:col-span-2">
-              <Input id="name" name="name" placeholder="Apple iPhone 13" required />
+              <Input id="name" name="name" placeholder="Apple iPhone 13" required defaultValue={defaults?.name ?? ""} />
             </Field>
             <Field label="Marque" htmlFor="brand" error={fe?.brand}>
               <Input id="brand" name="brand" placeholder="Apple" />
@@ -84,7 +90,7 @@ export function ProductForm({ product, suppliers, currency }: { product?: { id: 
         <CardHeader title="SKU et stock" description="Un coût laissé vide est « inconnu » : il ne sera jamais supposé égal à zéro." />
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Code SKU" htmlFor="code" error={fe?.code}>
-            <Input id="code" name="code" placeholder="IPH13-128-BLK-A" required className="font-mono" />
+            <Input id="code" name="code" placeholder="IPH13-128-BLK-A" required className="font-mono" defaultValue={defaults?.code ?? ""} />
           </Field>
           <Field label="Code-barres" htmlFor="barcode" error={fe?.barcode}>
             <Input id="barcode" name="barcode" />
@@ -93,7 +99,7 @@ export function ProductForm({ product, suppliers, currency }: { product?: { id: 
             <Input id="cost_price" name="cost_price" type="number" step="0.01" min="0" />
           </Field>
           <Field label={`Prix de vente (${currency})`} htmlFor="sale_price" error={fe?.sale_price}>
-            <Input id="sale_price" name="sale_price" type="number" step="0.01" min="0" />
+            <Input id="sale_price" name="sale_price" type="number" step="0.01" min="0" defaultValue={defaults?.sale_price ?? ""} />
           </Field>
           <Field label="Stock initial" htmlFor="initial_quantity" error={fe?.initial_quantity}>
             <Input id="initial_quantity" name="initial_quantity" type="number" step="1" min="0" defaultValue={0} />
