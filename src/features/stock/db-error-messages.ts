@@ -5,7 +5,12 @@
 export const STOCK_ERROR_PATTERNS: Array<[RegExp, string]> = [
   [/SKU_CODE_EXISTS|skus_org_code_uidx/, "Ce code SKU existe déjà dans votre organisation (les majuscules et minuscules ne sont pas distinguées)."],
   [/SKU_STALE/, "Ce SKU a été modifié entre-temps (autre onglet ou autre utilisateur). Rechargez la page pour voir la dernière version : vos changements n'ont pas été enregistrés."],
+  [/SKU_CODE_DUPLICATE_IN_REQUEST/, "Deux variantes utilisent le même code SKU : chaque variante doit avoir un code unique."],
   [/SKU_CODE_REQUIRED/, "Le code SKU est requis."],
+  [/VARIANTS_REQUIRED/, "Ajoutez au moins une variante."],
+  [/VARIANTS_TOO_MANY/, "50 variantes maximum par envoi."],
+  [/PRODUCT_NAME_REQUIRED/, "Le nom du produit est requis."],
+  [/PRODUCT_STALE/, "Ce produit a été modifié entre-temps (autre appareil ou autre utilisateur). Rechargez-le : vos changements n'ont pas été enregistrés."],
   [/PRODUCT_NOT_FOUND/, "Produit introuvable."],
   [/SKU_HAS_HISTORY/, "Ce produit a un historique (mouvements, ventes ou achats) : archivez-le plutôt que de le supprimer."],
   [/MOVEMENT_QUANTITY_TOO_LARGE/, "Quantité trop grande : un mouvement est limité à 1 000 000 d'unités."],

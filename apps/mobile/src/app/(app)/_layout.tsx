@@ -38,6 +38,10 @@ export default function AppLayout() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="adjust" options={{ presentation: "modal" }} />
+      <Stack.Screen name="product/new" options={{ presentation: "modal" }} />
+      <Stack.Screen name="product/edit/[productId]" options={{ presentation: "modal" }} />
+      <Stack.Screen name="product/add-variant/[productId]" options={{ presentation: "modal" }} />
+      <Stack.Screen name="sku/edit/[skuId]" options={{ presentation: "modal" }} />
     </Stack>
   );
 }

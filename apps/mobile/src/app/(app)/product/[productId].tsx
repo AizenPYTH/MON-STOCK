@@ -6,7 +6,8 @@ import { useCatalog, useMarginContext } from "~/data/hooks";
 import { summarizeProduct } from "~/data/catalog";
 import { userMessage } from "~/lib/errors";
 import { formatMoneyRounded, formatNumber } from "~/lib/format";
-import { Button, Card, DetailHeader, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, Screen, SectionHeader, Skeleton, StatusChip, StickyActions, Txt } from "~/components/ui";
+import { Pencil } from "lucide-react-native";
+import { Button, Card, DetailHeader, IconButton, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, Screen, SectionHeader, Skeleton, StatusChip, StickyActions, Txt } from "~/components/ui";
 import { QuantityCard, variantTitle } from "~/components/stock";
 import { color, radius, space } from "~/theme/tokens";
 
@@ -64,7 +65,10 @@ export default function ProductScreen() {
       }
       refreshControl={<RefreshControl refreshing={catalog.isRefetching} onRefresh={() => void catalog.refetch()} />}
     >
-      <DetailHeader parentLabel="Stock" />
+      <DetailHeader
+        parentLabel="Stock"
+        right={permissions.canWrite ? <IconButton icon={<Pencil size={18} color={color.ink} />} label="Modifier le produit" onPress={() => router.push({ pathname: "/product/edit/[productId]", params: { productId: product.productId } })} /> : undefined}
+      />
       {product.imageUrl && /^https:\/\//.test(product.imageUrl) ? (
         <Image source={{ uri: product.imageUrl }} accessibilityLabel={`Photo : ${product.name}`} style={{ width: "100%", height: 170, borderRadius: radius.xxl, backgroundColor: color.skeleton }} resizeMode="cover" />
       ) : null}
@@ -102,7 +106,10 @@ export default function ProductScreen() {
           </View>
         </Card>
       )}
-      <SectionHeader title="Variantes" />
+      <SectionHeader
+        title="Variantes"
+        action={permissions.canWrite ? { label: "Ajouter", onPress: () => router.push({ pathname: "/product/add-variant/[productId]", params: { productId: product.productId } }) } : undefined}
+      />
       <Card>
         {product.skus.map((v, i) => (
           <ListRow

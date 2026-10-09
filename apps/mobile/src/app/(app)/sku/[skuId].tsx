@@ -5,7 +5,8 @@ import { useActiveOrg } from "~/org/org-provider";
 import { useSkuDetail } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatDays, formatMoneyRounded, formatNumber, MOVEMENT_TYPE_LABEL, STOCK_LEVEL_LABEL } from "~/lib/format";
-import { AlertBanner, Button, Card, DetailHeader, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, Screen, SectionHeader, Skeleton, StatusChip, StickyActions, Txt } from "~/components/ui";
+import { Pencil } from "lucide-react-native";
+import { AlertBanner, Button, Card, DetailHeader, IconButton, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, Screen, SectionHeader, Skeleton, StatusChip, StickyActions, Txt } from "~/components/ui";
 import { QuantityCard, variantTitle } from "~/components/stock";
 import { color, radius } from "~/theme/tokens";
 
@@ -54,7 +55,10 @@ export default function SkuScreen() {
       }
       refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} />}
     >
-      <DetailHeader parentLabel={r.product_name ?? "Produit"} />
+      <DetailHeader
+        parentLabel={r.product_name ?? "Produit"}
+        right={permissions.canWrite ? <IconButton icon={<Pencil size={18} color={color.ink} />} label="Modifier la variante" onPress={() => router.push({ pathname: "/sku/edit/[skuId]", params: { skuId: r.sku_id ?? "" } })} /> : undefined}
+      />
       <View style={{ gap: 4 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
           <Txt variant="title2" style={{ flex: 1 }} accessibilityRole="header">

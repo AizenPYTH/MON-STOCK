@@ -6,45 +6,12 @@ import { fail, ok, type ActionResult } from "@/lib/result";
 import { toUserMessage } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { addSkuSchema, adjustStockSchema, createProductSchema, emptyToNull, fieldErrorsOf, updateProductSchema, updateSkuSchema } from "@/features/stock/schemas";
-import type { Json } from "@/db/database.types";
 import { stockErrorMessage } from "@/features/stock/db-errors";
 import { buildSkuUpdatePayload } from "@/features/stock/sku-update";
 import { applyManualMovement } from "@/features/stock/movement-service";
+import { skuPayload, variantPayload } from "@/features/stock/product-form";
 
 const log = createLogger("STOCK");
-
-type SkuJson = Record<string, Json>;
-
-function variantPayload(d: { variant_name?: string; condition?: string; grade?: string; storage?: string; color?: string; ean?: string; mpn?: string }): SkuJson {
-  const attributes: Record<string, string> = {};
-  if (d.storage) attributes.storage = d.storage;
-  if (d.color) attributes.color = d.color;
-  if (d.grade) attributes.grade = d.grade;
-  const autoName = [d.storage, d.color, d.grade ? `Grade ${d.grade}` : null].filter(Boolean).join(" / ");
-  return {
-    name: d.variant_name || autoName || "Standard",
-    condition: d.condition ?? "unknown",
-    grade: emptyToNull(d.grade),
-    ean: emptyToNull(d.ean),
-    mpn: emptyToNull(d.mpn),
-    attributes,
-  };
-}
-
-function skuPayload(d: { code: string; barcode?: string; cost_price?: number | ""; sale_price?: number | ""; location?: string; reorder_point?: number | ""; safety_stock?: number | ""; lead_time_days?: number | ""; default_supplier_id?: string }, currency: string): SkuJson {
-  return {
-    code: d.code,
-    barcode: emptyToNull(d.barcode),
-    cost_price: emptyToNull(d.cost_price),
-    sale_price: emptyToNull(d.sale_price),
-    currency,
-    location: emptyToNull(d.location),
-    reorder_point: emptyToNull(d.reorder_point) ?? 0,
-    safety_stock: emptyToNull(d.safety_stock) ?? 0,
-    lead_time_days: emptyToNull(d.lead_time_days),
-    default_supplier_id: emptyToNull(d.default_supplier_id),
-  };
-}
 
 function translateCreateError(e: { code?: string; message?: string; details?: string | null }): string {
   // SKU_CODE_EXISTS (contrôle de create_sku) ou violation de l'index unique en cas de création simultanée.

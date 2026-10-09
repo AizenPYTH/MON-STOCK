@@ -1471,6 +1471,9 @@ isOneToOne: false
 "create_organization_with_owner":
 { Args: { "p_is_demo"?: boolean,"p_name": string,"p_slug": string }; Returns: string
                            },
+"create_product_with_skus":
+{ Args: { "p_items": Json,"p_organization_id": string,"p_product"?: Json,"p_product_id"?: string }; Returns: Json
+                           },
 "create_sku":
 { Args: { "p_initial_quantity"?: number,"p_organization_id": string,"p_product"?: Json,"p_product_id"?: string,"p_sku": Json,"p_variant": Json }; Returns: Json
                            },

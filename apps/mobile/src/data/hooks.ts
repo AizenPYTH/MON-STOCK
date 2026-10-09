@@ -9,6 +9,19 @@ import { fetchAnalysis, fetchToday, type Period } from "~/data/intelligence";
 import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } from "~/data/sales";
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
+import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";
+import {
+  addVariants,
+  createProduct,
+  fetchEditableProduct,
+  fetchEditableSku,
+  updateProduct,
+  updateSku,
+  type EditableProduct,
+  type EditableSku,
+  type ProductEditInput,
+  type SkuEditInput,
+} from "~/data/products";
 
 /** Toutes les clés commencent par l'organisation : changer d'organisation ne mélange jamais les données. */
 function useOrgId() {
@@ -141,4 +154,65 @@ export function useDraftPurchaseOrder() {
       onSuccess: () => void queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
     }),
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Catalogue : création et édition (fonctions SQL existantes, sous RLS)
+// ---------------------------------------------------------------------------------------------
+
+/** Après toute écriture du catalogue : relecture de tout ce qui en dépend. */
+function useInvalidateCatalog() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return async (extra: unknown[][] = []) => {
+    await Promise.all(
+      [[orgId, "catalog"], [orgId, "today"], [orgId, "analysis"], [orgId, "sourcing-overview"], ...extra].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    );
+  };
+}
+
+export function useCreateProduct() {
+  const { active } = useActiveOrg();
+  const invalidate = useInvalidateCatalog();
+  return useMutation({
+    mutationFn: (input: ProductWithVariantsInput) => createProduct(requireSupabase(), active.organization.id, active.organization.currency, input),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useAddVariants(productId: string) {
+  const { active } = useActiveOrg();
+  const invalidate = useInvalidateCatalog();
+  return useMutation({
+    mutationFn: (variants: VariantInput[]) => addVariants(requireSupabase(), active.organization.id, active.organization.currency, productId, variants),
+    onSuccess: () => invalidate([[active.organization.id, "product", productId]]),
+  });
+}
+
+export function useEditableProduct(productId: string) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "product", productId], queryFn: () => fetchEditableProduct(requireSupabase(), orgId, productId), enabled: Boolean(productId) });
+}
+
+export function useUpdateProduct() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateCatalog();
+  return useMutation({
+    mutationFn: ({ current, input }: { current: EditableProduct; input: ProductEditInput }) => updateProduct(requireSupabase(), orgId, current, input),
+    onSettled: (_r, _e, v) => invalidate([[orgId, "product", v.current.id]]),
+  });
+}
+
+export function useEditableSku(skuId: string) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "sku-edit", skuId], queryFn: () => fetchEditableSku(requireSupabase(), orgId, skuId), enabled: Boolean(skuId) });
+}
+
+export function useUpdateSku() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateCatalog();
+  return useMutation({
+    mutationFn: ({ current, input }: { current: EditableSku; input: SkuEditInput }) => updateSku(requireSupabase(), orgId, current, input),
+    onSettled: (_r, _e, v) => invalidate([[orgId, "sku", v.current.id], [orgId, "sku-edit", v.current.id]]),
+  });
 }

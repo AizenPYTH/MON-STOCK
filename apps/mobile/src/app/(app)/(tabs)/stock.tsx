@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { FlatList, RefreshControl, ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Package } from "lucide-react-native";
+import { Package, Plus } from "lucide-react-native";
+import { useActiveOrg } from "~/org/org-provider";
 import { useCatalog } from "~/data/hooks";
 import { filterCatalog, type CatalogFilter, type ProductGroup } from "~/data/catalog";
 import { useDebounced } from "~/lib/use-debounced";
 import { userMessage } from "~/lib/errors";
-import { AlertBanner, EmptyState, ErrorState, FilterChip, ListRow, QtyBadge, RowFrame, Screen, SearchField, Skeleton, SkeletonList, TabHeader, Thumb } from "~/components/ui";
+import { AlertBanner, EmptyState, ErrorState, FilterChip, IconButton, ListRow, QtyBadge, RowFrame, Screen, SearchField, Skeleton, SkeletonList, TabHeader, Thumb } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 
@@ -21,10 +22,12 @@ export default function StockScreen() {
   const { screenX, maxWidth } = useLayout();
   const products = useMemo(() => (catalog.data ? filterCatalog(catalog.data.products, filter, query) : []), [catalog.data, filter, query]);
   const counts = catalog.data?.counts;
+  const { permissions } = useActiveOrg();
+  const addButton = permissions.canWrite ? <IconButton icon={<Plus size={20} color={color.inkOnDark} strokeWidth={2.4} />} label="Nouveau produit" filled onPress={() => router.push("/product/new")} /> : undefined;
 
   const header = (
     <View style={{ gap: space.blockGap, paddingBottom: space[3] }}>
-      <TabHeader title="Stock" />
+      <TabHeader title="Stock" right={addButton} />
       <SearchField value={search} onChangeText={setSearch} placeholder="Nom, SKU, code-barres…" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
         <FilterChip label="Tous" count={counts?.all} selected={filter === "all"} onPress={() => setFilter("all")} />
@@ -69,7 +72,12 @@ export default function StockScreen() {
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           catalog.data.counts.all === 0 ? (
-            <EmptyState icon={<Package size={28} color={color.ink2} />} title="Aucun produit pour l'instant" description="Créez vos produits depuis l'application web MON STOCK (création et scan de code-barres sur mobile : prochainement)." />
+            <EmptyState
+              icon={<Package size={28} color={color.ink2} />}
+              title="Aucun produit pour l'instant"
+              description={permissions.canWrite ? "Créez votre premier produit : marque, modèle, variantes (capacité, couleur, grade), prix et stock initial." : "Aucun produit dans cette organisation. Votre rôle (lecture seule) ne permet pas d'en créer."}
+              actions={permissions.canWrite ? [{ label: "Créer un produit", onPress: () => router.push("/product/new") }] : []}
+            />
           ) : (
             <EmptyState title="Aucun produit ne correspond" description="Modifiez la recherche ou le filtre." />
           )
