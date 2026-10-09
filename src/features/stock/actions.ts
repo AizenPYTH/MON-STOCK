@@ -9,6 +9,7 @@ import { addSkuSchema, adjustStockSchema, createProductSchema, emptyToNull, fiel
 import type { Json } from "@/db/database.types";
 import { stockErrorMessage } from "@/features/stock/db-errors";
 import { buildSkuUpdatePayload } from "@/features/stock/sku-update";
+import { applyManualMovement } from "@/features/stock/movement-service";
 
 const log = createLogger("STOCK");
 
@@ -152,27 +153,12 @@ export async function adjustStockAction(_prev: ActionResult<{ quantityAfter: num
     const ctx = await requireOrgContextForAction({ write: true });
     const parsed = adjustStockSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return fail("Vérifiez les champs du formulaire.", { fieldErrors: fieldErrorsOf(parsed.error.issues) });
-    const d = parsed.data;
-    const inbound = d.type === "receipt" || d.type === "return" || d.type === "transfer_in" || (d.type !== "transfer_out" && d.direction === "in");
-    const signed = inbound ? d.quantity : -d.quantity;
-    const { data, error } = await ctx.supabase.rpc("apply_inventory_movement", {
-      p_organization_id: ctx.organization.id,
-      p_sku_id: d.sku_id,
-      p_type: d.type,
-      p_quantity: signed,
-      p_reference_type: "manual",
-      p_channel: "manual",
-      p_note: emptyToNull(d.note) ?? undefined,
-      p_occurred_at: new Date().toISOString(),
-    });
-    if (error) return fail(stockErrorMessage(error));
-    const { data: sku } = await ctx.supabase.from("skus").select("code").eq("id", d.sku_id).single();
-    log.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
+    const { quantityAfter, skuCode } = await applyManualMovement(ctx, parsed.data);
     revalidatePath("/stock");
-    if (sku) revalidatePath(`/stock/${encodeURIComponent(sku.code)}`);
+    if (skuCode) revalidatePath(`/stock/${encodeURIComponent(skuCode)}`);
     revalidatePath("/dashboard");
     revalidatePath("/stock/alerts");
-    return ok({ quantityAfter: data?.quantity_after ?? null });
+    return ok({ quantityAfter });
   } catch (e) {
     return fail(toUserMessage(e));
   }

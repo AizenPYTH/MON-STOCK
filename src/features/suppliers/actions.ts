@@ -25,6 +25,8 @@ import { ensureManualSource } from "@/features/suppliers/manual-source";
 import { connectorsStatusMessage, createSupplierConnection, syncSupplierConnection, testSupplierConnection } from "@/services/sourcing/supplier-connectors";
 import type { RawOffer } from "@/domain/sourcing/types";
 
+import { changePurchaseOrderStatus, receivePurchaseOrder } from "@/features/suppliers/purchase-order-service";
+
 const log = createLogger("SUPPLIERS");
 
 function supplierPath(id: string, tab?: string): string {
@@ -604,44 +606,27 @@ export async function removePurchaseOrderItemAction(_prev: ActionResult<{ messag
   }
 }
 
-const PO_STATUS_DONE: Record<string, string> = {
-  draft: "Commande repassée en brouillon.",
-  sent: "Commande marquée envoyée.",
-  confirmed: "Commande marquée confirmée.",
-  cancelled: "Commande annulée.",
-};
-
 export async function updatePurchaseOrderStatusAction(_prev: ActionResult<{ message: string }> | null, formData: FormData): Promise<ActionResult<{ message: string }>> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
     const parsed = purchaseOrderStatusSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return fail("Statut invalide.");
-    const { data: po } = await ctx.supabase.from("purchase_orders").select("id, supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", parsed.data.purchase_order_id).maybeSingle();
-    if (!po) return fail("Commande introuvable.");
-    if (po.status === parsed.data.status) return ok({ message: "Statut déjà à jour." });
-    // La base valide la transition (PURCHASE_ORDER_INVALID_TRANSITION / EMPTY / CLOSED) : pas de double règle ici.
-    const { error } = await ctx.supabase.from("purchase_orders").update({ status: parsed.data.status }).eq("id", po.id).eq("organization_id", ctx.organization.id);
-    if (error) return fail(stockErrorMessage(error));
-    revalidatePath(supplierPath(po.supplier_id, "orders"));
-    revalidatePath(supplierPath(po.supplier_id, "performance"));
-    revalidatePath("/insights");
-    return ok({ message: PO_STATUS_DONE[parsed.data.status] ?? "Statut mis à jour." });
+    const { supplierId, message, changed } = await changePurchaseOrderStatus(ctx, parsed.data.purchase_order_id, parsed.data.status);
+    if (changed) {
+      revalidatePath(supplierPath(supplierId, "orders"));
+      revalidatePath(supplierPath(supplierId, "performance"));
+      revalidatePath("/insights");
+    }
+    return ok({ message });
   } catch (e) {
     return fail(toUserMessage(e));
   }
 }
 
-const PO_STATUS_TEXT: Record<string, string> = {
-  partially_received: "partiellement reçue",
-  received: "entièrement reçue",
-};
-
 export async function receivePurchaseOrderAction(_prev: ActionResult<{ message: string }> | null, formData: FormData): Promise<ActionResult<{ message: string }>> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
     const poId = String(formData.get("purchase_order_id") ?? "");
-    const { data: po } = await ctx.supabase.from("purchase_orders").select("id, supplier_id, status").eq("organization_id", ctx.organization.id).eq("id", poId).maybeSingle();
-    if (!po) return fail("Commande introuvable.");
     const receipts: Array<{ item_id: string; quantity: number; expected_received?: number }> = [];
     for (const [key, value] of formData.entries()) {
       if (!key.startsWith("receive_")) continue;
@@ -651,16 +636,13 @@ export async function receivePurchaseOrderAction(_prev: ActionResult<{ message: 
       if (!line.success) return fail("Quantité reçue invalide (nombre entier entre 0 et 100 000).");
       if (line.data.quantity > 0) receipts.push(line.data);
     }
-    if (receipts.length === 0) return fail("Indiquez au moins une quantité reçue.");
-    const { data, error } = await ctx.supabase.rpc("receive_purchase_order_items", { p_purchase_order_id: po.id, p_receipts: receipts });
-    if (error) return fail(stockErrorMessage(error));
-    revalidatePath(supplierPath(po.supplier_id, "orders"));
-    revalidatePath(supplierPath(po.supplier_id, "performance"));
+    const { supplierId, message } = await receivePurchaseOrder(ctx, poId, receipts);
+    revalidatePath(supplierPath(supplierId, "orders"));
+    revalidatePath(supplierPath(supplierId, "performance"));
     revalidatePath("/stock");
     revalidatePath("/dashboard");
     revalidatePath("/insights");
-    const units = receipts.reduce((sum, r) => sum + r.quantity, 0);
-    return ok({ message: `Réception enregistrée (${units} unité(s) saisie(s), plafonnées au reste à recevoir) : stock mis à jour. Commande ${PO_STATUS_TEXT[data?.status ?? ""] ?? "mise à jour"}.` });
+    return ok({ message });
   } catch (e) {
     return fail(toUserMessage(e));
   }

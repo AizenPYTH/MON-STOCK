@@ -34,12 +34,17 @@ export interface OrgContext {
   memberships: Array<{ organization: Pick<Organization, "id" | "name" | "slug" | "is_demo">; role: OrgRole }>;
 }
 
-export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
-  // getCurrentUser() est mis en cache pour la requête : un seul aller-retour de validation du JWT.
-  const user = await getCurrentUser();
-  if (!user) return null;
-  const supabase = await createServerSupabaseClient();
-
+/**
+ * Résout l'organisation active d'un utilisateur à partir d'un client Supabase qui agit EN SON
+ * NOM (RLS). `preferredOrganizationId` (en-tête X-Organization-Id du mobile) prime sur
+ * l'organisation mémorisée dans le profil ; il doit désigner une organisation dont
+ * l'utilisateur est membre, sinon `null` (l'appelant refuse l'accès).
+ */
+export async function resolveOrgContext(
+  supabase: ServerSupabaseClient,
+  user: User,
+  preferredOrganizationId?: string | null,
+): Promise<OrgContext | null> {
   const [{ data: profile }, { data: members }] = await Promise.all([
     supabase.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
     supabase.from("organization_members").select("role, organization:organizations(id, name, slug, is_demo)").eq("user_id", user.id),
@@ -51,8 +56,14 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
 
   if (memberships.length === 0) return null;
 
-  const wantedId = profile?.current_organization_id ?? null;
-  const current = memberships.find((m) => m.organization.id === wantedId) ?? memberships[0];
+  let current: (typeof memberships)[number] | undefined;
+  if (preferredOrganizationId) {
+    current = memberships.find((m) => m.organization.id === preferredOrganizationId);
+    if (!current) return null;
+  } else {
+    const wantedId = profile?.current_organization_id ?? null;
+    current = memberships.find((m) => m.organization.id === wantedId) ?? memberships[0];
+  }
   if (!current) return null;
 
   const { data: organization } = await supabase.from("organizations").select("*").eq("id", current.organization.id).single();
@@ -69,6 +80,14 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
     };
 
   return { supabase, user, profile: effectiveProfile, organization, role: current.role, memberships };
+}
+
+export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
+  // getCurrentUser() est mis en cache pour la requête : un seul aller-retour de validation du JWT.
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const supabase = await createServerSupabaseClient();
+  return resolveOrgContext(supabase, user);
 });
 
 /** Pour les pages de l'application : redirige vers /onboarding si aucune organisation. */

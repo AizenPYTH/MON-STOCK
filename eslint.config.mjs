@@ -20,6 +20,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "src/db/database.types.ts",
+    // Application mobile Expo : projet séparé (son propre tsconfig, ESLint et Jest).
+    "apps/**",
   ]),
 ]);
 

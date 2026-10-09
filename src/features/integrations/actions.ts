@@ -7,11 +7,11 @@ import { createLogger } from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { isConnectorError, connectorErrorToAppError } from "@/integrations/core/errors";
 import { getConnector } from "@/integrations/core/registry";
-import { runChannelSync, type SyncRunResult } from "@/services/sync/engine";
+import type { SyncRunResult } from "@/services/sync/engine";
 import { pushQuantityToChannel } from "@/services/sync/inventory-push";
 import { connectorAuthFor, disconnectConnection } from "@/services/channels/connection-store";
 import { searchSkus } from "@/features/stock/queries";
-import { formatRunSummary } from "@/features/integrations/format";
+import { syncConnectionNow } from "@/features/integrations/sync-service";
 import {
   checkboxOn,
   connectionSettingsSchema,
@@ -47,11 +47,8 @@ export async function syncNowAction(_prev: ActionResult<SyncActionData> | null, 
     const ctx = await requireOrgContextForAction({ write: true });
     const parsed = syncNowSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return fail("Paramètres invalides.", { fieldErrors: fieldErrorsOf(parsed.error.issues) });
-    const { data: connection } = await ctx.supabase.from("channel_connections").select("id").eq("id", parsed.data.connection_id).eq("organization_id", ctx.organization.id).maybeSingle();
-    if (!connection) return fail("Connexion introuvable dans votre organisation.");
-    const result = await runChannelSync(connection.id, { trigger: parsed.data.trigger, userId: ctx.user.id, scope: parsed.data.scope });
+    const { result, summary } = await syncConnectionNow(ctx, parsed.data.connection_id, { trigger: parsed.data.trigger, scope: parsed.data.scope });
     revalidateAll();
-    const summary = formatRunSummary({ status: result.status, stats: result.stats as unknown as Record<string, number>, error_count: result.stats.errors });
     if (result.status === "failed") {
       return fail(result.errorSummary ?? "La synchronisation a échoué.", { code: "SYNC_FAILED", action: { label: "Voir le détail", href: `/settings/sync/${result.runId}` } });
     }
