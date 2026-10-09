@@ -6,13 +6,28 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ccywsegdowikeirbsfae.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_3qikrr8Sl0GAs2vKugdh4Q_t9UZNbxw",
+        "EXPO_PUBLIC_APP_ENV": "TEST"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ccywsegdowikeirbsfae.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_3qikrr8Sl0GAs2vKugdh4Q_t9UZNbxw",
+        "EXPO_PUBLIC_APP_ENV": "TEST"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ccywsegdowikeirbsfae.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_3qikrr8Sl0GAs2vKugdh4Q_t9UZNbxw",
+        "EXPO_PUBLIC_APP_ENV": "TEST"
+      }
     }
   },
   "submit": {

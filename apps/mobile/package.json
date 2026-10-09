@@ -53,8 +53,8 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "check": "npm run typecheck && npm run lint && npm test",
-    "export:ios": "expo export --platform ios --output-dir dist/ios",
-    "scan:bundle": "rm -rf dist/scan && expo export --platform ios --no-bytecode --output-dir dist/scan && node scripts/scan-bundle-secrets.mjs dist/scan"
+    "export:ios": "expo export --platform ios --clear --output-dir dist/ios",
+    "scan:bundle": "rm -rf dist/scan && expo export --platform ios --no-bytecode --clear --output-dir dist/scan && node scripts/scan-bundle-secrets.mjs dist/scan"
   },
   "private": true,
   "jest": {
