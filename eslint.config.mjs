@@ -22,6 +22,8 @@ const eslintConfig = defineConfig([
     "src/db/database.types.ts",
     // Application mobile Expo : projet séparé (son propre tsconfig, ESLint et Jest).
     "apps/**",
+    // Edge Function : bundle généré par scripts/build-edge.mjs (source : server/edge + src).
+    "supabase/functions/**",
   ]),
 ]);
 

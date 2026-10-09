@@ -17,7 +17,8 @@
     "seed:demo": "tsx --env-file=.env.local scripts/seed-demo.ts",
     "sync:run": "tsx --env-file=.env.local scripts/run-sync.ts",
     "sources:verify": "tsx scripts/verify-sources.ts",
-    "sourcing:test-searches": "tsx scripts/sourcing-test-searches.ts"
+    "sourcing:test-searches": "tsx scripts/sourcing-test-searches.ts",
+    "edge:build": "node scripts/build-edge.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

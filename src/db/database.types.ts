@@ -866,7 +866,13 @@ isOneToOne: false
       referencedColumns: ["sku_id"]
     }
                   ]
-                },"sourcing_offers": {
+                },"sourcing_library_checks": {
+  Row: { adapter: string | null; checked_at: string; duration_ms: number | null; http_status: number | null; key: string; message: string | null; product_count: number | null; robots_allowed: boolean | null; sample: Json; status: string };
+  Insert: { adapter?: string | null; checked_at?: string; duration_ms?: number | null; http_status?: number | null; key: string; message?: string | null; product_count?: number | null; robots_allowed?: boolean | null; sample?: Json; status: string };
+  Update: { adapter?: string | null; checked_at?: string; duration_ms?: number | null; http_status?: number | null; key?: string; message?: string | null; product_count?: number | null; robots_allowed?: boolean | null; sample?: Json; status?: string };
+  Relationships: [];
+},
+"sourcing_offers": {
                   Row: {
                     "anomalies": (string)[],"available_quantity": number | null,"brand": string | null,"color": string | null,"condition": Database["public"]['Enums']["product_condition"],"confidence": NonNullable<Json>,"country": string | null,"created_at": string,"delivery_max_days": number | null,"delivery_min_days": number | null,"ean": string | null,"expired_at": string | null,"external_offer_id": string,"external_product_id": string | null,"feed_id": string | null,"first_seen_at": string,"fx_rate": number | null,"fx_rate_date": string | null,"grade": string | null,"id": string,"last_price_at": string,"last_seen_at": string,"last_stock_at": string | null,"minimum_order_value": number | null,"model": string | null,"moq": number | null,"mpn": string | null,"normalized_currency": string | null,"normalized_price": number | null,"normalized_product_id": string | null,"organization_id": string,"original_currency": string,"original_price": number,"raw": Json | null,"shipping_cost": number | null,"shipping_currency": string | null,"sku_id": string | null,"source_id": string,"source_type": Database["public"]['Enums']["source_type"],"source_url": string | null,"status": Database["public"]['Enums']["offer_status"],"stock_status": Database["public"]['Enums']["stock_status"],"storage": string | null,"supplier_id": string,"tax_type": Database["public"]['Enums']["tax_type"],"title_original": string,"updated_at": string,"vat_rate": number | null
                   }
