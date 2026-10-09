@@ -15,6 +15,7 @@ export function SkuEditForm({ row, variant, suppliers, updatedAt }: { row: Stock
     <form action={action} className="space-y-6">
       <input type="hidden" name="sku_id" value={row.sku_id ?? ""} />
       {updatedAt ? <input type="hidden" name="expected_updated_at" value={updatedAt} /> : null}
+      {variant?.updated_at ? <input type="hidden" name="expected_variant_updated_at" value={variant.updated_at} /> : null}
       <FormError message={err?.error} />
       {state?.ok ? <FormSuccess message="SKU enregistré." /> : null}
       <Card>

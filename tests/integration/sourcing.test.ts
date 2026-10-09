@@ -45,8 +45,10 @@ d("Historique des offres fournisseurs (triggers)", () => {
       const sku = await createSkuAs(c, u, org, "SKU-PO", { initial: 0, cost: null });
       await asUser(c, u);
       const { rows: s } = await c.query("insert into public.suppliers (organization_id, name) values ($1, 'Fournisseur A') returning id", [org]);
-      const { rows: po } = await c.query("insert into public.purchase_orders (organization_id, supplier_id, status, reference) values ($1, $2, 'sent', 'PO-1') returning id", [org, s[0].id]);
+      // Un client crée la commande en brouillon, ajoute ses lignes, puis l'envoie.
+      const { rows: po } = await c.query("insert into public.purchase_orders (organization_id, supplier_id, status, reference) values ($1, $2, 'draft', 'PO-1') returning id", [org, s[0].id]);
       const { rows: it } = await c.query("insert into public.purchase_order_items (organization_id, purchase_order_id, sku_id, quantity_ordered, unit_cost, currency) values ($1, $2, $3, 20, 251, 'EUR') returning id", [org, po[0].id, sku]);
+      await c.query("update public.purchase_orders set status = 'sent' where id = $1", [po[0].id]);
       const partial = await c.query("select (public.receive_purchase_order_items($1, $2::jsonb)).status as s", [po[0].id, JSON.stringify([{ item_id: it[0].id, quantity: 5 }])]);
       expect(partial.rows[0].s).toBe("partially_received");
       const full = await c.query("select (public.receive_purchase_order_items($1, $2::jsonb)).status as s", [po[0].id, JSON.stringify([{ item_id: it[0].id, quantity: 100 }])]);

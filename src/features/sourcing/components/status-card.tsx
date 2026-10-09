@@ -3,7 +3,7 @@ import type { SourcingStatusItem } from "@/services/sourcing/status-summary";
 import { formatNumber } from "@/lib/format";
 
 /** « État des sources » : chiffres calculés (catalogue, registre, base), chacun avec sa définition. */
-export function SourcingStatusCard({ items, offersTruncated }: { items: SourcingStatusItem[]; offersTruncated: boolean }) {
+export function SourcingStatusCard({ items, offerCountsIncomplete }: { items: SourcingStatusItem[]; offerCountsIncomplete: boolean }) {
   const groups: Array<{ title: string; scope: SourcingStatusItem["scope"] }> = [
     { title: "Catalogue et code", scope: "catalog" },
     { title: "Votre organisation", scope: "organization" },
@@ -33,7 +33,7 @@ export function SourcingStatusCard({ items, offersTruncated }: { items: Sourcing
             </dl>
           </div>
         ))}
-        {offersTruncated ? <p className="text-[11px] text-amber-700">Comptage des offres limité aux 10 000 premières offres actives.</p> : null}
+        {offerCountsIncomplete ? <p className="text-[11px] text-amber-700">Comptage des offres incomplet : certaines sources n&apos;ont pas pu être comptées (base momentanément indisponible). « Avec prix » et « Avec stock » peuvent être sous-estimés.</p> : null}
       </CardContent>
     </Card>
   );

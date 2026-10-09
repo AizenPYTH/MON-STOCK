@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { Client } from "pg";
-import { asSuperuser, asUser, connect, createOrgAs, createSkuAs, createUser } from "./helpers";
+import { asService, asSuperuser, asUser, connect, createOrgAs, createSkuAs, createUser } from "./helpers";
 
 export interface CommittedOrg {
   userId: string;
@@ -63,6 +63,29 @@ export async function userSession(userId: string): Promise<Client> {
   await c.query("begin");
   await asUser(c, userId);
   return c;
+}
+
+/** Ouvre une transaction service_role (clé serveur) sur une nouvelle connexion. */
+export async function serviceSession(): Promise<Client> {
+  const c = await connect();
+  await c.query("begin");
+  await asService(c);
+  return c;
+}
+
+/** Exécute `sql` dans sa propre transaction service_role, commitée (ou annulée en cas d'erreur). */
+export async function runAsService<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
+  const c = await serviceSession();
+  try {
+    const { rows } = await c.query(sql, params);
+    await c.query("commit");
+    return rows as T[];
+  } catch (e) {
+    await c.query("rollback").catch(() => undefined);
+    throw e;
+  } finally {
+    await c.end();
+  }
 }
 
 export async function closeSession(c: Client, mode: "commit" | "rollback" = "commit"): Promise<void> {

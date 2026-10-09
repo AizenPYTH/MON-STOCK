@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Json } from "@/db/database.types";
 import type { NormalizedOrder } from "@/integrations/core/types";
 import type { OrdersPage } from "@/integrations/core/connector";
-import { splitOrdersWindow, type OrdersProgress, type OrdersWindow } from "@/integrations/ebay/cursor";
+import { ORDERS_SLICE_HOURS, splitOrdersWindow, type OrdersProgress, type OrdersWindow } from "@/integrations/ebay/cursor";
 import type { SyncContext } from "@/services/sync/context";
 
 export interface OrdersPhaseResult extends OrdersProgress {
@@ -38,7 +38,7 @@ export function emptyOrdersResult(): OrdersPhaseResult {
 }
 
 export interface SyncOrdersOptions {
-  /** Taille initiale des tranches (h). */
+  /** Taille initiale des tranches (h), ORDERS_SLICE_HOURS par défaut. */
   sliceHours?: number;
   /** Une tranche tronquée est redécoupée en deux jusqu'à cette taille minimale (h). */
   minSliceHours?: number;
@@ -46,7 +46,6 @@ export interface SyncOrdersOptions {
   maxPages?: number;
 }
 
-export const ORDERS_DEFAULT_SLICE_HOURS = 7 * 24;
 export const ORDERS_MIN_SLICE_HOURS = 1;
 export const ORDERS_MAX_PAGES_PER_RUN = 200;
 
@@ -98,23 +97,40 @@ export function orderToRpcPayload(order: NormalizedOrder): { p_order: Json; p_it
  * (tout ou rien, idempotente) : une erreur sur une commande n'interrompt pas les suivantes.
  * `result` est un accumulateur : en cas d'exception (API indisponible au milieu de la fenêtre),
  * l'appelant conserve les compteurs et la progression déjà acquis pour calculer le curseur.
+ *
+ * Budget de pages : une tranche n'est déclarée incomplète que s'il reste réellement des pages à
+ * lire (le connecteur indique `hasMore: false` sur la dernière page) ; une tranche redécoupée et
+ * relue ne compte chaque commande qu'une fois (statistiques en commandes distinctes), et une
+ * commande déjà ingérée à l'identique pendant ce run n'est pas réingérée.
  */
 export async function syncOrders(ctx: SyncContext, window: OrdersWindow, result: OrdersPhaseResult = emptyOrdersResult(), options: SyncOrdersOptions = {}): Promise<OrdersPhaseResult> {
-  const sliceHours = options.sliceHours ?? ORDERS_DEFAULT_SLICE_HOURS;
+  const sliceHours = options.sliceHours ?? ORDERS_SLICE_HOURS;
   const minSliceMs = (options.minSliceHours ?? ORDERS_MIN_SLICE_HOURS) * 3_600_000;
   let budget = options.maxPages ?? ORDERS_MAX_PAGES_PER_RUN;
   const queue = splitOrdersWindow(window, sliceHours);
+  const seen: RunSeenOrders = { orders: new Map(), invalid: new Set() };
 
   while (queue.length > 0) {
+    if (budget <= 0) {
+      // Tranches restantes jamais ouvertes : reprises au prochain run.
+      result.truncated = true;
+      break;
+    }
     const slice = queue.shift()!;
     let sliceTruncated = false;
     let outOfBudget = false;
     for await (const page of ctx.connector.getOrders(ctx.auth, { since: slice.since, until: slice.until })) {
+      if (budget <= 0) {
+        // Page au-delà du budget (le connecteur n'avait pas annoncé la fin) : non ingérée, tranche incomplète.
+        outOfBudget = true;
+        break;
+      }
       budget--;
       result.pages++;
-      await ingestOrdersPage(ctx, page, result);
+      await ingestOrdersPage(ctx, page, result, seen);
       if (page.truncated) sliceTruncated = true;
-      if (budget <= 0 && !sliceTruncated) {
+      // Budget épuisé : on ne s'arrête que s'il reste des pages (dernière page connue → tranche complète).
+      if (budget <= 0 && !sliceTruncated && page.hasMore !== false) {
         outOfBudget = true;
         break;
       }
@@ -150,7 +166,14 @@ export async function syncOrders(ctx: SyncContext, window: OrdersWindow, result:
   return result;
 }
 
-async function ingestOrdersPage(ctx: SyncContext, page: OrdersPage, result: OrdersPhaseResult): Promise<void> {
+/** Commandes déjà vues pendant ce run (une tranche redécoupée relit les mêmes pages). */
+interface RunSeenOrders {
+  orders: Map<string, { payloadHash: string; modifiedAt: string | null; ingested: boolean; counted: boolean; failedCounted: boolean; itemsUnmapped: number }>;
+  /** commandes illisibles déjà comptées (par référence) */
+  invalid: Set<string>;
+}
+
+async function ingestOrdersPage(ctx: SyncContext, page: OrdersPage, result: OrdersPhaseResult, seen: RunSeenOrders): Promise<void> {
   const { admin } = ctx;
   const noteFailed = (modifiedAt: string | null) => {
     if (!modifiedAt) {
@@ -161,13 +184,34 @@ async function ingestOrdersPage(ctx: SyncContext, page: OrdersPage, result: Orde
     if (!result.minFailedModified || d < result.minFailedModified) result.minFailedModified = d;
   };
 
-  result.fetched += page.orders.length;
-  result.invalid += page.invalid.length;
   for (const inv of page.invalid) {
+    if (inv.ref) {
+      if (seen.invalid.has(inv.ref)) continue;
+      seen.invalid.add(inv.ref);
+    }
+    result.invalid++;
     ctx.recordError({ code: "INVALID_ORDER", message: `${inv.message} Cette commande n'a pas été importée : vérifiez-la dans eBay.`, entityType: "order", entityRef: inv.ref });
   }
 
   for (const order of page.orders) {
+    const prev = seen.orders.get(order.externalOrderId);
+    const modifiedAt = order.externalModifiedAt ?? null;
+    // Déjà ingérée à l'identique pendant ce run (tranche relue) : rien à refaire ni à recompter.
+    if (prev?.ingested && prev.payloadHash === order.payloadHash && prev.modifiedAt === modifiedAt) continue;
+    if (!prev) result.fetched++;
+    const entry = prev ?? { payloadHash: order.payloadHash, modifiedAt, ingested: false, counted: false, failedCounted: false, itemsUnmapped: 0 };
+    entry.payloadHash = order.payloadHash;
+    entry.modifiedAt = modifiedAt;
+    seen.orders.set(order.externalOrderId, entry);
+
+    const fail = (code: string, message: string, details?: Record<string, unknown>) => {
+      if (!entry.failedCounted) result.failed++;
+      entry.failedCounted = true;
+      entry.ingested = false;
+      noteFailed(order.externalModifiedAt ?? order.placedAt);
+      ctx.recordError({ code, message, entityType: "order", entityRef: order.externalOrderId, ...(details ? { details } : {}) });
+    };
+
     const payload = orderToRpcPayload(order);
     const { data, error } = await admin.rpc("ingest_external_order", {
       p_organization_id: ctx.organizationId,
@@ -178,21 +222,25 @@ async function ingestOrdersPage(ctx: SyncContext, page: OrdersPage, result: Orde
       p_items: payload.p_items,
     });
     if (error) {
-      result.failed++;
-      noteFailed(order.externalModifiedAt ?? order.placedAt);
-      ctx.recordError({ code: "ORDER_INGEST_FAILED", message: `Commande ${order.orderNumber ?? order.externalOrderId} non importée : ${error.message}`, entityType: "order", entityRef: order.externalOrderId, details: { pgCode: error.code ?? null } });
+      fail("ORDER_INGEST_FAILED", `Commande ${order.orderNumber ?? order.externalOrderId} non importée : ${error.message}`, { pgCode: error.code ?? null });
       continue;
     }
     const parsed = ingestResultSchema.safeParse(data);
     if (!parsed.success) {
-      result.failed++;
-      noteFailed(order.externalModifiedAt ?? order.placedAt);
-      ctx.recordError({ code: "ORDER_INGEST_UNEXPECTED", message: "Résultat inattendu de ingest_external_order.", entityType: "order", entityRef: order.externalOrderId });
+      fail("ORDER_INGEST_UNEXPECTED", "Résultat inattendu de ingest_external_order.");
       continue;
     }
-    if (parsed.data.created) result.created++;
-    else result.updated++;
-    result.itemsUnmapped += parsed.data.items_unmapped ?? 0;
+    entry.ingested = true;
+    if (!entry.counted) {
+      // Commandes distinctes : une commande relue (et modifiée entre-temps) n'est comptée qu'une fois.
+      if (parsed.data.created) result.created++;
+      else result.updated++;
+      entry.counted = true;
+    }
+    const unmapped = parsed.data.items_unmapped ?? 0;
+    result.itemsUnmapped += unmapped - entry.itemsUnmapped;
+    entry.itemsUnmapped = unmapped;
+    // Mouvements de stock : réellement écrits par cette ingestion (0 si déjà appliqués).
     result.movements += parsed.data.movements ?? 0;
     if (order.externalModifiedAt) {
       const d = new Date(order.externalModifiedAt);

@@ -8,8 +8,12 @@ import { ebayPublicKeySchema, type EbayPublicKey } from "@/integrations/ebay/web
  * Clés publiques de signature des notifications eBay
  * (GET /commerce/notification/v1/public_key/{public_key_id}, token d'application).
  * - Clé connue : mise en cache 12 h.
- * - kid inconnu d'eBay (404/400) : PublicKeyNotFoundError → la notification est REJETÉE (401),
- *   et le kid est mis en cache négatif 10 min (un attaquant ne peut pas faire appeler eBay en boucle).
+ * - kid inconnu d'eBay (404, ou 400 dont le corps d'erreur eBay désigne explicitement l'identifiant
+ *   de clé) : PublicKeyNotFoundError → la notification est REJETÉE (401), et le kid est mis en cache
+ *   négatif 10 min (un attaquant ne peut pas faire appeler eBay en boucle).
+ * - Tout autre 400 (requête refusée, p. ex. token d'application rejeté) : rien ne prouve que le kid
+ *   est inconnu → erreur d'infrastructure (503, l'événement n'est pas consommé), token d'application
+ *   oublié pour être redemandé, AUCUN cache négatif (une notification authentique n'est pas rejetée 10 min).
  * - Panne (réseau, 5xx, token d'application) : erreur d'infrastructure → 503, l'événement n'est pas consommé.
  */
 export class PublicKeyNotFoundError extends Error {
@@ -26,6 +30,24 @@ const MAX_KID_LENGTH = 200;
 interface CacheEntry {
   key: EbayPublicKey | null;
   expiresAt: number;
+}
+
+/**
+ * Corps d'erreur eBay bien formé ({ errors: [...] }) désignant explicitement l'identifiant de clé
+ * publique (paramètre public_key_id, ou message « public key … invalid / not found »).
+ */
+export function isUnknownKeyError(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const errors = (body as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) return false;
+  return errors.some((e) => {
+    if (!e || typeof e !== "object") return false;
+    const err = e as { message?: unknown; longMessage?: unknown; parameters?: unknown };
+    const params = Array.isArray(err.parameters) ? err.parameters : [];
+    if (params.some((p) => p && typeof p === "object" && /^public_?key_?id$/i.test(String((p as { name?: unknown }).name ?? "")))) return true;
+    const text = `${typeof err.message === "string" ? err.message : ""} ${typeof err.longMessage === "string" ? err.longMessage : ""}`;
+    return /public[ _]?key/i.test(text) && /(invalid|not found|unknown|does not exist)/i.test(text) && !/token|authoriz|authentic/i.test(text);
+  });
 }
 
 export class EbayNotificationKeyStore {
@@ -58,11 +80,12 @@ export class EbayNotificationKeyStore {
       { provider: EBAY_PROVIDER, label: "notification:public_key", retries: 2, timeoutMs: 10_000 },
     );
     const json = await readJson(res, EBAY_PROVIDER);
-    if (res.status === 404 || res.status === 400) {
+    if (res.status === 404 || (res.status === 400 && isUnknownKeyError(json))) {
       this.cache.set(kid, { key: null, expiresAt: now + NEGATIVE_TTL_MS });
       throw new PublicKeyNotFoundError(kid);
     }
-    if (res.status === 401) this.appToken = null;
+    // 400 non attribuable au kid, 401 : le token d'application est peut-être en cause → redemandé au prochain appel.
+    if (res.status === 400 || res.status === 401) this.appToken = null;
     const parsed = ebayPublicKeySchema.safeParse(json);
     if (!res.ok || !parsed.success) {
       throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `Clé publique eBay indisponible pour le moment (HTTP ${res.status}).`, { httpStatus: res.status, details: { label: "notification:public_key" } });

@@ -38,9 +38,9 @@ export const OFFER_FETCH_LIMIT = 500;
 
 export type OfferQueryStage = "identifier" | "structured" | "text" | "filters_only" | "none";
 
-export function escapeLike(s: string): string {
-  return s.replace(/[%_\\]/g, (m) => `\\${m}`);
-}
+// Échappement LIKE : module unique src/lib/postgrest.ts (réexporté pour les appelants existants).
+import { escapeLike } from "@/lib/postgrest";
+export { escapeLike };
 
 export function baseOfferQuery(client: DbClient, organizationId: string, filters: OfferFilters, skuIdsForCategory: string[] | null) {
   let q = client.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");

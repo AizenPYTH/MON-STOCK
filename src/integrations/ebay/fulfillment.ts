@@ -163,6 +163,8 @@ export interface OrdersPage {
   invalid: Array<{ orderId: string | null; message: string }>;
   total: number | null;
   truncated: boolean;
+  /** true si eBay annonce une page suivante (lien `next`) */
+  hasMore: boolean;
 }
 
 export async function* iterateEbayOrders(config: EbayConfig, auth: ConnectorAuth, params: GetOrdersParams): AsyncGenerator<OrdersPage> {
@@ -192,7 +194,7 @@ export async function* iterateEbayOrders(config: EbayConfig, auth: ConnectorAuth
     const total = parsed.data.total ?? null;
     const hasNext = Boolean(parsed.data.next) && parsed.data.orders.length > 0;
     const truncated = hasNext && page === EBAY_ORDERS_MAX_PAGES - 1;
-    yield { orders, invalid, total, truncated };
+    yield { orders, invalid, total, truncated, hasMore: hasNext };
     if (!hasNext) return;
     offset += parsed.data.orders.length;
   }

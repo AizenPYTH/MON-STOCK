@@ -9,6 +9,7 @@ import { alertCriteriaSchema, type AlertCriteria } from "@/services/sourcing/ale
 import { matchOfferToSkus, type MatchResult } from "@/domain/sourcing/matching";
 import { normalizeProduct } from "@/domain/sourcing/normalizer";
 import { loadMatchCandidates } from "@/services/sourcing/matching-service";
+import { loadRecentPriceHistory } from "@/services/sourcing/price-history-query";
 import { readOfferProvenance } from "@/features/sourcing/provenance";
 import { computePriceInsights, mergeHistories, type PriceInsights } from "@/domain/sourcing/price-insights";
 import { groupPriceHistory, summarizeSupplierHistories, type SupplierHistorySummary } from "@/domain/sourcing/price-history";
@@ -19,7 +20,7 @@ export const DETAIL_SIBLING_OFFERS = 30;
 
 /**
  * Prix habituel observé (offre seule, et produit normalisé tous fournisseurs confondus) + historique
- * par fournisseur, à partir d'UNE requête groupée sur supplier_price_history (90 jours).
+ * par fournisseur, à partir des derniers relevés de chaque offre sur 90 jours (loadRecentPriceHistory).
  */
 async function loadDetailPriceInsights(ctx: OrgContext, offer: { id: string; normalized_product_id: string | null; supplier_id: string; supplierName: string }, currentPrice: number | null): Promise<{ offerInsights: PriceInsights; productInsights: PriceInsights | null; supplierHistories: SupplierHistorySummary[]; siblingCount: number }> {
   const orgId = ctx.organization.id;
@@ -33,15 +34,10 @@ async function loadDetailPriceInsights(ctx: OrgContext, offer: { id: string; nor
     siblings = list;
   }
   const since = new Date(now.getTime() - DETAIL_HISTORY_WINDOW_DAYS * 86_400_000).toISOString();
-  const { data: rows } = await ctx.supabase
-    .from("supplier_price_history")
-    .select("offer_id, original_price, original_currency, normalized_price, normalized_currency, recorded_at")
-    .eq("organization_id", orgId)
-    .in("offer_id", siblings.map((o) => o.id))
-    .gte("recorded_at", since)
-    .order("recorded_at", { ascending: true })
-    .limit(5_000);
-  const byOffer = groupPriceHistory(rows ?? [], orgCurrency);
+  // Derniers relevés de CHAQUE offre (du plus récent au plus ancien, bornés par offre) : une requête
+  // groupée triée du plus ancien au plus récent perdait les relevés récents au-delà de 1 000 lignes.
+  const history = await loadRecentPriceHistory(ctx.supabase, orgId, siblings.map((o) => o.id), since);
+  const byOffer = groupPriceHistory(history.rows, orgCurrency);
   const options = { now, currency: orgCurrency, windowDays: DETAIL_HISTORY_WINDOW_DAYS };
   const offerInsights = computePriceInsights(byOffer.get(offer.id) ?? [], currentPrice, options);
   const productInsights = siblings.length > 1 ? computePriceInsights(mergeHistories(siblings.map((o) => ({ offerId: o.id, sourceId: o.sourceId || null, points: byOffer.get(o.id) ?? [] }))), currentPrice, options) : null;

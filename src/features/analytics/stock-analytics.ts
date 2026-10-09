@@ -3,13 +3,13 @@ import { cache } from "react";
 import type { OrgContext } from "@/features/auth/dal";
 import type { StockOverviewRow } from "@/db/types";
 import { fromPostgrestError } from "@/lib/errors";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { enrichStockRow, type MarginContext, type StockRowView } from "@/features/stock/model";
 import { getMarginContext } from "@/features/stock/queries";
 import { groupStockViews, type StockAnalytics } from "@/features/analytics/stock.pure";
 
 /** Borne de chargement : au-delà, les compteurs sont signalés comme des minima (truncated). */
 export const STOCK_VIEWS_MAX = 5000;
-const PAGE = 1000;
 
 export interface StockViewsBundle {
   views: StockRowView[];
@@ -25,27 +25,16 @@ export interface StockViewsBundle {
 export const loadStockViews = cache(async (ctx: OrgContext): Promise<StockViewsBundle> => {
   const orgId = ctx.organization.id;
   const marginCtx = await getMarginContext(ctx);
-  const rows: StockOverviewRow[] = [];
-  let from = 0;
-  let truncated = false;
-  for (;;) {
-    const { data, error } = await ctx.supabase
-      .from("v_stock_overview")
-      .select("*")
-      .eq("organization_id", orgId)
-      .eq("is_active", true)
-      .order("sku_id", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw fromPostgrestError(error);
-    const batch = data ?? [];
-    rows.push(...batch);
-    if (batch.length < PAGE) break;
-    from += PAGE;
-    if (from >= STOCK_VIEWS_MAX) {
-      truncated = true;
-      break;
-    }
+  let loaded: { rows: StockOverviewRow[]; truncated: boolean };
+  try {
+    loaded = await fetchRowsUpTo<StockOverviewRow>(
+      (from, to) => ctx.supabase.from("v_stock_overview").select("*").eq("organization_id", orgId).eq("is_active", true).order("sku_id", { ascending: true }).range(from, to),
+      STOCK_VIEWS_MAX,
+    );
+  } catch (e) {
+    throw fromPostgrestError(e as Parameters<typeof fromPostgrestError>[0]);
   }
+  const { rows, truncated } = loaded;
   const now = new Date();
   return { views: rows.map((r) => enrichStockRow(r, marginCtx, now)), marginCtx, truncated, now };
 });

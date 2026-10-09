@@ -3,6 +3,8 @@ import type { OrgContext } from "@/features/auth/dal";
 import type { SalesChannel, StockOverviewRow } from "@/db/types";
 import { enrichStockRow, type MarginContext, type StockRowView } from "@/features/stock/model";
 import type { StockListParams } from "@/features/stock/schemas";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
+import { escapeLike, orIlikeAny } from "@/lib/postgrest";
 
 export const STOCK_PAGE_SIZE = 50;
 
@@ -21,21 +23,6 @@ export function marginContextFromChannels(channels: Pick<SalesChannel, "provider
 export async function getMarginContext(ctx: OrgContext): Promise<MarginContext> {
   const { data } = await ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost").eq("organization_id", ctx.organization.id).eq("is_active", true);
   return marginContextFromChannels(data ?? [], ctx.organization.settings);
-}
-
-/** Échappe les jokers ILIKE (%, _ et \\). */
-export function escapeLike(s: string): string {
-  return s.replace(/[%_\\]/g, (m) => `\\${m}`);
-}
-
-/**
- * Terme de recherche utilisable dans un filtre `or=(...)` PostgREST : les caractères
- * structurants de cette syntaxe (virgule, parenthèses, guillemets) sont remplacés par
- * des espaces — sinon « iPhone 13, Pro » casse la requête (erreur 400 → page d'erreur).
- */
-export function orSearchTerm(raw: string): string {
-  // `*` est aussi un joker PostgREST : retiré plutôt qu'interprété.
-  return escapeLike(raw.replace(/[,()"*]/g, " ").replace(/\s+/g, " ").trim());
 }
 
 export interface StockListResult {
@@ -60,67 +47,69 @@ export async function listStock(ctx: OrgContext, params: StockListParams): Promi
   const page = params.page;
   const from = (page - 1) * STOCK_PAGE_SIZE;
 
-  let query = supabase.from("v_stock_overview").select("*", { count: "exact" }).eq("organization_id", orgId);
-  query = params.archived ? query.eq("is_active", false) : query.eq("is_active", true);
+  // Fabrique de requête : une requête PostgREST neuve par page lue (le builder est mutable).
+  const buildQuery = (withCount: boolean) => {
+    let query = supabase.from("v_stock_overview").select("*", withCount ? { count: "exact" } : undefined).eq("organization_id", orgId);
+    query = params.archived ? query.eq("is_active", false) : query.eq("is_active", true);
 
-  const q = params.q ? orSearchTerm(params.q) : "";
-  if (q) {
-    query = query.or(`product_name.ilike.%${q}%,code.ilike.%${q}%,barcode.ilike.%${q}%,brand.ilike.%${q}%,variant_name.ilike.%${q}%`);
-  }
-  // Canal / fournisseur : filtrés en base sur les tableaux de la vue (pas de liste d'identifiants dans l'URL).
-  if (params.channel) query = query.contains("channel_providers", [params.channel]);
-  if (params.supplier) query = query.contains("supplier_ids", [params.supplier]);
-  if (params.brand) query = query.eq("brand", params.brand);
-  if (params.category) query = query.eq("category", params.category);
-  if (params.min_margin !== undefined && Number.isFinite(params.min_margin)) query = query.gte("unit_margin", params.min_margin);
-  if (params.stock === "in_stock") query = query.gt("quantity_available", 0);
-  if (params.stock === "empty") query = query.lte("quantity_available", 0);
-  if (params.stock === "negative") query = query.lt("quantity_available", 0);
-  if (params.status === "out_of_stock") query = query.lte("quantity_available", 0);
-  if (params.status === "low") query = query.gt("quantity_available", 0);
-  if (params.status === "at_risk") query = query.gt("quantity_available", 0).gt("units_90d", 0);
-  if (params.status === "normal") query = query.gt("quantity_available", 0);
+    // Recherche : valeur neutralisée et citée pour la syntaxe `or=(…)` (« iPhone 13, Pro » ne casse pas la requête).
+    const search = params.q ? orIlikeAny(["product_name", "code", "barcode", "brand", "variant_name"], params.q) : null;
+    if (search) query = query.or(search);
+    // Canal / fournisseur : filtrés en base sur les tableaux de la vue (pas de liste d'identifiants dans l'URL).
+    if (params.channel) query = query.contains("channel_providers", [params.channel]);
+    if (params.supplier) query = query.contains("supplier_ids", [params.supplier]);
+    if (params.brand) query = query.eq("brand", params.brand);
+    if (params.category) query = query.eq("category", params.category);
+    if (params.min_margin !== undefined && Number.isFinite(params.min_margin)) query = query.gte("unit_margin", params.min_margin);
+    if (params.stock === "in_stock") query = query.gt("quantity_available", 0);
+    if (params.stock === "empty") query = query.lte("quantity_available", 0);
+    if (params.stock === "negative") query = query.lt("quantity_available", 0);
+    if (params.status === "out_of_stock") query = query.lte("quantity_available", 0);
+    if (params.status === "low") query = query.gt("quantity_available", 0);
+    if (params.status === "at_risk") query = query.gt("quantity_available", 0).gt("units_90d", 0);
+    if (params.status === "normal") query = query.gt("quantity_available", 0);
 
-  switch (params.sort) {
-    case "low_stock":
-      query = query.order("quantity_available", { ascending: true }).order("product_name", { ascending: true });
-      break;
-    case "margin":
-      query = query.order("unit_margin", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
-      break;
-    case "stock_value":
-      query = query.order("stock_value", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
-      break;
-    case "last_sale":
-      query = query.order("last_sale_at", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
-      break;
-    case "oldest_sale":
-      // Stock dormant : jamais vendu d'abord, puis la dernière vente la plus ancienne.
-      query = query.order("last_sale_at", { ascending: true, nullsFirst: true }).order("product_name", { ascending: true });
-      break;
-    case "name":
-      query = query.order("product_name", { ascending: true }).order("code", { ascending: true });
-      break;
-    case "best_sellers":
-    default:
-      query = query.order("units_30d", { ascending: false, nullsFirst: false }).order("units_90d", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
-  }
+    switch (params.sort) {
+      case "low_stock":
+        query = query.order("quantity_available", { ascending: true }).order("product_name", { ascending: true });
+        break;
+      case "margin":
+        query = query.order("unit_margin", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
+        break;
+      case "stock_value":
+        query = query.order("stock_value", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
+        break;
+      case "last_sale":
+        query = query.order("last_sale_at", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
+        break;
+      case "oldest_sale":
+        // Stock dormant : jamais vendu d'abord, puis la dernière vente la plus ancienne.
+        query = query.order("last_sale_at", { ascending: true, nullsFirst: true }).order("product_name", { ascending: true });
+        break;
+      case "name":
+        query = query.order("product_name", { ascending: true }).order("code", { ascending: true });
+        break;
+      case "best_sellers":
+      default:
+        query = query.order("units_30d", { ascending: false, nullsFirst: false }).order("units_90d", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
+    }
 
-  // Départage final stable : sans lui, deux lignes ex æquo peuvent changer de page d'une requête à l'autre.
-  query = query.order("sku_id", { ascending: true });
+    // Départage final stable : sans lui, deux lignes ex æquo peuvent changer de page d'une requête à l'autre.
+    query = query.order("sku_id", { ascending: true });
+    return query;
+  };
 
   if (needsPostFilter || params.status === "low") {
     // Statuts dépendant de la vitesse : calcul côté serveur sur un ensemble borné, puis pagination.
-    const { data, error } = await query.limit(POST_FILTER_LIMIT + 1);
-    if (error) throw error;
-    const scanned = data ?? [];
-    const truncated = scanned.length > POST_FILTER_LIMIT;
-    const all = scanned.slice(0, POST_FILTER_LIMIT).map((r) => enrichStockRow(r, marginCtx)).filter((v) => v.classification.level === params.status);
+    // Lecture PAGINÉE : PostgREST plafonne chaque réponse à 1 000 lignes, un simple
+    // `.limit(POST_FILTER_LIMIT + 1)` perdrait silencieusement les lignes au-delà (et la troncature).
+    const { rows: scanned, truncated } = await fetchRowsUpTo((rFrom, rTo) => buildQuery(false).range(rFrom, rTo), POST_FILTER_LIMIT);
+    const all = scanned.map((r) => enrichStockRow(r, marginCtx)).filter((v) => v.classification.level === params.status);
     const rows = all.slice(from, from + STOCK_PAGE_SIZE);
     return { rows, total: all.length, page, pageSize: STOCK_PAGE_SIZE, facets: await facets(), truncated };
   }
 
-  const { data, error, count } = await query.range(from, from + STOCK_PAGE_SIZE - 1);
+  const { data, error, count } = await buildQuery(true).range(from, from + STOCK_PAGE_SIZE - 1);
   if (error) throw error;
   const rows = (data ?? []).map((r) => enrichStockRow(r, marginCtx));
   return { rows, total: count ?? rows.length, page, pageSize: STOCK_PAGE_SIZE, facets: await facets(), truncated: false };
@@ -226,9 +215,9 @@ export type SkuDetail = NonNullable<Awaited<ReturnType<typeof getSkuDetail>>>;
 
 /** Recherche rapide de SKU (mapping, sourcing, formulaires). */
 export async function searchSkus(ctx: OrgContext, q: string, limit = 20) {
-  const term = escapeLike(q.trim());
+  const search = orIlikeAny(["product_name", "code", "barcode"], q);
   let query = ctx.supabase.from("v_stock_overview").select("sku_id, code, product_name, variant_name, brand, quantity_available, cost_price, sale_price").eq("organization_id", ctx.organization.id).eq("is_active", true).limit(limit);
-  if (term) query = query.or(`product_name.ilike.%${term}%,code.ilike.%${term}%,barcode.ilike.%${term}%`);
+  if (search) query = query.or(search);
   const { data } = await query.order("product_name");
   return data ?? [];
 }

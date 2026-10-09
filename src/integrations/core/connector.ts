@@ -12,6 +12,11 @@ export interface OrdersPage {
   invalid: InvalidEntry[];
   /** true si la limite de pages a été atteinte : la suite sera reprise au prochain run. */
   truncated: boolean;
+  /**
+   * false si le connecteur SAIT que cette page est la dernière de la requête (aucune page suivante) :
+   * un budget de pages épuisé sur cette page ne rend pas la tranche incomplète. Absent = inconnu.
+   */
+  hasMore?: boolean;
 }
 
 export interface ListingsPage {

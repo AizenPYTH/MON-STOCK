@@ -13,7 +13,7 @@ import { canConnect } from "./helpers";
 import { closePool, createFixture, createPgRestClient, q, setTestEnv } from "./sync-harness";
 
 setTestEnv();
-const { handleEbayNotification, WEBHOOK_MAX_BODY_BYTES, DELETED_ACCOUNT_LABEL } = await import("@/services/sync/ebay-webhook");
+const { handleEbayNotification, recoverAbandonedWebhookEvents, WEBHOOK_ABANDONED_MS, WEBHOOK_MAX_BODY_BYTES, DELETED_ACCOUNT_LABEL } = await import("@/services/sync/ebay-webhook");
 type Deps = Parameters<typeof handleEbayNotification>[1];
 
 const available = await canConnect();
@@ -274,5 +274,49 @@ d("webhook eBay", () => {
     expect(await r.json()).toMatchObject({ status: "accepted", connections: 2 });
     await dep.scheduled[0]!();
     expect(synced.sort()).toEqual([a.connectionId, b.connectionId].sort());
+  });
+
+  it("notification abandonnée (restée « received » > 10 min, tâche coupée par la plateforme) : marquée « failed » et sa connexion resynchronisée par le cron", async () => {
+    const a = await createFixture();
+    const b = await createFixture();
+    const expired = await createFixture({ status: "expired" });
+    const shared = `abandoned-${Date.now()}`;
+    await q("update public.channel_connections set external_account_id = $1 where id = any($2)", [shared, [a.connectionId, b.connectionId]]);
+    const old = new Date(Date.now() - WEBHOOK_ABANDONED_MS - 60_000).toISOString();
+    const fresh = new Date(Date.now() - 2 * 60_000).toISOString();
+    const insert = (eventId: string, topic: string, connectionId: string, orgId: string, receivedAt: string, data: Record<string, unknown> = {}) =>
+      q("insert into public.webhook_events (provider, event_id, event_type, organization_id, connection_id, payload_hash, payload, signature_valid, status, received_at) values ('ebay', $1, $2, $3, $4, 'h', $5, true, 'received', $6)", [eventId, topic, orgId, connectionId, JSON.stringify({ notification: { data } }), receivedAt]);
+    const tag = Date.now();
+    await insert(`abandoned-order-${tag}`, "ORDER_CONFIRMATION", a.connectionId, a.orgId, old, { userId: shared });
+    await insert(`abandoned-item-${tag}`, "ITEM_AVAILABILITY", a.connectionId, a.orgId, old);
+    await insert(`abandoned-expired-${tag}`, "ORDER_CONFIRMATION", expired.connectionId, expired.orgId, old);
+    await insert(`recent-${tag}`, "ORDER_CONFIRMATION", a.connectionId, a.orgId, fresh);
+
+    const admin = createPgRestClient() as unknown as Deps["admin"];
+    const findConnections: Deps["findConnections"] = async ({ userId }) => q<ChannelConnection>("select * from public.channel_connections where provider = 'ebay' and external_account_id = $1", [userId]);
+    const r = await recoverAbandonedWebhookEvents(admin, { findConnections, limit: 1000 });
+    expect(r.recovered).toBeGreaterThanOrEqual(3);
+    for (const id of [`abandoned-order-${tag}`, `abandoned-item-${tag}`, `abandoned-expired-${tag}`]) {
+      const e = await event(id);
+      expect(e).toMatchObject({ status: "failed" });
+      expect(e!.error).toMatch(/Traitement interrompu.*rattrapage/);
+    }
+    // Récent : traitement peut-être encore en cours → intact.
+    expect(await event(`recent-${tag}`)).toMatchObject({ status: "received", error: null });
+    // Connexion « a » : commandes + annonces → synchronisation complète ; « b » (même compte eBay) : commandes ; expirée : exclue.
+    const mine = r.connections.filter((c) => [a.connectionId, b.connectionId, expired.connectionId].includes(c.id));
+    expect(mine.sort((x, y) => x.id.localeCompare(y.id))).toEqual([{ id: a.connectionId, scope: "full" }, { id: b.connectionId, scope: "orders" }].sort((x, y) => x.id.localeCompare(y.id)));
+
+    // Une seconde exécution (cron concurrent) ne les reprend pas une deuxième fois.
+    const again = await recoverAbandonedWebhookEvents(admin, { findConnections, limit: 1000 });
+    expect(again.connections.filter((c) => [a.connectionId, b.connectionId].includes(c.id))).toEqual([]);
+
+    // Une relivraison eBay éventuelle d'un événement « failed » reste retraitée.
+    const body = notificationBody("ORDER_CONFIRMATION", { userId: shared }, `abandoned-order-${tag}`);
+    const dep = deps();
+    const res = await handleEbayNotification(post(body, { "x-ebay-signature": signatureHeader(body) }), dep);
+    expect(await res.json()).toMatchObject({ status: "accepted", connections: 2 });
+    await dep.scheduled[0]!();
+    expect(await event(`abandoned-order-${tag}`)).toMatchObject({ status: "processed", error: null });
   });
 });

@@ -8,6 +8,7 @@ import { fromPostgrestError, toUserMessage } from "@/lib/errors";
 
 const MESSAGES: Array<[RegExp, string]> = [
   [/SKU_CODE_EXISTS|skus_org_code_uidx/, "Ce code SKU existe déjà dans votre organisation (les majuscules et minuscules ne sont pas distinguées)."],
+  [/SKU_STALE/, "Ce SKU a été modifié entre-temps (autre onglet ou autre utilisateur). Rechargez la page pour voir la dernière version : vos changements n'ont pas été enregistrés."],
   [/SKU_CODE_REQUIRED/, "Le code SKU est requis."],
   [/PRODUCT_NOT_FOUND/, "Produit introuvable."],
   [/SKU_HAS_HISTORY/, "Ce produit a un historique (mouvements, ventes ou achats) : archivez-le plutôt que de le supprimer."],

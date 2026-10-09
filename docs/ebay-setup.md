@@ -160,9 +160,17 @@ synchronisation complète planifiée.
 - Suppression de compte : pseudo acheteur anonymisé dans les commandes, notifications stockées purgées, compte vendeur
   déconnecté (tokens supprimés, pseudo et nom du canal anonymisés, alertes anonymisées). En cas d'erreur d'écriture : 500,
   eBay redélivre.
-- Notification de commande pendant une synchronisation manuelle : le webhook attend la fin du run (3 × 15 s) puis relance ;
-  sinon l'événement passe en `failed` avec un message explicite, et la commande est reprise par la synchronisation suivante
-  grâce au chevauchement de la fenêtre.
+- La synchronisation déclenchée par une notification s'exécute après la réponse (`after`), dans la durée maximale de la route
+  (`maxDuration = 60`) : elle est bornée à 50 s depuis la réception (périmètre limité au type d'événement, 20 pages de
+  commandes au plus). Au-delà, l'événement passe en `failed` avec la raison, et les commandes sont reprises par la
+  synchronisation planifiée.
+- Notification de commande pendant une synchronisation manuelle : le webhook attend la fin du run (2 × 10 s au plus, dans le
+  budget de 50 s) puis relance ; sinon l'événement passe en `failed` avec un message explicite, et la commande est reprise
+  par la synchronisation suivante grâce au chevauchement de la fenêtre.
+- Un événement resté `received` plus de 10 min (fonction interrompue par la plateforme) est marqué `failed` par
+  `/api/cron/sync`, qui synchronise aussitôt les connexions concernées (eBay ayant déjà reçu 2xx, il ne redélivrera pas).
+- Clé publique eBay : seul un 404 (ou un 400 dont le corps désigne explicitement l'identifiant de clé) signifie « `kid`
+  inconnu » (401, mis en cache 10 min) ; tout autre 400 est traité comme une panne (503, token d'application redemandé).
 
 ## 8. Limites connues
 

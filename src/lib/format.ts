@@ -56,10 +56,6 @@ export function formatRelative(value: string | Date | null | undefined, now: Dat
   return rtf.format(Math.round(diffSec / (86400 * 365)), "year");
 }
 
-export function daysBetween(a: Date, b: Date): number {
-  return Math.abs(a.getTime() - b.getTime()) / 86_400_000;
-}
-
 export function formatDays(value: number | null | undefined): string {
   if (value === Number.POSITIVE_INFINITY) return "∞";
   if (value === null || value === undefined || !Number.isFinite(value)) return UNKNOWN;

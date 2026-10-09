@@ -17,9 +17,30 @@ const log = createLogger("EBAY_WEBHOOK");
 export const WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 /** Une ligne « received » plus ancienne est considérée abandonnée (traitement interrompu) et peut être reprise. */
 export const WEBHOOK_STALE_RECEIVED_MS = 5 * 60_000;
-/** Synchronisation déjà en cours : nombre de nouvelles tentatives et délai entre elles. */
-export const WEBHOOK_CONFLICT_RETRIES = 3;
-export const WEBHOOK_CONFLICT_WAIT_MS = 15_000;
+/**
+ * Durée maximale de la route (secondes) : DOIT rester égale à `maxDuration` exporté par
+ * src/app/api/webhooks/ebay/route.ts (valeur littérale exigée par Next.js). La tâche lancée après la
+ * réponse (`after`) s'exécute dans cette même limite : au-delà, la plateforme interrompt la fonction.
+ */
+export const WEBHOOK_ROUTE_MAX_DURATION_S = 60;
+/**
+ * Budget du traitement, compté depuis la réception : marge de 10 s sous la limite de la plateforme
+ * pour enregistrer l'issue (« failed » + raison) avant d'être interrompu.
+ */
+export const WEBHOOK_PROCESSING_BUDGET_MS = (WEBHOOK_ROUTE_MAX_DURATION_S - 10) * 1000;
+/** Synchronisation déjà en cours : nombre de nouvelles tentatives et délai entre elles (bornés par le budget). */
+export const WEBHOOK_CONFLICT_RETRIES = 2;
+export const WEBHOOK_CONFLICT_WAIT_MS = 10_000;
+/** Pages de commandes lues au plus par une synchronisation déclenchée par webhook (le reste : cron). */
+export const WEBHOOK_ORDERS_MAX_PAGES = 20;
+/**
+ * Événement resté « received » au-delà de ce délai : son traitement a été interrompu par la
+ * plateforme sans laisser de trace (eBay a déjà reçu 2xx et ne redélivrera pas). Le cron de
+ * synchronisation le marque « failed » et synchronise la connexion concernée.
+ */
+export const WEBHOOK_ABANDONED_MS = 10 * 60_000;
+
+export const WEBHOOK_DEADLINE_MESSAGE = `Traitement interrompu : délai maximal de ${WEBHOOK_ROUTE_MAX_DURATION_S} s atteint avant la fin de la synchronisation. Les commandes et annonces concernées seront reprises par la prochaine synchronisation planifiée (le curseur de commandes n’avance que sur des données lues).`;
 
 export const DELETED_ACCOUNT_LABEL = "[compte eBay supprimé]";
 
@@ -33,6 +54,10 @@ export interface EbayWebhookDeps {
   schedule: (task: () => Promise<void>) => void;
   sleep?: (ms: number) => Promise<void>;
   conflictWaitMs?: number;
+  /** Horloge (tests). */
+  now?: () => number;
+  /** Budget du traitement depuis la réception (défaut WEBHOOK_PROCESSING_BUDGET_MS). */
+  processingBudgetMs?: number;
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -111,6 +136,8 @@ async function claimForRetry(admin: AdminSupabaseClient, eventId: string): Promi
  */
 export async function handleEbayNotification(request: Request, deps: EbayWebhookDeps): Promise<Response> {
   const { admin } = deps;
+  const clock = deps.now ?? Date.now;
+  const deadlineAt = clock() + (deps.processingBudgetMs ?? WEBHOOK_PROCESSING_BUDGET_MS);
   const raw = await readBodyLimited(request, WEBHOOK_MAX_BODY_BYTES);
   if (raw === null) {
     log.warn("notification refusée : corps trop volumineux", { limit: WEBHOOK_MAX_BODY_BYTES });
@@ -239,14 +266,25 @@ export async function handleEbayNotification(request: Request, deps: EbayWebhook
     const scope = /ORDER/i.test(topic) ? "orders" : "listings";
     const rowId = eventRowId;
     deps.schedule(async () => {
-      const failures: string[] = [];
-      for (const c of active) {
-        const outcome = await runWithConflictRetry(deps, c.id, scope);
-        if (!outcome.ok) failures.push(outcome.message);
-        else log.info("synchronisation déclenchée par webhook", { eventId, connectionId: c.id, runId: outcome.runId, status: outcome.status });
+      // Travail borné par l'échéance : au-delà, l'événement est marqué « failed » avec la raison AVANT
+      // que la plateforme n'interrompe la fonction (sinon il resterait « received » sans suite).
+      const work = (async () => {
+        const failures: string[] = [];
+        for (const c of active) {
+          const outcome = await runWithConflictRetry(deps, c.id, scope, deadlineAt);
+          if (!outcome.ok) failures.push(outcome.message);
+          else log.info("synchronisation déclenchée par webhook", { eventId, connectionId: c.id, runId: outcome.runId, status: outcome.status });
+        }
+        return failures;
+      })().catch((e: unknown) => [toUserMessage(e)]);
+      const outcome = await withDeadline(work, deadlineAt - clock());
+      if (outcome === DEADLINE) {
+        log.warn("traitement de la notification interrompu (délai maximal atteint)", { eventId, topic });
+        await markEvent(admin, rowId, { status: "failed", error: WEBHOOK_DEADLINE_MESSAGE });
+        return;
       }
-      if (failures.length === 0) await markEvent(admin, rowId, { status: "processed" });
-      else await markEvent(admin, rowId, { status: "failed", error: failures.join(" ; ") });
+      if (outcome.length === 0) await markEvent(admin, rowId, { status: "processed" });
+      else await markEvent(admin, rowId, { status: "failed", error: outcome.join(" ; ") });
     });
     return json({ status: "accepted", topic, connections: active.length });
   }
@@ -255,36 +293,130 @@ export async function handleEbayNotification(request: Request, deps: EbayWebhook
   return json({ status: "ignored", topic });
 }
 
+export const DEADLINE = Symbol("deadline");
+
+/** Résout avec le résultat de `work`, ou DEADLINE si `ms` s'écoule avant (le travail n'est pas annulé). */
+export async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | typeof DEADLINE> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<typeof DEADLINE>((resolve) => {
+    timer = setTimeout(() => resolve(DEADLINE), Math.max(0, ms));
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 type SyncOutcome = { ok: true; runId: string; status: string } | { ok: false; conflict: boolean; message: string };
+
+const CONFLICT_MESSAGE = "Une synchronisation était déjà en cours : cette notification sera prise en compte par la prochaine synchronisation (planifiée ou manuelle), aucune commande n'est perdue.";
 
 /**
  * Lance la synchronisation ; si une autre est déjà en cours (CONFLICT), attend qu'elle se termine
- * puis réessaie (borné). La fenêtre de commandes chevauchant le curseur, une commande non prise
- * par le run en cours est de toute façon reprise par la synchronisation suivante.
+ * puis réessaie (borné en nombre ET par l'échéance : aucune attente qui ne laisserait pas le temps
+ * de synchroniser). La fenêtre de commandes chevauchant le curseur, une commande non prise par le
+ * run en cours est de toute façon reprise par la synchronisation suivante.
  */
-async function runWithConflictRetry(deps: EbayWebhookDeps, connectionId: string, scope: "orders" | "listings"): Promise<SyncOutcome> {
+async function runWithConflictRetry(deps: EbayWebhookDeps, connectionId: string, scope: "orders" | "listings", deadlineAt: number): Promise<SyncOutcome> {
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const clock = deps.now ?? Date.now;
   const wait = deps.conflictWaitMs ?? WEBHOOK_CONFLICT_WAIT_MS;
   for (let attempt = 0; ; attempt++) {
     try {
-      const r = await deps.runSync(connectionId, { trigger: "webhook", scope });
+      const r = await deps.runSync(connectionId, { trigger: "webhook", scope, ...(scope === "orders" ? { orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } } : {}) });
       return { ok: true, runId: r.runId, status: r.status };
     } catch (e) {
       const conflict = e instanceof AppError && e.code === "CONFLICT";
-      if (conflict && attempt < WEBHOOK_CONFLICT_RETRIES) {
+      // Une nouvelle tentative n'a de sens que s'il reste, après l'attente, au moins autant de temps.
+      if (conflict && attempt < WEBHOOK_CONFLICT_RETRIES && deadlineAt - clock() > 2 * wait) {
         await sleep(wait);
         continue;
       }
-      if (conflict) {
-        return {
-          ok: false,
-          conflict: true,
-          message: "Une synchronisation était déjà en cours : cette notification sera prise en compte par la prochaine synchronisation (planifiée ou manuelle), aucune commande n'est perdue.",
-        };
-      }
+      if (conflict) return { ok: false, conflict: true, message: CONFLICT_MESSAGE };
       return { ok: false, conflict: false, message: toUserMessage(e) };
     }
   }
+}
+
+export interface StaleWebhookRecovery {
+  /** événements « received » abandonnés, désormais « failed » */
+  recovered: number;
+  /** connexions à resynchroniser (actives) et périmètre déduit des sujets */
+  connections: Array<{ id: string; scope: "orders" | "listings" | "full" }>;
+}
+
+/**
+ * Événements dont le traitement a été interrompu (plateforme coupée avant la fin de la tâche
+ * `after`) : restés « received » au-delà de WEBHOOK_ABANDONED_MS. Mise à jour conditionnelle (une
+ * seule exécution les récupère) vers « failed » avec la raison ; une redélivrance eBay éventuelle
+ * reste retraitée (claimForRetry). Renvoie les connexions actives concernées, à synchroniser.
+ */
+export async function recoverAbandonedWebhookEvents(
+  admin: AdminSupabaseClient,
+  options: { now?: Date; findConnections?: EbayWebhookDeps["findConnections"]; limit?: number } = {},
+): Promise<StaleWebhookRecovery> {
+  const now = options.now ?? new Date();
+  const cutoff = new Date(now.getTime() - WEBHOOK_ABANDONED_MS).toISOString();
+  const { data: stale, error: selectError } = await admin
+    .from("webhook_events")
+    .select("id")
+    .eq("provider", "ebay")
+    .eq("status", "received")
+    .lt("received_at", cutoff)
+    .order("received_at", { ascending: true })
+    .limit(options.limit ?? 100);
+  if (selectError) throw new Error(`lecture des notifications abandonnées impossible : ${selectError.message}`);
+  if (!stale || stale.length === 0) return { recovered: 0, connections: [] };
+  const { data: claimed, error } = await admin
+    .from("webhook_events")
+    .update({
+      status: "failed",
+      processed_at: now.toISOString(),
+      error: `Traitement interrompu (aucune issue enregistrée ${Math.round(WEBHOOK_ABANDONED_MS / 60_000)} min après la réception) : synchronisation de rattrapage lancée par le cron.`,
+    })
+    .in(
+      "id",
+      stale.map((r) => r.id),
+    )
+    .eq("status", "received")
+    .lt("received_at", cutoff)
+    .select("id, event_type, connection_id, payload");
+  if (error) throw new Error(`reprise des notifications abandonnées impossible : ${error.message}`);
+  const scopes = new Map<string, "orders" | "listings" | "full">();
+  const add = (id: string, topic: string) => {
+    if (!/ORDER|ITEM|LISTING|OFFER|INVENTORY/i.test(topic)) return;
+    const s = /ORDER/i.test(topic) ? "orders" : "listings";
+    const prev = scopes.get(id);
+    scopes.set(id, prev && prev !== s ? "full" : s);
+  };
+  const candidates = new Set<string>();
+  for (const e of claimed ?? []) {
+    log.warn("notification abandonnée reprise par le cron", { eventRowId: e.id, topic: e.event_type });
+    const ids = new Set<string>();
+    if (e.connection_id) ids.add(e.connection_id);
+    const data = ((e.payload as { notification?: { data?: Record<string, unknown> } } | null)?.notification?.data ?? {}) as Record<string, unknown>;
+    if (options.findConnections) {
+      const userId = typeof data.userId === "string" && data.userId ? data.userId : null;
+      const username = typeof data.username === "string" && data.username ? data.username : null;
+      if (userId || username) {
+        try {
+          for (const c of await options.findConnections({ userId, username })) ids.add(c.id);
+        } catch (err) {
+          log.warn("connexions de la notification abandonnée introuvables", { eventRowId: e.id, reason: toUserMessage(err) });
+        }
+      }
+    }
+    for (const id of ids) {
+      candidates.add(id);
+      add(id, e.event_type);
+    }
+  }
+  if (candidates.size === 0) return { recovered: claimed?.length ?? 0, connections: [] };
+  const { data: activeRows, error: connError } = await admin.from("channel_connections").select("id").in("id", [...candidates]).in("status", ["connected", "error"]);
+  if (connError) throw new Error(`lecture des connexions impossible : ${connError.message}`);
+  const connections = (activeRows ?? []).filter((c) => scopes.has(c.id)).map((c) => ({ id: c.id, scope: scopes.get(c.id)! }));
+  return { recovered: claimed?.length ?? 0, connections };
 }
 
 /**

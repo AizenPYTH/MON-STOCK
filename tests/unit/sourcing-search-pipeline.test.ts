@@ -3,6 +3,7 @@ import { parseQuery } from "@/domain/sourcing/query-parser";
 import { criteriaFromParsedQuery } from "@/domain/sourcing/offer-filter";
 import { bestSavings, filterWithConfirmedLinks, rawOfferToPipelineOffer, runOfferPipeline, savingsOf, summarizeRejections, type PipelineOffer } from "@/domain/sourcing/search-pipeline";
 import { isOutOfStock, rankOpportunities } from "@/domain/sourcing/ranking";
+import { dedupeOffers } from "@/domain/sourcing/dedupe";
 
 const NOW = new Date("2026-10-08T10:00:00.000Z");
 
@@ -96,6 +97,28 @@ describe("pipeline de résultats : filtre → déduplication → classement", ()
     const r = runOfferPipeline(criteria, [offer({ id: "a" }), offer({ id: "b" })], { now: NOW, requestedQuantity: 1, dedupe: (kept) => kept.slice(0, 1) });
     expect(r.unique.map((o) => o.id)).toEqual(["a"]);
     expect(r.ranking.ranked).toHaveLength(1);
+  });
+
+  it("dédoublonnage restituant les fusions (dedupeOffers) : compteurs identiques à un second passage, sans le refaire", () => {
+    type O = PipelineOffer & { supplierId: string; productKey: string | null; comparablePrice: number | null; lastSeenAt: string | null };
+    const mk = (id: string, supplierId: string, productKey: string | null, price: number): O => ({ ...offer({ id, unitPrice: price, price }), supplierId, productKey, comparablePrice: price, lastSeenAt: "2026-10-08T09:00:00.000Z" });
+    const offers = [mk("a", "s1", "p1", 300), mk("b", "s1", "p1", 280), mk("c", "s1", "p1", 310), mk("d", "s2", "p1", 290), mk("e", "s2", null, 295)];
+    let calls = 0;
+    const r = runOfferPipeline<O>(criteria, offers, {
+      now: NOW,
+      requestedQuantity: 1,
+      dedupe: (kept) => {
+        calls++;
+        return dedupeOffers(kept);
+      },
+    });
+    const reference = dedupeOffers(r.filter.kept.map((k) => k.offer));
+    expect(calls).toBe(1);
+    expect(r.unique.map((o) => o.id)).toEqual(reference.kept.map((o) => o.id));
+    expect([...r.collapsed.entries()]).toEqual([...reference.collapsed.entries()]);
+    expect(r.collapsed.get("b")).toBe(2);
+    // Déduplication sans compteurs : carte vide (pas d'invention).
+    expect(runOfferPipeline(criteria, offers, { now: NOW, requestedQuantity: 1, dedupe: (kept) => kept }).collapsed.size).toBe(0);
   });
 });
 

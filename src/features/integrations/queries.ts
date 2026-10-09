@@ -5,6 +5,7 @@ import { listConnectorCatalog, type ConnectorCatalogEntry } from "@/integrations
 import { getEbayConnector } from "@/integrations/core/registry";
 import type { MappingParams } from "@/features/integrations/schemas";
 import { toUserMessage } from "@/lib/errors";
+import { orIlikeAny } from "@/lib/postgrest";
 
 export interface ConnectionView {
   connection: ChannelConnection;
@@ -97,16 +98,12 @@ export interface MappingListingRow extends ChannelListing {
 export const MAPPING_PAGE_SIZE = 50;
 
 /**
- * Filtre `or()` PostgREST de recherche texte. La saisie est insérée dans une syntaxe de filtre :
- * les caractères structurants (virgule, parenthèses, guillemets, antislash) et les jokers `%`/`*`
- * sont neutralisés, puis la valeur est placée entre guillemets — la recherche ne peut ni casser
- * la requête ni y ajouter des conditions. `_` reste un joker d'un caractère (il se reconnaît lui-même).
+ * Filtre `or()` PostgREST de recherche texte sur les annonces (voir orFilterTerm : caractères
+ * structurants neutralisés, valeur entre guillemets — la recherche ne peut ni casser la requête
+ * ni y ajouter des conditions).
  */
 export function listingSearchFilter(q: string): string | null {
-  const term = q.replace(/[%*\\,()"]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
-  if (!term) return null;
-  const v = `"%${term}%"`;
-  return `title.ilike.${v},external_sku.ilike.${v},external_listing_id.ilike.${v}`;
+  return orIlikeAny(["title", "external_sku", "external_listing_id"], q, { maxLength: 120 });
 }
 
 export async function listListingsForMapping(ctx: OrgContext, params: MappingParams) {

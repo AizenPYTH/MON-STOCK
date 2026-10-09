@@ -1,55 +1,33 @@
-import type { Database, Tables, TablesInsert, TablesUpdate, Enums } from "@/db/database.types";
+import type { Database, Tables, TablesInsert, Enums } from "@/db/database.types";
 
-export type { Database, Tables, TablesInsert, TablesUpdate, Enums };
+export type { TablesInsert };
 
 export type Organization = Tables<"organizations">;
-export type OrganizationMember = Tables<"organization_members">;
 export type UserProfile = Tables<"user_profiles">;
 export type Product = Tables<"products">;
 export type ProductVariant = Tables<"product_variants">;
-export type Sku = Tables<"skus">;
-export type Inventory = Tables<"inventory">;
 export type InventoryMovement = Tables<"inventory_movements">;
 export type SalesChannel = Tables<"sales_channels">;
 export type ChannelConnection = Tables<"channel_connections">;
 export type ChannelListing = Tables<"channel_listings">;
-export type MappingSuggestion = Tables<"mapping_suggestions">;
 export type Order = Tables<"orders">;
 export type OrderItem = Tables<"order_items">;
 export type SyncRun = Tables<"sync_runs">;
 export type SyncError = Tables<"sync_errors">;
-export type WebhookEvent = Tables<"webhook_events">;
 export type Supplier = Tables<"suppliers">;
 export type SupplierSource = Tables<"supplier_sources">;
 export type SupplierFeed = Tables<"supplier_feeds">;
-export type SupplierConnection = Tables<"supplier_connections">;
-export type SourcingProduct = Tables<"sourcing_products">;
-export type SourcingOffer = Tables<"sourcing_offers">;
-export type SupplierPriceHistory = Tables<"supplier_price_history">;
-export type SupplierStockHistory = Tables<"supplier_stock_history">;
-export type ProductMatch = Tables<"product_matches">;
-export type SourcingAlert = Tables<"sourcing_alerts">;
-export type SourcingAlertEvent = Tables<"sourcing_alert_events">;
 export type PurchaseOrder = Tables<"purchase_orders">;
-export type PurchaseOrderItem = Tables<"purchase_order_items">;
 export type Alert = Tables<"alerts">;
-export type ReplenishmentRecommendation = Tables<"replenishment_recommendations">;
-export type FxRate = Tables<"fx_rates">;
 
 export type StockOverviewRow = Database["public"]["Views"]["v_stock_overview"]["Row"];
-export type SkuSalesStatsRow = Database["public"]["Views"]["v_sku_sales_stats"]["Row"];
 export type DailySalesRow = Database["public"]["Views"]["v_daily_sales"]["Row"];
 export type UnmappedListingRow = Database["public"]["Views"]["v_unmapped_listings"]["Row"];
 
 export type OrgRole = Enums<"org_role">;
-export type MovementType = Enums<"movement_type">;
 export type ChannelProvider = Enums<"channel_provider">;
-export type ConnectionStatus = Enums<"connection_status">;
-export type OrderStatus = Enums<"order_status">;
 export type SourceType = Enums<"source_type">;
 export type TaxType = Enums<"tax_type">;
 export type StockStatus = Enums<"stock_status">;
-export type OfferStatus = Enums<"offer_status">;
-export type ProductCondition = Enums<"product_condition">;
 export type SyncStatus = Enums<"sync_status">;
 export type SyncTrigger = Enums<"sync_trigger">;

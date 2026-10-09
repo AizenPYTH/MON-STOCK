@@ -1,4 +1,5 @@
 import "server-only";
+import { loadRecentPriceHistory } from "@/services/sourcing/price-history-query";
 import { z } from "zod";
 import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
 import { createLogger } from "@/lib/logger";
@@ -59,25 +60,34 @@ export async function evaluateAlert(admin: AdminSupabaseClient, alert: { id: str
   const considered = offers.slice(0, 200);
   const offerIds = considered.map((o) => o.id);
   const historySince = new Date(now.getTime() - 60 * 86_400_000).toISOString();
-  // Historiques chargés en deux requêtes pour toutes les offres (pas deux requêtes par offre).
-  const [{ data: priceRows }, { data: stockRows }] = offerIds.length
-    ? await Promise.all([
-        admin.from("supplier_price_history").select("offer_id, original_price, recorded_at").in("offer_id", offerIds).gte("recorded_at", historySince).order("recorded_at", { ascending: false }).limit(6000),
-        admin.from("supplier_stock_history").select("offer_id, available_quantity, stock_status, recorded_at").in("offer_id", offerIds).gte("recorded_at", historySince).order("recorded_at", { ascending: false }).limit(2000),
-      ])
-    : [{ data: [] }, { data: [] }];
+  // Historiques lus offre par offre, du plus récent au plus ancien : une requête groupée plafonnée
+  // (PostgREST renvoie au plus 1 000 lignes) privait les offres à historique clairsemé de leurs relevés.
+  const priceHistoryResult = offerIds.length ? await loadRecentPriceHistory(admin, alert.organization_id, offerIds, historySince, { perOffer: 60 }) : { rows: [], failedOfferIds: [], cappedOfferIds: [] };
   const priceByOffer = new Map<string, Array<{ price: number; recordedAt: string }>>();
-  for (const p of priceRows ?? []) {
+  for (const p of priceHistoryResult.rows) {
     const list = priceByOffer.get(p.offer_id) ?? [];
-    if (list.length < 60) list.push({ price: Number(p.original_price), recordedAt: p.recorded_at });
+    list.push({ price: Number(p.original_price), recordedAt: p.recorded_at });
     priceByOffer.set(p.offer_id, list);
   }
-  const stockByOffer = new Map<string, Array<{ availableQuantity: number | null; stockStatus: typeof considered[number]["stock_status"]; recordedAt: string }>>();
-  for (const st of stockRows ?? []) {
-    const list = stockByOffer.get(st.offer_id) ?? [];
-    if (list.length < 2) list.push({ availableQuantity: st.available_quantity, stockStatus: st.stock_status, recordedAt: st.recorded_at });
-    stockByOffer.set(st.offer_id, list);
-  }
+  for (const list of priceByOffer.values()) list.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+  type StockPoint = { availableQuantity: number | null; stockStatus: (typeof considered)[number]["stock_status"]; recordedAt: string };
+  const stockByOffer = new Map<string, StockPoint[]>();
+  let nextStock = 0;
+  const stockWorker = async () => {
+    while (nextStock < offerIds.length) {
+      const offerId = offerIds[nextStock++]!;
+      const { data } = await admin
+        .from("supplier_stock_history")
+        .select("available_quantity, stock_status, recorded_at")
+        .eq("organization_id", alert.organization_id)
+        .eq("offer_id", offerId)
+        .gte("recorded_at", historySince)
+        .order("recorded_at", { ascending: false })
+        .limit(2);
+      stockByOffer.set(offerId, (data ?? []).map((st) => ({ availableQuantity: st.available_quantity, stockStatus: st.stock_status, recordedAt: st.recorded_at })));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, offerIds.length) }, stockWorker));
 
   for (const o of considered) {
     const price = o.normalized_price ?? (o.original_currency.toUpperCase() === orgCurrency.toUpperCase() ? Number(o.original_price) : null);

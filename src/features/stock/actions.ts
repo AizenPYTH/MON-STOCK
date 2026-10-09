@@ -8,6 +8,7 @@ import { createLogger } from "@/lib/logger";
 import { addSkuSchema, adjustStockSchema, createProductSchema, emptyToNull, fieldErrorsOf, updateProductSchema, updateSkuSchema } from "@/features/stock/schemas";
 import type { Json } from "@/db/database.types";
 import { stockErrorMessage } from "@/features/stock/db-errors";
+import { buildSkuUpdatePayload } from "@/features/stock/sku-update";
 
 const log = createLogger("STOCK");
 
@@ -102,57 +103,25 @@ export async function updateSkuAction(_prev: ActionResult | null, formData: Form
     const parsed = updateSkuSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return fail("Vérifiez les champs du formulaire.", { fieldErrors: fieldErrorsOf(parsed.error.issues) });
     const d = parsed.data;
-    let update = ctx.supabase
-      .from("skus")
-      .update({
-        barcode: emptyToNull(d.barcode),
-        cost_price: emptyToNull(d.cost_price),
-        sale_price: emptyToNull(d.sale_price),
-        location: emptyToNull(d.location),
-        reorder_point: emptyToNull(d.reorder_point) ?? 0,
-        safety_stock: emptyToNull(d.safety_stock) ?? 0,
-        lead_time_days: emptyToNull(d.lead_time_days),
-        default_supplier_id: emptyToNull(d.default_supplier_id),
-        ...(d.is_active ? { is_active: d.is_active === "true" } : {}),
-      })
-      .eq("id", d.sku_id)
-      .eq("organization_id", ctx.organization.id);
-    // Verrou optimiste : si le SKU a été modifié depuis l'ouverture du formulaire (autre onglet,
-    // autre utilisateur, réception fournisseur qui fixe le coût…), rien n'est écrasé.
-    if (d.expected_updated_at) update = update.eq("updated_at", d.expected_updated_at);
-    const { data: rows, error: skuErr } = await update.select("code, variant_id");
-    if (skuErr) return fail(stockErrorMessage(skuErr));
-    const sku = rows?.[0];
-    if (!sku) {
-      const { data: exists } = await ctx.supabase.from("skus").select("id").eq("id", d.sku_id).eq("organization_id", ctx.organization.id).maybeSingle();
-      return exists
-        ? fail("Ce SKU a été modifié entre-temps (autre onglet ou autre utilisateur). Rechargez la page pour voir la dernière version : vos changements n'ont pas été enregistrés.", { code: "CONFLICT" })
-        : fail("SKU introuvable.");
+    const payload = buildSkuUpdatePayload(d);
+    // SKU et variante dans UNE transaction (update_sku_with_variant), chacun sous verrou optimiste :
+    // si l'un des deux a été modifié depuis l'ouverture du formulaire (autre onglet, autre
+    // utilisateur, réception fournisseur qui fixe le coût…), rien n'est écrit.
+    const { data, error } = await ctx.supabase.rpc("update_sku_with_variant", {
+      p_organization_id: ctx.organization.id,
+      p_sku_id: d.sku_id,
+      p_sku: payload.sku,
+      p_variant: payload.variant,
+      p_expected_sku_updated_at: d.expected_updated_at,
+      p_expected_variant_updated_at: d.expected_variant_updated_at,
+    });
+    if (error) {
+      if (/SKU_STALE/.test(error.message ?? "")) return fail(stockErrorMessage(error), { code: "CONFLICT" });
+      return fail(stockErrorMessage(error));
     }
-
-    const { data: current } = await ctx.supabase.from("product_variants").select("attributes").eq("id", sku.variant_id).maybeSingle();
-    const attributes: Record<string, Json> = { ...((current?.attributes ?? {}) as Record<string, Json>) };
-    // Les attributs structurés suivent les champs du formulaire (une valeur vide retire l'attribut).
-    for (const [key, value] of [["storage", d.storage], ["color", d.color], ["grade", d.grade]] as const) {
-      if (value === undefined) continue;
-      if (value === "") delete attributes[key];
-      else attributes[key] = value;
-    }
-    const { error: vErr } = await ctx.supabase
-      .from("product_variants")
-      .update({
-        ...(d.variant_name ? { name: d.variant_name } : {}),
-        ...(d.condition ? { condition: d.condition } : {}),
-        ...(d.grade !== undefined ? { grade: emptyToNull(d.grade) } : {}),
-        ...(d.ean !== undefined ? { ean: emptyToNull(d.ean) } : {}),
-        ...(d.mpn !== undefined ? { mpn: emptyToNull(d.mpn) } : {}),
-        attributes,
-      })
-      .eq("id", sku.variant_id)
-      .eq("organization_id", ctx.organization.id);
-    if (vErr) return fail(stockErrorMessage(vErr));
+    const code = (data as { code?: string } | null)?.code;
     revalidatePath("/stock");
-    revalidatePath(`/stock/${encodeURIComponent(sku.code)}`);
+    if (code) revalidatePath(`/stock/${encodeURIComponent(code)}`);
     return ok(undefined);
   } catch (e) {
     return fail(toUserMessage(e));

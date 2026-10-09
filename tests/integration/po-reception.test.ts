@@ -154,6 +154,33 @@ d("Commandes fournisseurs : cycle complet", () => {
     });
   });
 
+  it("un client ne crée qu'un brouillon : pas de commande vide « envoyée » par INSERT direct", async () => {
+    await withRollback(async (c) => {
+      const u = await createUser(c, "po-insert@example.test");
+      const org = await createOrgAs(c, u, "Org", "po-insert");
+      await asUser(c, u);
+      const sup = await supplier(c, org);
+      for (const status of ["sent", "confirmed", "partially_received", "received", "cancelled"]) {
+        await expectQueryError(
+          c,
+          "insert into public.purchase_orders (organization_id, supplier_id, status, reference) values ($1, $2, $3::public.purchase_order_status, 'PO-X')",
+          [org, sup, status],
+          "PURCHASE_ORDER_INVALID_STATUS",
+        );
+      }
+      // Brouillon : accepté, horodatages d'étapes forgés ignorés.
+      const { rows } = await c.query(
+        "insert into public.purchase_orders (organization_id, supplier_id, status, reference, sent_at, received_at) values ($1, $2, 'draft', 'PO-D', now(), now()) returning sent_at, received_at",
+        [org, sup],
+      );
+      expect(rows[0]).toEqual({ sent_at: null, received_at: null });
+      // Le serveur (service_role : démo, imports) peut créer une commande dans un autre statut.
+      await asService(c);
+      const srv = await c.query("insert into public.purchase_orders (organization_id, supplier_id, status, reference) values ($1, $2, 'sent', 'PO-S') returning status", [org, sup]);
+      expect(srv.rows[0].status).toBe("sent");
+    });
+  });
+
   it("un utilisateur ne peut pas réceptionner la commande d'une autre organisation", async () => {
     await withRollback(async (c) => {
       const u1 = await createUser(c, "po-iso1@example.test");

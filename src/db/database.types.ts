@@ -1598,6 +1598,12 @@ isOneToOne: false
                            },
 "unaccent":
 { Args: { "": string }; Returns: string
+                           },
+"update_sku_with_variant":
+{ Args: { "p_expected_sku_updated_at"?: string,"p_expected_variant_updated_at"?: string,"p_organization_id": string,"p_sku": Json,"p_sku_id": string,"p_variant"?: Json }; Returns: Json
+                           },
+"url_encode_path_segment":
+{ Args: { "p_value": string }; Returns: string
                            }
           }
           Enums: {

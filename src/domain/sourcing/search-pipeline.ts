@@ -112,14 +112,19 @@ export interface PipelineOptions<T> {
   requestedQuantity: number;
   currentUnitCost?: number | null;
   currency?: string;
-  /** déduplication appliquée aux offres conservées, avant le classement */
-  dedupe?: (kept: T[]) => T[];
+  /**
+   * déduplication appliquée aux offres conservées, avant le classement ; peut restituer le nombre
+   * d'offres fusionnées par offre conservée (ex. dedupeOffers) pour éviter un second passage
+   */
+  dedupe?: (kept: T[]) => T[] | { kept: T[]; collapsed: ReadonlyMap<string, number> };
 }
 
 export interface PipelineResult<T extends PipelineOffer> {
   filter: OfferFilterResult<T>;
   /** offres conservées après déduplication, dans l'ordre d'entrée */
   unique: T[];
+  /** id conservé → nombre d'offres identiques fusionnées (vide si la déduplication ne le restitue pas) */
+  collapsed: ReadonlyMap<string, number>;
   ranking: RankingResult<T>;
   rejection: RejectionSummary;
   bestSavings: BestSavings | null;
@@ -131,12 +136,14 @@ export function runOfferPipeline<T extends PipelineOffer>(criteria: FilterCriter
   const now = options.now ?? new Date();
   const filter = filterWithConfirmedLinks(criteria, offers, { now });
   const kept = filter.kept.map((k) => k.offer);
-  const unique = options.dedupe ? options.dedupe(kept) : kept;
+  const deduped = options.dedupe ? options.dedupe(kept) : kept;
+  const unique = Array.isArray(deduped) ? deduped : deduped.kept;
+  const collapsed: ReadonlyMap<string, number> = Array.isArray(deduped) ? new Map() : deduped.collapsed;
   const currentUnitCost = options.currentUnitCost ?? null;
   const ranking = rankOpportunities(unique, { requestedQuantity: options.requestedQuantity, currentUnitCost, currency: options.currency ?? "EUR" });
   const warnings = new Map<string, FilterReason[]>();
   for (const k of filter.kept) warnings.set(k.offer.id, k.warnings);
-  return { filter, unique, ranking, rejection: summarizeRejections(filter.rejected), bestSavings: bestSavings(ranking.ranked, currentUnitCost), warnings };
+  return { filter, unique, collapsed, ranking, rejection: summarizeRejections(filter.rejected), bestSavings: bestSavings(ranking.ranked, currentUnitCost), warnings };
 }
 
 // ---------------------------------------------------------------------------

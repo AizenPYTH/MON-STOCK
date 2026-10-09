@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asUser, canConnect, createOrgAs, createSkuAs, createUser, withRollback, expectQueryError, expectAsyncError } from "./helpers";
+import { asService, asUser, canConnect, createOrgAs, createSkuAs, createUser, withRollback, expectQueryError, expectAsyncError } from "./helpers";
 
 const available = await canConnect();
 const d = available ? describe : describe.skip;
@@ -10,7 +10,8 @@ d("Calcul de stock (apply_inventory_movement)", () => {
       const u = await createUser(c, "stock@example.test");
       const org = await createOrgAs(c, u, "Org", "org-stock");
       const sku = await createSkuAs(c, u, org, "IPH13-128-BLK-A", { initial: 10 });
-      await asUser(c, u);
+      // Ventes marketplace : appliquées par le serveur (service_role), seul appelant direct autorisé.
+      await asService(c);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -3, 'order_item', null, 'ebay')", [org, sku]);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -2, 'order_item', null, 'amazon')", [org, sku]);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -1, 'order_item', null, 'shopify')", [org, sku]);
@@ -34,6 +35,7 @@ d("Calcul de stock (apply_inventory_movement)", () => {
       const sku = await createSkuAs(c, u, org, "SKU-NEG", { initial: 1 });
       await asUser(c, u);
       await expectQueryError(c, "select public.apply_inventory_movement($1, $2, 'adjustment', -5)", [org, sku], "INSUFFICIENT_STOCK");
+      await asService(c);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -2, 'order_item', null, 'ebay')", [org, sku]);
       const { rows } = await c.query("select quantity_on_hand from public.inventory where sku_id = $1", [sku]);
       expect(rows[0].quantity_on_hand).toBe(-1);

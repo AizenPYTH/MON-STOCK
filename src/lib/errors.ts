@@ -2,6 +2,9 @@
  * Erreurs applicatives : chaque erreur porte un code stable et un message
  * compréhensible par l'utilisateur (jamais « Something went wrong »).
  */
+import { createLogger } from "@/lib/logger";
+import { scrubSecrets } from "@/integrations/core/sanitize";
+
 export type AppErrorCode =
   | "AUTH_REQUIRED"
   | "FORBIDDEN"
@@ -89,6 +92,8 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   SKU_NOT_FOUND: { code: "NOT_FOUND", message: "SKU introuvable." },
   SKU_CODE_EXISTS: { code: "CONFLICT", message: "Ce code SKU existe déjà dans votre organisation." },
   SKU_CODE_REQUIRED: { code: "VALIDATION", message: "Le code SKU est requis." },
+  SKU_STALE: { code: "CONFLICT", message: "Ce SKU a été modifié entre-temps (autre onglet ou autre utilisateur). Rechargez la page pour voir la dernière version : vos changements n'ont pas été enregistrés." },
+  SKU_UPDATE_INVALID: { code: "VALIDATION", message: "Modification du SKU invalide : vérifiez les champs du formulaire." },
   SKU_HAS_HISTORY: { code: "CONFLICT", message: "Ce SKU a un historique (mouvements, ventes ou commandes) : archivez-le plutôt que de le supprimer." },
   PRODUCT_NOT_FOUND: { code: "NOT_FOUND", message: "Produit introuvable." },
   LISTING_NOT_FOUND: { code: "NOT_FOUND", message: "Annonce introuvable." },
@@ -111,8 +116,19 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   INVALID_RECEIPTS: { code: "VALIDATION", message: "Réception invalide : vérifiez les quantités saisies." },
 };
 
+/** Erreurs réseau RÉELLES (client HTTP / DNS / socket) : un message SQL contenant « network » n'en est pas une. */
+const NETWORK_ERROR = /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|socket hang up/i;
+
+const log = createLogger("db-error");
+
+/** Référence courte communiquée à l'utilisateur et journalisée côté serveur (corrélation support). */
+export function newErrorReference(): string {
+  const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  return uuid.replace(/-/g, "").slice(0, 8).toUpperCase();
+}
+
 /** Traduit une erreur PostgREST/Postgres (code SQLSTATE ou message métier) en AppError. */
-export function fromPostgrestError(e: { code?: string; message?: string; details?: string | null }): AppError {
+export function fromPostgrestError(e: { code?: string; message?: string; details?: string | null; hint?: string | null }): AppError {
   const msg = e.message ?? "Erreur base de données";
   // Code métier en tête du message (« CODE » ou « CODE: détail »).
   const head = msg.match(/^([A-Z][A-Z0-9_]{2,})\b/)?.[1];
@@ -125,14 +141,39 @@ export function fromPostgrestError(e: { code?: string; message?: string; details
   if (e.code === "23505") return new AppError("CONFLICT", "Cet enregistrement existe déjà (doublon).", { details: { pg: e.details ?? null } });
   if (e.code === "23503") return new AppError("CONFLICT", "Impossible : cet élément est référencé par d'autres données.");
   if (e.code === "23514") return new AppError("VALIDATION", "Valeur invalide (contrainte de validation).", { details: { pg: msg } });
+  if (e.code === "22001") return new AppError("VALIDATION", "Valeur trop longue : raccourcissez le texte saisi.", { details: { pg: e.code } });
+  if (e.code === "22003") return new AppError("VALIDATION", "Nombre hors limites : vérifiez les quantités et montants saisis.", { details: { pg: e.code } });
+  if (e.code === "40001" || e.code === "40P01") return new AppError("CONFLICT", "Conflit d'accès simultané, réessayez.", { details: { pg: e.code } });
   if (e.code === "PGRST116") return new AppError("NOT_FOUND", "Élément introuvable.");
   if (e.code === "PGRST301" || /jwt expired/i.test(msg)) return new AppError("AUTH_REQUIRED", "Votre session a expiré : reconnectez-vous.", { action: { label: "Se reconnecter", href: "/login" } });
-  if (/fetch failed|ECONNREFUSED|ENOTFOUND|network/i.test(msg)) return new AppError("INTERNAL", "Base de données injoignable pour le moment. Réessayez dans quelques instants.");
-  return new AppError("INTERNAL", `Erreur de base de données : ${msg}`, { details: { pg: e.code ?? null } });
+  if (NETWORK_ERROR.test(msg)) return new AppError("INTERNAL", "Base de données injoignable pour le moment. Réessayez dans quelques instants.");
+  // Erreur inconnue : le message brut (noms de tables, de contraintes, valeurs) n'est JAMAIS
+  // montré à l'utilisateur ; il est journalisé côté serveur (secrets masqués) avec une référence.
+  const ref = newErrorReference();
+  log.error("unmapped database error", {
+    ref,
+    pg: e.code ?? null,
+    message: scrubSecrets(msg),
+    details: e.details ? scrubSecrets(e.details) : null,
+    hint: e.hint ? scrubSecrets(e.hint) : null,
+  });
+  return new AppError("INTERNAL", `Une erreur inattendue est survenue côté base de données. Réessayez ou contactez le support (réf. ${ref}).`, {
+    details: { pg: e.code ?? null, ref },
+  });
+}
+
+/** Erreur PostgREST (instance PostgrestError, ou objet { code, message } des anciennes versions). */
+function isPostgrestLike(e: unknown): e is { code?: string; message: string; details?: string | null; hint?: string | null } {
+  if (!e || typeof e !== "object") return false;
+  const o = e as { name?: unknown; code?: unknown; message?: unknown };
+  if (typeof o.message !== "string") return false;
+  return o.name === "PostgrestError" || (!(e instanceof Error) && typeof o.code === "string");
 }
 
 export function toUserMessage(e: unknown): string {
   if (isAppError(e)) return e.message;
+  // Jamais le message SQL brut à l'écran : traduit (ou message générique + référence).
+  if (isPostgrestLike(e)) return fromPostgrestError(e).message;
   if (e instanceof Error) return e.message;
   return "Une erreur inattendue s'est produite.";
 }

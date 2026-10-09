@@ -39,9 +39,11 @@ export function nextOrdersCursor(window: OrdersWindow, maxModifiedSeen: Date | n
  * Taille d'une tranche de récupération. eBay ne garantit pas que getOrders renvoie les commandes
  * triées par date de MODIFICATION : si la limite de pages est atteinte, « la plus grande date vue »
  * peut dépasser des commandes jamais lues. La fenêtre est donc découpée en tranches lues de la plus
- * ancienne à la plus récente : seule une tranche lue en entier fait avancer le curseur.
+ * ancienne à la plus récente : seule une tranche lue en entier fait avancer le curseur. Une tranche
+ * tronquée est redécoupée en deux (services/sync/orders.ts) : des tranches larges (7 jours) limitent
+ * le nombre d'appels pour une fenêtre initiale de 90 jours. Source unique de la taille par défaut.
  */
-export const ORDERS_SLICE_HOURS = 24;
+export const ORDERS_SLICE_HOURS = 7 * 24;
 
 export function splitOrdersWindow(window: OrdersWindow, sliceHours: number = ORDERS_SLICE_HOURS): OrdersWindow[] {
   const sliceMs = Math.max(1, sliceHours) * 3_600_000;

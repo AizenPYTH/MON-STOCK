@@ -13,6 +13,14 @@ import { handleEbayNotification } from "@/services/sync/ebay-webhook";
 const log = createLogger("EBAY_WEBHOOK");
 const WEBHOOK_PATH = "/api/webhooks/ebay";
 
+/**
+ * Durée maximale (secondes), tâche `after` comprise : la synchronisation déclenchée après la réponse
+ * est bornée en conséquence (WEBHOOK_PROCESSING_BUDGET_MS) et l'événement est marqué « failed » avant
+ * l'échéance. Valeur littérale exigée par Next.js : DOIT rester égale à WEBHOOK_ROUTE_MAX_DURATION_S.
+ */
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 /** Cache mémoire (par instance) des clés publiques eBay et du token d'application. */
 const keyStore = new EbayNotificationKeyStore(() => getEbayConnector().config());
 

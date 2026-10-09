@@ -110,7 +110,10 @@ export interface MarginAggregate {
   excludedOtherCurrency: number;
   /** unités vendues dans une autre devise (CA non inclus dans revenue30d) */
   foreignCurrencyUnits30d: number;
+  /** unités vendues sur 30 j par les SKU dont le CA est compté (même périmètre que revenue30d) */
   units30d: number;
+  /** unités vendues sur 30 j par les SKU exclus car dans une autre devise (non comptées dans units30d) */
+  unitsOtherCurrency30d: number;
   /** unités vendues sur 30 j par les SKU inclus */
   unitsIncluded: number;
   revenue30d: number;
@@ -128,16 +131,19 @@ export function aggregateMargins(lines: readonly MarginLine[], currency?: string
   let excludedOtherCurrency = 0;
   let foreignCurrencyUnits30d = 0;
   let units30d = 0;
+  let unitsOtherCurrency30d = 0;
   let unitsIncluded = 0;
   let revenue30d = 0;
   let profit = 0;
   const missing = new Set<UnknownCost>();
   for (const l of lines) {
-    units30d += l.units30d;
     if (currency && l.currency.toUpperCase() !== currency.toUpperCase()) {
       excludedOtherCurrency++;
+      unitsOtherCurrency30d += l.units30d;
       continue;
     }
+    // Unités et CA sur le même périmètre : un SKU dans une autre devise n'entre dans aucun des deux.
+    units30d += l.units30d;
     revenue30d += l.revenue30d;
     foreignCurrencyUnits30d += l.foreignCurrencyUnits30d;
     if (l.costPrice === null) {
@@ -168,6 +174,7 @@ export function aggregateMargins(lines: readonly MarginLine[], currency?: string
     excludedOtherCurrency,
     foreignCurrencyUnits30d,
     units30d,
+    unitsOtherCurrency30d,
     unitsIncluded,
     revenue30d: Math.round(revenue30d * 100) / 100,
     profit30d: included > 0 ? Math.round(profit * 100) / 100 : null,

@@ -50,4 +50,18 @@ describe("Messages d'erreur de connexion (codes, jamais de texte libre)", () => 
     expect(callbackErrorCode({ errorCode: "otp_expired", next: "/onboarding" })).toBe("link_expired");
     expect(callbackErrorCode({ errorCode: null, next: "/dashboard" })).toBe("link_invalid");
   });
+
+  it("callback : seul un code réellement « expiré » est présenté comme tel", () => {
+    for (const code of ["otp_expired", "flow_state_expired", "flow_state_not_found"]) {
+      expect(callbackErrorCode({ errorCode: code, next: "/update-password", exchangeFailed: true })).toBe("reset_link_expired");
+    }
+    // Échec de l'échange PKCE sans code d'expiration (autre navigateur, code absent) : message distinct.
+    expect(callbackErrorCode({ errorCode: "pkce_code_verifier_not_found", next: "/update-password", exchangeFailed: true })).toBe("link_not_validated");
+    expect(callbackErrorCode({ errorCode: null, next: "/update-password", exchangeFailed: true })).toBe("link_not_validated");
+    expect(callbackErrorCode({ errorCode: undefined, next: "/dashboard", exchangeFailed: true })).toBe("link_not_validated");
+    // Lien sans code ni erreur reconnue, y compris vers /update-password.
+    expect(callbackErrorCode({ errorCode: "access_denied", next: "/update-password" })).toBe("link_invalid");
+    expect(callbackErrorCode({ errorCode: null, next: "/update-password" })).toBe("link_invalid");
+    expect(loginErrorMessage("link_not_validated")).toMatch(/navigateur où vous avez fait la demande/);
+  });
 });

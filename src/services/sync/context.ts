@@ -45,26 +45,5 @@ export function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-/** Taille de page des lectures paginées : PostgREST plafonne chaque réponse (max_rows, 1 000 par défaut sur Supabase). */
-export const DB_PAGE_SIZE = 1000;
-
-/**
- * Lit TOUTES les lignes d'une requête paginée par `.range()` (la requête doit avoir un ordre stable).
- * Sans pagination, `.limit(20000)` renverrait silencieusement 1 000 lignes au plus.
- */
-export async function fetchAllRows<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { code?: string; message: string } | null }>,
-  options: { pageSize?: number; maxRows?: number } = {},
-): Promise<T[]> {
-  const size = options.pageSize ?? DB_PAGE_SIZE;
-  const maxRows = options.maxRows ?? 200_000;
-  const rows: T[] = [];
-  for (let from = 0; from < maxRows; from += size) {
-    const { data, error } = await page(from, Math.min(from + size, maxRows) - 1);
-    if (error) throw error;
-    const batch = data ?? [];
-    rows.push(...batch);
-    if (batch.length < size) break;
-  }
-  return rows;
-}
+// Pagination générique : déplacée dans src/lib/supabase/paginate.ts (réutilisée hors synchronisation).
+export { DB_PAGE_SIZE, fetchAllRows } from "@/lib/supabase/paginate";

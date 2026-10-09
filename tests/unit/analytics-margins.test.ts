@@ -64,6 +64,25 @@ describe("aggregateMargins", () => {
     expect(agg.caveat).toBe("1 SKU exclu : coût inconnu · 1 SKU exclu : prix de vente inconnu");
   });
 
+  it("unités et CA sur le même périmètre : un SKU dans une autre devise n'entre dans aucun des deux", () => {
+    const lines = [
+      buildMarginLine(row({ sku_id: "eur", units_30d: 10, revenue_30d: 1000 }), FULL_CTX),
+      buildMarginLine(row({ sku_id: "usd", currency: "USD", units_30d: 40, revenue_30d: 4000 }), FULL_CTX),
+    ];
+    const agg = aggregateMargins(lines, "EUR");
+    expect(agg.revenue30d).toBe(1000);
+    // Avant correctif : 50 unités affichées pour un CA de 1 000 € (10 unités).
+    expect(agg.units30d).toBe(10);
+    expect(agg.unitsOtherCurrency30d).toBe(40);
+    expect(agg.unitsIncluded).toBe(10);
+    expect(agg.excludedOtherCurrency).toBe(1);
+    expect(agg.profit30d).toBe(227);
+    // Sans devise de référence, rien n'est exclu.
+    const all = aggregateMargins(lines);
+    expect(all.units30d).toBe(50);
+    expect(all.unitsOtherCurrency30d).toBe(0);
+  });
+
   it("retourne null (pas 0) quand aucun SKU n'est calculable", () => {
     const agg = aggregateMargins([buildMarginLine(row({ cost_price: null }), FULL_CTX)]);
     expect(agg.profit30d).toBeNull();

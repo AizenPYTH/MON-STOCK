@@ -3,15 +3,11 @@ import { cache } from "react";
 import type { OrgContext } from "@/features/auth/dal";
 import type { DailySalesRow, InventoryMovement, Order, OrderItem } from "@/db/types";
 import { fromPostgrestError } from "@/lib/errors";
+import { orIlikeAny } from "@/lib/postgrest";
 import { dayKey, fillDailySeries, shiftDayKey, summarizeSalesWindows, zonedDayStartIso, type DailyPoint, type SalesWindows } from "@/features/analytics/series.pure";
 import type { SalesListParams } from "@/features/analytics/schemas";
 
 export const SALES_PAGE_SIZE = 50;
-
-/** Échappe les jokers ILIKE et retire les caractères réservés de la syntaxe `or=` de PostgREST. */
-function escapeLike(s: string): string {
-  return s.replace(/[,()]/g, " ").replace(/[%_\\]/g, (m) => `\\${m}`).trim();
-}
 
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (value === null || value === undefined) return null;
@@ -60,10 +56,8 @@ export async function listOrders(ctx: OrgContext, params: SalesListParams, pageS
   }
 
   let query = supabase.from("orders").select("*, channel:sales_channels(id, name, provider)", { count: "exact" }).eq("organization_id", orgId);
-  if (params.q) {
-    const q = escapeLike(params.q);
-    query = query.or(`order_number.ilike.%${q}%,external_order_id.ilike.%${q}%,buyer_username.ilike.%${q}%`);
-  }
+  const search = params.q ? orIlikeAny(["order_number", "external_order_id", "buyer_username"], params.q) : null;
+  if (search) query = query.or(search);
   if (params.channel) query = query.eq("sales_channel_id", params.channel);
   if (params.status) query = query.eq("status", params.status);
   // Bornes en jours civils Europe/Paris (comme les statistiques), converties en instants UTC.

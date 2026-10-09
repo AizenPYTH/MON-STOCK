@@ -12,7 +12,7 @@ import { ebayRestGet } from "@/integrations/ebay/rest";
 import { createEbayConfig } from "@/integrations/ebay/config";
 import { assertTradingAck, iterateGetMyeBaySelling, reviseInventoryStatus } from "@/integrations/ebay/trading";
 import { iterateEbayOrders } from "@/integrations/ebay/fulfillment";
-import { EbayNotificationKeyStore, PublicKeyNotFoundError } from "@/integrations/ebay/notification-keys";
+import { EbayNotificationKeyStore, isUnknownKeyError, PublicKeyNotFoundError } from "@/integrations/ebay/notification-keys";
 import { refreshAccessToken } from "@/integrations/ebay/oauth";
 
 const config = createEbayConfig({ EBAY_ENV: "production", EBAY_CLIENT_ID: "app", EBAY_CLIENT_SECRET: "cert", EBAY_RU_NAME: "ru" });
@@ -211,6 +211,67 @@ describe("clés publiques des notifications", () => {
     // kid malformé : rejeté sans appel réseau.
     await expect(store.getPublicKey("../../etc")).rejects.toBeInstanceOf(PublicKeyNotFoundError);
     expect(calls.filter((u) => u.includes("public_key"))).toHaveLength(1);
+  });
+
+  it("400 non attribuable au kid (token d'application refusé) → erreur d'infrastructure, token redemandé, AUCUN cache négatif", async () => {
+    let tokenCalls = 0;
+    let keyCalls = 0;
+    let badRequest = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/oauth2/token")) {
+          tokenCalls++;
+          return new Response(JSON.stringify({ access_token: `app-${tokenCalls}`, expires_in: 7200 }), { status: 200 });
+        }
+        keyCalls++;
+        return badRequest
+          ? new Response(JSON.stringify({ errors: [{ errorId: 1001, domain: "OAuth", category: "REQUEST", message: "Invalid access token", longMessage: "Invalid access token. Check the value of the Authorization HTTP request header." }] }), { status: 400 })
+          : new Response(JSON.stringify({ key: "-----BEGIN PUBLIC KEY-----abc-----END PUBLIC KEY-----", algorithm: "ECDSA", digest: "SHA1" }), { status: 200 });
+      }),
+    );
+    const store = new EbayNotificationKeyStore(() => config);
+    const err = await store.getPublicKey("kid-genuine").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConnectorError);
+    expect(err).not.toBeInstanceOf(PublicKeyNotFoundError);
+    expect(err).toMatchObject({ code: "API_ERROR", httpStatus: 400 });
+    // eBay redélivre : le kid authentique n'est pas mis en cache négatif, le token d'application est redemandé.
+    badRequest = false;
+    await expect(store.getPublicKey("kid-genuine")).resolves.toMatchObject({ digest: "SHA1" });
+    expect(keyCalls).toBe(2);
+    expect(tokenCalls).toBe(2);
+    // 400 sans corps exploitable : même traitement (jamais « kid inconnu »).
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => (url.endsWith("/oauth2/token") ? new Response(JSON.stringify({ access_token: "app", expires_in: 7200 }), { status: 200 }) : new Response("Bad Request", { status: 400 }))));
+    const fresh = new EbayNotificationKeyStore(() => config);
+    const err2 = await fresh.getPublicKey("kid-2").catch((e: unknown) => e);
+    expect(err2).toBeInstanceOf(ConnectorError);
+    expect(err2).not.toBeInstanceOf(PublicKeyNotFoundError);
+  });
+
+  it("400 dont le corps eBay désigne l'identifiant de clé → kid inconnu (401), mis en cache négatif", async () => {
+    let keyCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/oauth2/token")) return new Response(JSON.stringify({ access_token: "app", expires_in: 7200 }), { status: 200 });
+        keyCalls++;
+        return new Response(JSON.stringify({ errors: [{ errorId: 195001, domain: "API_NOTIFICATION", category: "REQUEST", message: "The specified public key id is invalid.", parameters: [{ name: "public_key_id", value: "kid-x" }] }] }), { status: 400 });
+      }),
+    );
+    const store = new EbayNotificationKeyStore(() => config);
+    await expect(store.getPublicKey("kid-x")).rejects.toBeInstanceOf(PublicKeyNotFoundError);
+    await expect(store.getPublicKey("kid-x")).rejects.toBeInstanceOf(PublicKeyNotFoundError);
+    expect(keyCalls).toBe(1);
+  });
+
+  it("isUnknownKeyError : seul un corps d'erreur eBay bien formé désignant la clé compte", () => {
+    expect(isUnknownKeyError({ errors: [{ message: "Public key not found" }] })).toBe(true);
+    expect(isUnknownKeyError({ errors: [{ message: "x", parameters: [{ name: "public_key_id", value: "k" }] }] })).toBe(true);
+    expect(isUnknownKeyError({ errors: [{ message: "Invalid access token" }] })).toBe(false);
+    expect(isUnknownKeyError({ errors: [{ message: "Invalid public key request: authorization token missing" }] })).toBe(false);
+    expect(isUnknownKeyError({ message: "public key not found" })).toBe(false);
+    expect(isUnknownKeyError(null)).toBe(false);
+    expect(isUnknownKeyError("public key not found")).toBe(false);
   });
 
   it("panne eBay (5xx) → erreur d'infrastructure (pas PublicKeyNotFoundError) ; clé valide mise en cache", async () => {

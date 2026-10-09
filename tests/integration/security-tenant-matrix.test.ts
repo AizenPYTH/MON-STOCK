@@ -269,9 +269,9 @@ d("Matrice d'isolation multi-tenant (générée)", () => {
         ["select public.apply_pending_sales_for_sku($1)", [b.ids["skus"]], /FORBIDDEN/],
         ["select public.receive_purchase_order_items($1, '[]'::jsonb)", [b.ids["purchase_orders"]], /FORBIDDEN/],
         ["select public.receive_purchase_order_items($1, jsonb_build_array(jsonb_build_object('item_id', $2::text, 'quantity', 1)))", [a.ids["purchase_orders"], b.ids["purchase_order_items"]], /PURCHASE_ORDER_ITEM_NOT_FOUND/],
-        ["select public.ingest_external_order($1, $2, null, 'ebay', '{\"external_order_id\":\"Z\"}'::jsonb, '[]'::jsonb)", [b.orgId, b.ids["sales_channels"]], /FORBIDDEN/],
-        ["select public.ingest_external_order($1, $2, null, 'ebay', '{\"external_order_id\":\"Z\"}'::jsonb, '[]'::jsonb)", [a.orgId, b.ids["sales_channels"]], /CHANNEL_NOT_FOUND|CROSS_ORGANIZATION_REFERENCE/],
-        ["select public.ingest_external_order($1, $2, $3, 'ebay', '{\"external_order_id\":\"Z\"}'::jsonb, '[]'::jsonb)", [a.orgId, a.ids["sales_channels"], b.ids["channel_connections"]], /CONNECTION_NOT_FOUND|CROSS_ORGANIZATION_REFERENCE/],
+        ["select public.ingest_external_order($1, $2, null, 'ebay', '{\"external_order_id\":\"Z\"}'::jsonb, '[]'::jsonb)", [b.orgId, b.ids["sales_channels"]], /FORBIDDEN|permission denied for function ingest_external_order/],
+        ["select public.ingest_external_order($1, $2, null, 'ebay', '{\"external_order_id\":\"Z\"}'::jsonb, '[]'::jsonb)", [a.orgId, b.ids["sales_channels"]], /CHANNEL_NOT_FOUND|CROSS_ORGANIZATION_REFERENCE|permission denied for function ingest_external_order/],
+        ["select public.ingest_external_order($1, $2, $3, 'ebay', '{\"external_order_id\":\"Z\"}'::jsonb, '[]'::jsonb)", [a.orgId, a.ids["sales_channels"], b.ids["channel_connections"]], /CONNECTION_NOT_FOUND|CROSS_ORGANIZATION_REFERENCE|permission denied for function ingest_external_order/],
       ];
       const problems: string[] = [];
       for (const [sql, params, pattern] of cases) {

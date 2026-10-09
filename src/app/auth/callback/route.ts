@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL(next, origin));
     }
     const url = new URL("/login", origin);
-    url.searchParams.set("error", callbackErrorCode({ errorCode: error.code ?? "otp_expired", next }));
+    // Pas de code par défaut « expiré » : un échec sans code (ou vérificateur PKCE absent) n'est pas une expiration.
+    url.searchParams.set("error", callbackErrorCode({ errorCode: error.code ?? null, next, exchangeFailed: true }));
     return NextResponse.redirect(url);
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adjustStockSchema, createProductSchema, stockListParamsSchema, STOCK_SORTS, updateSkuSchema } from "@/features/stock/schemas";
-import { orSearchTerm } from "@/features/stock/queries";
+import { orFilterTerm } from "@/lib/postgrest";
 import { stockErrorMessage } from "@/features/stock/db-errors";
 import { computeRotation } from "@/domain/inventory/rotation";
 import { computeReplenishment, formatVelocity } from "@/domain/replenishment/replenishment";
@@ -45,12 +45,13 @@ describe("validation des formulaires de stock", () => {
   });
 });
 
-describe("orSearchTerm (filtre or= PostgREST)", () => {
-  it("neutralise la syntaxe or=() et les jokers", () => {
-    expect(orSearchTerm("iPhone 13, Pro (bleu)")).toBe("iPhone 13 Pro bleu");
-    expect(orSearchTerm('a"b*c')).toBe("a b c");
-    expect(orSearchTerm("100%_x")).toBe("100\\%\\_x");
-    expect(orSearchTerm("  ")).toBe("");
+describe("recherche du stock : valeur du filtre or= PostgREST (src/lib/postgrest)", () => {
+  it("neutralise la syntaxe or=() et le joker `*`, cherche `%` littéralement", () => {
+    expect(orFilterTerm("iPhone 13, Pro (bleu)")).toBe('"%iPhone 13 Pro bleu%"');
+    expect(orFilterTerm('a"b*c')).toBe('"%a b c%"');
+    // `%` littéral (\\% dans la syntaxe entre guillemets → \% pour LIKE) ; `_` se reconnaît lui-même.
+    expect(orFilterTerm("100%_x")).toBe('"%100\\\\%_x%"');
+    expect(orFilterTerm("  ")).toBeNull();
   });
 });
 

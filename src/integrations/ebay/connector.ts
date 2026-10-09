@@ -74,7 +74,7 @@ export class EbayConnector implements MarketplaceConnector {
     for await (const page of iterateEbayOrders(config, auth, params)) {
       for (const inv of page.invalid) log.warn("commande eBay ignorée (format inattendu)", { orderId: inv.orderId, reason: inv.message });
       if (page.truncated) log.warn("récupération des commandes tronquée (limite de pages atteinte) : la suite sera reprise au prochain run");
-      yield { orders: page.orders, invalid: page.invalid.map((i) => ({ ref: i.orderId, message: i.message })), truncated: page.truncated };
+      yield { orders: page.orders, invalid: page.invalid.map((i) => ({ ref: i.orderId, message: i.message })), truncated: page.truncated, hasMore: page.hasMore };
     }
   }
 

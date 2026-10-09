@@ -68,6 +68,8 @@ export const updateSkuSchema = z.object({
   sku_id: z.string().uuid(),
   /** Version lue à l'ouverture du formulaire (verrou optimiste contre les éditions simultanées). */
   expected_updated_at: z.string().trim().min(1).max(64).optional(),
+  /** Version de la variante lue à l'ouverture du formulaire (même verrou optimiste). */
+  expected_variant_updated_at: z.string().trim().min(1).max(64).optional(),
   barcode: optionalText,
   cost_price: optionalMoney,
   sale_price: optionalMoney,

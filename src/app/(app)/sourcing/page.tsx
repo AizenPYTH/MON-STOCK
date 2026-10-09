@@ -174,7 +174,7 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
             <LiveSourcesPanel summary={live} liveEnabled={liveEnabled} toggleHref={toggleLiveHref} hasQuery={hasQuery} />
             {hasQuery || !result.discovery.configured ? <DiscoveryPanel discovery={result.discovery} /> : null}
             <SourcesPanel sources={result.sources} accountConnectors={accountConnectors} />
-            <SourcingStatusCard items={status.items} offersTruncated={status.offersTruncated} />
+            <SourcingStatusCard items={status.items} offerCountsIncomplete={status.offerCountsIncomplete} />
             {result.vatRate === null ? (
               <Callout tone="neutral" title="TVA non renseignée">
                 Les prix TTC ne peuvent pas être ramenés en HT pour la comparaison. <Link href="/settings/organization" className="underline">Renseigner le taux de TVA</Link>.

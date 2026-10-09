@@ -23,6 +23,7 @@ import type { Award, AwardKey, ProcurementPlan, RankingComponent, RankingCompone
 import { assessOfferConfidence, type OfferConfidence } from "@/domain/sourcing/confidence";
 import { computePriceInsights, type PriceInsights } from "@/domain/sourcing/price-insights";
 import { groupPriceHistory } from "@/domain/sourcing/price-history";
+import { loadRecentPriceHistory } from "@/services/sourcing/price-history-query";
 import { discoverSources } from "@/services/sourcing/discovery/discovery-service";
 import { currentDiscoveryConfig, discoveryDecision, runDiscoveryWithTimeout, type DiscoveryPanelData } from "@/services/sourcing/discovery/search-discovery";
 
@@ -466,8 +467,7 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
 
   // 3. Filtre de pertinence (conservées / écartées avec raison) → déduplication → classement multicritère.
   const currentUnitCost = sku?.costPrice ?? null;
-  const pipeline = runOfferPipeline(criteriaFromParsedQuery(parsed), prelim, { now, requestedQuantity, currentUnitCost, currency: orgCurrency, dedupe: (kept) => dedupeOffers(kept).kept });
-  const deduped = dedupeOffers(pipeline.filter.kept.map((k) => k.offer));
+  const pipeline = runOfferPipeline(criteriaFromParsedQuery(parsed), prelim, { now, requestedQuantity, currentUnitCost, currency: orgCurrency, dedupe: dedupeOffers });
   const unique = pipeline.unique;
   const scores = scoreOffers(unique);
   const sort: RankingMode = filters.sort ?? "best_offer";
@@ -482,7 +482,7 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
     return {
       ...p,
       score: scores.get(p.id)!,
-      duplicatesCollapsed: deduped.collapsed.get(p.id) ?? 0,
+      duplicatesCollapsed: pipeline.collapsed.get(p.id) ?? 0,
       ranking: { rank: r.rank, score: r.score, components: r.components, unknownFactors: r.unknownFactors, why: r.why, awards: r.awards, procurement: r.procurement },
       filterWarnings: pipeline.warnings.get(p.id) ?? [],
       priceInsights: insights.get(p.id) ?? null,
@@ -575,29 +575,25 @@ function modelIsInferred(model: string | null): boolean {
 }
 
 export const PRICE_INSIGHT_WINDOW_DAYS = 90;
-const PRICE_HISTORY_BATCH_LIMIT = 5_000;
 
 /**
- * Prix habituel observé des offres visibles : UNE requête groupée sur supplier_price_history
- * (90 jours), relevés ramenés dans la devise de l'organisation (sinon ignorés : aucune conversion inventée).
+ * Prix habituel observé des offres visibles : les derniers relevés de chaque offre sur 90 jours
+ * (loadRecentPriceHistory : du plus récent au plus ancien, bornés par offre — jamais tronqués par
+ * le plafond PostgREST), ramenés dans la devise de l'organisation (sinon ignorés : aucune conversion
+ * inventée). Une offre dont l'historique n'a pas pu être lu n'a pas d'indicateur (null), plutôt
+ * qu'un indicateur calculé sur un historique vide.
  */
 export async function loadPriceInsights(ctx: OrgContext, offers: Array<{ id: string; currentPrice: number | null }>, orgCurrency: string, now: Date): Promise<Map<string, PriceInsights>> {
   const out = new Map<string, PriceInsights>();
   if (offers.length === 0) return out;
   const since = new Date(now.getTime() - PRICE_INSIGHT_WINDOW_DAYS * 86_400_000).toISOString();
-  const { data, error } = await ctx.supabase
-    .from("supplier_price_history")
-    .select("offer_id, original_price, original_currency, normalized_price, normalized_currency, recorded_at")
-    .eq("organization_id", ctx.organization.id)
-    .in("offer_id", offers.map((o) => o.id))
-    .gte("recorded_at", since)
-    .order("recorded_at", { ascending: true })
-    .limit(PRICE_HISTORY_BATCH_LIMIT);
-  if (error) {
-    log.debug("price history not loaded", { error: error.message });
-    return out;
+  const history = await loadRecentPriceHistory(ctx.supabase, ctx.organization.id, offers.map((o) => o.id), since);
+  if (history.failedOfferIds.length > 0) log.debug("price history not loaded", { offers: history.failedOfferIds.length });
+  const failed = new Set(history.failedOfferIds);
+  const byOffer = groupPriceHistory(history.rows, orgCurrency);
+  for (const o of offers) {
+    if (failed.has(o.id)) continue;
+    out.set(o.id, computePriceInsights(byOffer.get(o.id) ?? [], o.currentPrice, { now, currency: orgCurrency, windowDays: PRICE_INSIGHT_WINDOW_DAYS }));
   }
-  const byOffer = groupPriceHistory(data ?? [], orgCurrency);
-  for (const o of offers) out.set(o.id, computePriceInsights(byOffer.get(o.id) ?? [], o.currentPrice, { now, currency: orgCurrency, windowDays: PRICE_INSIGHT_WINDOW_DAYS }));
   return out;
 }

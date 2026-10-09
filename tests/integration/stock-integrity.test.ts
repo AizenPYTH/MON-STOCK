@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asService, asSuperuser, asUser, canConnect, createOrgAs, createSkuAs, createUser, expectQueryError, withRollback } from "./helpers";
-import { createCommittedOrg, createCommittedSku, errorOf, isStillPending, runAsUser, superQuery, userSession, type CommittedOrg } from "./stock-fixtures";
+import { createCommittedOrg, createCommittedSku, errorOf, isStillPending, runAsService, runAsUser, serviceSession, superQuery, userSession, type CommittedOrg } from "./stock-fixtures";
 
 const available = await canConnect();
 const d = available ? describe : describe.skip;
@@ -16,7 +16,10 @@ d("Stock : calculs et garde-fous (apply_inventory_movement v2)", () => {
       let r = await c.query("select quantity_on_hand, quantity_reserved, quantity_available from public.inventory where sku_id = $1", [sku]);
       expect(r.rows[0]).toEqual({ quantity_on_hand: 3, quantity_reserved: 2, quantity_available: 1 });
       // Vente réelle au-delà du stock : acceptée (la marketplace a déjà vendu), le stock devient négatif.
+      // Seul le serveur (service_role) ou une fonction interne applique une vente.
+      await asService(c);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -4, 'order_item', null, 'ebay')", [org, sku]);
+      await asUser(c, u);
       r = await c.query("select quantity_on_hand, quantity_available from public.inventory where sku_id = $1", [sku]);
       expect(r.rows[0]).toEqual({ quantity_on_hand: -1, quantity_available: -3 });
       // La vue de stock expose la même arithmétique.
@@ -39,7 +42,9 @@ d("Stock : calculs et garde-fous (apply_inventory_movement v2)", () => {
       const r = await c.query("select quantity_on_hand from public.inventory where sku_id = $1", [sku]);
       expect(r.rows[0].quantity_on_hand).toBe(0);
       // Une correction positive reste possible depuis un stock négatif (retour à la normale).
+      await asService(c);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -2, 'order_item', null, 'ebay')", [org, sku]);
+      await asUser(c, u);
       await c.query("select public.apply_inventory_movement($1, $2, 'correction', 1)", [org, sku]);
       const r2 = await c.query("select quantity_on_hand from public.inventory where sku_id = $1", [sku]);
       expect(r2.rows[0].quantity_on_hand).toBe(-1);
@@ -55,7 +60,9 @@ d("Stock : calculs et garde-fous (apply_inventory_movement v2)", () => {
       await expectQueryError(c, "select public.apply_inventory_movement($1, $2, 'receipt', 2000000)", [org, sku], "MOVEMENT_QUANTITY_TOO_LARGE");
       await expectQueryError(c, "select public.apply_inventory_movement($1, $2, 'receipt', 0)", [org, sku], "MOVEMENT_QUANTITY_ZERO");
       await expectQueryError(c, "select public.apply_inventory_movement($1, $2, 'receipt', -1)", [org, sku], "MOVEMENT_SIGN_INVALID");
+      await asService(c);
       await expectQueryError(c, "select public.apply_inventory_movement($1, $2, 'sale', 1)", [org, sku], "MOVEMENT_SIGN_INVALID");
+      await asUser(c, u);
       await expectQueryError(c, "select public.apply_inventory_movement($1, gen_random_uuid(), 'receipt', 1)", [org], "SKU_NOT_FOUND");
       // Plafond global : le stock ne peut pas dépasser 1 milliard d'unités (pas de dépassement d'entier).
       for (let i = 0; i < 3; i++) await c.query("select public.apply_inventory_movement($1, $2, 'receipt', 1000000)", [org, sku]);
@@ -73,9 +80,10 @@ d("Stock : calculs et garde-fous (apply_inventory_movement v2)", () => {
       const u = await createUser(c, "stk-alert@example.test");
       const org = await createOrgAs(c, u, "Org", "stk-alert");
       const sku = await createSkuAs(c, u, org, "ALERT-1", { initial: 1 });
-      await asUser(c, u);
+      await asService(c);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -2, 'order_item', null, 'ebay')", [org, sku]);
       await c.query("select public.apply_inventory_movement($1, $2, 'sale', -1, 'order_item', null, 'ebay')", [org, sku]);
+      await asUser(c, u);
       let a = await c.query("select type, severity, status, action_href from public.alerts where organization_id = $1", [org]);
       expect(a.rows).toEqual([{ type: "negative_stock", severity: "critical", status: "open", action_href: "/stock/ALERT-1" }]);
       await c.query("select public.apply_inventory_movement($1, $2, 'receipt', 2)", [org, sku]);
@@ -161,8 +169,8 @@ d("Stock : concurrence (deux connexions)", () => {
 
   it("le verrou de ligne sérialise deux mouvements simultanés (aucune mise à jour perdue)", async () => {
     const sku = await createCommittedSku(org, "CONC-LOCK", { initial: 10 });
-    const a = await userSession(org.userId);
-    const b = await userSession(org.userId);
+    const a = await serviceSession();
+    const b = await serviceSession();
     try {
       await a.query("select public.apply_inventory_movement($1, $2, 'sale', -3, 'order_item', null, 'ebay')", [org.orgId, sku]);
       // B tente un mouvement sur le même SKU : il attend le verrou de A.
@@ -185,7 +193,7 @@ d("Stock : concurrence (deux connexions)", () => {
     const sku = await createCommittedSku(org, "CONC-RACE", { initial: 1000 });
     const worker = async (channel: string) => {
       for (let i = 0; i < 50; i++) {
-        await runAsUser(org.userId, "select public.apply_inventory_movement($1, $2, 'sale', -1, 'order_item', null, $3)", [org.orgId, sku, channel]);
+        await runAsService("select public.apply_inventory_movement($1, $2, 'sale', -1, 'order_item', null, $3)", [org.orgId, sku, channel]);
       }
     };
     await Promise.all([worker("ebay"), worker("amazon")]);
