@@ -2,12 +2,20 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import type { StockMovementInput } from "@/features/mobile-api/contract";
 import { requireSupabase } from "~/lib/supabase";
 import { useActiveOrg } from "~/org/org-provider";
-import { applyMovement, fetchMarginContext, fetchSkuDetail, fetchStockPage, type StockFilter, type StockSort } from "~/data/stock";
-import { fetchDashboard } from "~/data/dashboard";
-import { fetchOrderDetail, fetchOrdersPage } from "~/data/sales";
+import { useUser } from "~/auth/session-provider";
+import { applyMovement, fetchMarginContext, fetchSkuDetail } from "~/data/stock";
+import { fetchCatalog } from "~/data/catalog";
+import { fetchAnalysis, fetchToday, type Period } from "~/data/intelligence";
+import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } from "~/data/sales";
+import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
 
 /** Toutes les clés commencent par l'organisation : changer d'organisation ne mélange jamais les données. */
+function useOrgId() {
+  const { active } = useActiveOrg();
+  return active.organization.id;
+}
+
 export function useMarginContext() {
   const { active } = useActiveOrg();
   const orgId = active.organization.id;
@@ -18,77 +26,119 @@ export function useMarginContext() {
   });
 }
 
-export function useDashboard() {
-  const { active } = useActiveOrg();
-  const orgId = active.organization.id;
+export function useCatalog() {
+  const orgId = useOrgId();
   const margin = useMarginContext();
-  return useQuery({
-    queryKey: [orgId, "dashboard"],
-    queryFn: () => fetchDashboard(requireSupabase(), orgId, active.organization.currency, margin.data!),
-    enabled: Boolean(margin.data),
-  });
-}
-
-export function useStockList(params: { q: string; filter: StockFilter; sort: StockSort }) {
-  const { active } = useActiveOrg();
-  const orgId = active.organization.id;
-  const margin = useMarginContext();
-  return useInfiniteQuery({
-    queryKey: [orgId, "stock", params],
-    queryFn: ({ pageParam }) => fetchStockPage(requireSupabase(), orgId, { ...params, q: params.q.trim() || undefined, page: pageParam }, margin.data!),
-    initialPageParam: 1,
-    getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
-    enabled: Boolean(margin.data),
-  });
+  return useQuery({ queryKey: [orgId, "catalog"], queryFn: () => fetchCatalog(requireSupabase(), orgId, margin.data!), enabled: Boolean(margin.data) });
 }
 
 export function useSkuDetail(skuId: string) {
-  const { active } = useActiveOrg();
-  const orgId = active.organization.id;
+  const orgId = useOrgId();
   const margin = useMarginContext();
-  return useQuery({
-    queryKey: [orgId, "sku", skuId],
-    queryFn: () => fetchSkuDetail(requireSupabase(), orgId, skuId, margin.data!),
-    enabled: Boolean(margin.data) && Boolean(skuId),
-  });
+  return useQuery({ queryKey: [orgId, "sku", skuId], queryFn: () => fetchSkuDetail(requireSupabase(), orgId, skuId, margin.data!), enabled: Boolean(margin.data) && Boolean(skuId) });
 }
 
+/** Mouvement de stock confirmé par la base, puis relecture du catalogue et des indicateurs. */
 export function useApplyMovement() {
-  const { active } = useActiveOrg();
-  const orgId = active.organization.id;
+  const orgId = useOrgId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: StockMovementInput) => applyMovement(requireSupabase(), orgId, input),
-    onSuccess: async (_r, input) => {
-      // La base est la source de vérité : relecture après chaque mouvement confirmé.
+    onSettled: async (_r, _e, input) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [orgId, "sku", input.sku_id] }),
-        queryClient.invalidateQueries({ queryKey: [orgId, "stock"] }),
-        queryClient.invalidateQueries({ queryKey: [orgId, "dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "catalog"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "today"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "analysis"] }),
       ]);
     },
   });
 }
 
-export function useOrders(q: string) {
+export function useToday() {
   const { active } = useActiveOrg();
   const orgId = active.organization.id;
+  return useQuery({ queryKey: [orgId, "today"], queryFn: () => fetchToday(requireSupabase(), orgId, active.organization.currency) });
+}
+
+export function useAnalysis(period: Period) {
+  const { active } = useActiveOrg();
+  const orgId = active.organization.id;
+  const catalog = useCatalog();
+  return useQuery({
+    queryKey: [orgId, "analysis", period],
+    queryFn: () => fetchAnalysis(requireSupabase(), orgId, active.organization.currency, catalog.data!, period),
+    enabled: Boolean(catalog.data),
+  });
+}
+
+export function useSalesKpis() {
+  const { active } = useActiveOrg();
+  const orgId = active.organization.id;
+  return useQuery({ queryKey: [orgId, "sales-kpis"], queryFn: () => fetchSalesKpis(requireSupabase(), orgId, active.organization.currency) });
+}
+
+export function useOrders(status?: string) {
+  const orgId = useOrgId();
   return useInfiniteQuery({
-    queryKey: [orgId, "orders", q],
-    queryFn: ({ pageParam }) => fetchOrdersPage(requireSupabase(), orgId, { q: q.trim() || undefined, page: pageParam }),
+    queryKey: [orgId, "orders", status ?? "all"],
+    queryFn: ({ pageParam }) => fetchOrdersFiltered(requireSupabase(), orgId, { status, page: pageParam }),
     initialPageParam: 1,
     getNextPageParam: (last, all) => (last.hasMore ? all.length + 1 : undefined),
   });
 }
 
+export function useListings(enabled: boolean) {
+  const orgId = useOrgId();
+  return useInfiniteQuery({
+    queryKey: [orgId, "listings"],
+    queryFn: ({ pageParam }) => fetchListings(requireSupabase(), orgId, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (last, all) => (last.hasMore ? all.length + 1 : undefined),
+    enabled,
+  });
+}
+
 export function useOrder(orderId: string) {
-  const { active } = useActiveOrg();
-  const orgId = active.organization.id;
+  const orgId = useOrgId();
   return useQuery({ queryKey: [orgId, "order", orderId], queryFn: () => fetchOrderDetail(requireSupabase(), orgId, orderId), enabled: Boolean(orderId) });
 }
 
+export function useOfferGroups() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "offer-groups"], queryFn: () => fetchOfferGroups(requireSupabase(), orgId) });
+}
+
+export function useActiveSuppliers() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "suppliers"], queryFn: () => fetchActiveSuppliers(requireSupabase(), orgId) });
+}
+
 export function useSourcingOverview() {
-  const { active } = useActiveOrg();
-  const orgId = active.organization.id;
+  const orgId = useOrgId();
   return useQuery({ queryKey: [orgId, "sourcing-overview"], queryFn: () => fetchSourcingOverview(requireSupabase(), orgId) });
+}
+
+export function useComparison(key: string) {
+  const orgId = useOrgId();
+  const margin = useMarginContext();
+  return useQuery({ queryKey: [orgId, "compare", key], queryFn: () => fetchComparison(requireSupabase(), orgId, key, margin.data!), enabled: Boolean(margin.data) && Boolean(key) });
+}
+
+export function useDraftPurchaseOrder() {
+  const { active } = useActiveOrg();
+  const user = useUser();
+  const queryClient = useQueryClient();
+  const orgId = active.organization.id;
+  return {
+    create: useMutation({
+      mutationFn: (input: { offer: Pick<OfferRow, "id" | "supplierId" | "skuId" | "price">; quantity: number }) =>
+        createDraftPurchaseOrder(requireSupabase(), { organizationId: orgId, userId: user?.id ?? "", currency: active.organization.currency, ...input }),
+      onSuccess: () => void queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
+    }),
+    remove: useMutation({
+      mutationFn: (purchaseOrderId: string) => deleteDraftPurchaseOrder(requireSupabase(), orgId, purchaseOrderId),
+      onSuccess: () => void queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
+    }),
+  };
 }

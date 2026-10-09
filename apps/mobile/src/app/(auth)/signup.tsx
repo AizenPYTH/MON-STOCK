@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform } from "react-native";
-import { Link } from "expo-router";
+import { router } from "expo-router";
 import { signUp, type FieldErrors } from "~/auth/auth-service";
-import { Body, Button, Card, Muted, Notice, Screen, TextField, Title } from "~/ui/components";
-import { spacing } from "~/ui/theme";
+import { AlertBanner, Button, Card, DetailHeader, Screen, TextField, Txt } from "~/components/ui";
+import { space } from "~/theme/tokens";
 
 export default function SignupScreen() {
   const [fullName, setFullName] = useState("");
@@ -30,15 +30,11 @@ export default function SignupScreen() {
   if (sentTo) {
     return (
       <Screen>
-        <Title>Confirmez votre email</Title>
-        <Card>
-          <Body>
-            Un lien de confirmation a été envoyé à {sentTo}. Ouvrez-le sur CE téléphone : il rouvrira MON STOCK et vous connectera.
-          </Body>
+        <DetailHeader parentLabel="Connexion" onBack={() => router.replace("/login")} />
+        <Txt variant="title2">Confirmez votre email</Txt>
+        <Card padded>
+          <Txt variant="bodyRegular">Un lien de confirmation a été envoyé à {sentTo}. Ouvrez-le sur CE téléphone : il rouvrira MON STOCK et vous connectera.</Txt>
         </Card>
-        <Link href="/login" style={{ paddingVertical: spacing.md }}>
-          <Muted>Retour à la connexion</Muted>
-        </Link>
       </Screen>
     );
   }
@@ -46,26 +42,17 @@ export default function SignupScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <Screen>
-        <Title subtitle="Votre compte donne accès à vos organisations MON STOCK.">Créer un compte</Title>
-        <Card>
-          {error ? <Notice tone="danger">{error}</Notice> : null}
+        <DetailHeader parentLabel="Connexion" />
+        <Txt variant="title2" accessibilityRole="header">
+          Créer un compte
+        </Txt>
+        {error ? <AlertBanner text={error} /> : null}
+        <Card padded style={{ gap: space[4] }}>
           <TextField label="Nom complet" value={fullName} onChangeText={setFullName} autoComplete="name" textContentType="name" error={fields.full_name} />
           <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" error={fields.email} />
-          <TextField
-            label="Mot de passe"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="new-password"
-            textContentType="newPassword"
-            hint="8 caractères minimum."
-            error={fields.password}
-          />
+          <TextField label="Mot de passe" value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" textContentType="newPassword" hint="8 caractères minimum." error={fields.password} />
           <Button label="Créer mon compte" onPress={submit} loading={busy} />
         </Card>
-        <Link href="/login" style={{ paddingVertical: spacing.md }}>
-          <Muted>Déjà un compte ? Se connecter</Muted>
-        </Link>
       </Screen>
     </KeyboardAvoidingView>
   );

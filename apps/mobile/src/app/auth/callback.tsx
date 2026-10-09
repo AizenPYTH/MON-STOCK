@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { completeAuthCallback } from "~/auth/auth-service";
 import { userMessage } from "~/lib/errors";
-import { Button, Card, LoadingState, Notice, Screen, Title } from "~/ui/components";
+import { Button, ErrorState, Screen, Skeleton, Txt } from "~/components/ui";
+import { color } from "~/theme/tokens";
 
 /** Retour d'un lien email (monstock://auth/callback?code=…) : échange PKCE puis redirection interne. */
 export default function AuthCallbackScreen() {
@@ -15,20 +17,26 @@ export default function AuthCallbackScreen() {
     started.current = true;
     completeAuthCallback(params)
       .then((r) => {
-        if (r.ok) router.replace(r.next === "/update-password" ? "/update-password" : "/dashboard");
+        if (r.ok) router.replace(r.next === "/update-password" ? "/update-password" : "/intelligence");
         else setError(r.error);
       })
       .catch((e) => setError(userMessage(e)));
   }, [params]);
 
-  if (!error) return <LoadingState label="Validation du lien…" />;
+  if (!error)
+    return (
+      <View style={{ flex: 1, backgroundColor: color.bg, alignItems: "center", justifyContent: "center", gap: 12 }} accessibilityLabel="Validation du lien">
+        <Skeleton w={160} h={14} />
+        <Txt variant="label">Validation du lien…</Txt>
+      </View>
+    );
   return (
     <Screen>
-      <Title>Lien non valide</Title>
-      <Card>
-        <Notice tone="danger">{error}</Notice>
-        <Button label="Retour à la connexion" onPress={() => router.replace("/login")} />
-      </Card>
+      <Txt variant="title2" style={{ marginTop: 32 }}>
+        Lien non valide
+      </Txt>
+      <ErrorState title="Impossible de valider le lien" description={error} />
+      <Button label="Retour à la connexion" onPress={() => router.replace("/login")} />
     </Screen>
   );
 }

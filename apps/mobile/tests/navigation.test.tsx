@@ -16,6 +16,7 @@ jest.mock("~/features/onboarding", () => {
 
 import AuthLayout from "~/app/(auth)/_layout";
 import AppLayout from "~/app/(app)/_layout";
+import TabsLayout from "~/app/(app)/(tabs)/_layout";
 import Index from "~/app/index";
 
 const routes = {
@@ -23,17 +24,26 @@ const routes = {
   "(auth)/_layout": AuthLayout,
   "(auth)/login": () => <Text>Écran de connexion</Text>,
   "(app)/_layout": AppLayout,
-  "(app)/dashboard": () => <Text>Tableau de bord</Text>,
-  "(app)/stock": () => <Text>Stock</Text>,
-  "(app)/sales": () => <Text>Ventes</Text>,
-  "(app)/sourcing": () => <Text>Sourcing</Text>,
-  "(app)/settings": () => <Text>Réglages</Text>,
+  "(app)/(tabs)/_layout": TabsLayout,
+  "(app)/(tabs)/intelligence": () => <Text>Aujourd'hui (écran)</Text>,
+  "(app)/(tabs)/stock": () => <Text>Stock (écran)</Text>,
+  "(app)/(tabs)/sales": () => <Text>Ventes (écran)</Text>,
+  "(app)/(tabs)/sourcing": () => <Text>Sourcing (écran)</Text>,
+  "(app)/settings": () => <Text>Réglages (écran)</Text>,
+  "(app)/adjust": () => <Text>Ajuster (écran)</Text>,
 };
+
+const ready = (role = "member") => ({
+  status: "ready",
+  active: { role, organization: { id: "o1", name: "Org", currency: "EUR" } },
+  permissions: { canWrite: role !== "viewer", isAdmin: false },
+  memberships: [],
+});
 
 describe("navigation protégée", () => {
   it("sans session : toute page de l'application renvoie vers la connexion", async () => {
     mockSessionState.current = { status: "signedOut", session: null };
-    const r = renderRouter(routes, { initialUrl: "/dashboard" });
+    const r = renderRouter(routes, { initialUrl: "/stock" });
     expect(await screen.findByText("Écran de connexion")).toBeTruthy();
     expect(r.getPathname()).toBe("/login");
   });
@@ -41,23 +51,24 @@ describe("navigation protégée", () => {
   it("session sans organisation : écran de création d'organisation", async () => {
     mockSessionState.current = { status: "signedIn", session: { user: { id: "u1" } } };
     mockOrgState.current = { status: "none", refresh: jest.fn() };
-    renderRouter(routes, { initialUrl: "/dashboard" });
+    renderRouter(routes, { initialUrl: "/stock" });
     expect(await screen.findByText("Créer votre organisation")).toBeTruthy();
   });
 
-  it("session et organisation : le tableau de bord s'affiche avec les onglets", async () => {
+  it("l'application s'ouvre sur Intelligence › Aujourd'hui, avec 4 onglets", async () => {
     mockSessionState.current = { status: "signedIn", session: { user: { id: "u1" } } };
-    mockOrgState.current = { status: "ready", active: { role: "member", organization: { id: "o1", name: "Org", currency: "EUR" } }, permissions: { canWrite: true, isAdmin: false }, memberships: [] };
-    renderRouter(routes, { initialUrl: "/" });
-    expect(await screen.findByText("Tableau de bord")).toBeTruthy();
-    expect(screen.getByLabelText("Tableau de bord")).toBeTruthy();
-    expect(screen.getAllByText("Stock").length).toBeGreaterThan(0);
+    mockOrgState.current = ready();
+    const r = renderRouter(routes, { initialUrl: "/" });
+    expect(await screen.findByText("Aujourd'hui (écran)")).toBeTruthy();
+    expect(r.getPathname()).toBe("/intelligence");
+    for (const tab of ["Stock", "Ventes", "Sourcing", "Intelligence"]) expect(screen.getAllByText(tab).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Réglages")).toBeNull();
   });
 
   it("utilisateur connecté sur la page de connexion : renvoyé vers l'application", async () => {
     mockSessionState.current = { status: "signedIn", session: { user: { id: "u1" } } };
-    mockOrgState.current = { status: "ready", active: { role: "viewer", organization: { id: "o1", name: "Org", currency: "EUR" } }, permissions: { canWrite: false, isAdmin: false }, memberships: [] };
+    mockOrgState.current = ready("viewer");
     renderRouter(routes, { initialUrl: "/login" });
-    expect(await screen.findByText("Tableau de bord")).toBeTruthy();
+    expect(await screen.findByText("Aujourd'hui (écran)")).toBeTruthy();
   });
 });

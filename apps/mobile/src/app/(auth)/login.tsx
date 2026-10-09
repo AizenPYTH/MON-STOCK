@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, type TextInput } from "react-native";
-import { Link } from "expo-router";
+import { router } from "expo-router";
 import { signIn, type FieldErrors } from "~/auth/auth-service";
-import { Button, Card, Muted, Notice, Screen, TextField, Title } from "~/ui/components";
-import { spacing } from "~/ui/theme";
+import { AlertBanner, Button, Card, Screen, TextField, Txt } from "~/components/ui";
+import { space } from "~/theme/tokens";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -28,9 +28,12 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <Screen>
-        <Title subtitle="Stock, ventes, sourcing et intelligence pour vendeurs multicanaux.">MON STOCK</Title>
-        <Card>
-          {error ? <Notice tone="danger">{error}</Notice> : null}
+        <Txt variant="title1" style={{ marginTop: space[8] }} accessibilityRole="header">
+          MON STOCK
+        </Txt>
+        <Txt variant="bodyRegular">Stock, ventes, sourcing et intelligence pour vendeurs multicanaux.</Txt>
+        {error ? <AlertBanner text={error} /> : null}
+        <Card padded style={{ gap: space[4] }}>
           <TextField
             label="Email"
             value={email}
@@ -59,12 +62,8 @@ export default function LoginScreen() {
           />
           <Button label="Se connecter" onPress={submit} loading={busy} testID="login-submit" />
         </Card>
-        <Link href="/forgot-password" style={{ marginTop: spacing.sm, paddingVertical: spacing.md }} accessibilityRole="link">
-          <Muted>Mot de passe oublié ?</Muted>
-        </Link>
-        <Link href="/signup" style={{ paddingVertical: spacing.md }} accessibilityRole="link">
-          <Muted>Pas encore de compte ? Créer un compte</Muted>
-        </Link>
+        <Button label="Mot de passe oublié ?" variant="ghost" onPress={() => router.push("/forgot-password")} />
+        <Button label="Créer un compte" variant="secondary" onPress={() => router.push("/signup")} />
       </Screen>
     </KeyboardAvoidingView>
   );

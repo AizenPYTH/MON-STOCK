@@ -6,7 +6,8 @@ import { createOrganization } from "~/org/org-service";
 import { requireSupabase } from "~/lib/supabase";
 import { securePreferences } from "~/lib/secure-store";
 import { userMessage } from "~/lib/errors";
-import { Body, Button, Card, Notice, Screen, TextField, Title } from "~/ui/components";
+import { AlertBanner, Button, Card, Screen, TextField, Txt } from "~/components/ui";
+import { space } from "~/theme/tokens";
 
 /**
  * Aucune organisation : créer la sienne (rôle propriétaire, fonction create_organization_with_owner)
@@ -37,15 +38,18 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
 
   return (
     <Screen>
-      <Title subtitle={user?.email ?? undefined}>Bienvenue sur MON STOCK</Title>
-      <Card>
-        <Body>Créez votre organisation (votre entreprise) pour commencer. Vous en serez le propriétaire.</Body>
-        {error ? <Notice tone="danger">{error}</Notice> : null}
+      <Txt variant="title1" style={{ marginTop: space[6] }} accessibilityRole="header">
+        Bienvenue
+      </Txt>
+      <Txt variant="bodyRegular">{user?.email}</Txt>
+      {error ? <AlertBanner text={error} /> : null}
+      <Card padded style={{ gap: space[4] }}>
+        <Txt variant="bodyRegular">Créez votre organisation (votre entreprise) pour commencer. Vous en serez le propriétaire.</Txt>
         <TextField label="Nom de l'organisation" value={name} onChangeText={setName} autoCapitalize="words" returnKeyType="done" onSubmitEditing={submit} />
         <Button label="Créer l'organisation" onPress={submit} loading={busy} />
       </Card>
-      <Card>
-        <Body>Invité par un collègue ? Ouvrez le lien d'invitation reçu par email depuis l'application web MON STOCK, puis revenez ici.</Body>
+      <Card padded style={{ gap: space[3] }}>
+        <Txt variant="bodyRegular">Invité par un collègue ? Ouvrez le lien d'invitation reçu par email depuis l'application web MON STOCK, puis revenez ici.</Txt>
         <Button label="Se déconnecter" variant="secondary" onPress={() => void signOut()} />
       </Card>
     </Screen>

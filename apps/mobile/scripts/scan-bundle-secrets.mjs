@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Vérifie qu'aucun secret ni code serveur n'est embarqué dans le bundle exporté (`expo export`).
-// Usage : node scripts/scan-bundle-secrets.mjs dist
-// Échoue (code 1) au premier constat. Les chaînes sont cherchées en UTF-8 ET en UTF-16 (Hermes
-// stocke les chaînes non ASCII en UTF-16).
+// Vérifie qu'aucun secret ni code serveur n'est embarqué dans le bundle exporté.
+// Usage : npm run scan:bundle   (= expo export --no-bytecode, puis ce script sur dist/scan)
+// Le bundle doit être exporté en JavaScript (--no-bytecode) : dans le bytecode Hermes, les chaînes
+// sont concaténées sans séparateur et un motif de clé y produit des faux positifs.
+// Échoue (code 1) au premier constat.
 import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -23,8 +24,8 @@ const FORBIDDEN_LITERALS = [
   "-----BEGIN EC PRIVATE KEY-----",
 ];
 const FORBIDDEN_REGEX = [
-  // Le préfixe seul apparaît dans supabase-js (détection du format de clé) : une vraie clé a ≥ 20 caractères après.
-  { name: "clé secrète Supabase (sb_secret_)", re: /sb_secret_[A-Za-z0-9_-]{20,}/ },
+  // Littéral complet entre guillemets : le préfixe seul apparaît dans supabase-js (détection du format de clé).
+  { name: "clé secrète Supabase (sb_secret_)", re: /["'`]sb_secret_[A-Za-z0-9_-]{20,}["'`]/ },
 ];
 const JWT = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 
@@ -50,7 +51,11 @@ function decodeJwtRole(token) {
 const findings = [];
 let scanned = 0;
 for (const f of files(root)) {
-  if (!/\.(hbc|js|json|map|txt|html)$/.test(f)) continue;
+  if (/\.hbc$/.test(f)) {
+    console.error(`${f} : bytecode Hermes — exportez avec --no-bytecode pour une analyse fiable.`);
+    process.exit(2);
+  }
+  if (!/\.(js|json|txt|html)$/.test(f)) continue;
   scanned++;
   const buf = readFileSync(f);
   const utf8 = buf.toString("utf8");

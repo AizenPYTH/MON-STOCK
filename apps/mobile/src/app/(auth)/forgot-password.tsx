@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { Link } from "expo-router";
 import { requestPasswordReset, type FieldErrors } from "~/auth/auth-service";
-import { Body, Button, Card, Muted, Notice, Screen, TextField, Title } from "~/ui/components";
-import { spacing } from "~/ui/theme";
+import { AlertBanner, Button, Card, DetailHeader, Screen, TextField, Txt } from "~/components/ui";
+import { space } from "~/theme/tokens";
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
@@ -26,21 +25,21 @@ export default function ForgotPasswordScreen() {
 
   return (
     <Screen>
-      <Title subtitle="Recevez un lien pour choisir un nouveau mot de passe.">Mot de passe oublié</Title>
-      <Card>
+      <DetailHeader parentLabel="Connexion" />
+      <Txt variant="title2" accessibilityRole="header">
+        Mot de passe oublié
+      </Txt>
+      {error ? <AlertBanner text={error} /> : null}
+      <Card padded style={{ gap: space[4] }}>
         {sent ? (
-          <Body>Si un compte existe pour cette adresse, un email vient d'être envoyé. Ouvrez le lien sur ce téléphone (il expire rapidement et ne sert qu'une fois).</Body>
+          <Txt variant="bodyRegular">Si un compte existe pour cette adresse, un email vient d'être envoyé. Ouvrez le lien sur ce téléphone (il expire rapidement et ne sert qu'une fois).</Txt>
         ) : (
           <>
-            {error ? <Notice tone="danger">{error}</Notice> : null}
             <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" error={fields.email} />
             <Button label="Envoyer le lien" onPress={submit} loading={busy} />
           </>
         )}
       </Card>
-      <Link href="/login" style={{ paddingVertical: spacing.md }}>
-        <Muted>Retour à la connexion</Muted>
-      </Link>
     </Screen>
   );
 }

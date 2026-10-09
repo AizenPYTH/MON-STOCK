@@ -6,14 +6,17 @@ import { signOut } from "~/auth/auth-service";
 import { useActiveOrg } from "~/org/org-provider";
 import { ROLE_LABEL } from "~/org/org-service";
 import { appConfig } from "~/lib/config";
-import { Badge, Body, Button, Card, Chip, Muted, Row, Screen, SectionTitle, Title } from "~/ui/components";
-import { spacing } from "~/ui/theme";
+import { Avatar, Button, Card, DetailHeader, ListRow, Screen, SectionHeader, StatusChip, Txt, initialsOf, useToast } from "~/components/ui";
+import { space } from "~/theme/tokens";
 
+/** Compte, organisation active (changement par appareil), intégrations, déconnexion. */
 export default function SettingsScreen() {
   const user = useUser();
   const { active, memberships, setActive, permissions } = useActiveOrg();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const host = appConfig.ok ? new URL(appConfig.config.supabaseUrl).host : "—";
+  const fullName = (user?.user_metadata as { full_name?: string } | undefined)?.full_name ?? null;
 
   function confirmSignOut() {
     Alert.alert("Se déconnecter ?", "La session sera retirée de cet appareil.", [
@@ -31,46 +34,54 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <Title>Réglages</Title>
-      <SectionTitle>Compte</SectionTitle>
+      <DetailHeader parentLabel="Intelligence" />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+        <Avatar initials={initialsOf(fullName ?? user?.email)} size={48} />
+        <View style={{ flex: 1 }}>
+          <Txt variant="title2">{fullName ?? "Mon compte"}</Txt>
+          <Txt variant="label">
+            {user?.email ?? "—"} · {user?.email_confirmed_at ? "email confirmé" : "email non confirmé"}
+          </Txt>
+        </View>
+      </View>
+
+      <SectionHeader title="Organisation" />
       <Card>
-        <Body>{user?.email ?? "—"}</Body>
-        <Muted>{user?.email_confirmed_at ? "Email confirmé" : "Email non confirmé"}</Muted>
+        {memberships.map((m, i) => {
+          const selected = m.organization.id === active.organization.id;
+          return (
+            <ListRow
+              key={m.organization.id}
+              title={m.organization.name}
+              subtitle={`${ROLE_LABEL[m.role]} · ${m.organization.currency}${m.organization.isDemo ? " · démo" : ""}`}
+              right={selected ? <StatusChip label="Active" tone="dark" /> : undefined}
+              onPress={
+                selected
+                  ? undefined
+                  : () =>
+                      void setActive(m.organization.id).then(() => toast({ text: `Organisation active : ${m.organization.name}` }))
+              }
+              last={i === memberships.length - 1}
+            />
+          );
+        })}
+      </Card>
+      {!permissions.canWrite ? <Txt variant="label">Rôle lecture seule : consultation uniquement.</Txt> : null}
+
+      <SectionHeader title="Intégrations" />
+      <Card padded>
+        <Txt variant="bodyRegular">eBay : connexion (autorisation OAuth) et synchronisation depuis l'application web MON STOCK. Amazon, Shopify et WooCommerce : disponibles prochainement.</Txt>
       </Card>
 
-      <SectionTitle>Organisation active</SectionTitle>
-      <Card>
-        <Row style={{ justifyContent: "space-between" }}>
-          <Body style={{ fontWeight: "700", flex: 1 }}>{active.organization.name}</Body>
-          <Badge label={ROLE_LABEL[active.role]} tone={permissions.canWrite ? "info" : "neutral"} />
-        </Row>
-        <Muted>Devise : {active.organization.currency}{active.organization.isDemo ? " · Organisation DÉMO (données fictives signalées)" : ""}</Muted>
-        {memberships.length > 1 ? (
-          <>
-            <Muted style={{ marginTop: spacing.md }}>Changer d'organisation :</Muted>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm }}>
-              {memberships.map((m) => (
-                <Chip key={m.organization.id} label={m.organization.name} selected={m.organization.id === active.organization.id} onPress={() => void setActive(m.organization.id)} />
-              ))}
-            </View>
-          </>
-        ) : null}
+      <SectionHeader title="Application" />
+      <Card padded>
+        <Txt variant="label">
+          Version {Constants.expoConfig?.version ?? "—"} · environnement {appConfig.ok ? appConfig.config.appEnv : "—"} · {host}
+        </Txt>
+        <Txt variant="label">Vos données sont protégées par les règles d'accès de la base (RLS) : seules vos organisations sont lisibles.</Txt>
       </Card>
 
-      <SectionTitle>Intégrations</SectionTitle>
-      <Card>
-        <Body>eBay : connexion et synchronisation depuis l'application web (autorisation OAuth eBay). Amazon, Shopify, WooCommerce : disponible prochainement.</Body>
-      </Card>
-
-      <SectionTitle>Application</SectionTitle>
-      <Card>
-        <Muted>
-          Version {Constants.expoConfig?.version ?? "—"} · Environnement {appConfig.ok ? appConfig.config.appEnv : "—"} · {host}
-        </Muted>
-        <Muted>Données protégées par la RLS Supabase : seules vos organisations sont accessibles.</Muted>
-      </Card>
-
-      <Button label="Se déconnecter" variant="danger" onPress={confirmSignOut} />
+      <Button label="Se déconnecter" variant="secondary" onPress={confirmSignOut} />
     </Screen>
   );
 }
