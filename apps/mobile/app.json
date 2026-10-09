@@ -48,6 +48,7 @@
     },
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "owner": "influence1"
   }
 }
