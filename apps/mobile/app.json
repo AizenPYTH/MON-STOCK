@@ -8,7 +8,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.aizenpyth.monstock",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.aizenpyth.monstock",
@@ -27,13 +30,24 @@
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "expo-asset",
+      "expo-font"
     ],
     "extra": {
       "router": {},
       "eas": {
         "projectId": "e29be57c-14cf-40eb-891d-c3f97350c013"
       }
+    },
+    "scheme": "monstock",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "experiments": {
+      "typedRoutes": false
     }
   }
 }

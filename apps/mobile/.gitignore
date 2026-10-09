@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Secrets / configuration locale (seul .env.example est versionné)
+.env
+.env.*
+!.env.example

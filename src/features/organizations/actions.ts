@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { requireOrgContextForAction, getCurrentUser } from "@/features/auth/dal";
 import { fail, ok, type ActionResult } from "@/lib/result";
 import { fromPostgrestError, toUserMessage } from "@/lib/errors";
-import { slugify } from "@/lib/utils";
+import { uniqueOrganizationSlug } from "@/lib/slug";
 import { publicEnv } from "@/lib/env";
 import { createLogger } from "@/lib/logger";
 import type { Json } from "@/db/database.types";
@@ -25,11 +25,6 @@ function dbErrorMessage(error: { code?: string; message?: string; details?: stri
   return organizationDbErrorMessage(error.message) ?? toUserMessage(fromPostgrestError(error));
 }
 
-function uniqueSlug(base: string): string {
-  // Les organisations ne sont pas visibles avant adhésion : un suffixe aléatoire court évite les collisions.
-  const suffix = Math.random().toString(36).slice(2, 7);
-  return `${slugify(base)}-${suffix}`;
-}
 
 export async function createOrganizationAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const user = await getCurrentUser();
@@ -38,7 +33,7 @@ export async function createOrganizationAction(_prev: ActionResult | null, formD
   if (!parsed.success) return fail("Vérifiez les champs du formulaire.", { fieldErrors: fieldErrors(parsed.error.issues) });
 
   const supabase = await createServerSupabaseClient();
-  const slug = uniqueSlug(parsed.data.name);
+  const slug = uniqueOrganizationSlug(parsed.data.name);
   const { data: orgId, error } = await supabase.rpc("create_organization_with_owner", { p_name: parsed.data.name, p_slug: slug, p_is_demo: false });
   if (error || !orgId) return fail(toUserMessage(fromPostgrestError(error ?? { message: "Création impossible" })));
 

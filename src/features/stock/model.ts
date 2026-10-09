@@ -1,4 +1,4 @@
-import type { StockOverviewRow } from "@/db/types";
+import type { SalesChannel, StockOverviewRow } from "@/db/types";
 import { computeDaysOfCover, computeVelocity, type VelocityResult } from "@/domain/inventory/velocity";
 import { classifyStock, type StockClassification } from "@/domain/inventory/alerts";
 import { computeMargin, type MarginResult } from "@/domain/pricing/margin";
@@ -55,4 +55,16 @@ export function enrichStockRow(row: StockOverviewRow, marginCtx: MarginContext, 
 export function skuLabel(row: Pick<StockOverviewRow, "product_name" | "variant_name">): string {
   const v = row.variant_name && row.variant_name !== "Standard" ? ` · ${row.variant_name}` : "";
   return `${row.product_name ?? ""}${v}`;
+}
+
+/** Contexte de marge « par défaut » de l'organisation : canal principal (eBay si connecté, sinon manuel). */
+export function marginContextFromChannels(channels: Pick<SalesChannel, "provider" | "fee_percent" | "payment_fee_percent" | "payment_fee_fixed" | "default_shipping_cost">[], orgSettings: unknown): MarginContext {
+  const settings = (orgSettings ?? {}) as { default_shipping_cost?: number | null };
+  const primary = channels.find((c) => c.provider === "ebay") ?? channels.find((c) => c.provider !== "manual") ?? channels[0];
+  return {
+    feePercent: primary?.fee_percent ?? null,
+    paymentFeePercent: primary?.payment_fee_percent ?? null,
+    paymentFeeFixed: primary?.payment_fee_fixed ?? null,
+    shippingCost: primary?.default_shipping_cost ?? settings.default_shipping_cost ?? null,
+  };
 }

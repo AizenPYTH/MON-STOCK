@@ -4,15 +4,7 @@ export function cn(...inputs: ClassValue[]): string {
   return clsx(inputs);
 }
 
-export function slugify(input: string): string {
-  return input
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60) || "org";
-}
+export { slugify } from "@/lib/slug";
 
 export function round(n: number, decimals = 2): number {
   const f = 10 ** decimals;

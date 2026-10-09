@@ -1,24 +1,15 @@
 import "server-only";
 import type { OrgContext } from "@/features/auth/dal";
-import type { SalesChannel, StockOverviewRow } from "@/db/types";
-import { enrichStockRow, type MarginContext, type StockRowView } from "@/features/stock/model";
+import type { StockOverviewRow } from "@/db/types";
+import { enrichStockRow, marginContextFromChannels, type MarginContext, type StockRowView } from "@/features/stock/model";
 import type { StockListParams } from "@/features/stock/schemas";
 import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { escapeLike, orIlikeAny } from "@/lib/postgrest";
 
 export const STOCK_PAGE_SIZE = 50;
 
-/** Contexte de marge « par défaut » de l'organisation : canal principal (eBay si connecté, sinon manuel). */
-export function marginContextFromChannels(channels: Pick<SalesChannel, "provider" | "fee_percent" | "payment_fee_percent" | "payment_fee_fixed" | "default_shipping_cost">[], orgSettings: unknown): MarginContext {
-  const settings = (orgSettings ?? {}) as { default_shipping_cost?: number | null };
-  const primary = channels.find((c) => c.provider === "ebay") ?? channels.find((c) => c.provider !== "manual") ?? channels[0];
-  return {
-    feePercent: primary?.fee_percent ?? null,
-    paymentFeePercent: primary?.payment_fee_percent ?? null,
-    paymentFeeFixed: primary?.payment_fee_fixed ?? null,
-    shippingCost: primary?.default_shipping_cost ?? settings.default_shipping_cost ?? null,
-  };
-}
+// Contexte de marge par défaut : module pur partagé (web + mobile).
+export { marginContextFromChannels };
 
 export async function getMarginContext(ctx: OrgContext): Promise<MarginContext> {
   const { data } = await ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost").eq("organization_id", ctx.organization.id).eq("is_active", true);
