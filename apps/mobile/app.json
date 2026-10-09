@@ -1,15 +1,17 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Mon Stock Pro",
+    "slug": "mon-stock",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.aizenpyth.monstock",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.aizenpyth.monstock",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,6 +28,12 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-splash-screen"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e29be57c-14cf-40eb-891d-c3f97350c013"
+      }
+    }
   }
 }
