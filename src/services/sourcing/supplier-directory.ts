@@ -211,7 +211,7 @@ export async function checkDirectoryWebsite(entry: DirectoryEntry, fetchImpl?: t
     const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8_000);
     const robotsFound = robots.status === "ok";
     const disallowAll = robotsFound ? !evaluateRobots(robots.rules, userAgent, "/").allowed : null;
-    const home = await fetchText(entry.website, { userAgent, timeoutMs: 10_000, maxBytes: 1_500_000, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
+    const home = await fetchText(entry.website, { userAgent, timeoutMs: 12_000, maxBytes: 6_000_000, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
     const reachable = home.status >= 200 && home.status < 400;
     const platform = reachable ? detectPlatform(home.text) : null;
     return {

@@ -14158,7 +14158,7 @@ var supplier_directory_default = [
     deliveryZones: [
       "FR"
     ],
-    website: null,
+    website: "https://www.easycash.fr",
     catalogUrl: null,
     categories: [
       "smartphones",
@@ -14185,13 +14185,14 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "Benchmark prix occasion grand public ; pas une source B2B.",
     howToGetCatalog: "Veille manuelle uniquement (SERVER.md : pas de catalogue public lisible).",
-    verified: "B2C confirm\xE9 par comparatifs ; aucune offre pro trouv\xE9e.",
+    verified: "B2C confirm\xE9 par comparatifs ; aucune offre pro trouv\xE9e. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "search_snippets",
     knownInApp: true,
     sourcesChecked: [
       "https://www.reepeat.fr/boutiques/comparison/certideal-vs-easycash",
       "https://www.combak.co/blog/easycash-avis",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   },
@@ -14619,7 +14620,7 @@ var supplier_directory_default = [
       "FR",
       "EU"
     ],
-    website: null,
+    website: "https://www.mobilax.fr",
     catalogUrl: null,
     categories: [
       "spare_parts",
@@ -14648,13 +14649,14 @@ var supplier_directory_default = [
     partQuality: "mixed",
     whyUseful: "Grossiste lyonnais (2010) de pi\xE8ces et accessoires r\xE9serv\xE9 aux r\xE9parateurs, avec app B2B.",
     howToGetCatalog: "Compte pro ; aucune API publique trouv\xE9e ; SERVER.md : prix apr\xE8s connexion \u2192 demander un flux.",
-    verified: "Fiche app (publisher ND Distribution) et fiche French Tech ; domaine non confirm\xE9 dans cette session (WebFetch bloqu\xE9).",
+    verified: "Fiche app (publisher ND Distribution) et fiche French Tech ; domaine non confirm\xE9 dans cette session (WebFetch bloqu\xE9). \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "search_snippets",
     knownInApp: true,
     sourcesChecked: [
       "https://mwm.ai/apps/mobilax/1599510586",
       "https://lespepitestech.com/node/18571",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   },
@@ -14711,7 +14713,7 @@ var supplier_directory_default = [
     segment: "B_parts",
     country: "US",
     deliveryZones: [],
-    website: null,
+    website: "https://www.fixez.com",
     catalogUrl: null,
     categories: [
       "spare_parts"
@@ -14733,11 +14735,12 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "D\xE9j\xE0 pr\xE9sent dans l'app ; aucune information nouvelle trouv\xE9e.",
     howToGetCatalog: "Non d\xE9termin\xE9 (robots.txt/403 constat\xE9 c\xF4t\xE9 serveur).",
-    verified: "Aucun r\xE9sultat de recherche pertinent dans cette session.",
+    verified: "Aucun r\xE9sultat de recherche pertinent dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "unverified",
     knownInApp: true,
     sourcesChecked: [
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   },
@@ -14801,7 +14804,7 @@ var supplier_directory_default = [
     deliveryZones: [
       "EU"
     ],
-    website: null,
+    website: "https://www.gsmpartscenter.com",
     catalogUrl: null,
     categories: [
       "spare_parts",
@@ -14826,12 +14829,13 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "Distributeur B2B pi\xE8ces/accessoires/outils, partenaire de REWA EU et certifi\xE9 Phonecheck.",
     howToGetCatalog: "Trouver le site officiel GPC et s'enregistrer comme dealer ; URL non confirm\xE9e.",
-    verified: "Uniquement fiche partenaire Phonecheck + mention REWA EU ; site propre non trouv\xE9.",
+    verified: "Uniquement fiche partenaire Phonecheck + mention REWA EU ; site propre non trouv\xE9. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "unverified",
     knownInApp: false,
     sourcesChecked: [
       "https://www.phonecheck.com/fr/partners/gsm-parts-center",
-      "https://rewa.tech/?p=30933"
+      "https://rewa.tech/?p=30933",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   },
@@ -15444,7 +15448,7 @@ var supplier_directory_default = [
       "BE",
       "EU"
     ],
-    website: null,
+    website: "https://vavato.com",
     catalogUrl: null,
     categories: [
       "lots"
@@ -15468,12 +15472,13 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "Plateforme d'ench\xE8res belge (overstock, insolvabilit\xE9s) ayant \xE9coul\xE9 39 % des retours Kr\xEBfel (2021).",
     howToGetCatalog: "Consultation manuelle ; statut actuel (rachet\xE9/fusionn\xE9 selon PitchBook) \xE0 v\xE9rifier.",
-    verified: "RetailDetail/DH 2021 et PitchBook ; site non confirm\xE9 dans cette session.",
+    verified: "RetailDetail/DH 2021 et PitchBook ; site non confirm\xE9 dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "unverified",
     knownInApp: false,
     sourcesChecked: [
       "https://retaildetail.be/nl/news/elektro/krefel-vend-ses-retours-aux-encheres-sur-internet",
-      "https://pitchbook.com/profiles/company/343218-52"
+      "https://pitchbook.com/profiles/company/343218-52",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   },
@@ -16049,7 +16054,7 @@ var supplier_directory_default = [
     segment: "D_distributor",
     country: "DE",
     deliveryZones: [],
-    website: null,
+    website: "https://www.jarltech.com",
     catalogUrl: null,
     categories: [
       "accessories"
@@ -16071,10 +16076,12 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "Distributeur sp\xE9cialis\xE9 (POS/AutoID) cit\xE9 dans la demande ; peu pertinent pour smartphones/refurb.",
     howToGetCatalog: "Non d\xE9termin\xE9.",
-    verified: "Aucun r\xE9sultat pertinent dans cette session.",
+    verified: "Aucun r\xE9sultat pertinent dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "unverified",
     knownInApp: false,
-    sourcesChecked: [],
+    sourcesChecked: [
+      "server:supplier_directory_checks"
+    ],
     checkedAt: "2026-10-10"
   },
   {
@@ -16085,7 +16092,7 @@ var supplier_directory_default = [
     deliveryZones: [
       "DE"
     ],
-    website: null,
+    website: "https://www.bluechip.de",
     catalogUrl: null,
     categories: [
       "laptops",
@@ -16110,11 +16117,12 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "Fabricant/distributeur IT allemand (Meuselwitz) pour le channel ; aucune info d'acc\xE8s catalogue.",
     howToGetCatalog: "Non d\xE9termin\xE9.",
-    verified: "Seulement fiche Intel Partner Showcase et get-in-it.",
+    verified: "Seulement fiche Intel Partner Showcase et get-in-it. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "unverified",
     knownInApp: false,
     sourcesChecked: [
-      "https://www.intel.com/content/www/us/en/partner/showcase/storefront/a5S3b0000016NfNEAU/bluechip-computer-ag.html"
+      "https://www.intel.com/content/www/us/en/partner/showcase/storefront/a5S3b0000016NfNEAU/bluechip-computer-ag.html",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   },
@@ -16175,7 +16183,7 @@ var supplier_directory_default = [
     deliveryZones: [
       "PL"
     ],
-    website: null,
+    website: "https://www.ab.pl",
     catalogUrl: null,
     categories: [
       "smartphones",
@@ -16203,12 +16211,13 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "Grand distributeur IT polonais avec passerelle XML (produits, photos, prix, stocks) et commandes dropshipping.",
     howToGetCatalog: "Ouvrir un compte AB et demander l'acc\xE8s 'bramka XML/API' ; sch\xE9ma \xE0 obtenir aupr\xE8s d'AB.",
-    verified: "Int\xE9grations tierces (Inteshop PDF, Base.com, Useme) via snippets ; doc officielle non trouv\xE9e.",
+    verified: "Int\xE9grations tierces (Inteshop PDF, Base.com, Useme) via snippets ; doc officielle non trouv\xE9e. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "third_party_docs",
     knownInApp: false,
     sourcesChecked: [
       "https://www.shoper.pl/wp-content/help/images/SHOPER/control-panel/applications/my-applications/integracja-ab/dokumentacja_aplikacja_ab.pdf",
-      "https://base.com/pl-PL/integracje/ab/"
+      "https://base.com/pl-PL/integracje/ab/",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   },
@@ -16360,7 +16369,7 @@ var supplier_directory_default = [
       "PL",
       "EU"
     ],
-    website: null,
+    website: "https://hurtel.com",
     catalogUrl: "https://base.com/pl-PL/integracje/hurtel/",
     categories: [
       "accessories"
@@ -16384,12 +16393,13 @@ var supplier_directory_default = [
     partQuality: null,
     whyUseful: "Grossiste polonais d'accessoires GSM (coques, verres tremp\xE9s, chargeurs, c\xE2bles) avec fichiers XML 'full' et 'light' (code, stock, prix) pour dropshipping.",
     howToGetCatalog: "Ouvrir un compte B2B Hurtel, r\xE9cup\xE9rer l'URL du fichier XML 'light' (stock/prix) et 'full' (fiches) dans le panneau grossiste.",
-    verified: "FAQ Base.com (fichiers passerelle XML Hurtel, version light) via snippets ; site officiel non lu.",
+    verified: "FAQ Base.com (fichiers passerelle XML Hurtel, version light) via snippets ; site officiel non lu. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
     verificationLevel: "third_party_docs",
     knownInApp: false,
     sourcesChecked: [
       "https://base.com/pl-PL/pomoc/faq/integracje/hurtownie/",
-      "https://base.com/pl-PL/integracje/hurtel/"
+      "https://base.com/pl-PL/integracje/hurtel/",
+      "server:supplier_directory_checks"
     ],
     checkedAt: "2026-10-10"
   }
@@ -16502,7 +16512,7 @@ async function checkDirectoryWebsite(entry, fetchImpl, resolver) {
     const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8e3);
     const robotsFound = robots.status === "ok";
     const disallowAll = robotsFound ? !evaluateRobots(robots.rules, userAgent, "/").allowed : null;
-    const home = await fetchText(entry.website, { userAgent, timeoutMs: 1e4, maxBytes: 15e5, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
+    const home = await fetchText(entry.website, { userAgent, timeoutMs: 12e3, maxBytes: 6e6, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
     const reachable = home.status >= 200 && home.status < 400;
     const platform = reachable ? detectPlatform2(home.text) : null;
     return {

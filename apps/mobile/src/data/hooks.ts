@@ -10,6 +10,8 @@ import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } 
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
+import { fetchDirectory, previewImport, runImport, type PickedFile } from "~/data/suppliers-pro";
+import type { CatalogMapping } from "@/features/mobile-api/contract";
 import { applyPendingSales, connectEbay, fetchIntegrations, fetchListing, mapListing, syncEbay } from "~/data/ebay";
 import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";
 import {
@@ -250,6 +252,36 @@ export function useActivateSource() {
         queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-overview"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-search"] }),
+      ]),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sourcing professionnel : annuaire de fournisseurs, import de catalogue
+// ---------------------------------------------------------------------------------------------
+
+export function useSupplierDirectory() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "supplier-directory"], queryFn: () => fetchDirectory(orgId), staleTime: 10 * 60_000 });
+}
+
+export function useImportPreview() {
+  const orgId = useOrgId();
+  return useMutation({ mutationFn: (v: { file: PickedFile; mapping?: CatalogMapping; currency?: string; taxType?: "ht" | "ttc" | "unknown" }) => previewImport(orgId, v.file, v) });
+}
+
+export function useRunImport() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: Parameters<typeof runImport>[1]) => runImport(orgId, v),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [orgId, "offer-groups"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-overview"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "supplier-directory"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "radar"] }),
       ]),
   });
 }
