@@ -10,7 +10,8 @@
       "bundleIdentifier": "com.aizenpyth.monstock",
       "supportsTablet": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Mon Stock Pro n'accède pas à votre photothèque et ne vous demandera pas cette autorisation. Cette mention est requise par Apple car un composant d'Expo inclus dans l'application contient du code de lecture de photos, jamais utilisé."
       }
     },
     "android": {
