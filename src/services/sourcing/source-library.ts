@@ -31,7 +31,7 @@ const log = createLogger("SOURCE_LIBRARY");
  */
 
 export type LibrarySegment = "parts" | "refurbished" | "lots" | "marketplace";
-export type LibraryAccess = "public_json" | "official_api";
+export type LibraryAccess = "public_json" | "public_html" | "official_api";
 
 export interface LibrarySource {
   key: string;
@@ -182,15 +182,15 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     name: "Brico-phone (FR) — pièces détachées",
     website: "https://www.brico-phone.com",
     baseUrl: "https://www.brico-phone.com",
-    adapter: "woocommerce-store",
+    adapter: "sitemap-jsonld",
     segment: "parts",
     country: "FR",
     currency: "EUR",
-    taxType: "unknown",
+    taxType: "ttc",
     termsUrl: "https://www.brico-phone.com",
-    access: "public_json",
-    notes: "Pièces détachées vendues en France ; plateforme à confirmer par la vérification.",
-    probeQuery: "iphone 13",
+    access: "public_html",
+    notes: "Pièces détachées (écrans, batteries, connecteurs) vendues en France. Lu via le plan du site publié et les données structurées des fiches (prix TTC affichés au public).",
+    probeQuery: "ecran iphone 13",
   },
   {
     key: "utopya",

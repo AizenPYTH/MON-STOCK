@@ -11867,15 +11867,15 @@ var SOURCE_LIBRARY = [
     name: "Brico-phone (FR) \u2014 pi\xE8ces d\xE9tach\xE9es",
     website: "https://www.brico-phone.com",
     baseUrl: "https://www.brico-phone.com",
-    adapter: "woocommerce-store",
+    adapter: "sitemap-jsonld",
     segment: "parts",
     country: "FR",
     currency: "EUR",
-    taxType: "unknown",
+    taxType: "ttc",
     termsUrl: "https://www.brico-phone.com",
-    access: "public_json",
-    notes: "Pi\xE8ces d\xE9tach\xE9es vendues en France ; plateforme \xE0 confirmer par la v\xE9rification.",
-    probeQuery: "iphone 13"
+    access: "public_html",
+    notes: "Pi\xE8ces d\xE9tach\xE9es (\xE9crans, batteries, connecteurs) vendues en France. Lu via le plan du site publi\xE9 et les donn\xE9es structur\xE9es des fiches (prix TTC affich\xE9s au public).",
+    probeQuery: "ecran iphone 13"
   },
   {
     key: "utopya",
