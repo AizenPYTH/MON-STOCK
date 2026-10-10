@@ -191,7 +191,7 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Vérification | Résultat |
 | --- | --- |
 | Web : typecheck, lint | 0 erreur |
-| Web : tests unitaires + intégration PostgreSQL local (toutes migrations) | 824 / 824 |
+| Web : tests unitaires + intégration PostgreSQL local (toutes migrations) | 827 / 827 |
 | dont création de produit (SQL) | 6 (atomicité, droits, codes en double, multi-variantes, ajout à un produit) |
 | dont sourcing (adaptateurs eBay Browse, sitemap + JSON-LD, bibliothèque, secrets, routage, retour OAuth) | 22 |
 | Mobile : typecheck strict, lint | 0 erreur |
@@ -199,6 +199,7 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Export iOS + analyse des secrets du bundle | Réussi, 0 constat |
 | Supabase TEST : `create_product_with_skus` (iPhone 13 grade B, 3 unités) | Stock 3, mouvement « initial » — transaction annulée |
 | Edge Function en production TEST (`/health`, tâches planifiées) | 200 ; secrets chargés du Vault ; taux BCE réels importés (29 devises) |
+| Recherche de bout en bout sur le serveur (organisation temporaire supprimée ensuite) : « écran iPhone 13 » | 4 offres relevées et stockées ; résultat retenu « Ecran iPhone 13 – Origine Apple », 199,90 € TTC, lien direct ; racks SIM écartés (« pas la pièce recherchée ») |
 | Bibliothèque de sources (vérification réelle depuis le serveur) | Brico-phone : vérifiée (ex. « Ecran Soft Oled pour iPhone 13 – Premium », 79,90 €) ; eBay : en attente des clés ; autres : refus documentés (voir docs/SERVER.md §5) |
 
 **Non testé ici :** exécution sur iPhone (pas de macOS), appel authentifié de bout en bout avec un
