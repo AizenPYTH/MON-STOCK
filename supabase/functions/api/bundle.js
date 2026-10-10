@@ -6289,8 +6289,8 @@ async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch) {
 }
 
 // src/integrations/sourcing/sitemap-jsonld/index.ts
-var SITEMAP_MAX_CHILDREN = 12;
-var SITEMAP_MAX_URLS = 8e4;
+var SITEMAP_MAX_CHILDREN = 6;
+var SITEMAP_MAX_URLS = 4e4;
 var SITEMAP_DEFAULT_PAGES = 3;
 var SITEMAP_CACHE_TTL_MS = 6 * 36e5;
 var cache2 = /* @__PURE__ */ new Map();
@@ -6355,7 +6355,7 @@ async function loadIndex(base, ctx, http, settings) {
   while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
     const sm = queue.shift();
     if (new URL(sm).host !== new URL(base).host) continue;
-    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 15e6 });
+    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 6e6 });
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
     if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
@@ -12109,7 +12109,9 @@ async function scoutHost(host, query = "iphone") {
 }
 async function scoutHosts(hosts, query) {
   const unique = [...new Set(hosts.map((h) => h.trim().toLowerCase()).filter((h) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h)))].slice(0, 25);
-  return Promise.all(unique.map((h) => scoutHost(h, query)));
+  const out = [];
+  for (let i = 0; i < unique.length; i += 2) out.push(...await Promise.all(unique.slice(i, i + 2).map((h) => scoutHost(h, query))));
+  return out;
 }
 
 // server/edge/ebay-callback.ts

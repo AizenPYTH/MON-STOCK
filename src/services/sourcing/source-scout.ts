@@ -105,6 +105,8 @@ export async function scoutHost(host: string, query = "iphone"): Promise<ScoutRe
 
 export async function scoutHosts(hosts: string[], query?: string): Promise<ScoutReport[]> {
   const unique = [...new Set(hosts.map((h) => h.trim().toLowerCase()).filter((h) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h)))].slice(0, 25);
-  // Hôtes différents en parallèle (une requête à la fois PAR hôte, délais inclus).
-  return Promise.all(unique.map((h) => scoutHost(h, query)));
+  // 2 hôtes à la fois (mémoire/CPU de la fonction bornés ; une requête à la fois PAR hôte).
+  const out: ScoutReport[] = [];
+  for (let i = 0; i < unique.length; i += 2) out.push(...(await Promise.all(unique.slice(i, i + 2).map((h) => scoutHost(h, query)))));
+  return out;
 }

@@ -20,8 +20,8 @@ import { evaluateRobots, parseRobotsTxt, type RobotsRules } from "@/services/sou
 import { parseJsonLdPage } from "@/integrations/sourcing/jsonld-public/parser";
 import { mapJsonLdOffer } from "@/integrations/sourcing/jsonld-public/mapper";
 
-export const SITEMAP_MAX_CHILDREN = 12;
-export const SITEMAP_MAX_URLS = 80_000;
+export const SITEMAP_MAX_CHILDREN = 6;
+export const SITEMAP_MAX_URLS = 40_000;
 export const SITEMAP_DEFAULT_PAGES = 3;
 export const SITEMAP_CACHE_TTL_MS = 6 * 3600_000;
 
@@ -110,7 +110,7 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
   while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
     const sm = queue.shift()!;
     if (new URL(sm).host !== new URL(base).host) continue;
-    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 15_000_000 });
+    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 6_000_000 });
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
     if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
