@@ -393,6 +393,11 @@ export interface SourcingOfferDTO {
   comparableUnitPrice: number | null;
   comparableNote: string | null;
   landedUnitCost: number | null;
+  /** frais de port affichés par la source (null = non communiqués) */
+  shippingCost: number | null;
+  shippingCurrency: string | null;
+  taxType: string | null;
+  lastSeenAt: string | null;
   quantityAvailable: number | null;
   stockStatus: string | null;
   moq: number | null;

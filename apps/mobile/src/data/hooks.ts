@@ -9,6 +9,7 @@ import { fetchAnalysis, fetchToday, type Period } from "~/data/intelligence";
 import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } from "~/data/sales";
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
+import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
 import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";
 import {
   addVariants,
@@ -214,5 +215,40 @@ export function useUpdateSku() {
   return useMutation({
     mutationFn: ({ current, input }: { current: EditableSku; input: SkuEditInput }) => updateSku(requireSupabase(), orgId, current, input),
     onSettled: (_r, _e, v) => invalidate([[orgId, "sku", v.current.id], [orgId, "sku-edit", v.current.id]]),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sourcing en direct et bibliothèque de sources (serveur)
+// ---------------------------------------------------------------------------------------------
+
+export function useOfferSearch(query: string, sku?: string) {
+  const orgId = useOrgId();
+  return useQuery({
+    queryKey: [orgId, "sourcing-search", query, sku ?? null],
+    queryFn: () => searchOffers(orgId, query, { sku }),
+    enabled: query.trim().length >= 2,
+    staleTime: 5 * 60_000,
+    retry: 0,
+  });
+}
+
+export function useSourceLibrary() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "source-library"], queryFn: () => fetchLibrary(orgId) });
+}
+
+export function useActivateSource() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => activateLibrarySource(orgId, key),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [orgId, "source-library"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-overview"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-search"] }),
+      ]),
   });
 }

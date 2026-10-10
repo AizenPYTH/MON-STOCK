@@ -50,6 +50,12 @@ export default function SkuScreen() {
     <Screen
       footer={
         <StickyActions>
+          <Button
+            label="Trouver un fournisseur"
+            variant="secondary"
+            onPress={() => router.push({ pathname: "/sourcing", params: { q: [r.brand && !(r.product_name ?? "").toLowerCase().startsWith(r.brand.toLowerCase()) ? r.brand : null, r.product_name, r.variant_name && r.variant_name !== "Standard" ? r.variant_name.replace(/ \/ /g, " ") : null].filter(Boolean).join(" "), sku: r.code ?? "" } })}
+            style={{ flex: 1 }}
+          />
           <Button label="Ajuster le stock" disabled={!permissions.canWrite} onPress={() => router.push({ pathname: "/adjust", params: { skuId: r.sku_id ?? "" } })} style={{ flex: 1 }} />
         </StickyActions>
       }
