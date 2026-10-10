@@ -24,7 +24,16 @@ export interface FilterCriteria {
   grade: string | null;
   /** état EXPLICITEMENT demandé (« unknown » si non demandé ou seulement déduit d'un grade) */
   condition: ProductCondition;
+  /**
+   * Ce que la requête cherche : un appareil (défaut), une pièce détachée (« écran iPhone 13 »),
+   * un accessoire (« coque iPhone 13 ») ou un lot. Une pièce cherchée n'est pas « hors sujet ».
+   */
+  itemKind?: ItemKind;
+  /** mot de la requête désignant la pièce / l'accessoire cherché (« écran », « batterie ») */
+  itemLabel?: string | null;
 }
+
+export type ItemKind = "device" | "spare_part" | "accessory" | "lot";
 
 export interface CandidateAnomaly {
   code: string;
@@ -127,8 +136,20 @@ export const MIN_PRICES_FOR_OUTLIER = 3;
 export const SUSPICIOUS_ANOMALY_CODES = new Set(["price_zero", "price_negative", "price_missing", "price_too_low", "price_too_high", "currency_unknown", "negative_stock"]);
 
 /** Critères de filtrage à partir d'une requête analysée (l'état n'est retenu que s'il est explicite). */
-export function criteriaFromParsedQuery(parsed: ParsedQuery): FilterCriteria {
-  return { ...parsed.criteria };
+export function criteriaFromParsedQuery(parsed: ParsedQuery, rawQuery?: string): FilterCriteria {
+  const intent = rawQuery ? queryItemIntent(rawQuery) : { kind: "device" as const, label: null };
+  return { ...parsed.criteria, itemKind: intent.kind, itemLabel: intent.label };
+}
+
+/** Intention de la requête : la détection « pièce / accessoire » des titres, appliquée à la requête elle-même. */
+export function queryItemIntent(rawQuery: string): { kind: ItemKind; label: string | null } {
+  const q = ` ${normalizeText(rawQuery)} `;
+  if (/\blots?\b|\ben gros\b|\bwholesale\b|\bbulk\b|\bdestockage\b|\bpalettes?\b|\bretours?\b|\bsurplus\b/.test(q)) return { kind: "lot", label: null };
+  for (const rule of TITLE_RULES) {
+    if (rule.issue !== "spare_part" && rule.issue !== "accessory") continue;
+    if (rule.re.test(q)) return { kind: rule.issue, label: rule.label };
+  }
+  return { kind: "device", label: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -276,11 +297,22 @@ function checkOffer(criteria: FilterCriteria, o: CandidateOffer, now: Date, stal
   if (o.status === "suspicious" && o.anomalies.length === 0) reasons.push({ code: "suspicious", message: "Offre marquée suspecte par la validation des données" });
 
   // --- titre : accessoire / pièce / défectueux / verrouillé
+  const kind = criteria.itemKind ?? "device";
   const issue = detectTitleIssue(o.title, criteria.model ?? o.model);
-  if (issue) reasons.push({ code: issue.issue, message: TITLE_ISSUE_MESSAGE[issue.issue](issue.label) });
+  if (issue) {
+    // Pièce / accessoire CHERCHÉ : pas un motif de rejet (une autre pièce que celle demandée l'est).
+    const wanted = (issue.issue === "spare_part" || issue.issue === "accessory") && issue.issue === kind && (!criteria.itemLabel || issue.label === criteria.itemLabel);
+    const otherPiece = (issue.issue === "spare_part" || issue.issue === "accessory") && (kind === "spare_part" || kind === "accessory") && !wanted;
+    if (!wanted) reasons.push({ code: issue.issue, message: otherPiece ? `${issue.issue === "spare_part" ? "Pièce" : "Accessoire"} différent(e) de celle recherchée (« ${issue.label} »)` : TITLE_ISSUE_MESSAGE[issue.issue](issue.label) });
+  } else if (kind === "spare_part" || kind === "accessory") {
+    reasons.push({ code: kind, message: `Ce n'est pas ${kind === "spare_part" ? "la pièce" : "l'accessoire"} recherché(e) (« ${criteria.itemLabel ?? ""} »)` });
+  }
 
-  // --- identité produit
-  if (criteria.brand && o.brand && !sameText(criteria.brand, o.brand)) reasons.push({ code: "brand_mismatch", message: `Marque différente : ${o.brand} au lieu de ${criteria.brand}` });
+  // --- identité produit (pour une pièce ou un accessoire, la marque est souvent celle du fabricant de la pièce)
+  if (criteria.brand && o.brand && !sameText(criteria.brand, o.brand)) {
+    if (kind === "device" || kind === "lot") reasons.push({ code: "brand_mismatch", message: `Marque différente : ${o.brand} au lieu de ${criteria.brand}` });
+    else warnings.push({ code: "brand_mismatch", message: `Marque de la pièce : ${o.brand} (compatibilité ${criteria.brand} à vérifier)` });
+  }
   if (criteria.model) {
     if (!o.model || o.modelInferred) warnings.push({ code: "model_unknown", message: "Modèle non identifié dans l'offre : correspondance à vérifier" });
     else if (!sameText(criteria.model, o.model)) reasons.push({ code: "model_mismatch", message: `Modèle différent : ${displayModel(o.model)} au lieu de ${displayModel(criteria.model)}` });

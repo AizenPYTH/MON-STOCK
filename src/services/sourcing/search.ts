@@ -467,7 +467,7 @@ export async function searchOffers(ctx: OrgContext, input: SearchInput): Promise
 
   // 3. Filtre de pertinence (conservées / écartées avec raison) → déduplication → classement multicritère.
   const currentUnitCost = sku?.costPrice ?? null;
-  const pipeline = runOfferPipeline(criteriaFromParsedQuery(parsed), prelim, { now, requestedQuantity, currentUnitCost, currency: orgCurrency, dedupe: dedupeOffers });
+  const pipeline = runOfferPipeline(criteriaFromParsedQuery(parsed, input.query), prelim, { now, requestedQuantity, currentUnitCost, currency: orgCurrency, dedupe: dedupeOffers });
   const unique = pipeline.unique;
   const scores = scoreOffers(unique);
   const sort: RankingMode = filters.sort ?? "best_offer";

@@ -8164,8 +8164,18 @@ var LOW_PRICE_RATIO = 0.4;
 var HIGH_PRICE_RATIO = 2.5;
 var MIN_PRICES_FOR_OUTLIER = 3;
 var SUSPICIOUS_ANOMALY_CODES = /* @__PURE__ */ new Set(["price_zero", "price_negative", "price_missing", "price_too_low", "price_too_high", "currency_unknown", "negative_stock"]);
-function criteriaFromParsedQuery(parsed) {
-  return { ...parsed.criteria };
+function criteriaFromParsedQuery(parsed, rawQuery) {
+  const intent = rawQuery ? queryItemIntent(rawQuery) : { kind: "device", label: null };
+  return { ...parsed.criteria, itemKind: intent.kind, itemLabel: intent.label };
+}
+function queryItemIntent(rawQuery) {
+  const q = ` ${normalizeText(rawQuery)} `;
+  if (/\blots?\b|\ben gros\b|\bwholesale\b|\bbulk\b|\bdestockage\b|\bpalettes?\b|\bretours?\b|\bsurplus\b/.test(q)) return { kind: "lot", label: null };
+  for (const rule of TITLE_RULES) {
+    if (rule.issue !== "spare_part" && rule.issue !== "accessory") continue;
+    if (rule.re.test(q)) return { kind: rule.issue, label: rule.label };
+  }
+  return { kind: "device", label: null };
 }
 function gradeRank(grade) {
   if (!grade) return null;
@@ -8255,9 +8265,19 @@ function checkOffer(criteria, o, now, staleDays) {
     else warnings.push({ code: "anomaly_warning", message: `\xC0 v\xE9rifier : ${detail}` });
   }
   if (o.status === "suspicious" && o.anomalies.length === 0) reasons.push({ code: "suspicious", message: "Offre marqu\xE9e suspecte par la validation des donn\xE9es" });
+  const kind = criteria.itemKind ?? "device";
   const issue = detectTitleIssue(o.title, criteria.model ?? o.model);
-  if (issue) reasons.push({ code: issue.issue, message: TITLE_ISSUE_MESSAGE[issue.issue](issue.label) });
-  if (criteria.brand && o.brand && !sameText(criteria.brand, o.brand)) reasons.push({ code: "brand_mismatch", message: `Marque diff\xE9rente : ${o.brand} au lieu de ${criteria.brand}` });
+  if (issue) {
+    const wanted = (issue.issue === "spare_part" || issue.issue === "accessory") && issue.issue === kind && (!criteria.itemLabel || issue.label === criteria.itemLabel);
+    const otherPiece = (issue.issue === "spare_part" || issue.issue === "accessory") && (kind === "spare_part" || kind === "accessory") && !wanted;
+    if (!wanted) reasons.push({ code: issue.issue, message: otherPiece ? `${issue.issue === "spare_part" ? "Pi\xE8ce" : "Accessoire"} diff\xE9rent(e) de celle recherch\xE9e (\xAB ${issue.label} \xBB)` : TITLE_ISSUE_MESSAGE[issue.issue](issue.label) });
+  } else if (kind === "spare_part" || kind === "accessory") {
+    reasons.push({ code: kind, message: `Ce n'est pas ${kind === "spare_part" ? "la pi\xE8ce" : "l'accessoire"} recherch\xE9(e) (\xAB ${criteria.itemLabel ?? ""} \xBB)` });
+  }
+  if (criteria.brand && o.brand && !sameText(criteria.brand, o.brand)) {
+    if (kind === "device" || kind === "lot") reasons.push({ code: "brand_mismatch", message: `Marque diff\xE9rente : ${o.brand} au lieu de ${criteria.brand}` });
+    else warnings.push({ code: "brand_mismatch", message: `Marque de la pi\xE8ce : ${o.brand} (compatibilit\xE9 ${criteria.brand} \xE0 v\xE9rifier)` });
+  }
   if (criteria.model) {
     if (!o.model || o.modelInferred) warnings.push({ code: "model_unknown", message: "Mod\xE8le non identifi\xE9 dans l'offre : correspondance \xE0 v\xE9rifier" });
     else if (!sameText(criteria.model, o.model)) reasons.push({ code: "model_mismatch", message: `Mod\xE8le diff\xE9rent : ${displayModel(o.model)} au lieu de ${displayModel(criteria.model)}` });
@@ -9865,7 +9885,7 @@ async function searchOffers(ctx, input) {
     };
   });
   const currentUnitCost = sku?.costPrice ?? null;
-  const pipeline = runOfferPipeline(criteriaFromParsedQuery(parsed), prelim, { now, requestedQuantity, currentUnitCost, currency: orgCurrency, dedupe: dedupeOffers });
+  const pipeline = runOfferPipeline(criteriaFromParsedQuery(parsed, input.query), prelim, { now, requestedQuantity, currentUnitCost, currency: orgCurrency, dedupe: dedupeOffers });
   const unique = pipeline.unique;
   const scores = scoreOffers(unique);
   const sort = filters.sort ?? "best_offer";
