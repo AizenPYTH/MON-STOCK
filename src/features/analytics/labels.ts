@@ -41,6 +41,7 @@ export const ALERT_TYPE_LABEL: Record<string, string> = {
   unmapped_listings: "Annonces non associées",
   negative_stock: "Stock négatif",
   sourcing_opportunity: "Opportunité de sourcing",
+  refund_after_shipment: "Remboursement après expédition",
 };
 
 /** Libellé du bouton d'action d'une alerte événementielle selon son type. */
@@ -56,6 +57,8 @@ export function alertActionLabel(type: string): string {
       return "Corriger le stock";
     case "sourcing_opportunity":
       return "Voir l'offre";
+    case "refund_after_shipment":
+      return "Voir la vente";
     default:
       return "Ouvrir";
   }

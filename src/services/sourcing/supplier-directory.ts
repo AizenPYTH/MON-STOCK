@@ -233,10 +233,18 @@ export async function checkDirectoryWebsite(entry: DirectoryEntry, fetchImpl?: t
   }
 }
 
-/** Vérifie toutes les fiches (3 à la fois) et enregistre le résultat. */
+export const DIRECTORY_CHECK_BATCH = 16;
+
+/** Vérifie les fiches demandées (ou un lot des plus anciennes), 3 à la fois, et enregistre le résultat. */
 export async function runDirectoryChecks(options: { keys?: string[]; fetchImpl?: typeof fetch } = {}): Promise<{ checked: number; reachable: number; unreachable: number; results: { key: string; reachable: boolean; http: number | null; platform: string | null; message: string | null }[] }> {
   const admin = createAdminSupabaseClient();
-  const entries = SUPPLIER_DIRECTORY.filter((e) => !options.keys || options.keys.includes(e.key));
+  let entries = SUPPLIER_DIRECTORY.filter((e) => !options.keys || options.keys.includes(e.key));
+  if (!options.keys) {
+    // Tâche planifiée : 16 fiches par passage, les moins récemment vérifiées d'abord (durée bornée).
+    const { data: checked } = await admin.from("supplier_directory_checks").select("key, checked_at");
+    const last = new Map((checked ?? []).map((c) => [c.key, c.checked_at]));
+    entries = [...entries].sort((a, b) => (last.get(a.key) ?? "").localeCompare(last.get(b.key) ?? "")).slice(0, DIRECTORY_CHECK_BATCH);
+  }
   const results: { key: string; reachable: boolean; http: number | null; platform: string | null; message: string | null }[] = [];
   for (let i = 0; i < entries.length; i += 3) {
     const batch = await Promise.all(entries.slice(i, i + 3).map((e) => checkDirectoryWebsite(e, options.fetchImpl)));
