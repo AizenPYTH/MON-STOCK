@@ -10884,6 +10884,7 @@ var init_supplier_directory = __esm({
 // src/services/sourcing/supplier-directory.ts
 var supplier_directory_exports = {};
 __export(supplier_directory_exports, {
+  DIRECTORY_CHECK_BATCH: () => DIRECTORY_CHECK_BATCH,
   DIRECTORY_RESEARCH_DATE: () => DIRECTORY_RESEARCH_DATE,
   SUPPLIER_DIRECTORY: () => SUPPLIER_DIRECTORY,
   accessRequestEmail: () => accessRequestEmail,
@@ -11016,7 +11017,12 @@ async function checkDirectoryWebsite(entry, fetchImpl, resolver) {
 }
 async function runDirectoryChecks(options = {}) {
   const admin = createAdminSupabaseClient();
-  const entries = SUPPLIER_DIRECTORY.filter((e) => !options.keys || options.keys.includes(e.key));
+  let entries = SUPPLIER_DIRECTORY.filter((e) => !options.keys || options.keys.includes(e.key));
+  if (!options.keys) {
+    const { data: checked } = await admin.from("supplier_directory_checks").select("key, checked_at");
+    const last = new Map((checked ?? []).map((c) => [c.key, c.checked_at]));
+    entries = [...entries].sort((a, b) => (last.get(a.key) ?? "").localeCompare(last.get(b.key) ?? "")).slice(0, DIRECTORY_CHECK_BATCH);
+  }
   const results = [];
   for (let i = 0; i < entries.length; i += 3) {
     const batch = await Promise.all(entries.slice(i, i + 3).map((e) => checkDirectoryWebsite(e, options.fetchImpl)));
@@ -11102,7 +11108,7 @@ async function directoryForOrg(ctx) {
   });
   return { entries, researchDate: DIRECTORY_RESEARCH_DATE, lastCheckAt };
 }
-var SUPPLIER_DIRECTORY, DIRECTORY_RESEARCH_DATE, LIBRARY_BY_DIRECTORY_KEY, CONNECTOR_BY_DIRECTORY_KEY, STAGE_RANK;
+var SUPPLIER_DIRECTORY, DIRECTORY_RESEARCH_DATE, LIBRARY_BY_DIRECTORY_KEY, CONNECTOR_BY_DIRECTORY_KEY, STAGE_RANK, DIRECTORY_CHECK_BATCH;
 var init_supplier_directory2 = __esm({
   "src/services/sourcing/supplier-directory.ts"() {
     "use strict";
@@ -11118,6 +11124,7 @@ var init_supplier_directory2 = __esm({
     LIBRARY_BY_DIRECTORY_KEY = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone" };
     CONNECTOR_BY_DIRECTORY_KEY = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
     STAGE_RANK = ["import_tested", "public_access", "connector_ready", "account_required", "verified", "unavailable", "identified"];
+    DIRECTORY_CHECK_BATCH = 16;
   }
 });
 
