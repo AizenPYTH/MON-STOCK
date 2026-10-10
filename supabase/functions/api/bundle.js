@@ -12549,6 +12549,56 @@ async function scoutHosts(hosts, query) {
   return out;
 }
 
+// src/services/sourcing/e2e-check.ts
+async function runSearchSelfTest(query, libraryKey) {
+  const admin = createAdminSupabaseClient();
+  const entry = getLibrarySource(libraryKey);
+  if (!entry) return { result: null, error: "Source inconnue.", cleaned: true };
+  const { data: check } = await admin.from("sourcing_library_checks").select("status, adapter, checked_at").eq("key", libraryKey).maybeSingle();
+  if (check?.status !== "ok") return { result: null, error: "La source n'a pas pass\xE9 la v\xE9rification en direct.", cleaned: true };
+  const { data: anyMember } = await admin.from("organization_members").select("user_id").limit(1).maybeSingle();
+  const slug = `verif-serveur-${Date.now().toString(36)}`;
+  const { data: org, error: orgErr } = await admin.from("organizations").insert({ name: "V\xE9rification serveur (temporaire)", slug, default_currency: "EUR", country: "FR" }).select("*").single();
+  if (orgErr || !org) return { result: null, error: orgErr?.message ?? "organisation non cr\xE9\xE9e", cleaned: true };
+  try {
+    const { data: supplier } = await admin.from("suppliers").insert({ organization_id: org.id, name: entry.name, website: entry.website, country: entry.country.length === 2 ? entry.country : null, currency: entry.currency }).select("id").single();
+    if (!supplier) throw new Error("fournisseur non cr\xE9\xE9");
+    const { error: srcErr } = await admin.from("supplier_sources").insert({
+      organization_id: org.id,
+      supplier_id: supplier.id,
+      name: entry.name,
+      source_type: entry.access === "official_api" ? "API" : "PUBLIC_WEB",
+      base_url: entry.baseUrl,
+      country: entry.country.length === 2 ? entry.country : null,
+      default_currency: entry.currency,
+      default_tax_type: entry.taxType,
+      access_conditions: "V\xE9rification serveur temporaire (organisation supprim\xE9e apr\xE8s le test).",
+      automated_access_confirmed: true,
+      robots_checked_at: check.checked_at,
+      robots_allowed: true,
+      status: "active",
+      config: { adapter: check.adapter ?? entry.adapter, library_key: entry.key }
+    });
+    if (srcErr) throw new Error(srcErr.message);
+    const ctx = {
+      supabase: admin,
+      user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" },
+      profile: null,
+      organization: org,
+      role: "viewer",
+      memberships: []
+    };
+    const result = await sourcingSearch(ctx, { q: query, page: 1, live: "1" });
+    return { result, error: null, cleaned: await cleanup(org.id) };
+  } catch (e) {
+    return { result: null, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup(org.id) };
+  }
+  async function cleanup(orgId) {
+    const { error } = await admin.from("organizations").delete().eq("id", orgId);
+    return !error;
+  }
+}
+
 // server/edge/ebay-callback.ts
 var EBAY_APP_CALLBACK = "monstock://ebay/callback";
 var SAFE_CODE = /^[A-Za-z0-9._~\-#=%+/^]{1,2048}$/;
@@ -12765,6 +12815,12 @@ async function route(request) {
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
+      if (m === "POST" && path === "/cron/e2e-search") {
+        return handle(async () => {
+          const body = await parseBody(request, z28.object({ query: z28.string().min(2).max(120), source: z28.string().min(1).max(80) }));
+          return runSearchSelfTest(body.query, body.source);
+        });
+      }
       if (m === "POST" && path === "/cron/scout") {
         return handle(async () => {
           const body = await parseBody(request, scoutSchema);

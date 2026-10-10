@@ -51,6 +51,7 @@ import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
+import { runSearchSelfTest } from "@/services/sourcing/e2e-check";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
 import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
 
@@ -224,6 +225,12 @@ export async function route(request: Request): Promise<Response> {
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
+      if (m === "POST" && path === "/cron/e2e-search") {
+        return handle(async () => {
+          const body = await parseBody(request, z.object({ query: z.string().min(2).max(120), source: z.string().min(1).max(80) }));
+          return runSearchSelfTest(body.query, body.source);
+        });
+      }
       if (m === "POST" && path === "/cron/scout") {
         return handle(async () => {
           const body = await parseBody(request, scoutSchema);
