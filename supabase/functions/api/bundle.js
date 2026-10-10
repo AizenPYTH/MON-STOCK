@@ -7567,6 +7567,30 @@ var init_radar2 = __esm({
   }
 });
 
+// src/integrations/ebay/conditions.ts
+var EBAY_CONDITIONS;
+var init_conditions = __esm({
+  "src/integrations/ebay/conditions.ts"() {
+    "use strict";
+    EBAY_CONDITIONS = [
+      "NEW",
+      "LIKE_NEW",
+      "NEW_OTHER",
+      "NEW_WITH_DEFECTS",
+      "CERTIFIED_REFURBISHED",
+      "EXCELLENT_REFURBISHED",
+      "VERY_GOOD_REFURBISHED",
+      "GOOD_REFURBISHED",
+      "SELLER_REFURBISHED",
+      "USED_EXCELLENT",
+      "USED_VERY_GOOD",
+      "USED_GOOD",
+      "USED_ACCEPTABLE",
+      "FOR_PARTS_OR_NOT_WORKING"
+    ];
+  }
+});
+
 // src/integrations/ebay/listing.ts
 import { z as z30 } from "npm:zod@4.6.5";
 function checkListingDraft(input) {
@@ -7691,7 +7715,7 @@ function publicationGate(input) {
   if (!input.connected) reasons.push("Aucun compte eBay connect\xE9.");
   return { allowed: reasons.length === 0, reasons };
 }
-var EBAY_CONDITIONS, SKU_RE, listingDraftSchema;
+var SKU_RE, listingDraftSchema;
 var init_listing = __esm({
   "src/integrations/ebay/listing.ts"() {
     "use strict";
@@ -7699,22 +7723,8 @@ var init_listing = __esm({
     init_http();
     init_config();
     init_rest();
-    EBAY_CONDITIONS = [
-      "NEW",
-      "LIKE_NEW",
-      "NEW_OTHER",
-      "NEW_WITH_DEFECTS",
-      "CERTIFIED_REFURBISHED",
-      "EXCELLENT_REFURBISHED",
-      "VERY_GOOD_REFURBISHED",
-      "GOOD_REFURBISHED",
-      "SELLER_REFURBISHED",
-      "USED_EXCELLENT",
-      "USED_VERY_GOOD",
-      "USED_GOOD",
-      "USED_ACCEPTABLE",
-      "FOR_PARTS_OR_NOT_WORKING"
-    ];
+    init_conditions();
+    init_conditions();
     SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
     listingDraftSchema = z30.object({
       sku: z30.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),

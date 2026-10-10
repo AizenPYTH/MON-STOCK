@@ -72,7 +72,9 @@ export default function SettingsScreen() {
       <SectionHeader title="Intégrations" />
       <Card>
         <ListRow title="eBay" subtitle="Connexion du compte vendeur, synchronisation, erreurs" chevron onPress={() => router.push("/ebay")} />
-        <ListRow title="Sources fournisseurs" subtitle="Sources vérifiées pour la recherche d'offres" chevron onPress={() => router.push("/sourcing-sources")} last />
+        <ListRow title="Sources fournisseurs" subtitle="Sources vérifiées pour la recherche d'offres" chevron onPress={() => router.push("/sourcing-sources")} />
+        <ListRow title="Fournisseurs professionnels" subtitle="Annuaire qualifié, demandes d'accès, import de catalogue" chevron onPress={() => router.push("/supplier-directory")} />
+        <ListRow title="Diagnostic" subtitle="Base, serveur, sourcing, eBay, assistant IA" chevron onPress={() => router.push("/diagnostics")} last />
       </Card>
       <Txt variant="label">Amazon, Shopify et WooCommerce : disponibles prochainement (non connectables pour l'instant).</Txt>
 

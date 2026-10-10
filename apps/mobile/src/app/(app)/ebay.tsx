@@ -1,13 +1,14 @@
+import { useState } from "react";
 import { RefreshControl, View } from "react-native";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { CircleAlert, CircleCheck, RefreshCw } from "lucide-react-native";
 import type { IntegrationDTO } from "@/features/mobile-api/contract";
 import { useActiveOrg } from "~/org/org-provider";
-import { useConnectEbay, useIntegrations, useSyncEbay } from "~/data/hooks";
+import { useConnectEbay, useDisconnectEbay, useIntegrations, useSyncEbay } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatNumber } from "~/lib/format";
-import { AlertBanner, Button, Card, DetailHeader, ErrorState, Screen, SectionHeader, Skeleton, StatusChip, Txt, useToast } from "~/components/ui";
+import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, Screen, SectionHeader, Skeleton, StatusChip, Txt, useToast } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 const CONNECTION_STATUS: Record<string, { label: string; tone: "success" | "danger" | "accent" | "neutral" }> = {
@@ -31,6 +32,8 @@ export default function EbayScreen() {
   const q = useIntegrations();
   const connect = useConnectEbay();
   const sync = useSyncEbay();
+  const disconnect = useDisconnectEbay();
+  const [confirmDisconnect, setConfirmDisconnect] = useState<IntegrationDTO | null>(null);
   const toast = useToast();
   const { permissions } = useActiveOrg();
 
@@ -138,6 +141,7 @@ export default function EbayScreen() {
                   <Button label="Synchroniser maintenant" loading={sync.isPending} disabled={!permissions.canWrite} onPress={() => doSync(c)} style={{ flex: 1 }} testID="ebay-sync" />
                   {c.status === "expired" && permissions.isAdmin ? <Button label="Reconnecter" variant="secondary" loading={connect.isPending} onPress={doConnect} style={{ flex: 1 }} /> : null}
                 </View>
+                {permissions.isAdmin ? <Button label="Déconnecter ce compte" variant="ghost" onPress={() => setConfirmDisconnect(c)} testID="ebay-disconnect" /> : null}
               </Card>
             );
           })}
@@ -154,6 +158,23 @@ export default function EbayScreen() {
         <Txt variant="label">Tirez vers le bas pour actualiser l'état.</Txt>
       </View>
       {d.comingSoon.length > 0 ? <Txt variant="label">Prochainement : {d.comingSoon.join(", ")} (non connectables pour l'instant).</Txt> : null}
+      <BottomSheet
+        visible={Boolean(confirmDisconnect)}
+        onClose={() => setConfirmDisconnect(null)}
+        title="Déconnecter ce compte eBay ?"
+        description="Les jetons d'accès sont supprimés de MON STOCK et la synchronisation s'arrête. Vos annonces et commandes déjà importées restent consultables. Pour retirer aussi l'autorisation chez eBay : Mon eBay → Compte → Préférences du site → Autorisations tierces."
+      >
+        <Button
+          label="Déconnecter"
+          loading={disconnect.isPending}
+          onPress={() => {
+            const c = confirmDisconnect;
+            setConfirmDisconnect(null);
+            if (c) disconnect.mutate(c.connectionId, { onSuccess: (r) => toast({ text: r.note }), onError: (e) => toast({ text: userMessage(e), tone: "error" }) });
+          }}
+        />
+        <Button label="Annuler" variant="ghost" onPress={() => setConfirmDisconnect(null)} />
+      </BottomSheet>
     </Screen>
   );
 }

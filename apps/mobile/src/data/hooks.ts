@@ -12,7 +12,7 @@ import { fetchSourcingOverview } from "~/data/sourcing";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
 import { decideMatch, fetchMatchSuggestions, fetchRadar, saveOffer, saveRadarSettings, unsaveOffer, type RadarCostSettings, type RadarSort } from "~/data/radar";
 import { fetchDirectory, previewImport, runImport, type PickedFile } from "~/data/suppliers-pro";
-import { applyPendingSales, connectEbay, fetchIntegrations, fetchListing, mapListing, syncEbay } from "~/data/ebay";
+import { applyPendingSales, connectEbay, disconnectEbay, fetchIntegrations, fetchListing, mapListing, syncEbay } from "~/data/ebay";
 import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";
 import {
   addVariants,
@@ -346,6 +346,12 @@ export function useConnectEbay() {
   const orgId = useOrgId();
   const invalidate = useInvalidateSales();
   return useMutation({ mutationFn: () => connectEbay(orgId), onSettled: () => invalidate() });
+}
+
+export function useDisconnectEbay() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (connectionId: string) => disconnectEbay(orgId, connectionId), onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "integrations"] }) });
 }
 
 export function useSyncEbay() {

@@ -139,6 +139,7 @@ export default function SkuScreen() {
           ))}
         </Card>
       )}
+      {permissions.canWrite ? <Button label="Préparer une annonce eBay" variant="ghost" onPress={() => router.push({ pathname: "/ebay-listing/[skuId]", params: { skuId: r.sku_id ?? "" } })} testID="sku-ebay-listing" /> : null}
     </Screen>
   );
 }

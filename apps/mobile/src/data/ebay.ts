@@ -1,5 +1,5 @@
 import * as WebBrowser from "expo-web-browser";
-import type { IntegrationsDTO } from "@/features/mobile-api/contract";
+import type { EbayListingCheckDTO, EbayListingDraftDTO, EbayListingPrefillDTO, EbayPoliciesDTO, IntegrationsDTO } from "@/features/mobile-api/contract";
 import { callApi } from "~/lib/api";
 import type { MobileSupabase } from "~/lib/supabase";
 import { UserFacingError, userMessage } from "~/lib/errors";
@@ -84,6 +84,29 @@ export interface SyncResult {
 
 export function syncEbay(organizationId: string, connectionId: string, scope: "full" | "listings" | "orders" = "full"): Promise<SyncResult> {
   return callApi<SyncResult>("/ebay/sync", { method: "POST", organizationId, body: { connectionId, scope }, timeoutMs: 150_000 });
+}
+
+export function fetchListingPrefill(organizationId: string, skuId: string): Promise<EbayListingPrefillDTO> {
+  return callApi("/ebay/listings/prefill", { organizationId, query: { skuId } });
+}
+
+export function fetchEbayAccountSetup(organizationId: string): Promise<EbayPoliciesDTO> {
+  return callApi("/ebay/account-setup", { organizationId, timeoutMs: 60_000 });
+}
+
+/** Contrôle et simulation : rien n'est envoyé à eBay. */
+export function checkEbayListing(organizationId: string, draft: EbayListingDraftDTO): Promise<EbayListingCheckDTO> {
+  return callApi("/ebay/listings/check", { method: "POST", organizationId, body: { draft } });
+}
+
+/** Publication réelle — refusée par le serveur sans les trois verrous (activation serveur, administrateur, confirmation). */
+export function publishEbayListing(organizationId: string, draft: EbayListingDraftDTO): Promise<{ sku: string; offerId: string; listingId: string | null; createdOffer: boolean }> {
+  return callApi("/ebay/listings/publish", { method: "POST", organizationId, body: { draft, confirm: true }, timeoutMs: 120_000 });
+}
+
+/** Déconnexion (administrateur) : tokens supprimés du serveur ; l'autorisation se retire aussi côté eBay. */
+export function disconnectEbay(organizationId: string, connectionId: string): Promise<{ revoked: boolean; note: string }> {
+  return callApi("/ebay/disconnect", { method: "POST", organizationId, body: { connectionId } });
 }
 
 // ---------------------------------------------------------------------------------------------

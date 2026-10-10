@@ -26,39 +26,8 @@ import { summarizeRestErrors } from "@/integrations/ebay/rest";
  * (validation + contenu exact qui serait envoyé), aucun appel à eBay.
  */
 
-export const EBAY_CONDITIONS = [
-  "NEW",
-  "LIKE_NEW",
-  "NEW_OTHER",
-  "NEW_WITH_DEFECTS",
-  "CERTIFIED_REFURBISHED",
-  "EXCELLENT_REFURBISHED",
-  "VERY_GOOD_REFURBISHED",
-  "GOOD_REFURBISHED",
-  "SELLER_REFURBISHED",
-  "USED_EXCELLENT",
-  "USED_VERY_GOOD",
-  "USED_GOOD",
-  "USED_ACCEPTABLE",
-  "FOR_PARTS_OR_NOT_WORKING",
-] as const;
-
-export const EBAY_CONDITION_LABEL: Record<(typeof EBAY_CONDITIONS)[number], string> = {
-  NEW: "Neuf",
-  LIKE_NEW: "Comme neuf",
-  NEW_OTHER: "Neuf autre (sans emballage d'origine)",
-  NEW_WITH_DEFECTS: "Neuf avec défauts",
-  CERTIFIED_REFURBISHED: "Reconditionné certifié (agrément eBay)",
-  EXCELLENT_REFURBISHED: "Reconditionné — excellent état (programme eBay)",
-  VERY_GOOD_REFURBISHED: "Reconditionné — très bon état (programme eBay)",
-  GOOD_REFURBISHED: "Reconditionné — bon état (programme eBay)",
-  SELLER_REFURBISHED: "Reconditionné par le vendeur",
-  USED_EXCELLENT: "Occasion — excellent état",
-  USED_VERY_GOOD: "Occasion — très bon état",
-  USED_GOOD: "Occasion — bon état",
-  USED_ACCEPTABLE: "Occasion — état correct",
-  FOR_PARTS_OR_NOT_WORKING: "Pour pièces / ne fonctionne pas",
-};
+import { EBAY_CONDITIONS } from "@/integrations/ebay/conditions";
+export { EBAY_CONDITIONS, EBAY_CONDITION_LABEL } from "@/integrations/ebay/conditions";
 
 /** Caractères autorisés dans un SKU eBay (50 max). */
 const SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
