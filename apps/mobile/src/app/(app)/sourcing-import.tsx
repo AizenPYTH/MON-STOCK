@@ -91,11 +91,11 @@ export default function SourcingImportScreen() {
     setDirty(true);
   }
 
-  function submit() {
+  function submit(force = false) {
     if (!file) return;
     setConfirming(false);
     run.mutate(
-      { file, mapping: withTaxType(mapping, taxType), currency, taxType, supplierId: supplierId ?? undefined, supplierName: supplierId ? undefined : supplierName },
+      { file, mapping: withTaxType(mapping, taxType), currency, taxType, supplierId: supplierId ?? result?.supplierId ?? undefined, supplierName: supplierId || result?.supplierId ? undefined : supplierName, force },
       {
         onSuccess: (r) => {
           setResult(r);
@@ -247,8 +247,19 @@ export default function SourcingImportScreen() {
 
         {result ? (
           <Card padded style={{ gap: space[2] }}>
-            <StatusChip label={result.result.status === "success" ? "Import réussi" : result.result.status === "partial" ? "Import partiel" : "Import en échec"} tone={result.result.status === "failed" ? "danger" : "success"} />
+            <StatusChip label={result.result.quarantined ? "Import suspendu" : result.result.status === "success" ? "Import réussi" : result.result.status === "partial" ? "Import partiel" : "Import en échec"} tone={result.result.status === "failed" ? "danger" : "success"} />
             <Txt variant="body">{result.result.message}</Txt>
+            {(result.result.quality?.warnings ?? []).map((w) => (
+              <Txt key={w} variant="label">
+                {w}
+              </Txt>
+            ))}
+            {result.result.quarantined ? (
+              <>
+                <Txt variant="label">Rien n'a été modifié : vos offres actuelles sont conservées. Vérifiez la correspondance des colonnes (prix, HT/TTC, devise) et l'aperçu ; n'importez quand même que si le fichier est correct.</Txt>
+                <Button label="Importer quand même" variant="secondary" loading={run.isPending} onPress={() => submit(true)} testID="import-force" />
+              </>
+            ) : null}
             <Txt variant="label">Les offres apparaissent dans Sourcing → Catalogue et dans le radar d'opportunités. Réimportez le fichier mis à jour pour actualiser les prix (les offres absentes du nouveau fichier expirent).</Txt>
             <Button label="Voir les offres" onPress={() => router.replace("/sourcing")} />
           </Card>
@@ -260,7 +271,7 @@ export default function SourcingImportScreen() {
         title="Importer ce catalogue ?"
         description={`${data ? formatNumber(data.validCount) : 0} offres de ${supplierId ? (suppliers.data ?? []).find((s) => s.id === supplierId)?.name ?? "ce fournisseur" : supplierName.trim()} seront enregistrées (${taxType === "ht" ? "prix HT" : taxType === "ttc" ? "prix TTC" : "type de prix non précisé"}, ${currency}). Les lignes incomplètes sont ignorées.`}
       >
-        <Button label="Confirmer l'import" loading={run.isPending} onPress={submit} />
+        <Button label="Confirmer l'import" loading={run.isPending} onPress={() => submit()} />
         <Button label="Annuler" variant="ghost" onPress={() => setConfirming(false)} />
       </BottomSheet>
     </KeyboardAvoidingView>

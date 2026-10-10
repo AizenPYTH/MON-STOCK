@@ -2,7 +2,7 @@ import { Linking, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useSupplierDirectory } from "~/data/hooks";
-import { ACCESS_MODE_LABEL, mailtoLink, SEGMENT_LABEL, STAGE_LABEL, STAGE_TONE } from "~/data/suppliers-pro";
+import { ACCESS_MODE_LABEL, mailtoLink, SEGMENT_LABEL, STAGE_LABEL, STAGE_TONE, TIER_HINT, TIER_LABEL, TIER_TONE } from "~/data/suppliers-pro";
 import { useActiveOrg } from "~/org/org-provider";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime } from "~/lib/format";
@@ -63,12 +63,18 @@ export default function SupplierDirectoryEntryScreen() {
         </Txt>
         <Txt variant="label">{SEGMENT_LABEL[e.segment]}</Txt>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          <StatusChip label={TIER_LABEL[e.tier]} tone={TIER_TONE[e.tier]} />
           {e.stages.map((s) => (
             <StatusChip key={s} label={STAGE_LABEL[s]} tone={STAGE_TONE[s]} />
           ))}
           {e.activeInOrg ? <StatusChip label="Activé dans votre organisation" tone="success" /> : null}
         </View>
       </View>
+      <Card padded style={{ gap: 4 }}>
+        <Txt variant="overline">Prochaine action</Txt>
+        <Txt variant="body">{e.nextAction}</Txt>
+        <Txt variant="label">{TIER_HINT[e.tier]}</Txt>
+      </Card>
       {e.whyUseful ? (
         <Card padded>
           <Txt variant="body">{e.whyUseful}</Txt>

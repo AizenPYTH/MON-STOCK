@@ -51,6 +51,33 @@ export const ACCESS_MODE_LABEL: Record<string, string> = {
   manual_download: "Fichier à télécharger",
   pdf_price_list: "Tarif PDF",
   email_quote: "Devis par e-mail",
+  email_pricelist: "Liste de prix par e-mail",
+  feed: "Flux de données",
+  marketplace: "Place de marché",
+};
+
+export const TIER_LABEL: Record<DirectoryEntryDTO["tier"], string> = {
+  connected: "Connecté",
+  importable: "Importable",
+  accessible: "Accessible",
+  verified: "Vérifié",
+  identified: "Identifié",
+};
+
+export const TIER_HINT: Record<DirectoryEntryDTO["tier"], string> = {
+  connected: "Source active ou import réussi dans votre organisation.",
+  importable: "Fournit un fichier, un flux ou une API que MON STOCK sait importer.",
+  accessible: "Catalogue public consultable, site vérifié.",
+  verified: "Site officiel joignable depuis le serveur.",
+  identified: "Issu de la recherche, rien de vérifié.",
+};
+
+export const TIER_TONE: Record<DirectoryEntryDTO["tier"], "accent" | "neutral" | "success" | "danger" | "dark"> = {
+  connected: "success",
+  importable: "dark",
+  accessible: "accent",
+  verified: "neutral",
+  identified: "neutral",
 };
 
 export function fetchDirectory(organizationId: string): Promise<{ entries: DirectoryEntryDTO[]; researchDate: string; lastCheckAt: string | null }> {
@@ -109,7 +136,7 @@ export function previewImport(organizationId: string, file: PickedFile, options:
 
 export function runImport(
   organizationId: string,
-  input: { file: PickedFile; mapping: CatalogMapping; currency: string; taxType: "ht" | "ttc" | "unknown"; supplierId?: string; supplierName?: string },
+  input: { file: PickedFile; mapping: CatalogMapping; currency: string; taxType: "ht" | "ttc" | "unknown"; supplierId?: string; supplierName?: string; force?: boolean },
 ): Promise<CatalogImportDTO> {
   if (!input.supplierId && !input.supplierName?.trim()) throw new UserFacingError("Choisissez le fournisseur de ce catalogue.");
   return callApi<CatalogImportDTO>("/sourcing/import", {
@@ -121,6 +148,7 @@ export function runImport(
       mapping: input.mapping,
       defaults: { currency: input.currency, taxType: input.taxType },
       ...(input.supplierId ? { supplierId: input.supplierId } : { supplierName: input.supplierName!.trim() }),
+      ...(input.force ? { force: true } : {}),
     },
   });
 }

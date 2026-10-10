@@ -94,7 +94,7 @@ export default function RadarOfferScreen() {
         </Txt>
         <Txt variant="label">
           {o.price !== null && o.currency ? formatMoney(o.price, o.currency) : "prix inconnu"}
-          {o.taxType === "ht" ? " HT" : o.taxType === "ttc" ? " TTC" : " (HT/TTC non précisé)"} · MOQ {o.moq ?? "non précisé"} · {o.availableQuantity !== null ? `${formatNumber(o.availableQuantity)} dispo.` : "stock non communiqué"}
+          {o.taxType === "ht" ? " HT" : o.taxType === "ttc" ? " TTC" : " (HT/TTC non précisé)"} · port fournisseur {o.shippingCost !== null ? formatMoney(o.shippingCost, o.currency ?? cur) : "non précisé"} · MOQ {o.moq ?? "non précisé"} · {o.availableQuantity !== null ? `${formatNumber(o.availableQuantity)} dispo.` : o.stockStatus === "in_stock" ? "en stock (quantité non communiquée)" : o.stockStatus === "out_of_stock" ? "en rupture" : "stock non communiqué"}
         </Txt>
         <Txt variant="label">
           {PRICE_ORIGIN_LABEL[o.priceOrigin]} · {o.lastSeenAt ? `relevé le ${formatDateTime(o.lastSeenAt)}` : "date de relevé inconnue"}

@@ -604,6 +604,11 @@ export interface CatalogImportDTO {
     expired: number;
     fxUnavailable: number;
     message: string;
+    /** lignes ignorées car leur référence apparaît déjà plus haut dans le fichier */
+    duplicates?: number;
+    /** import suspendu par le contrôle de qualité : rien n'a été écrit (relancer avec force après vérification) */
+    quarantined?: boolean;
+    quality?: { decision: "accept" | "quarantine"; issues: { code: string; message: string }[]; warnings: string[] };
   };
 }
 
@@ -646,6 +651,10 @@ export interface DirectoryEntryDTO {
   activeInOrg: boolean;
   stages: DirectoryStage[];
   primaryStage: DirectoryStage;
+  /** niveau d'accès réel : connecté, importable, accessible, vérifié, identifié */
+  tier: "connected" | "importable" | "accessible" | "verified" | "identified";
+  /** prochaine action concrète pour activer la source */
+  nextAction: string;
   /** dernière vérification du site depuis le serveur */
   check: { checkedAt: string; reachable: boolean; httpStatus: number | null; robotsFound: boolean | null; robotsDisallowAll: boolean | null; sitemapFound: boolean | null; platform: string | null; message: string | null } | null;
   email: { fr: { subject: string; body: string }; en: { subject: string; body: string } };

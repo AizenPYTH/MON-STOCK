@@ -1,4 +1,4 @@
-import { add, dec, div, HUNDRED, isNegative, mul, ONE, parseDecimal, sub, type Dec, type ParseError } from "./decimal";
+import { add, dec, div, HUNDRED, isNegative, mul, ONE, parseDecimal, sub, type Dec, type ParseError } from "@/domain/tools/decimal";
 
 /**
  * Calculateur de TVA (module pur). Résultat = estimation mathématique, pas un avis fiscal : le

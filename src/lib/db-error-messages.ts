@@ -47,6 +47,8 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   SKU_CODE_REQUIRED: { code: "VALIDATION", message: "Le code SKU est requis." },
   SKU_CODE_DUPLICATE_IN_REQUEST: { code: "VALIDATION", message: "Deux variantes utilisent le même code SKU : chaque variante doit avoir un code unique." },
   SAVED_OFFER_IMMUTABLE: { code: "FORBIDDEN", message: "Le prix relevé lors de l'enregistrement d'une offre ne peut pas être modifié." },
+  PARCEL_SERVER_FIELDS: { code: "FORBIDDEN", message: "Le statut et l'historique d'un colis proviennent uniquement de l'API de suivi : ils ne peuvent pas être modifiés à la main." },
+  PARCEL_NEXT_CHECK_FORBIDDEN: { code: "FORBIDDEN", message: "L'actualisation d'un colis peut être demandée maintenant, mais pas reportée ni désactivée." },
   VARIANTS_REQUIRED: { code: "VALIDATION", message: "Ajoutez au moins une variante." },
   VARIANTS_TOO_MANY: { code: "VALIDATION", message: "50 variantes maximum par envoi." },
   PRODUCT_NAME_REQUIRED: { code: "VALIDATION", message: "Le nom du produit est requis." },

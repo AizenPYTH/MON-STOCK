@@ -1,4 +1,4 @@
-import { add, div, fromNumber, isZero, mul, ONE, parseDecimal, percentOf, sub, ZERO, type Dec, type ParseError } from "./decimal";
+import { add, div, fromNumber, isZero, mul, ONE, parseDecimal, percentOf, sub, ZERO, type Dec, type ParseError } from "@/domain/tools/decimal";
 
 /**
  * Convertisseur de devises : taux de référence BCE (base EUR, publiés chaque jour ouvré) et

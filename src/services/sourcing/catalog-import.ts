@@ -54,6 +54,8 @@ export const catalogImportSchema = z
     defaults: catalogDefaultsSchema,
     supplierId: z.string().uuid().optional(),
     supplierName: z.string().trim().min(2).max(160).optional(),
+    /** confirmation explicite après un import suspendu par le contrôle de qualité */
+    force: z.boolean().optional(),
   })
   .refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." })
   .refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), {
@@ -268,7 +270,7 @@ export async function importCatalogFile(ctx: OrgContext, input: z.infer<typeof c
   }
 
   // 4. Ingestion (pipeline commun, journal sync_runs)
-  const result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content });
+  const result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content, force: input.force === true });
   const { feedId: _ignored, ...rest } = result;
   return { supplierId, sourceId, feedId, result: rest };
 }

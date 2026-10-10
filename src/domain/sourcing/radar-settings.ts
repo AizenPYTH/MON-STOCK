@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EMPTY_COST_SETTINGS, type RadarCostSettings } from "./radar";
+import { EMPTY_COST_SETTINGS, type RadarCostSettings } from "@/domain/sourcing/radar";
 
 /**
  * Paramètres de coûts de l'organisation (organizations.settings.radar), partagés par le radar

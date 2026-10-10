@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CatalogMapping, StockMovementInput } from "@/features/mobile-api/contract";
+import type { CatalogMapping, ShippingQuoteRequest, StockMovementInput } from "@/features/mobile-api/contract";
 import { requireSupabase } from "~/lib/supabase";
 import { useActiveOrg } from "~/org/org-provider";
 import { useUser } from "~/auth/session-provider";
@@ -15,7 +15,6 @@ import { fetchDirectory, previewImport, runImport, type PickedFile } from "~/dat
 import { fetchCostDefaults, fetchFxRates } from "~/data/tools";
 import { deleteRateCard, fetchRateCards, fetchToolsStatus, requestShippingQuotes, saveRateCard, type RateCardInput } from "~/data/shipping";
 import { addParcel, deleteParcel, fetchParcel, fetchParcels, fetchRecentOrdersForLink, refreshParcel, updateParcel, type NewParcel } from "~/data/tracking";
-import type { ShippingQuoteRequest } from "@/features/mobile-api/contract";
 import type { CarrierCode } from "@/domain/tools/tracking";
 import { applyPendingSales, connectEbay, disconnectEbay, fetchIntegrations, fetchListing, mapListing, syncEbay } from "~/data/ebay";
 import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";

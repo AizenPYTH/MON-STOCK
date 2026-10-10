@@ -8,6 +8,7 @@ import { fetchText } from "@/services/sourcing/http";
 import { fieldMappingSchema, feedOptionsSchema, mapRow, parseFeedContent, previewFeed, type FeedFormat, type FeedPreview, type FieldMapping, type FeedOptions, type MappingDefaults } from "@/services/sourcing/feed-parsers";
 import { expireUnseenOffers, storeOffer } from "@/services/sourcing/offer-storage";
 import { finishSyncRun, isDue, recordSyncErrors, startSyncRun, type SyncErrorInput } from "@/services/sourcing/sync-runs";
+import { assessImportQuality, rowIdentity, type ImportQualityResult } from "@/domain/sourcing/import-quality";
 
 /** Lignes traitées au maximum par exécution (chaque ligne coûte plusieurs requêtes). */
 export const MAX_ROWS_PER_RUN = 5_000;
@@ -31,6 +32,11 @@ export interface IngestResult {
   expired: number;
   fxUnavailable: number;
   message: string;
+  /** lignes ignorées car leur référence apparaît déjà plus haut dans le fichier */
+  duplicates?: number;
+  /** import suspendu par le contrôle de qualité : rien n'a été écrit */
+  quarantined?: boolean;
+  quality?: ImportQualityResult;
 }
 
 export function parseFeedConfig(feed: { field_mapping: Json; options: Json }): { mapping: FieldMapping; options: FeedOptions } {
@@ -59,7 +65,24 @@ export async function previewFeedSource(input: { url?: string | null; content?: 
  * Ingestion complète d'un flux : récupération (URL) ou contenu fourni (fichier importé),
  * parsing, mapping, validation, stockage, expiration des offres disparues, journal sync_runs.
  */
-export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger; createdBy?: string | null; content?: string | null; fetchImpl?: typeof fetch; admin?: AdminSupabaseClient } = { trigger: "manual" }): Promise<IngestResult> {
+/** Rapport nouveau prix / prix connu pour les références déjà présentes (même devise uniquement). */
+async function knownPriceRatios(admin: AdminSupabaseClient, sourceId: string, offers: { externalOfferId: string; price: number | null; currency?: string | null }[]): Promise<number[]> {
+  const byId = new Map(offers.filter((o) => o.price !== null && o.price > 0).map((o) => [o.externalOfferId, o]));
+  const ids = [...byId.keys()].slice(0, 1000);
+  const ratios: number[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await admin.from("sourcing_offers").select("external_offer_id, original_price, original_currency").eq("source_id", sourceId).in("external_offer_id", ids.slice(i, i + 200));
+    for (const row of data ?? []) {
+      const next = byId.get(row.external_offer_id);
+      if (!next || row.original_price === null || Number(row.original_price) <= 0) continue;
+      if (next.currency && row.original_currency && next.currency.toUpperCase() !== row.original_currency.toUpperCase()) continue;
+      ratios.push((next.price as number) / Number(row.original_price));
+    }
+  }
+  return ratios;
+}
+
+export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger; createdBy?: string | null; content?: string | null; fetchImpl?: typeof fetch; admin?: AdminSupabaseClient; force?: boolean } = { trigger: "manual" }): Promise<IngestResult> {
   const admin = options.admin ?? createAdminSupabaseClient();
   const { data: feed, error: feedErr } = await admin.from("supplier_feeds").select("*, source:supplier_sources(id, source_type, default_currency, default_tax_type, country, status), organization:organizations(default_currency)").eq("id", feedId).maybeSingle();
   if (feedErr || !feed) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Flux introuvable." };
@@ -107,9 +130,39 @@ export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger
     if (truncated) {
       errors.push({ code: "FEED_TRUNCATED", message: `Le flux contient ${parsed.rows.length} lignes : seules les ${MAX_ROWS_PER_RUN} premières ont été traitées lors de ce run. Scindez le flux ou filtrez-le côté fournisseur.`, entityType: "feed", entityRef: feed.id });
     }
-    for (const [index, row] of parsed.rows.slice(0, MAX_ROWS_PER_RUN).entries()) {
+    // Pré-lecture complète : doublons et contrôle de qualité AVANT toute écriture.
+    const mappedRows = parsed.rows.slice(0, MAX_ROWS_PER_RUN).map((row) => mapRow(row, mapping, defaults));
+    const seenIds = new Set<string>();
+    const duplicateIdx = new Set<number>();
+    mappedRows.forEach((m, i) => {
+      const id = m.offer ? rowIdentity(m.offer) : null;
+      if (!id) return;
+      if (seenIds.has(id)) duplicateIdx.add(i);
+      else seenIds.add(id);
+    });
+    const validOffers = mappedRows.flatMap((m, i) => (m.offer && !duplicateIdx.has(i) ? [m.offer] : []));
+    const quality = assessImportQuality({
+      totalRows: mappedRows.length,
+      validRows: validOffers.length,
+      invalidRows: mappedRows.filter((m) => !m.offer).length,
+      duplicateRows: duplicateIdx.size,
+      previousRecordCount: feed.last_successful_sync_at ? feed.last_record_count : null,
+      priceRatios: await knownPriceRatios(admin, source.id, validOffers),
+    });
+    if (quality.decision === "quarantine" && !options.force) {
+      const message = `Import suspendu, rien n'a été modifié (le catalogue précédent est conservé) : ${quality.issues.map((q) => q.message).join(" ")}`;
+      await recordSyncErrors(admin, run, quality.issues.map((q) => ({ code: `IMPORT_${q.code.toUpperCase()}`, message: q.message, entityType: "feed", entityRef: feed.id })));
+      await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: quality.issues.length, stats: { quarantined: true, totalRows: mappedRows.length, valid: validOffers.length, duplicates: duplicateIdx.size } as Json, errorSummary: message });
+      await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", feed.id);
+      return { feedId, runId: run.id, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: mappedRows.filter((m) => !m.offer).length, expired: 0, fxUnavailable: 0, message, duplicates: duplicateIdx.size, quarantined: true, quality };
+    }
+
+    for (const [index, mapped] of mappedRows.entries()) {
       processed++;
-      const mapped = mapRow(row, mapping, defaults);
+      if (duplicateIdx.has(index)) {
+        errors.push({ code: "ROW_DUPLICATE", message: "Référence déjà présente plus haut dans le fichier : ligne ignorée.", entityType: "feed_row", entityRef: String(index + 1) });
+        continue;
+      }
       if (!mapped.offer) {
         invalidRows++;
         errors.push({ code: "ROW_INVALID", message: mapped.errors.join(" "), entityType: "feed_row", entityRef: String(index + 1) });
@@ -134,15 +187,15 @@ export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger
     if (stored > 0 && !truncated) expired = await expireUnseenOffers(ctx, run.startedAt);
 
     const status: IngestResult["status"] = stored === 0 && processed > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
-    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistrée(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejetée(s), ${expired} offre(s) expirée(s).`;
+    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistrée(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejetée(s), ${expired} offre(s) expirée(s)${duplicateIdx.size ? `, ${duplicateIdx.size} doublon(s) ignoré(s)` : ""}.`;
     await recordSyncErrors(admin, run, errors);
     await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, rejected, invalidRows, expired, fxUnavailable, truncated, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) } as Json, errorSummary: status === "failed" ? message : null });
     await admin
       .from("supplier_feeds")
-      .update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? new Date().toISOString() : feed.last_successful_sync_at, last_record_count: processed, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" })
+      .update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? new Date().toISOString() : feed.last_successful_sync_at, last_record_count: status !== "failed" ? processed : feed.last_record_count, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" })
       .eq("id", feed.id);
     if (status !== "failed") await admin.from("supplier_sources").update({ status: "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: new Date().toISOString(), last_error: null }).eq("id", source.id);
-    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired, fxUnavailable, message };
+    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired, fxUnavailable, message, duplicates: duplicateIdx.size, quarantined: false, quality };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
     log.error("feed ingestion failed", { feedId, error: message });

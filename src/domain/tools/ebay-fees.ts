@@ -1,4 +1,4 @@
-import { add, div, HUNDRED, mul, parseDecimal, percentOf, sub, sum, ZERO, type Dec, type ParseError } from "./decimal";
+import { add, div, HUNDRED, mul, parseDecimal, percentOf, sub, sum, ZERO, type Dec, type ParseError } from "@/domain/tools/decimal";
 
 /**
  * Calculateur de frais eBay. AUCUN taux n'est codé en dur : les taux varient selon la catégorie,

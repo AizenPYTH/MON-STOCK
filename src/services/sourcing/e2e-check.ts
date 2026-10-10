@@ -78,7 +78,19 @@ export async function runImportSelfTest(): Promise<{ ok: boolean; result: unknow
   if (orgErr || !org) return { ok: false, result: null, offers: 0, runStatus: null, error: orgErr?.message ?? "organisation non créée", cleaned: true };
   const cleanup = async () => !(await admin.from("organizations").delete().eq("id", org.id)).error;
   try {
-    const csv = ["Réf.;Désignation article;Prix HT (€);Qté dispo", "TEST-IMPORT-1;Article de contrôle A (test serveur);10,50;3", "TEST-IMPORT-2;Article de contrôle B (test serveur);1 249,00;1", "TEST-IMPORT-3;Article sans prix (test serveur);;0"].join("\r\n");
+    const header = "Réf.;Désignation article;Prix HT (€);Qté dispo";
+    const base = [
+      ["TEST-IMPORT-1", "Article de contrôle A (test serveur)", "10,50", "3"],
+      ["TEST-IMPORT-2", "Article de contrôle B (test serveur)", "1 249,00", "1"],
+      ["TEST-IMPORT-3", "Article de contrôle C (test serveur)", "45,00", "2"],
+      ["TEST-IMPORT-4", "Article de contrôle D (test serveur)", "79,90", "5"],
+      ["TEST-IMPORT-5", "Article de contrôle E (test serveur)", "12,00", "8"],
+      ["TEST-IMPORT-6", "Article de contrôle F (test serveur)", "230,00", "1"],
+    ];
+    const toFile = (rows: string[][], name: string) => {
+      const csv = [header, ...rows.map((r) => r.join(";"))].join("\r\n");
+      return { fileName: name, contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
+    };
     const ctx = {
       supabase: admin,
       user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" } as User,
@@ -87,13 +99,45 @@ export async function runImportSelfTest(): Promise<{ ok: boolean; result: unknow
       role: "owner",
       memberships: [],
     } as unknown as OrgContext;
-    const file = { fileName: "controle.csv", contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
     const { previewCatalogFile, importCatalogFile } = await import("@/services/sourcing/catalog-import");
+    // 1. Import valide (6 offres + 1 ligne sans prix).
+    const file = toFile([...base, ["TEST-IMPORT-7", "Article sans prix (test serveur)", "", "0"]], "controle.csv");
     const preview = previewCatalogFile({ file }, "EUR");
-    const r = await importCatalogFile(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contrôle (test serveur)" });
+    const first = await importCatalogFile(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contrôle (test serveur)" });
+    const priceOf = async () => (await admin.from("sourcing_offers").select("original_price").eq("organization_id", org.id).eq("external_offer_id", "TEST-IMPORT-4").maybeSingle()).data?.original_price ?? null;
+    const priceAfterFirst = await priceOf();
+    // 2. Fichier défectueux (colonne de prix décalée : prix × 100) → import suspendu, rien n'est modifié.
+    const shifted = toFile(base.map((r) => [r[0]!, r[1]!, String(Math.round(Number(r[2]!.replace(/\s/g, "").replace(",", ".")) * 100)), r[3]!]), "controle-defectueux.csv");
+    const bad = await importCatalogFile(ctx, { file: shifted, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const priceAfterBad = await priceOf();
+    // 3. Mise à jour normale avec une ligne en double → acceptée, doublon ignoré.
+    const update = toFile([...base.map((r) => (r[0] === "TEST-IMPORT-4" ? [r[0], r[1]!, "74,90", r[3]!] : r)), base[0]!], "controle-maj.csv");
+    const third = await importCatalogFile(ctx, { file: update, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const priceAfterUpdate = await priceOf();
     const { count } = await admin.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
     const { data: run } = await admin.from("sync_runs").select("status").eq("organization_id", org.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
-    return { ok: r.result.stored === 2 && r.result.invalidRows === 1, result: { preview: { validCount: preview.validCount, invalidCount: preview.invalidCount, mapping: preview.mapping }, import: r.result }, offers: count ?? 0, runStatus: run?.status ?? null, error: null, cleaned: await cleanup() };
+    const ok =
+      first.result.stored === 6 &&
+      first.result.invalidRows === 1 &&
+      bad.result.quarantined === true &&
+      bad.result.stored === 0 &&
+      Number(priceAfterBad) === Number(priceAfterFirst) &&
+      third.result.quarantined === false &&
+      third.result.duplicates === 1 &&
+      Number(priceAfterUpdate) === 74.9;
+    return {
+      ok,
+      result: {
+        preview: { validCount: preview.validCount, invalidCount: preview.invalidCount, mapping: preview.mapping },
+        import: first.result,
+        quarantine: { status: bad.result.status, quarantined: bad.result.quarantined, issues: bad.result.quality?.issues.map((i) => i.code), priceBefore: priceAfterFirst, priceAfter: priceAfterBad },
+        update: { status: third.result.status, duplicates: third.result.duplicates, price: priceAfterUpdate },
+      },
+      offers: count ?? 0,
+      runStatus: run?.status ?? null,
+      error: null,
+      cleaned: await cleanup(),
+    };
   } catch (e) {
     return { ok: false, result: null, offers: 0, runStatus: null, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup() };
   }

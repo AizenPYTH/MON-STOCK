@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { useSupplierDirectory } from "~/data/hooks";
-import { ACCESS_MODE_LABEL, SEGMENT_LABEL, STAGE_LABEL, STAGE_TONE, type DirectoryEntryDTO } from "~/data/suppliers-pro";
+import { ACCESS_MODE_LABEL, SEGMENT_LABEL, STAGE_LABEL, STAGE_TONE, TIER_HINT, TIER_LABEL, TIER_TONE, type DirectoryEntryDTO } from "~/data/suppliers-pro";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime } from "~/lib/format";
 import { Card, DetailHeader, EmptyState, ErrorState, FilterChip, Screen, SearchField, SkeletonList, StatusChip, Txt } from "~/components/ui";
@@ -16,6 +16,8 @@ import { color, space } from "~/theme/tokens";
  */
 type Segment = DirectoryEntryDTO["segment"] | "all";
 type Access = "all" | "automated" | "file" | "account";
+type Tier = DirectoryEntryDTO["tier"] | "all";
+const TIERS: Tier[] = ["all", "connected", "importable", "accessible", "verified", "identified"];
 
 const ACCESS_FILTERS: { value: Access; label: string }[] = [
   { value: "all", label: "Tous" },
@@ -26,8 +28,8 @@ const ACCESS_FILTERS: { value: Access; label: string }[] = [
 
 function matchesAccess(e: DirectoryEntryDTO, a: Access): boolean {
   if (a === "all") return true;
-  if (a === "automated") return e.accessModes.some((m) => m === "api" || m.startsWith("feed_") || m === "edi") || e.integration.kind !== "file_import";
-  if (a === "file") return e.accessModes.some((m) => m === "manual_download" || m === "pro_portal" || m === "pdf_price_list");
+  if (a === "automated") return e.accessModes.some((m) => m === "api" || m.startsWith("feed") || m === "edi") || e.integration.kind !== "file_import";
+  if (a === "file") return e.accessModes.some((m) => m === "manual_download" || m === "pro_portal" || m === "pdf_price_list" || m === "email_pricelist");
   return e.proAccountRequired === true;
 }
 
@@ -36,14 +38,16 @@ export default function SupplierDirectoryScreen() {
   const [q, setQ] = useState("");
   const [segment, setSegment] = useState<Segment>("all");
   const [access, setAccess] = useState<Access>("all");
+  const [tier, setTier] = useState<Tier>("all");
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return (directory.data?.entries ?? [])
       .filter((e) => segment === "all" || e.segment === segment)
       .filter((e) => matchesAccess(e, access))
+      .filter((e) => tier === "all" || e.tier === tier)
       .filter((e) => !needle || [e.name, e.country ?? "", ...e.brands, ...e.categories].join(" ").toLowerCase().includes(needle));
-  }, [directory.data, q, segment, access]);
+  }, [directory.data, q, segment, access, tier]);
 
   if (directory.isPending)
     return (
@@ -75,6 +79,12 @@ export default function SupplierDirectoryScreen() {
       </View>
       <SearchField value={q} onChangeText={setQ} placeholder="Nom, marque, pays…" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
+        {TIERS.map((t) => (
+          <FilterChip key={t} label={t === "all" ? "Tous niveaux" : `${TIER_LABEL[t]} (${directory.data.entries.filter((e) => e.tier === t).length})`} selected={tier === t} onPress={() => setTier(t)} />
+        ))}
+      </ScrollView>
+      {tier !== "all" ? <Txt variant="label">{TIER_HINT[tier]}</Txt> : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
         {segments.map((s) => (
           <FilterChip key={s} label={s === "all" ? "Toutes catégories" : SEGMENT_LABEL[s]} selected={segment === s} onPress={() => setSegment(s)} />
         ))}
@@ -105,7 +115,8 @@ function DirectoryRow({ entry: e }: { entry: DirectoryEntryDTO }) {
           <ChevronRight size={16} color={color.ink3} />
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          <StatusChip label={STAGE_LABEL[e.primaryStage]} tone={STAGE_TONE[e.primaryStage]} />
+          <StatusChip label={TIER_LABEL[e.tier]} tone={TIER_TONE[e.tier]} />
+          {e.primaryStage === "unavailable" || e.primaryStage === "account_required" ? <StatusChip label={STAGE_LABEL[e.primaryStage]} tone={STAGE_TONE[e.primaryStage]} /> : null}
           {e.activeInOrg ? <StatusChip label="Activé" tone="success" /> : null}
           {e.accessModes.slice(0, 3).map((m) => (
             <StatusChip key={m} label={ACCESS_MODE_LABEL[m] ?? m} tone="neutral" />
@@ -116,6 +127,9 @@ function DirectoryRow({ entry: e }: { entry: DirectoryEntryDTO }) {
             {e.whyUseful}
           </Txt>
         ) : null}
+        <Txt variant="label" color={color.ink} numberOfLines={2}>
+          → {e.nextAction}
+        </Txt>
       </Card>
     </Pressable>
   );

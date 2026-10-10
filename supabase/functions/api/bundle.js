@@ -154,6 +154,8 @@ var init_db_error_messages = __esm({
       SKU_CODE_REQUIRED: { code: "VALIDATION", message: "Le code SKU est requis." },
       SKU_CODE_DUPLICATE_IN_REQUEST: { code: "VALIDATION", message: "Deux variantes utilisent le m\xEAme code SKU : chaque variante doit avoir un code unique." },
       SAVED_OFFER_IMMUTABLE: { code: "FORBIDDEN", message: "Le prix relev\xE9 lors de l'enregistrement d'une offre ne peut pas \xEAtre modifi\xE9." },
+      PARCEL_SERVER_FIELDS: { code: "FORBIDDEN", message: "Le statut et l'historique d'un colis proviennent uniquement de l'API de suivi : ils ne peuvent pas \xEAtre modifi\xE9s \xE0 la main." },
+      PARCEL_NEXT_CHECK_FORBIDDEN: { code: "FORBIDDEN", message: "L'actualisation d'un colis peut \xEAtre demand\xE9e maintenant, mais pas report\xE9e ni d\xE9sactiv\xE9e." },
       VARIANTS_REQUIRED: { code: "VALIDATION", message: "Ajoutez au moins une variante." },
       VARIANTS_TOO_MANY: { code: "VALIDATION", message: "50 variantes maximum par envoi." },
       PRODUCT_NAME_REQUIRED: { code: "VALIDATION", message: "Le nom du produit est requis." },
@@ -6390,6 +6392,54 @@ var init_connection_store = __esm({
   }
 });
 
+// src/domain/sourcing/import-quality.ts
+function assessImportQuality(i, t = QUALITY_THRESHOLDS) {
+  const issues = [];
+  const warnings = [];
+  if (i.totalRows >= t.minRows && i.invalidRows / i.totalRows > t.maxInvalidShare) {
+    issues.push({ code: "too_many_invalid", message: `${pct2(i.invalidRows / i.totalRows)} des lignes sont illisibles : la correspondance des colonnes est probablement erron\xE9e.` });
+  }
+  if (i.previousRecordCount !== null && i.previousRecordCount >= t.minPrevious && i.validRows < i.previousRecordCount * t.minShareOfPrevious) {
+    issues.push({ code: "catalog_shrank", message: `${i.validRows} offre(s) lisible(s) contre ${i.previousRecordCount} lignes au dernier import : fichier tronqu\xE9 ou mauvais fichier ?` });
+  }
+  if (i.priceRatios.length >= t.minMatched) {
+    const shifted = i.priceRatios.filter((r) => !Number.isFinite(r) || r <= 0 || Math.abs(r - 1) > t.priceShift).length;
+    if (shifted / i.priceRatios.length > t.maxShiftedShare) {
+      issues.push({ code: "price_shift", message: `Le prix de ${shifted} r\xE9f\xE9rence(s) connue(s) sur ${i.priceRatios.length} varie de plus de ${pct2(t.priceShift)} : mauvaise colonne de prix, HT/TTC ou devise ?` });
+    }
+  }
+  if (i.totalRows > 0 && i.validRows > 0 && i.duplicateRows >= i.validRows) {
+    issues.push({ code: "all_duplicates", message: "Chaque r\xE9f\xE9rence appara\xEEt plusieurs fois : la colonne de r\xE9f\xE9rence choisie n'identifie pas les produits." });
+  }
+  if (i.duplicateRows > 0) warnings.push(`${i.duplicateRows} ligne(s) en double (m\xEAme r\xE9f\xE9rence) : seule la premi\xE8re est retenue.`);
+  return { decision: issues.length > 0 ? "quarantine" : "accept", issues, warnings };
+}
+function rowIdentity(offer) {
+  const k = offer.externalOfferId ?? offer.supplierSku ?? (offer.ean ? `ean:${offer.ean}` : null) ?? (offer.mpn ? `mpn:${offer.mpn.toUpperCase()}` : null);
+  return k ? k.trim().toUpperCase() : null;
+}
+var QUALITY_THRESHOLDS, pct2;
+var init_import_quality = __esm({
+  "src/domain/sourcing/import-quality.ts"() {
+    "use strict";
+    QUALITY_THRESHOLDS = {
+      /** au-delà de cette part de lignes illisibles, l'import est suspendu */
+      maxInvalidShare: 0.5,
+      /** en dessous de cette part du dernier import, le catalogue est jugé tronqué */
+      minShareOfPrevious: 0.5,
+      /** variation de prix jugée anormale (± 60 %) */
+      priceShift: 0.6,
+      /** part des références connues dont le prix varie anormalement */
+      maxShiftedShare: 0.5,
+      /** échantillons minimaux pour appliquer chaque règle */
+      minRows: 5,
+      minPrevious: 20,
+      minMatched: 5
+    };
+    pct2 = (x) => `${Math.round(x * 100)} %`;
+  }
+});
+
 // src/services/sourcing/feed-ingestion.ts
 function parseFeedConfig(feed) {
   const mapping = fieldMappingSchema.safeParse(feed.field_mapping ?? {});
@@ -6400,6 +6450,21 @@ async function fetchFeedContent(url, format, encoding, fetchImpl) {
   const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], encoding, fetchImpl });
   if (!res.ok) throw new Error(`Le flux a r\xE9pondu HTTP ${res.status}.`);
   return res.text;
+}
+async function knownPriceRatios(admin, sourceId, offers) {
+  const byId = new Map(offers.filter((o) => o.price !== null && o.price > 0).map((o) => [o.externalOfferId, o]));
+  const ids = [...byId.keys()].slice(0, 1e3);
+  const ratios = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await admin.from("sourcing_offers").select("external_offer_id, original_price, original_currency").eq("source_id", sourceId).in("external_offer_id", ids.slice(i, i + 200));
+    for (const row of data ?? []) {
+      const next = byId.get(row.external_offer_id);
+      if (!next || row.original_price === null || Number(row.original_price) <= 0) continue;
+      if (next.currency && row.original_currency && next.currency.toUpperCase() !== row.original_currency.toUpperCase()) continue;
+      ratios.push(next.price / Number(row.original_price));
+    }
+  }
+  return ratios;
 }
 async function ingestFeed(feedId, options = { trigger: "manual" }) {
   const admin = options.admin ?? createAdminSupabaseClient();
@@ -6444,9 +6509,37 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     if (truncated) {
       errors.push({ code: "FEED_TRUNCATED", message: `Le flux contient ${parsed.rows.length} lignes : seules les ${MAX_ROWS_PER_RUN} premi\xE8res ont \xE9t\xE9 trait\xE9es lors de ce run. Scindez le flux ou filtrez-le c\xF4t\xE9 fournisseur.`, entityType: "feed", entityRef: feed.id });
     }
-    for (const [index, row] of parsed.rows.slice(0, MAX_ROWS_PER_RUN).entries()) {
+    const mappedRows = parsed.rows.slice(0, MAX_ROWS_PER_RUN).map((row) => mapRow(row, mapping, defaults));
+    const seenIds = /* @__PURE__ */ new Set();
+    const duplicateIdx = /* @__PURE__ */ new Set();
+    mappedRows.forEach((m, i) => {
+      const id = m.offer ? rowIdentity(m.offer) : null;
+      if (!id) return;
+      if (seenIds.has(id)) duplicateIdx.add(i);
+      else seenIds.add(id);
+    });
+    const validOffers = mappedRows.flatMap((m, i) => m.offer && !duplicateIdx.has(i) ? [m.offer] : []);
+    const quality = assessImportQuality({
+      totalRows: mappedRows.length,
+      validRows: validOffers.length,
+      invalidRows: mappedRows.filter((m) => !m.offer).length,
+      duplicateRows: duplicateIdx.size,
+      previousRecordCount: feed.last_successful_sync_at ? feed.last_record_count : null,
+      priceRatios: await knownPriceRatios(admin, source.id, validOffers)
+    });
+    if (quality.decision === "quarantine" && !options.force) {
+      const message2 = `Import suspendu, rien n'a \xE9t\xE9 modifi\xE9 (le catalogue pr\xE9c\xE9dent est conserv\xE9) : ${quality.issues.map((q) => q.message).join(" ")}`;
+      await recordSyncErrors(admin, run, quality.issues.map((q) => ({ code: `IMPORT_${q.code.toUpperCase()}`, message: q.message, entityType: "feed", entityRef: feed.id })));
+      await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: quality.issues.length, stats: { quarantined: true, totalRows: mappedRows.length, valid: validOffers.length, duplicates: duplicateIdx.size }, errorSummary: message2 });
+      await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message2 }).eq("id", feed.id);
+      return { feedId, runId: run.id, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: mappedRows.filter((m) => !m.offer).length, expired: 0, fxUnavailable: 0, message: message2, duplicates: duplicateIdx.size, quarantined: true, quality };
+    }
+    for (const [index, mapped] of mappedRows.entries()) {
       processed++;
-      const mapped = mapRow(row, mapping, defaults);
+      if (duplicateIdx.has(index)) {
+        errors.push({ code: "ROW_DUPLICATE", message: "R\xE9f\xE9rence d\xE9j\xE0 pr\xE9sente plus haut dans le fichier : ligne ignor\xE9e.", entityType: "feed_row", entityRef: String(index + 1) });
+        continue;
+      }
       if (!mapped.offer) {
         invalidRows++;
         errors.push({ code: "ROW_INVALID", message: mapped.errors.join(" "), entityType: "feed_row", entityRef: String(index + 1) });
@@ -6468,12 +6561,12 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     }
     if (stored > 0 && !truncated) expired2 = await expireUnseenOffers(ctx, run.startedAt);
     const status = stored === 0 && processed > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
-    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistr\xE9e(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejet\xE9e(s), ${expired2} offre(s) expir\xE9e(s).`;
+    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistr\xE9e(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejet\xE9e(s), ${expired2} offre(s) expir\xE9e(s)${duplicateIdx.size ? `, ${duplicateIdx.size} doublon(s) ignor\xE9(s)` : ""}.`;
     await recordSyncErrors(admin, run, errors);
     await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, rejected, invalidRows, expired: expired2, fxUnavailable, truncated, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) }, errorSummary: status === "failed" ? message : null });
-    await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : feed.last_successful_sync_at, last_record_count: processed, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" }).eq("id", feed.id);
+    await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : feed.last_successful_sync_at, last_record_count: status !== "failed" ? processed : feed.last_record_count, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" }).eq("id", feed.id);
     if (status !== "failed") await admin.from("supplier_sources").update({ status: "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: (/* @__PURE__ */ new Date()).toISOString(), last_error: null }).eq("id", source.id);
-    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message };
+    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, duplicates: duplicateIdx.size, quarantined: false, quality };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
     log18.error("feed ingestion failed", { feedId, error: message });
@@ -6503,6 +6596,7 @@ var init_feed_ingestion = __esm({
     init_feed_parsers();
     init_offer_storage();
     init_sync_runs();
+    init_import_quality();
     MAX_ROWS_PER_RUN = 5e3;
     log18 = createLogger("FEED_INGESTION");
     FEED_ACCEPT = {
@@ -6810,6 +6904,51 @@ var init_source_library = __esm({
         probeQuery: "ecran iphone 13"
       },
       {
+        key: "refreshed-apples",
+        name: "Refreshed Apples (NL) \u2014 iPhone reconditionn\xE9s en gros",
+        website: "https://www.refreshedapples.com",
+        baseUrl: "https://www.refreshedapples.com",
+        adapter: "sitemap-jsonld",
+        segment: "refurbished",
+        country: "NL",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://www.refreshedapples.com"),
+        access: "public_html",
+        notes: "Grossiste n\xE9erlandais d'iPhone d'occasion par grade. Contr\xF4le serveur du 10/10/2026 : 117 fiches avec prix lisibles (plan du site + donn\xE9es structur\xE9es). Minimum de commande annonc\xE9 par lots : \xE0 v\xE9rifier avant achat.",
+        probeQuery: "iphone"
+      },
+      {
+        key: "fixje",
+        name: "Fixje (NL) \u2014 pi\xE8ces d\xE9tach\xE9es",
+        website: "https://www.fixje.nl",
+        baseUrl: "https://www.fixje.nl",
+        adapter: "woocommerce-store",
+        segment: "parts",
+        country: "NL",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: "https://www.fixje.nl",
+        access: "public_json",
+        notes: "Pi\xE8ces et accessoires smartphone (Pays-Bas), offre professionnelle \xAB Zakelijk \xBB. Contr\xF4le serveur du 10/10/2026 : catalogue public WooCommerce avec prix (prix publics, remise pro sur compte).",
+        probeQuery: "iphone 13"
+      },
+      {
+        key: "servisni-dily",
+        name: "Servisn\xED d\xEDly (CZ) \u2014 pi\xE8ces d\xE9tach\xE9es",
+        website: "https://www.servisnidily.cz",
+        baseUrl: "https://www.servisnidily.cz",
+        adapter: "sitemap-jsonld",
+        segment: "parts",
+        country: "CZ",
+        currency: "CZK",
+        taxType: "unknown",
+        termsUrl: "https://www.servisnidily.cz",
+        access: "public_html",
+        notes: "Pi\xE8ces d\xE9tach\xE9es par mod\xE8le (R\xE9publique tch\xE8que), exp\xE9dition UE annonc\xE9e. Contr\xF4le serveur du 10/10/2026 : fiches avec prix en CZK (conversion par les taux BCE).",
+        probeQuery: "iphone"
+      },
+      {
         key: "utopya",
         name: "Utopya (FR) \u2014 distributeur B2B de pi\xE8ces",
         website: "https://www.utopya.fr",
@@ -7102,7 +7241,7 @@ async function importCatalogFile(ctx, input) {
     const { error } = await ctx.supabase.from("supplier_feeds").update(feedPatch).eq("id", feedId).eq("organization_id", orgId);
     if (error) throw fromPostgrestError(error);
   }
-  const result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content });
+  const result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content, force: input.force === true });
   const { feedId: _ignored, ...rest } = result;
   return { supplierId, sourceId, feedId, result: rest };
 }
@@ -7140,7 +7279,9 @@ var init_catalog_import = __esm({
       mapping: fieldMappingSchema,
       defaults: catalogDefaultsSchema,
       supplierId: z28.string().uuid().optional(),
-      supplierName: z28.string().trim().min(2).max(160).optional()
+      supplierName: z28.string().trim().min(2).max(160).optional(),
+      /** confirmation explicite après un import suspendu par le contrôle de qualité */
+      force: z28.boolean().optional()
     }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), {
       message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix."
     });
@@ -7234,12 +7375,12 @@ function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
   if (offer.stockStatus === "unknown" && offer.availableQuantity === null) cautions.push("Disponibilit\xE9 non communiqu\xE9e.");
   if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) cautions.push("Rupture chez le fournisseur.");
   if (sku.currentCost !== null && sku.currentCost > 0 && purchaseCost !== null && purchaseCost < sku.currentCost) {
-    const pct2 = Math.round((sku.currentCost - purchaseCost) / sku.currentCost * 100);
-    if (pct2 >= 3) reasons.push(`Prix ${pct2} % sous votre co\xFBt d'achat actuel (${sku.currentCost.toFixed(2)}).`);
+    const pct3 = Math.round((sku.currentCost - purchaseCost) / sku.currentCost * 100);
+    if (pct3 >= 3) reasons.push(`Prix ${pct3} % sous votre co\xFBt d'achat actuel (${sku.currentCost.toFixed(2)}).`);
   }
   if (offer.previousPrice !== null && offer.previousPrice > price) {
-    const pct2 = Math.round((offer.previousPrice - price) / offer.previousPrice * 100);
-    if (pct2 >= 5) reasons.push(`Prix en baisse de ${pct2} % chez ce fournisseur.`);
+    const pct3 = Math.round((offer.previousPrice - price) / offer.previousPrice * 100);
+    if (pct3 >= 5) reasons.push(`Prix en baisse de ${pct3} % chez ce fournisseur.`);
   }
   const lowStock = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 1);
   if (sku.units30d > 0 && lowStock) reasons.push(`Stock bas (${sku.quantityAvailable}) pour un produit vendu ${sku.units30d} fois en 30 jours.`);
@@ -10918,6 +11059,2944 @@ var init_supplier_directory = __esm({
           "server:supplier_directory_checks"
         ],
         checkedAt: "2026-10-10"
+      },
+      {
+        key: "nedis",
+        name: "Nedis (Nedis Connect)",
+        segment: "D_distributor",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "BE",
+          "FR",
+          "ES",
+          "EU"
+        ],
+        website: "https://nedis.com/en-us/business",
+        catalogUrl: "https://nedis.com/en-us/business/nedis-connect",
+        categories: [
+          "c\xE2bles et adaptateurs",
+          "chargeurs",
+          "accessoires smartphone/informatique",
+          "petite \xE9lectronique"
+        ],
+        brands: [
+          "Nedis"
+        ],
+        productTypes: [
+          "new",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste B2B r\xE9serv\xE9 aux revendeurs/e-tailers ; devenir partenaire via le formulaire 'Become a partner'. Flux de donn\xE9es Nedis Connect et EDI accessibles apr\xE8s ouverture du compte.",
+        accessModes: [
+          "feed",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Flux quotidien officiel (Nedis Connect) contenant donn\xE9es produit, images, prix et stock, int\xE9grable dans un webshop/ERP ; commande possible par FTP (XML/CSV) ou EDI (via Onetrail). Id\xE9al pour l'accessoire (c\xE2bles, chargeurs) avec donn\xE9es structur\xE9es sans scraping.",
+        howToGetCatalog: "1) Aller sur nedis.com > Business > 'Become a partner' et demander un compte revendeur. 2) Une fois valid\xE9, demander l'activation de Nedis Connect (flux quotidien produits/prix/stock + fichiers accessoires/alternatives). 3) Pour l'automatisation des commandes, demander l'acc\xE8s FTP (XML/CSV) ou EDI.",
+        verified: true,
+        verificationLevel: "official_docs_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://nedis.com/en-us/business/nedis-connect",
+          "https://nedis.com/en-us/business/e-business",
+          "https://nedis.com/en-us/business/faq/order",
+          "https://nedis.com/en-us/business/become-a-partner",
+          "https://nedis.com/en-us/business/e-business/order-electronically"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "infortisa",
+        name: "Infortisa",
+        segment: "D_distributor",
+        country: "ES",
+        deliveryZones: [
+          "ES",
+          "PT"
+        ],
+        website: "https://www.infortisa.com/",
+        catalogUrl: "https://www.infortisa.com/categoria/telefonia-y-fax/moviles-seminuevos/",
+        categories: [
+          "informatique",
+          "smartphones",
+          "smartphones seminuevos/reconditionn\xE9s",
+          "accessoires"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi",
+          "Oppo",
+          "ZTE",
+          "Motorola"
+        ],
+        productTypes: [
+          "new",
+          "refurbished",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste r\xE9serv\xE9 aux entreprises, boutiques et autonomos ; certains prix visibles seulement une fois inscrit. Identifiants API/t\xE9l\xE9chargement fournis au client.",
+        accessModes: [
+          "api",
+          "feed",
+          "pro_portal"
+        ],
+        apiDocsUrl: "https://apiv2.infortisa.com/docs/ManualAPIv2.pdf",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "Envoi 24 h (Espagne) selon le site",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Manuel API v2 public : t\xE9l\xE9chargement HTTPS de tarifs CSV (TARIFAS.CSV standard, \xE9tendu, V3/V4) + API REST pour mise \xE0 jour compl\xE8te du catalogue ou seulement des produits modifi\xE9s. Rayon 'm\xF3viles seminuevos' (exposition/usage court) exploitable pour du reconditionn\xE9.",
+        howToGetCatalog: "1) Demander l'ouverture d'un compte client sur infortisa.com (t\xE9l. +34 961 309 006). 2) Lire le manuel https://apiv2.infortisa.com/docs/ManualAPIv2.pdf. 3) Avec les identifiants client, t\xE9l\xE9charger TARIFASV4EXT.CSV (ou format standard) en HTTPS, ou appeler l'API REST (catalogue complet / produits modifi\xE9s).",
+        verified: true,
+        verificationLevel: "official_docs_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://apiv2.infortisa.com/docs/ManualAPIv2.pdf",
+          "https://www.infortisa.com/categoria/telefonia-y-fax/moviles-seminuevos/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "globomatik",
+        name: "Globomatik",
+        segment: "D_distributor",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://www.globomatik.com/",
+        catalogUrl: "https://www.globomatik.com/marcas",
+        categories: [
+          "smartphones",
+          "informatique",
+          "stockage",
+          "consoles",
+          "TV"
+        ],
+        brands: [
+          "Xiaomi",
+          "Motorola",
+          "Realme",
+          "TCL",
+          "CAT"
+        ],
+        productTypes: [
+          "new",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Uniquement B2B : inscription obligatoire sur la plateforme de vente professionnelle pour acheter en gros ; service dropshipping propos\xE9.",
+        accessModes: [
+          "pro_portal",
+          "feed"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grossiste B2B d'Almer\xEDa, distributeur annonc\xE9 de Xiaomi, Motorola, Realme, TCL, CAT ; >6 000 produits/200 marques en stock, >4 000 revendeurs clients. Un annuaire tiers indique une int\xE9gration CSV + webservice pour le dropshipping.",
+        howToGetCatalog: "1) S'inscrire sur la plateforme pro de globomatik.com (t\xE9l. 950 08 18 76). 2) Apr\xE8s validation, demander le fichier tarif CSV / webservice dropshipping au commercial. Format exact \xE0 confirmer (info CSV/webservice issue d'un annuaire tiers).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.globomatik.com/marcas",
+          "https://www.globomatik.com/wholesaler-new-technologies",
+          "https://www.globomatik.com/marcas/mayorista-de-motorola",
+          "https://www.globomatik.com/marcas/mayorista-de-xiaomi",
+          "https://www.tiendawebonline.es/blog/dropshipping/los-7-mejores-proveedores-de-dropshipping-en-espana"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "dmi-computer",
+        name: "DMI Computer",
+        segment: "D_distributor",
+        country: "ES",
+        deliveryZones: [
+          "ES",
+          "EU"
+        ],
+        website: "https://www.dmi.es/",
+        catalogUrl: "https://www.dmi.es/servicios/dropshipping/",
+        categories: [
+          "informatique",
+          "p\xE9riph\xE9riques",
+          "r\xE9seau",
+          "accessoires"
+        ],
+        brands: [
+          "Ubiquiti",
+          "Aisens",
+          "TooQ",
+          "Salicru",
+          "Ruijie"
+        ],
+        productTypes: [
+          "new",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Client revendeur DMI (certificat de revendeur possible pour acheter sans IVA). Dropshipping : frais de gestion par commande (montant publi\xE9 par DMI), emballage neutre.",
+        accessModes: [
+          "feed",
+          "api",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "Standard 2\u20135 jours dans l'UE (profil 2024) ; dropshipping disponible hors Espagne",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Catalogue CSV t\xE9l\xE9chargeable (code, poids, IVA, canon, famille, marque, stock, part number, EAN, PVD) + webservice pour produits/stock/images et commandes ; API 'Amara' annonc\xE9e pour catalogue/inventaire/commandes en temps r\xE9el. >8 500 r\xE9f\xE9rences.",
+        howToGetCatalog: "1) Ouvrir un compte revendeur sur dmi.es. 2) Dans l'espace client, t\xE9l\xE9charger le fichier CSV catalogue (page Services > Dropshipping / Int\xE9gration web). 3) Demander l'acc\xE8s webservice/API Amara au commercial pour synchronisation automatique.",
+        verified: true,
+        verificationLevel: "official_docs_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.dmi.es/servicios/dropshipping/",
+          "https://www.dmi.es/servicios/integracion-web/",
+          "https://www.dmi.es/marketing/descargas/DMI-company-profile-2024.pdf",
+          "https://www.dmi.es/comunicaciones/2024-09-27/compra-sin-iva-en-dmi-con-el-certificado-de-revendedor_278/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "megasur",
+        name: "Megasur",
+        segment: "D_distributor",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://www.megasur.es/",
+        catalogUrl: "https://www.megasur.es/smartphones-reacondicionados",
+        categories: [
+          "informatique",
+          "\xE9lectronique",
+          "smartphones reconditionn\xE9s"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "new",
+          "refurbished",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste avec compte client ; dropshipping et envoi 24 h annonc\xE9s. Le flux 'MegaFeed' est r\xE9serv\xE9 aux clients.",
+        accessModes: [
+          "feed",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "24 h (Espagne) selon annuaires",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Page d\xE9di\xE9e 'Mayorista proveedor de Smartphones reacondicionados' et flux CSV 'MegaFeed' d\xE9j\xE0 support\xE9 par des modules d'import PrestaShop tiers : int\xE9gration rapide.",
+        howToGetCatalog: "1) Ouvrir un compte client sur megasur.es. 2) Demander l'acc\xE8s au flux MegaFeed (CSV). 3) Importer via script ou module (ex. module PrestaShop d'Alabaz qui g\xE8re MegaSur).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.megasur.es/smartphones-reacondicionados",
+          "https://www.alabazweb.com/en/m\xF3dulos-para-prestashop/368-cdulo-importer-feeds.html",
+          "https://outvio.com/es/blog/que-es-el-dropshipping/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "sosav-pro",
+        name: "SOSav Pro",
+        segment: "B_parts",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "EU"
+        ],
+        website: "https://www.sosav.fr/",
+        catalogUrl: "https://www.sosav.fr/store/1412-smartphones",
+        categories: [
+          "\xE9crans",
+          "batteries",
+          "connecteurs",
+          "nappes",
+          "outillage",
+          "pi\xE8ces tablettes/MacBook"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi",
+          "Huawei"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Compte pro activ\xE9 par l'\xE9quipe commerciale ; tarifs de gros visibles apr\xE8s connexion (jusqu'\xE0 -70 % du prix public annonc\xE9).",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "Pros : garantie \xE0 vie annonc\xE9e sur les pi\xE8ces, batteries/consommables 1 an (sources du site parfois contradictoires)",
+        partQuality: "Non pr\xE9cis\xE9 de mani\xE8re uniforme : \xE0 v\xE9rifier fiche par fiche",
+        whyUseful: "Catalogue public tr\xE8s structur\xE9 (>13 000 r\xE9f\xE9rences, arborescence par mod\xE8le) avec prix publics visibles : base de comparaison ; prix pro jusqu'\xE0 -70 %. Programme d'apport de clients pour r\xE9parateurs.",
+        howToGetCatalog: "1) Aller sur pro.sosav.fr > cr\xE9er un compte pro. 2) Attendre l'activation par l'\xE9quipe commerciale. 3) Se connecter pour voir les prix de gros ; demander au commercial un export/tarif si besoin (pas de flux public identifi\xE9).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://pro.sosav.fr/",
+          "https://pro.sosav.fr/grossiste/",
+          "https://sosav.fr/centre-aides/avant-commande/pieces-grossistes",
+          "https://sosav.fr/blog/actu/pieces-detachees-smartphones-les-garanties-sosav.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "pieces2mobile",
+        name: "Pieces2Mobile",
+        segment: "B_parts",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://www.pieces2mobile.com/",
+        catalogUrl: "https://www.pieces2mobile.com/",
+        categories: [
+          "\xE9crans",
+          "cam\xE9ras",
+          "nappes",
+          "outillage",
+          "batteries"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Demande de compte pro avec nom de soci\xE9t\xE9 + n\xB0 TVA (ou SIRET pour auto-entrepreneur) ; activation sous 24\u201348 h ouvr\xE9es. Showroom pro \xE0 Aubervilliers (lun\u2013ven 9h\u201318h, 09 80 46 36 05).",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: "Livraison offerte d\xE8s 250 \u20AC HT pour comptes pro en France m\xE9tropolitaine (hors Corse) \u2014 seuil \xE0 confirmer",
+        warranty: null,
+        partQuality: "Le site annonce '+11 200 pi\xE8ces Origine' ; certaines fiches portent des mentions de qualit\xE9 (ex. 'PIEC', 'Ch\xE2ssis Origine') \xE0 v\xE9rifier",
+        whyUseful: "Catalogue public Magento avec prix TTC visibles ; apr\xE8s validation pro, affichage HT avec prix pro barr\xE9s. Showroom en r\xE9gion parisienne pour enl\xE8vement.",
+        howToGetCatalog: "1) Remplir https://www.pieces2mobile.com/demande-de-compte-pro-pieces2mobile/ (soci\xE9t\xE9, TVA/SIRET). 2) Validation 24\u201348 h. 3) Se connecter : prix HT pro visibles ; demander un export tarif au service client si besoin.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.pieces2mobile.com/demande-de-compte-pro-pieces2mobile/",
+          "https://www.pieces2mobile.com/contact/",
+          "https://www.pieces2mobile.com/camera-arriere-iphone-17-pro-piec.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "horepa",
+        name: "Horepa",
+        segment: "B_parts",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://horepa.fr/fr/",
+        catalogUrl: "https://horepa.fr/fr/catalog/category/view/s/pieces-detachees/id/3/",
+        categories: [
+          "\xE9crans",
+          "batteries",
+          "pi\xE8ces smartphones",
+          "pi\xE8ces tablettes/ordinateurs/montres"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi",
+          "Oppo"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Prix HT et conditions grossiste r\xE9serv\xE9s aux comptes pro (formules HorePro : Start/Plus/Boost/Full). Contact : 02 31 30 18 28, contact@horepa.fr.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: "Commande avant 18h livr\xE9e J+1 (selon pages) ; entrep\xF4t Caen/Mondeville (Normandie)",
+        warranty: "3 \xE0 24 mois selon les r\xE9f\xE9rences",
+        partQuality: "Pi\xE8ces test\xE9es en atelier avant exp\xE9dition selon le site ; qualit\xE9 (origine/compatible) \xE0 v\xE9rifier par fiche",
+        whyUseful: "+10 000 r\xE9f\xE9rences avec catalogue public par mod\xE8le (prix TTC visibles) ; tarifs d\xE9gressifs pro ; stock en Normandie et livraison J+1.",
+        howToGetCatalog: "1) Cr\xE9er un compte pro sur horepa.fr et choisir une formule HorePro. 2) Ou appeler le 02 31 30 18 28 / \xE9crire \xE0 contact@horepa.fr. 3) Prix HT visibles apr\xE8s connexion ; demander un fichier tarif au commercial.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://horepa.fr/fr/",
+          "https://horepa.fr/fr/catalog/category/view/s/pieces-detachees/id/3/?gamme=36",
+          "https://horepa.fr/fr/pieces-detachees/samsung/telephone/galaxy-s/s23-s911b.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "itp-technologie",
+        name: "ITP Technologie",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://www.itp-technologie.com/",
+        catalogUrl: "https://www.itp-technologie.com/grossiste-en-telephones-reconditionnes/",
+        categories: [
+          "smartphones reconditionn\xE9s",
+          "\xE9crans",
+          "batteries",
+          "outillage"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "refurbished",
+          "used",
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Grossiste B2B (Toulouse) en smartphones reconditionn\xE9s et pi\xE8ces ; ventes en TVA sur marge ou HT. Contact : 05 62 24 37 03.",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "Reconditionn\xE9s : 12 mois (certaines fiches indiquent 6 mois) ; pi\xE8ces : 1 an",
+        partQuality: "Pi\xE8ces 'de haute qualit\xE9' (\xE9crans, batteries) sans pr\xE9cision origine/compatible",
+        whyUseful: "Fiches produit publiques par mod\xE8le/capacit\xE9/couleur/grade (ex. 'Mi 10 Pro 256GB Blanc B', 'S10 Plus 128GB Rouge AB') : grading A/AB/B exploitable ; TVA sur marge disponible ; aussi r\xE9paration/remise \xE0 neuf pour tiers.",
+        howToGetCatalog: "1) Parcourir le catalogue en ligne (fiches par grade). 2) Appeler le 05 62 24 37 03 ou passer par la page Contact pour obtenir la liste de stock et les conditions (TVA marge vs HT).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.itp-technologie.com/",
+          "https://www.itp-technologie.com/grossiste-en-telephones-reconditionnes/",
+          "https://www.itp-technologie.com/grossiste-en-pieces-detachees-pour-smartphones/",
+          "https://www.itp-technologie.com/produit/mi-10-pro-256gb-blanc-b/",
+          "https://www.itp-technologie.com/questions-frequentes/",
+          "https://www.itp-technologie.com/mentions-legales/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "eb-tech",
+        name: "EB-TECH",
+        segment: "D_distributor",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://eb-tech.fr/",
+        catalogUrl: "https://eb-tech.fr/17-smartphones",
+        categories: [
+          "smartphones neufs"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Site exclusivement r\xE9serv\xE9 aux professionnels : inscription obligatoire pour voir les tarifs et commander (revendeurs, e-commer\xE7ants, r\xE9parateurs).",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "2 \xE0 4 jours",
+        warranty: "Garantie constructeur (Apple 1 an ; Samsung/Xiaomi 2 ans)",
+        partQuality: null,
+        whyUseful: "Grossiste (Saint-Nazaire) en smartphones 100 % neufs, scell\xE9s, d\xE9bloqu\xE9s ; remises progressives selon volume ; catalogue PrestaShop structur\xE9 par marque/mod\xE8le (fiches avec donn\xE9es schema.org).",
+        howToGetCatalog: "1) S'inscrire sur eb-tech.fr comme professionnel. 2) Apr\xE8s validation, consulter les prix par fiche ; demander une grille de prix d\xE9gressifs / liste de stock par e-mail au commercial.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://eb-tech.fr/17-smartphones",
+          "https://eb-tech.fr/14-apple",
+          "https://eb-tech.fr/16-xiaomi",
+          "https://eb-tech.fr/samsung/413-galaxy-s25-256-go-noir.html",
+          "https://eb-tech.fr/content/6-presentation"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "prodealee",
+        name: "Prodealee (Wedealee SAS)",
+        segment: "D_distributor",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://www.grossiste-telephone.com/",
+        catalogUrl: "https://www.grossiste-telephone.com/smartphones/",
+        categories: [
+          "smartphones neufs",
+          "tablettes",
+          "accessoires"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Huawei",
+          "Xiaomi",
+          "OnePlus",
+          "Realme"
+        ],
+        productTypes: [
+          "new",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Inscription gratuite r\xE9serv\xE9e aux professionnels (TPE/PME/revendeurs) ; pas de minimum de commande ; conseiller d\xE9di\xE9 pour volumes.",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "Aucun minimum annonc\xE9",
+        shipping: "1 \xE0 5 jours (Chronopost/Colissimo), 24 h si en stock",
+        warranty: "2 ans (constructeur ou Wedealee SAS) ; iPhone 1 an Apple",
+        partQuality: null,
+        whyUseful: "Prix affich\xE9s HT et hors RCP (copie priv\xE9e), neuf scell\xE9 uniquement, >1 000 r\xE9f\xE9rences ; reprise de flotte en avoir.",
+        howToGetCatalog: "1) Cr\xE9er un compte pro sur prodealee.com/connexion. 2) Consulter les prix HT en ligne. 3) Pour volumes (dizaines/centaines d'unit\xE9s), demander un devis/une liste au conseiller via la page commande/devis.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.grossiste-telephone.com/",
+          "https://www.grossiste-telephone.com/smartphones/",
+          "https://prodealee.com/connexion",
+          "https://www.grossiste-telephone.com/grossiste-telephone-qui-sommes-nous/",
+          "https://www.grossiste-telephone.com/devis-commande-paiement-grossiste-telephonie/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobile-depot-europe",
+        name: "Mobile Depot Europe (Taqat BV / MJ Phone)",
+        segment: "A_refurb",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "FR",
+          "ES",
+          "BE",
+          "EU",
+          "worldwide"
+        ],
+        website: "https://www.mobiledepot.eu/",
+        catalogUrl: "https://www.mobiledepot.eu/wholesale/buy-stock",
+        categories: [
+          "smartphones grad\xE9s",
+          "tablettes",
+          "accessoires",
+          "job lots"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "used",
+          "refurbished",
+          "new",
+          "lots",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Grossiste B2B ; offres de stock publi\xE9es en ligne avec prix unitaire. Entit\xE9s : Taqat BV (Capelle aan den IJssel, NL) et MJ Phone (FR, agence Aubervilliers). Stock \xE9ligible en TVA sur marge pour entreprises UE.",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "UE sans douane ; DHL/UPS/FedEx ; export Moyen-Orient/Afrique/Asie",
+        warranty: "Grades A+ \xE0 C test\xE9s ; 'as-is' sans garantie",
+        partQuality: null,
+        whyUseful: "Offres de stock publiques par mod\xE8le/capacit\xE9/grade avec prix unitaires en \u20AC (ex. iPhone 14 128GB grade A 320 \u20AC, iPhone 16 128GB A+ 575 \u20AC) et dates d'expiration ; grille de grading publi\xE9e ; pr\xE9sence FR (Aubervilliers).",
+        howToGetCatalog: "1) Consulter https://www.mobiledepot.eu/wholesale/buy-stock et les pages 'exclusive-stock-offers'. 2) Lire 'How We Grade'. 3) Contacter via /contact-us pour la liste de stock compl\xE8te et confirmer l'entit\xE9 de facturation (NL vs FR) et la TVA sur marge.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.mobiledepot.eu/",
+          "https://www.mobiledepot.eu/help-and-legal/how-we-grade",
+          "https://www.mobiledepot.eu/help-and-legal/frequently-asked-questions",
+          "https://www.mobiledepot.eu/wholesale/buy-stock",
+          "https://www.mobiledepot.eu/wholesale/exclusive-stock-offers/60",
+          "https://www.mobiledepot.eu/about-us",
+          "https://www.mobiledepot.eu/contact-us",
+          "https://www.mobiledepot.eu/how-to-buy/delivery-and-shipping",
+          "https://www.mobiledepot.eu/wholesale/job-lots"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "refreshed-apples",
+        name: "Refreshed Apples",
+        segment: "E_specialist",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "EU"
+        ],
+        website: "https://www.refreshedapples.com/",
+        catalogUrl: "https://www.refreshedapples.com/pages/iphone-wholesale",
+        categories: [
+          "iPhone d'occasion grad\xE9s",
+          "appareils Apple"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "used",
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Grossiste B2B Apple bas\xE9 \xE0 Amsterdam ; commande minimum 20 unit\xE9s (commande d'essai de 10 unit\xE9s pour un premier achat).",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "20 unit\xE9s (essai 10)",
+        shipping: null,
+        warranty: "Minimum 30 jours (extensible 2 ans pour d\xE9ploiements entreprise) \u2014 \xE0 confirmer",
+        partQuality: null,
+        whyUseful: "Sp\xE9cialiste iPhone avec 5 grades document\xE9s (A+/A, AB, B, B/C, APPLEASIS), batterie \u226580 %, sans iCloud/MDM, test 60 points (Phonecheck) ; site Shopify, catalogue en ligne potentiellement exploitable.",
+        howToGetCatalog: "1) Lire https://www.refreshedapples.com/pages/iphone-wholesale (grades, MOQ). 2) Contacter l'\xE9quipe via le site pour la stocklist et proposer une commande d'essai de 10 unit\xE9s.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.refreshedapples.com/pages/iphone-wholesale",
+          "https://www.refreshedapples.com/",
+          "https://www.refreshedapples.com/pages/about",
+          "https://www.refreshedapples.com/blogs/news/how-to-verify-used-apple-wholesale-supplier"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "molano",
+        name: "Molano B.V. (Buy Molano)",
+        segment: "E_specialist",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "EU"
+        ],
+        website: "https://buymolano.com/",
+        catalogUrl: "https://buymolano.com/pages/wholesale-iphones",
+        categories: [
+          "iPhone reconditionn\xE9s",
+          "iPad",
+          "pi\xE8ces Apple"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "refurbished",
+          "new",
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Plateforme de gros B2B (revendeurs, dealers, r\xE9parateurs) ; adresse Haarlem (Hendrik Figeeweg 1N). Services : stock virtuel, dropshipping, factoring.",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "USD",
+        moq: null,
+        shipping: "DHL",
+        warranty: "30 jours standard, extensions possibles",
+        partQuality: null,
+        whyUseful: "Catalogue Shopify public par mod\xE8le (collections iPhone 12, 14\u2026) avec prix affich\xE9s ; dropshipping et gestion de stock virtuel utiles pour un revendeur.",
+        howToGetCatalog: "1) Parcourir buymolano.com/collections/*. 2) Contacter Molano via le site pour tarifs de gros actuels (certains prix affich\xE9s en USD et pages anciennes : v\xE9rifier).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://buymolano.com/",
+          "https://buymolano.com/pages/wholesale-iphones",
+          "https://buymolano.com/pages/about-us",
+          "https://buymolano.com/pages/wholesale-of-apple-products",
+          "https://buymolano.com/collections/iphone-14"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobistock",
+        name: "Mobistock BV",
+        segment: "A_refurb",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "EU"
+        ],
+        website: "https://www.mobistock.nl/",
+        catalogUrl: "https://www.mobistock.nl/smartphones/",
+        categories: [
+          "smartphones reconditionn\xE9s",
+          "tablettes",
+          "accessoires"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "refurbished",
+          "used",
+          "new",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Se pr\xE9sente comme fournisseur de gros (Enschede) ; vitrine publique avec prix d\xE9tail. Contact : info@mobistock.nl.",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "12 mois (accueil) / 2 ans (certaines fiches) ; retour 30 jours",
+        partQuality: null,
+        whyUseful: "Catalogue public avec prix et statut de stock par mod\xE8le (ex. iPhone X 419 \u20AC), batteries \u226588 % ; partenaire Phonecheck ; vend aussi en gros aux revendeurs.",
+        howToGetCatalog: "1) Consulter mobistock.nl/smartphones/ pour les prix publics. 2) \xC9crire \xE0 info@mobistock.nl en demandant la liste de stock grossiste et les prix B2B (TVA marge ou HT).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.mobistock.nl/",
+          "https://www.mobistock.nl/smartphones/",
+          "https://www.mobistock.nl/service/about/",
+          "https://www.mobistock.nl/service/",
+          "https://www.phonecheck.com/partners/mobistock",
+          "https://refurbed.fi/m/314"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "dutch-mobile-parts",
+        name: "Dutch Mobile Parts B.V.",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "BE",
+          "EU"
+        ],
+        website: "https://dutchmobileparts.nl/",
+        catalogUrl: "https://dutchmobileparts.nl/",
+        categories: [
+          "pi\xE8ces smartphones",
+          "accessoires t\xE9l\xE9com"
+        ],
+        brands: [
+          "Samsung",
+          "Apple"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Vend uniquement aux soci\xE9t\xE9s avec n\xB0 TVA valide : formulaire avec nom, TVA, n\xB0 KvK, e-mail facturation, IBAN + document officiel ; validation manuelle puis appel d'un account manager.",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grossiste B2B pur (Rotterdam) pour boutiques et revendeurs ; prix de gros visibles apr\xE8s approbation ; catalogue WooCommerce par r\xE9f\xE9rence mod\xE8le (ex. A226B).",
+        howToGetCatalog: "1) Remplir https://dutchmobileparts.nl/registration-form/ avec documents soci\xE9t\xE9. 2) Attendre validation + appel account manager. 3) Se connecter via 'B2B Inloggen' pour voir prix ; demander un export tarif \xE0 info@dutchmobileparts.nl.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://dutchmobileparts.nl/",
+          "https://dutchmobileparts.nl/registration-form/",
+          "https://dutchmobileparts.nl/b2b-inloggen/",
+          "https://dutchmobileparts.nl/faqs/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "dutchspares",
+        name: "DutchSpares B.V.",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "EU"
+        ],
+        website: "https://www.dutchspares.com/",
+        catalogUrl: "https://www.dutchspares.com/nl/samsung/galaxy-a/galaxy-a52-5g/",
+        categories: [
+          "\xE9crans/LCD",
+          "coques arri\xE8re",
+          "batteries",
+          "pi\xE8ces internes"
+        ],
+        brands: [
+          "Samsung",
+          "Apple",
+          "Huawei",
+          "Xiaomi",
+          "OnePlus"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Grossiste en pi\xE8ces d'origine ; particuliers renvoy\xE9s vers la boutique B2C Parts4GSM. Conditions de compte pro non publi\xE9es dans les extraits.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "Annonce '100 % pi\xE8ces originales' (orientation Samsung service pack)",
+        whyUseful: "Sp\xE9cialiste pi\xE8ces d'origine (>3 000 articles) avec catalogue par mod\xE8le Samsung tr\xE8s d\xE9taill\xE9 : utile pour sourcer des Service Packs / pi\xE8ces OEM.",
+        howToGetCatalog: "1) Parcourir le catalogue par marque/mod\xE8le sur dutchspares.com. 2) Cr\xE9er un compte professionnel ou contacter le service commercial pour les prix de gros et une liste exportable.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.dutchspares.com/nl/service/about/",
+          "https://www.dutchspares.com/nl/samsung/galaxy-a/galaxy-a52-5g/",
+          "https://www.dutchspares.com/nl/samsung/galaxy-s/galaxy-s10/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ipartspro",
+        name: "iPartsPro Europe Distribution",
+        segment: "B_parts",
+        country: "BE",
+        deliveryZones: [
+          "BE",
+          "FR",
+          "NL",
+          "EU"
+        ],
+        website: "https://ipartspro.eu/",
+        catalogUrl: "https://ipartspro.eu/",
+        categories: [
+          "\xE9crans",
+          "batteries",
+          "connecteurs de charge",
+          "outillage de r\xE9paration"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Huawei",
+          "Honor",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste pour ateliers de r\xE9paration (Anderlecht, fond\xE9 en 2011) ; commande en ligne aux prix professionnels.",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Rare grossiste belge de pi\xE8ces smartphones (bilingue FR/NL) : proximit\xE9 logistique Bruxelles\u2013Nord de la France.",
+        howToGetCatalog: "1) Cr\xE9er un compte revendeur sur ipartspro.eu. 2) Commander en ligne aux prix trade ; demander un fichier tarif au service commercial (page About us / Facebook iPartsPro).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://ipartspro.eu/",
+          "https://ipartspro.eu/about-us",
+          "https://ipartspro.eu/about-us/f/ipartspro-groothandel-in-onderdelen-voor-smartphones-en-tablets",
+          "https://www.facebook.com/ipartspro.eu/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "fixje-zakelijk",
+        name: "Fixje (FixjeZakelijk)",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "BE"
+        ],
+        website: "https://www.fixje.nl/",
+        catalogUrl: "https://www.fixje.nl/iphone-onderdelen-groothandel/",
+        categories: [
+          "\xE9crans",
+          "batteries",
+          "pi\xE8ces internes"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Compte professionnel FixjeZakelijk avec remise suppl\xE9mentaire ; prix de gros sp\xE9ciaux pour gros volumes.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Catalogue public avec prix visibles + remise pro ; utile comme fournisseur compl\xE9mentaire NL pour pi\xE8ces iPhone.",
+        howToGetCatalog: "1) Consulter la page groothandel. 2) Ouvrir un compte FixjeZakelijk pour la remise pro ; demander un tarif volume par e-mail.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.fixje.nl/iphone-onderdelen-groothandel/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "repuestosmovil",
+        name: "RepuestosMovil",
+        segment: "B_parts",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://repuestosmovil.es/",
+        catalogUrl: "https://repuestosmovil.es/",
+        categories: [
+          "\xE9crans OLED/Incell/Service Pack",
+          "connecteurs",
+          "flex",
+          "haut-parleurs",
+          "outillage"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Prix visibles uniquement apr\xE8s connexion ('Inicie sesi\xF3n para ver precios'). Contact : info@repuestosmovil.es, WhatsApp +34 641 480 053.",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "Mix d\xE9clar\xE9 : Service Pack (origine), OLED, Incell, 'Soft OLED NCC Premium'",
+        whyUseful: ">10 000 r\xE9f\xE9rences, pi\xE8ces d\xE9j\xE0 list\xE9es pour Galaxy S26 ; catalogue WooCommerce structur\xE9 par mod\xE8le.",
+        howToGetCatalog: "1) Cr\xE9er un compte sur repuestosmovil.es. 2) Se connecter pour voir les prix ; demander par e-mail/WhatsApp un tarif professionnel exportable.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://repuestosmovil.es/",
+          "https://repuestosmovil.es/producto/pantalla-iphone-16-pro-max-soft-oled-ncc-premium-2/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobilex-serviphone",
+        name: "Mobilex (Serviphone)",
+        segment: "B_parts",
+        country: "ES",
+        deliveryZones: [
+          "ES",
+          "PT"
+        ],
+        website: "https://serviphone.net/",
+        catalogUrl: "https://www.serviphone.net/es/12-iphone",
+        categories: [
+          "\xE9crans",
+          "batteries",
+          "composants",
+          "accessoires"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi",
+          "Huawei",
+          "Realme",
+          "Oppo",
+          "LG"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Inscription pro gratuite : donn\xE9es fiscales, CIF ou autonomo + un justificatif (mod\xE8le 036/037 ou IAE).",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: "Envoi 24 h",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Remises pro publi\xE9es : -15 % \xE9crans/batteries, -40 % autres composants/accessoires + rappel sur CA et remises volume ; prix HT pour pros ; catalogue public PrestaShop.",
+        howToGetCatalog: "1) Remplir https://www.serviphone.net/form/alta-profesionales-g1.html avec CIF + 036/037/IAE. 2) Apr\xE8s validation, prix pro HT affich\xE9s ; demander un fichier tarif au service commercial.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://serviphone.net/",
+          "https://www.serviphone.net/form/alta-profesionales-g1.html",
+          "https://www.serviphone.net/es/14-xiaomi"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "tecnofix-alicante",
+        name: "Tecnofix Inform\xE1tica (Alicante)",
+        segment: "B_parts",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://www.tecnofixinformatica.com/",
+        catalogUrl: "https://www.tecnofixinformatica.com/repuestos-moviles-ordenadores-consolas/",
+        categories: [
+          "\xE9crans",
+          "batteries",
+          "pi\xE8ces ordinateurs",
+          "pi\xE8ces consoles"
+        ],
+        brands: [],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Distributeur grossiste pour toute l'Espagne ; conditions pro \xE0 demander.",
+        accessModes: [
+          "pro_portal",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "24 h p\xE9ninsule",
+        warranty: null,
+        partQuality: "Originaux (Service Pack) et compatibles premium (OLED/Incell) selon le site",
+        whyUseful: "Distingue clairement Service Pack et compatibles premium, couvre aussi pi\xE8ces PC/consoles.",
+        howToGetCatalog: "1) Contacter Tecnofix via son site pour ouvrir un compte grossiste. 2) Demander la liste de prix par e-mail.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.tecnofixinformatica.com/repuestos-moviles-ordenadores-consolas/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "spainsellers",
+        name: "Spainsellers (Microrepuestos S.L.U.)",
+        segment: "B_parts",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://www.spainsellers.com/",
+        catalogUrl: null,
+        categories: [
+          "\xE9crans LCD/TFT/OLED",
+          "batteries",
+          "flex",
+          "accessoires"
+        ],
+        brands: [],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Vente en gros et au d\xE9tail (Crevillent, Alicante, depuis 2008). T\xE9l. 965 997 406.",
+        accessModes: [
+          "feed",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Selon l'annuaire proveedores.com, propose des outils pour exporter ses produits vers une boutique en ligne (flux possible, format non pr\xE9cis\xE9).",
+        howToGetCatalog: "1) Contacter Spainsellers (965 997 406) et demander l'acc\xE8s revendeur. 2) Demander le format du fichier d'export produits (CSV/XML ?) et sa fr\xE9quence.",
+        verified: false,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://proveedores.com/proveedores/spainsellers/",
+          "https://develo.spainsellers.com"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ecoportatil",
+        name: "Ecoport\xE1til",
+        segment: "A_refurb",
+        country: "ES",
+        deliveryZones: [
+          "ES",
+          "FR"
+        ],
+        website: "https://ecoportatil.es/",
+        catalogUrl: "https://ecoportatil.es/mayoristas-informatica",
+        categories: [
+          "portables reconditionn\xE9s",
+          "MacBook",
+          "smartphones reconditionn\xE9s",
+          "lots"
+        ],
+        brands: [
+          "HP",
+          "Lenovo",
+          "Dell",
+          "Apple"
+        ],
+        productTypes: [
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Programme distributeur : formulaire avec donn\xE9es soci\xE9t\xE9, r\xE9ponse sous 24\u201348 h ; aucun minimum de commande ; prix pro apr\xE8s inscription.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "Aucun",
+        shipping: "24\u201348 h",
+        warranty: "2 ans par unit\xE9 (pages anciennes : 1 an extensible 3)",
+        partQuality: null,
+        whyUseful: "Lots ex-entreprise publics avec prix (ex. lot 5x ThinkPad T490 A+), >500 mod\xE8les en stock permanent, r\xE9seau >2 000 distributeurs ; site FR (ecoportatil.fr) avec rubrique 'ordinateurs en gros'.",
+        howToGetCatalog: "1) Remplir le formulaire sur https://ecoportatil.es/mayoristas-informatica. 2) Attendre les conditions distributeur (24\u201348 h). 3) Acc\xE9der aux prix pro ; demander un export stock \xE0 l'account manager.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://ecoportatil.es/mayoristas-informatica",
+          "https://ecoportatil.es/preguntas-frecuentes/",
+          "https://ecoportatil.es/producto/lote-5x-lenovo-thinkpad-t490-14-i5-8265u-16gb-ssd-512gb-fhd-a",
+          "https://ecoportatil.fr/c/ordinateurs-en-gros"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "pc-portatil",
+        name: "PC-Port\xE1til (mayorista inform\xE1tica segunda mano)",
+        segment: "A_refurb",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://www.pc-portatil.com/",
+        catalogUrl: "https://www.pc-portatil.com/portatiles-segunda-mano/",
+        categories: [
+          "portables d'occasion",
+          "ordinateurs de bureau",
+          "serveurs",
+          "imprimantes",
+          "composants"
+        ],
+        brands: [
+          "HP",
+          "Lenovo",
+          "Dell",
+          "Fujitsu",
+          "Getac"
+        ],
+        productTypes: [
+          "used",
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Grossiste informatique d'occasion depuis 1997 ; page d\xE9di\xE9e distributeurs ; conditions de gros \xE0 demander.",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "Jusqu'\xE0 2 ans selon les fiches",
+        partQuality: null,
+        whyUseful: "Stock en temps r\xE9el sur le site avec quantit\xE9 par r\xE9f\xE9rence (ex. '41 en stock' HP EliteBook 840 G7) : catalogue public directement exploitable pour lots ex-corporate.",
+        howToGetCatalog: "1) Consulter le catalogue public (quantit\xE9s affich\xE9es). 2) Contacter via https://distribuidores-mayoristas.pc-portatil.com/ pour prix revendeur HT et volumes.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://distribuidores-mayoristas.pc-portatil.com/",
+          "https://www.pc-portatil.com/",
+          "https://www.pc-portatil.com/portatiles-segunda-mano/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "phonemadrid",
+        name: "PhoneMad (Renova PhoneMadrid S.L.)",
+        segment: "E_specialist",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://www.phonemadrid.com/",
+        catalogUrl: "https://www.phonemadrid.com/es/hazte-distribuidor-moviles-reacondicionados",
+        categories: [
+          "iPhone reconditionn\xE9s"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Programme 'Hazte distribuidor' ; un extrait indique qu'il faut disposer d'une boutique physique de t\xE9l\xE9phonie en Espagne. Facturation REBU (IVA non d\xE9ductible). T\xE9l. 913 270 350.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: "D\xE9part quotidien depuis Madrid, livraison 24 h",
+        warranty: "24 mois",
+        partQuality: null,
+        whyUseful: "Sp\xE9cialiste iPhone reconditionn\xE9 avec stock permanent et facturation en r\xE9gime de biens d'occasion (REBU) ; catalogue public par mod\xE8le utile comme r\xE9f\xE9rence prix.",
+        howToGetCatalog: "1) Remplir le formulaire 'Hazte distribuidor'. 2) V\xE9rifier si une boutique hors Espagne est accept\xE9e (condition \xE0 confirmer). 3) Demander la liste de prix distributeur.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.phonemadrid.com/es/hazte-distribuidor-moviles-reacondicionados",
+          "https://www.phonemadrid.com/es/content/11-condiciones-generales-de-contratacion",
+          "https://phonemadrid.com/es/content/4-sobre-nosotros"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "planet-outlet",
+        name: "Planet Outlet",
+        segment: "C_liquidation",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://planetoutlet.es/",
+        catalogUrl: "https://planetoutlet.es/lotes-de-devoluciones-de-amazon",
+        categories: [
+          "palettes retours Amazon",
+          "\xE9lectronique",
+          "maison"
+        ],
+        brands: [],
+        productTypes: [
+          "lots",
+          "used",
+          "new"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Vente de palettes et cartons scell\xE9s de retours Amazon avec manifeste complet ; entrep\xF4t \xE0 Getafe (Madrid).",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "48\u201372 h en Espagne",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Lots avec listing produit complet (manifeste) : permet d'estimer la valeur avant achat ; cat\xE9gorie \xE9lectronique.",
+        howToGetCatalog: "1) Parcourir les lots sur planetoutlet.es. 2) T\xE9l\xE9charger/consulter le listing de chaque palette ; contacter pour lots \xE9lectronique/smartphones sp\xE9cifiques.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://planetoutlet.es/lotes-de-devoluciones-de-amazon"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "subastalotes",
+        name: "Subastalotes",
+        segment: "C_liquidation",
+        country: "ES",
+        deliveryZones: [
+          "ES"
+        ],
+        website: "https://subastalotes.com/",
+        catalogUrl: "https://subastalotes.com/",
+        categories: [
+          "retours Amazon",
+          "\xE9lectronique"
+        ],
+        brands: [],
+        productTypes: [
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Vente en gros de cartons et palettes de retours Amazon aux revendeurs/grossistes ; entrep\xF4t \xE0 Alicante.",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "24/48 h",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Nouveaux lots publi\xE9s chaque jour du lundi au samedi : flux r\xE9gulier de d\xE9stockage.",
+        howToGetCatalog: "1) Consulter subastalotes.com quotidiennement. 2) Filtrer les lots \xE9lectronique ; demander le d\xE9tail de contenu avant achat.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://subastalotes.com/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "bestellaptops",
+        name: "Bestellaptops.nl (Laptop Groothandel)",
+        segment: "A_refurb",
+        country: "NL",
+        deliveryZones: [
+          "NL",
+          "EU"
+        ],
+        website: "https://bestellaptops.nl/",
+        catalogUrl: "https://bestellaptops.nl/pages/laptop-groothandel",
+        categories: [
+          "portables reconditionn\xE9s"
+        ],
+        brands: [],
+        productTypes: [
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Fournisseur en volume pour entreprises, \xE9coles, administrations et revendeurs ; prix de gros d\xE8s 5 unit\xE9s sur devis.",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "5 unit\xE9s pour prix de gros",
+        shipping: null,
+        warranty: "2 ans",
+        partQuality: null,
+        whyUseful: "Laptops ex-entreprise en volume avec livraison Europe ; catalogue Shopify public.",
+        howToGetCatalog: "1) Consulter la page laptop-groothandel. 2) Envoyer une demande de devis avec mod\xE8les/quantit\xE9s.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://bestellaptops.nl/pages/laptop-groothandel"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "big-brand-depot",
+        name: "Big Brand Depot",
+        segment: "C_liquidation",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "EU"
+        ],
+        website: "https://bigbranddepot.fr/",
+        catalogUrl: "https://bigbranddepot.fr/",
+        categories: [
+          "retours clients",
+          "surstocks",
+          "marchandises de marque"
+        ],
+        brands: [],
+        productTypes: [
+          "lots",
+          "new",
+          "used"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Fournisseur de marchandises en gros, retours clients et surstocks en France et Europe ; conditions \xE0 demander. Domaine bigbranddepot.fr introuvable lors du contr\xF4le serveur du 10/10/2026 : coordonn\xE9es \xE0 confirmer.",
+        accessModes: [
+          "public_catalog",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Source fran\xE7aise de lots retours/surstocks ; un avis client rappelle qu'un tri est n\xE9cessaire.",
+        howToGetCatalog: "1) Consulter bigbranddepot.fr. 2) Contacter l'entreprise pour les lots \xE9lectronique/t\xE9l\xE9phonie disponibles et leur manifeste.",
+        verified: false,
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://bigbranddepot.fr/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "partner-tele-com",
+        name: "Partner Tele.com",
+        segment: "D_distributor",
+        country: "PL",
+        deliveryZones: [
+          "PL",
+          "EU"
+        ],
+        website: "https://partnertele.com/",
+        catalogUrl: "https://partnertele.com/",
+        categories: [
+          "coques",
+          "chargeurs",
+          "verres tremp\xE9s",
+          "batteries",
+          "c\xE2bles",
+          "supports auto",
+          "powerbanks",
+          "pi\xE8ces d\xE9tach\xE9es (\xE9crans, connecteurs de charge, haut-parleurs)"
+        ],
+        brands: [
+          "Forcell",
+          "Blue Star",
+          "HOCO",
+          "Guess",
+          "Karl Lagerfeld",
+          "UAG"
+        ],
+        productTypes: [
+          "new",
+          "accessories",
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste B2B (Cracovie, fond\xE9 en 2001, >150 salari\xE9s). Conditions n\xE9goci\xE9es individuellement ; cr\xE9dit fournisseur pour partenaires r\xE9guliers ; livraison gratuite au-del\xE0 d'un seuil. Ouverture de compte pro n\xE9cessaire pour les prix.",
+        accessModes: [
+          "pro_portal",
+          "feed",
+          "manual_download"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "PLN",
+        moq: null,
+        shipping: "Livraison gratuite au-del\xE0 d'un montant de commande (seuil non relev\xE9) ; conditions export UE \xE0 confirmer",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Un des plus gros grossistes GSM polonais avec int\xE9gration CSV/XML pour e-commer\xE7ants et connecteurs pr\xEAts \xE0 l'emploi Base.com (ex-BaseLinker) et Shoper : synchronisation automatique prix + stock, id\xE9al pour alimenter un catalogue accessoires/pi\xE8ces.",
+        howToGetCatalog: "1) Cr\xE9er un compte pro sur partnertele.com (NIP/TVA intracom). 2) Demander l'acc\xE8s au fichier d'int\xE9gration CSV/XML dans l'espace client. 3) Ou brancher le connecteur Base.com 'Partner Tele.com' qui synchronise prix/stock. 4) N\xE9gocier l'exp\xE9dition vers la France avec le commercial.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://partnertele.com/",
+          "https://partnertele.com/o_firmie",
+          "https://edu.partnertele.com/hurtownia-akcesoriow-gsm-do-telefonow/",
+          "https://www.shoper.pl/katalog-hurtowni/hurtownia/partner-tele-com",
+          "https://base.com/pl-PL/integracje/partnertele/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "home-screen-distribution",
+        name: "Home Screen Distribution",
+        segment: "D_distributor",
+        country: "PL",
+        deliveryZones: [
+          "PL",
+          "EU"
+        ],
+        website: "https://b2b.homescreen.pl/en/",
+        catalogUrl: "https://b2b.homescreen.pl/en/b2b",
+        categories: [
+          "coques premium",
+          "verres tremp\xE9s",
+          "chargeurs",
+          "powerbanks",
+          "audio",
+          "smart home"
+        ],
+        brands: [
+          "Spigen",
+          "Ringke",
+          "Dux Ducis",
+          "T-Max",
+          "Dome Glass",
+          "Ghostek",
+          "JBL"
+        ],
+        productTypes: [
+          "new",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste B2B d'accessoires mobiles premium ; compte client B2B requis pour g\xE9n\xE9rer les flux et commander. Exp\xE9die dans toute l'UE (InPost, DHL, DPD, GLS, FedEx selon pays).",
+        accessModes: [
+          "pro_portal",
+          "feed",
+          "api"
+        ],
+        apiDocsUrl: "https://b2b.homescreen.pl/content/10-metody-integracji-csvxmlbl-connect",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "Toute l'UE ; transporteur choisi par pays au checkout ; franco variable selon pays",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Flux XML/CSV auto-g\xE9n\xE9r\xE9 depuis l'espace client (format complet rafra\xEEchi toutes les 6 h, format l\xE9ger toutes les 2 h, choix langue/devise/marques), plus une API REST de commande (cl\xE9 API, identification SKU/EAN, mode validation prix/stock) et int\xE9gration BaseLinker : le meilleur niveau d'automatisation trouv\xE9 dans cette recherche.",
+        howToGetCatalog: "1) S'inscrire sur b2b.homescreen.pl. 2) Dans le panneau client, g\xE9n\xE9rer le flux XML (ou CSV) en choisissant devise EUR, langue et marques \u2192 URL permanente. 3) Pour commander automatiquement, demander une cl\xE9 pour l'API B2B Orders. 4) Lire la page 'metody integracji' pour les formats.",
+        verified: true,
+        verificationLevel: "official_docs_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://b2b.homescreen.pl/en/",
+          "https://b2b.homescreen.pl/b2b",
+          "https://b2b.homescreen.pl/content/10-metody-integracji-csvxmlbl-connect",
+          "https://b2b.homescreen.pl/en/content/11-home-screen-distribution-the-largest-selection-of-premium-mobile-accessories",
+          "https://sky-shop.pl/integracja-z-hurtownia-home-screen/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "telepart-distribution",
+        name: "TelePart Distribution GmbH",
+        segment: "D_distributor",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU",
+          "World"
+        ],
+        website: "https://www.telepart.com/de",
+        catalogUrl: "https://www.telepart.com/de",
+        categories: [
+          "smartphones",
+          "tablets",
+          "t\xE9l\xE9phones seniors",
+          "smartphones chinois"
+        ],
+        brands: [
+          "multi-marques (Apple, Samsung, Xiaomi et marques chinoises)"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste (Holzmaden, pr\xE8s de Stuttgart) r\xE9serv\xE9 aux revendeurs, e-commer\xE7ants, grossistes ; inscription revendeur gratuite et sans engagement. Pas de minimum de commande annonc\xE9.",
+        accessModes: [
+          "pro_portal",
+          "manual_download",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "Aucun minimum de commande ni suppl\xE9ment petite quantit\xE9 (page frais DPD)",
+        shipping: "DPD ; assurance transport 0,3 % de la valeur ; frais suppl\xE9mentaires si adresse de livraison diff\xE9rente (grille TelePart) ; livraisons dans >50 pays",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Boutique B2B avec prix et stocks en temps r\xE9el 24/7, articles r\xE9f\xE9renc\xE9s par EAN, et listes de stock disponibles en PDF ou Excel ou par e-mail quotidien : directement exploitable pour comparer les prix du neuf.",
+        howToGetCatalog: "1) S'inscrire comme revendeur sur telepart.com (gratuit). 2) Apr\xE8s validation, consulter le shop B2B (prix/stock live). 3) Demander l'abonnement \xE0 la liste de stock quotidienne par e-mail (Excel/PDF) \u2013 info@telepart.com, +49 7023 7457-0.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.telepart.com/de",
+          "https://www.telepart.com/de/ourcustomers",
+          "https://www.telepart.com/de/shipmentcostsdpd",
+          "https://www.telepart.com/en/profile",
+          "https://www.telepart.com/cms/file/141",
+          "https://www.it-in-germany.de/firma/TelePart+Discount+Distribution+GmbH/5012628/80870/esp"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "tr-vertriebs-gmbh",
+        name: "TR Vertriebs GmbH",
+        segment: "A_refurb",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU"
+        ],
+        website: "https://www.tr-vertrieb.de/",
+        catalogUrl: "https://www.tr-vertrieb.de/wholesale/buy-wholesale-iphones-in-bulk",
+        categories: [
+          "iPhones d'occasion par lots"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "used",
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste B2B d'iPhones d'occasion (Horn-Bad Meinberg, depuis 2011). Devis par e-mail ou WhatsApp sous 1 jour ouvr\xE9. Ventes aux professionnels.",
+        accessModes: [
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "10 unit\xE9s",
+        shipping: "Exp\xE9dition le jour m\xEAme si pay\xE9 avant 17 h CET, livraison UE J+1 en g\xE9n\xE9ral, assur\xE9e ; 27 pays UE",
+        warranty: "Sant\xE9 batterie >80 % garantie sur tous les grades (d\xE9claratif)",
+        partQuality: "Grades A, A/B (mix), B/C (\xE9conomique)",
+        whyUseful: "Fournisseur allemand sp\xE9cialis\xE9 iPhone 11 \u2192 17 Pro Max en lots de 10, grades clairs et batterie >80 %, livraison UE rapide : bon compl\xE9ment pour s'approvisionner en iPhone grad\xE9s sans passer par une marketplace.",
+        howToGetCatalog: "1) Envoyer une demande de devis/stock via le formulaire, e-mail ou WhatsApp indiqu\xE9 sur tr-vertrieb.de. 2) Pr\xE9ciser mod\xE8les, grades, quantit\xE9s, livraison France et n\xB0 TVA intracom (autoliquidation). 3) R\xE9ponse annonc\xE9e sous 1 jour ouvr\xE9.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.tr-vertrieb.de/",
+          "https://www.tr-vertrieb.de/wholesale/buy-wholesale-iphones-in-bulk",
+          "https://www.tr-vertrieb.de/wholesale/for-refurbishers",
+          "https://www.tr-vertrieb.de/company"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mpsmobile",
+        name: "mpsmobile GmbH",
+        segment: "B_parts",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU",
+          "CH",
+          "UK"
+        ],
+        website: "https://mpsmobile.de/en",
+        catalogUrl: "https://mpsmobile.de/en/spare-parts-c-0274BA15B350",
+        categories: [
+          "\xE9crans LCD/OLED",
+          "vitres tactiles",
+          "batteries",
+          "cam\xE9ras",
+          "visserie",
+          "verres tremp\xE9s",
+          "smartphones"
+        ],
+        brands: [
+          "Samsung",
+          "Apple",
+          "Xiaomi",
+          "Huawei",
+          "multi-marques"
+        ],
+        productTypes: [
+          "parts",
+          "accessories",
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Vente exclusivement aux entreprises (\xA714 BGB). Inscription avec raison sociale, TVA (optionnelle), justificatif d'activit\xE9 et extrait K-bis/Handelsregister. Connexion requise pour voir prix et stock.",
+        accessModes: [
+          "pro_portal",
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "Grille par pays (23 pays dont FR) ; UPS international standard payant, offert au-del\xE0 d'un montant de commande (grille mpsmobile)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grossiste allemand de pi\xE8ces GSM fournissant ~2 400 revendeurs/r\xE9parateurs, catalogue public navigable par marque/s\xE9rie/mod\xE8le (arborescence exploitable pour le matching) et livraison France tarif\xE9e.",
+        howToGetCatalog: "1) Remplir le formulaire https://mpsmobile.de/en/customer/signup avec Kbis et n\xB0 TVA. 2) Apr\xE8s validation, se connecter pour voir prix/stock. 3) Demander au service commercial (+49 7352 92323-0) un export de prix ou fichier si besoin.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://mpsmobile.de/en",
+          "https://mpsmobile.de/en/spare-parts-c-0274BA15B350",
+          "https://mpsmobile.de/en/site/shipping-costs",
+          "https://mpsmobile.de/en/customer/signup",
+          "https://mpsmobile.de/en/lcd-c-6CF88269C26F"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobiltec24",
+        name: "Mobiltec 24 GmbH",
+        segment: "B_parts",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU"
+        ],
+        website: "https://www.mobiltec24.de/",
+        catalogUrl: "https://www.mobiltec24.de/shop/",
+        categories: [
+          "pi\xE8ces d\xE9tach\xE9es smartphones/tablettes",
+          "accessoires",
+          "outillage de r\xE9paration"
+        ],
+        brands: [
+          "multi-marques (dont Blackview, Qtek\u2026)"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Grossiste et d\xE9taillant ; conditions sp\xE9ciales pour revendeurs et clients dropshipping apr\xE8s inscription avec justificatif d'activit\xE9 (Gewerbenachweis) en fichier ; inscription seulement si lien avec le catalogue.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "~29 000 r\xE9f\xE9rences pi\xE8ces/accessoires y compris pour marques rares, recherche par EAN/r\xE9f fabricant, et offre dropshipping : utile pour les pi\xE8ces introuvables chez les fournisseurs habituels.",
+        howToGetCatalog: "1) Cr\xE9er un compte Fachhandel sur mobiltec24.de/fachhandel et t\xE9l\xE9verser le justificatif d'activit\xE9. 2) Une fois valid\xE9, prix revendeur visibles. 3) Demander \xE0 info@mobiltec24.de si un flux CSV/dropshipping est disponible (non document\xE9 publiquement).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.mobiltec24.de/fachhandel/",
+          "https://www.mobiltec24.de/",
+          "https://www.mobiltec24.de/datenschutz"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "nowacell",
+        name: "Nowacell",
+        segment: "B_parts",
+        country: "PL",
+        deliveryZones: [
+          "PL",
+          "EU"
+        ],
+        website: "https://nowacell.pl/",
+        catalogUrl: "https://nowacell.pl/",
+        categories: [
+          "\xE9crans/vitres",
+          "dos/coques arri\xE8re",
+          "batteries",
+          "pi\xE8ces iPhone",
+          "pi\xE8ces laptops"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "multi-marques"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Compte entreprise ouvert par e-mail (b2b@nowacell.pl) avec raison sociale, adresse, NIP/TVA UE ; prix de gros nets visibles apr\xE8s v\xE9rification. Ventes intra-UE HT (autoliquidation) si TVA active dans VIES.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal",
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "PLN",
+        moq: null,
+        shipping: "Envoi vers l'UE organis\xE9 individuellement ; batteries actuellement exp\xE9di\xE9es uniquement en Pologne aux particuliers",
+        warranty: null,
+        partQuality: "Grades indiqu\xE9s par fiche : OR, OEM, iC (ex. 'Bateria \u2026 OEM Jako\u015B\u0107', 'Szybka \u2026 Jako\u015B\u0107 OR')",
+        whyUseful: "Catalogue public de pi\xE8ces iPhone avec qualit\xE9 clairement \xE9tiquet\xE9e (OEM/OR) et proc\xE9dure explicite de vente intracom HT pour les pros UE.",
+        howToGetCatalog: "1) Envoyer \xE0 b2b@nowacell.pl : raison sociale, adresse, n\xB0 TVA intracom FR. 2) Apr\xE8s validation, prix nets affich\xE9s sur le site. 3) Demander devis transport vers la France (et statut batteries).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://nowacell.pl/",
+          "https://nowacell.pl/Dane-firmy/",
+          "https://nowacell.pl/Platnosc-i-dostawa/",
+          "https://nowacell.pl/Regulamin/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "gsmok",
+        name: "GSMOK.com",
+        segment: "B_parts",
+        country: "PL",
+        deliveryZones: [
+          "PL",
+          "EU"
+        ],
+        website: "https://gsmok.com/en/",
+        catalogUrl: "https://gsmok.com/en/phone-service-parts-c031",
+        categories: [
+          "pi\xE8ces de service d'origine",
+          "nappes/flex",
+          "connecteurs",
+          "antennes",
+          "outillage (stations \xE0 air chaud)",
+          "accessoires"
+        ],
+        brands: [
+          "Samsung",
+          "Oppo",
+          "Apple",
+          "multi-marques"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Grossiste en ligne (bureau + entrep\xF4t Varsovie). 'Sign in to see wholesale prices' : remises apr\xE8s inscription au panneau client. 1re commande sans contre-remboursement.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: "DHL/UPS ; tous pays UE ; franco 49 \u20AC ou 99 \u20AC selon article",
+        warranty: null,
+        partQuality: "Nombreuses pi\xE8ces marqu\xE9es [Original] avec r\xE9f. constructeur (ex. GH98-\u2026)",
+        whyUseful: "Catalogue anglais public de pi\xE8ces d'origine Samsung/Oppo avec r\xE9f\xE9rences constructeur (GH98\u2026, 3705-\u2026), utile pour du matching par r\xE9f\xE9rence et du service pack.",
+        howToGetCatalog: "1) S'inscrire sur gsmok.com/en. 2) Se connecter pour voir prix de gros. 3) Pour volumes/TVA intracom, contacter sklep@gsmok.pl.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://gsmok.com/en/kontakt-im4-ii56",
+          "https://gsmok.com/en/phone-service-parts-c031",
+          "https://gsmok.com/dostawy.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobileworld-linz",
+        name: "MobileWorld (Linz)",
+        segment: "B_parts",
+        country: "AT",
+        deliveryZones: [
+          "AT"
+        ],
+        website: "https://www.mobileworld.at/",
+        catalogUrl: "https://www.mobileworld.at/Ersatzteile/",
+        categories: [
+          "batteries iPhone/Samsung",
+          "\xE9crans iPhone (pulled OLED, incell)",
+          "\xE9crans Samsung service pack",
+          "adh\xE9sifs",
+          "accessoires",
+          "smartphones"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Huawei"
+        ],
+        productTypes: [
+          "parts",
+          "accessories",
+          "new"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Cr\xE9er un compte client puis envoyer un justificatif d'activit\xE9 (Gewerbeschein) \xE0 office@mobileworld.at / rg@mobileworld.at pour activation des conditions de gros.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: "1\u20132 jours ouvr\xE9s (Autriche) ; livraison France non confirm\xE9e",
+        warranty: null,
+        partQuality: "Samsung : Service Pack d'origine ; iPhone : pulled OLED / incell",
+        whyUseful: "Petit grossiste autrichien qui distingue clairement Service Pack Samsung et \xE9crans pulled/incell iPhone : bonne source de pi\xE8ces d'origine Samsung.",
+        howToGetCatalog: "1) Cr\xE9er un compte sur mobileworld.at. 2) Envoyer Kbis/\xE9quivalent \xE0 office@mobileworld.at. 3) Demander \xE0 Ren\xE9 Grafeneder (contact B2B) conditions export France.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.mobileworld.at/info/handyzubehoer-firmenkunden-grosshandel-b2b.html",
+          "https://www.mobileworld.at/Ersatzteile/",
+          "https://www.mobileworld.at/b2b-ersatzteile/b2b-iphone-akkus/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "servisnidily-cz",
+        name: "Servisn\xED d\xEDly (servisnidily.cz)",
+        segment: "B_parts",
+        country: "CZ",
+        deliveryZones: [
+          "CZ",
+          "SK",
+          "EU"
+        ],
+        website: "https://www.servisnidily.cz/",
+        catalogUrl: "https://www.servisnidily.cz/",
+        categories: [
+          "pi\xE8ces smartphones",
+          "pi\xE8ces MacBook",
+          "pi\xE8ces trottinettes Xiaomi",
+          "accessoires"
+        ],
+        brands: [
+          "Samsung",
+          "Apple",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Importateur/distributeur de pi\xE8ces visant pros et ateliers. Gros : cr\xE9er un compte e-shop puis envoyer par e-mail les infos soci\xE9t\xE9 ; v\xE9rification puis contact.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "CZK",
+        moq: null,
+        shipping: "Exp\xE9die en Slovaquie et autres pays UE (options visibles en version EU du site)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur tch\xE8que peu connu, catalogue public tr\xE8s fin par mod\xE8le (ex. Galaxy A36, MacBook A2681, MIX Flip) et exp\xE9dition UE : alternative d'Europe centrale aux grossistes FR.",
+        howToGetCatalog: "1) Cr\xE9er un compte sur servisnidily.cz (basculer en version EU). 2) \xC9crire \xE0 info@servisnidily.cz avec infos soci\xE9t\xE9/TVA pour activer le tarif 'Velkoobchod'. 3) V\xE9rifier frais de port France en version EU.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.servisnidily.cz/Stranky/Velkoobchod",
+          "https://www.servisnidily.cz/Stranky/FAQ-casto-kladene-otazky",
+          "https://www.servisnidily.cz/Stranky/Doprava-a-platba",
+          "https://www.servisnidily.cz/Stranky/Kdo-jsme"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "technoworld-reseller",
+        name: "Technoworld Reseller (TW Reseller)",
+        segment: "B_parts",
+        country: "IT",
+        deliveryZones: [
+          "IT"
+        ],
+        website: "https://www.shop-technoworld.eu/",
+        catalogUrl: "https://www.shop-technoworld.eu/ricambi/",
+        categories: [
+          "\xE9crans",
+          "batteries",
+          "nappes",
+          "modules cam\xE9ra",
+          "ch\xE2ssis",
+          "composants SMD",
+          "iPhone reconditionn\xE9s"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi",
+          "Oppo",
+          "Motorola",
+          "Realme",
+          "Lenovo"
+        ],
+        productTypes: [
+          "parts",
+          "refurbished",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Division B2B r\xE9serv\xE9e aux r\xE9parateurs/revendeurs avec Partita IVA. Attention : plusieurs entit\xE9s/P.IVA affich\xE9es (TW Store SRL, TW Reseller SRL, Technoworld S.R.L.) \u2013 v\xE9rifier l'entit\xE9 facturante.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "24/48 h depuis stock via Mail Boxes Etc. ; export hors Italie non document\xE9",
+        warranty: "\xC0 partir de 12 mois",
+        partQuality: "Originales et compatibles",
+        whyUseful: "Grossiste de Reggio Emilia orient\xE9 r\xE9paration niveau 3 (carte m\xE8re, SMD) : source de composants SMD et pi\xE8ces que les grossistes FR stockent peu.",
+        howToGetCatalog: "1) S'inscrire comme revendeur sur shop-technoworld.eu. 2) Demander l'activation B2B (info@twreseller.com). 3) Demander express\xE9ment si livraison France et facturation intracom possibles.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.shop-technoworld.eu/",
+          "https://www.shop-technoworld.eu/content/shop-vendita-online-ricambi-smartphone-reggio-emilia.html",
+          "https://www.shop-technoworld.eu/ricambi/",
+          "https://www.shop-technoworld.eu/content/ricondizionati.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ingrosmart",
+        name: "Ingrosmart (Newmobi)",
+        segment: "B_parts",
+        country: "IT",
+        deliveryZones: [
+          "IT"
+        ],
+        website: "https://www.ingrosmart.it/",
+        catalogUrl: "https://www.ingrosmart.it/ricambi.html",
+        categories: [
+          "\xE9crans LCD",
+          "batteries",
+          "connecteurs",
+          "nappes",
+          "micros/haut-parleurs",
+          "antennes",
+          "outillage ATTEN"
+        ],
+        brands: [
+          "Samsung",
+          "Huawei",
+          "Apple",
+          "Xiaomi",
+          "Motorola",
+          "Nokia"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Distributeur italien B2B exclusivement pour revendeurs/r\xE9parateurs. Contact b2b@newmobi.it, t\xE9l. 055 8969629.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "24\u201348 h en Italie par express",
+        warranty: "Garantie italienne sur pi\xE8ces",
+        partQuality: "Filtre 'Sostitutivi' (compatibles) vs originaux",
+        whyUseful: "Catalogue structur\xE9 par marque avec distinction originaux/compatibles, utile pour benchmark de prix italiens sur pi\xE8ces Huawei/Motorola/Nokia.",
+        howToGetCatalog: "1) Cr\xE9er un compte B2B sur ingrosmart.it. 2) \xC9crire \xE0 b2b@newmobi.it pour conditions export France. 3) Demander un export catalogue (CSV) \u2013 non document\xE9 publiquement.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.ingrosmart.it/ricambi.html",
+          "https://www.ingrosmart.it/ricambi/display-lcd.html",
+          "https://www.ingrosmart.it/strumenti-per-riparazioni/strumenti-professionali-atten/ricambi.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "michael-ag",
+        name: "MICHAEL AG (Michael Telecom)",
+        segment: "D_distributor",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU",
+          "World"
+        ],
+        website: "https://www.michael-ag.de/",
+        catalogUrl: "https://www.michael-ag.de/mobilfunk-grosshandel",
+        categories: [
+          "smartphones",
+          "t\xE9l\xE9phones seniors",
+          "t\xE9l\xE9com/ITK",
+          "accessoires"
+        ],
+        brands: [
+          "multi-marques",
+          "AGFEO"
+        ],
+        productTypes: [
+          "new",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Distributeur ITK de Bohmte (Osnabr\xFCck) ; syst\xE8me de commande en ligne r\xE9serv\xE9 aux revendeurs v\xE9rifi\xE9s ; seuls les prix du jour font foi (CGV).",
+        accessModes: [
+          "pro_portal",
+          "manual_download",
+          "feed"
+        ],
+        apiDocsUrl: "https://www.michael-ag.de/media/0/EDI_Services.pdf",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "Export avec d\xE9douanement, monde entier ; commandes \xE9trang\xE8res exp\xE9di\xE9es en port d\xFB depuis Bohmte",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Liste de prix de gros t\xE9l\xE9phonie mise \xE0 jour quotidiennement avec quantit\xE9s disponibles, et documentation EDI publique (fichier prix handsets + fichier prix g\xE9n\xE9ral via le centre client) : int\xE9grable automatiquement.",
+        howToGetCatalog: "1) Demander un compte revendeur v\xE9rifi\xE9. 2) Acc\xE9der au centre client (michael-telecom.de) pour t\xE9l\xE9charger la liste de prix handsets quotidienne. 3) Lire le PDF EDI (dat\xE9 2018, \xE0 revalider) pour les fichiers/acc\xE8s automatis\xE9s.",
+        verified: true,
+        verificationLevel: "official_docs_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.michael-ag.de/mobilfunk-grosshandel",
+          "https://www.michael-ag.de/",
+          "https://www.michael-ag.de/media/0/EDI_Services.pdf",
+          "https://www.michael-ag.de/agb"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "incom-group",
+        name: "Incom Group",
+        segment: "D_distributor",
+        country: "PL",
+        deliveryZones: [
+          "PL",
+          "EU"
+        ],
+        website: "https://www.incomgroup.pl/",
+        catalogUrl: "https://www.incomgroup.pl/wszystkie-produkty/",
+        categories: [
+          "laptops",
+          "PC",
+          "composants (CPU, cartes m\xE8res, GPU)",
+          "stockage"
+        ],
+        brands: [
+          "Dell",
+          "HP",
+          "Lenovo",
+          "multi-marques"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Vente exclusivement B2B (revendeurs, int\xE9grateurs) via la plateforme d'achat INCOM Online ; cr\xE9dit commercial fix\xE9 individuellement.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "PLN",
+        moq: null,
+        shipping: "Commande avant 15h30 exp\xE9di\xE9e le jour m\xEAme, livraison J+1 (PL) ; franco >2000 PLN net ; exp\xE9dition UE possible",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur IT polonais (~30 000 r\xE9f\xE9rences) moins connu que AB/Action, qui d\xE9clare exp\xE9dier dans l'UE : alternative pour laptops neufs/composants \xE0 prix polonais.",
+        howToGetCatalog: "1) Ouvrir un compte sur INCOM Online. 2) Consulter prix de gros et stocks en ligne. 3) Demander conditions/d\xE9lais de livraison vers la France et \xE9ventuel export de prix.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.incomgroup.pl/kategoria/komputery/",
+          "https://www.incomgroup.pl/wszystkie-produkty/",
+          "https://www.incomgroup.pl/oferta/",
+          "https://www.incomgroup.pl/dostawa/",
+          "https://www.incomgroup.pl/komputery/laptopy/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "omnicomp",
+        name: "Omnicomp",
+        segment: "A_refurb",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU"
+        ],
+        website: "https://omnicomp.de/",
+        catalogUrl: null,
+        categories: [
+          "laptops d'occasion",
+          "PC",
+          "tablettes",
+          "serveurs",
+          "\xE9crans",
+          "imprimantes"
+        ],
+        brands: [
+          "Lenovo",
+          "HP",
+          "Dell",
+          "Toshiba",
+          "Fujitsu",
+          "Samsung",
+          "Cisco"
+        ],
+        productTypes: [
+          "used",
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste/broker IT (remarketing) ; offres envoy\xE9es par e-mail sous forme de listes ou lots de dizaines \xE0 centaines d'unit\xE9s ; contacter le service 'Gro\xDFhandelverkauf (Broker IT)' avec les donn\xE9es soci\xE9t\xE9.",
+        accessModes: [
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "Aucun minimum annonc\xE9",
+        shipping: null,
+        warranty: null,
+        partQuality: "Grades (A- = pleinement fonctionnel, traces minimes)",
+        whyUseful: "Source allemande de lots de laptops ex-leasing (banques, grandes entreprises, secteur public) envoy\xE9s en listes par e-mail sans MOQ : adapt\xE9 \xE0 un revendeur qui veut tester de petits volumes.",
+        howToGetCatalog: "1) Contacter le service ventes en gros via omnicomp.de avec Kbis/TVA. 2) Demander l'inscription \xE0 la diffusion des listes de stock par e-mail. 3) Pages du site anciennes (>3 ans) : v\xE9rifier que l'activit\xE9 est toujours en cours.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://omnicomp.de/",
+          "https://omnicomp.de/restposten-grosshandel-gebrauchte-notebooks-fuer-reseller-grosshaendler/",
+          "https://omnicomp.de/it-remarketing/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "flashmac-b2b",
+        name: "Flashmac B2B",
+        segment: "A_refurb",
+        country: "IT",
+        deliveryZones: [
+          "IT"
+        ],
+        website: "https://www.flashmac.com/",
+        catalogUrl: "https://b2b.flashmac.com/",
+        categories: [
+          "laptops reconditionn\xE9s",
+          "PC fixes",
+          "workstations",
+          "PC gaming",
+          "Mac"
+        ],
+        brands: [
+          "multi-marques",
+          "Apple"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Plateforme r\xE9serv\xE9e aux revendeurs du secteur ; acc\xE8s sur pr\xE9sentation d'une visura camerale (extrait registre) de moins de 6 mois. Prix r\xE9serv\xE9s au canal gros.",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "Unit\xE9s test\xE9es, assainies, configur\xE9es et class\xE9es par grade esth\xE9tique",
+        whyUseful: "Portail B2B lanc\xE9 en avril 2026 (Bolzano) avec tableau de bord disponibilit\xE9/commande/facturation/exp\xE9dition : PC et Mac reconditionn\xE9s grad\xE9s hors circuit des grands acteurs.",
+        howToGetCatalog: "1) Demander l'acc\xE8s sur b2b.flashmac.com avec un extrait Kbis r\xE9cent (\xE9quivalent visura). 2) Consulter stock et prix dans le dashboard. 3) V\xE9rifier livraison France (non document\xE9e).",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.flashmac.com/ricondizionato-ingrosso-piattaforma-b2b-flashmac/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "bitstockz",
+        name: "BitStockz",
+        segment: "C_liquidation",
+        country: "PL",
+        deliveryZones: [
+          "PL"
+        ],
+        website: "https://www.bitstockz.pl/",
+        catalogUrl: "https://aukcje.bitstockz.pl/palety-elektronika",
+        categories: [
+          "palettes de retours Amazon \xE9lectronique",
+          "smartphones",
+          "tablettes",
+          "accessoires"
+        ],
+        brands: [
+          "mixte"
+        ],
+        productTypes: [
+          "used",
+          "lots"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: false,
+        accessConditions: "Ench\xE8res de palettes de retours ; sources contradictoires sur l'ouverture aux particuliers. Facture TVA polonaise ; retrait \xE0 Stary S\u0105cz ou transport palette sur devis. Livraison hors PL non document\xE9e.",
+        accessModes: [
+          "public_catalog",
+          "manual_download",
+          "marketplace"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "PLN",
+        moq: null,
+        shipping: "Retrait gratuit \xE0 Stary S\u0105cz ou transporteur palette (devis selon poids/destination)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Chaque palette a un manifeste XLSX publi\xE9 avant ench\xE8re (liste produits, EAN, prix de march\xE9 estim\xE9s) : permet de chiffrer pr\xE9cis\xE9ment un lot d'\xE9lectronique avant achat.",
+        howToGetCatalog: "1) Cr\xE9er un compte sur aukcje.bitstockz.pl. 2) T\xE9l\xE9charger le manifeste XLSX de chaque palette \xE9lectronique. 3) Demander un devis transport palette vers la France et le traitement TVA intracom avant d'ench\xE9rir.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://aukcje.bitstockz.pl/palety-elektronika",
+          "https://aukcje.bitstockz.pl/en",
+          "https://aukcje.bitstockz.pl/blog/handel-paletami",
+          "https://www.bitstockz.pl/elektronika/680,paleta-amazon-elektronika-wartosc-rynkowa-14-298-pln"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "avides",
+        name: "AVIDES",
+        segment: "C_liquidation",
+        country: "DE",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.avides.com/en/",
+        catalogUrl: null,
+        categories: [
+          "retours clients grad\xE9s",
+          "reconditionn\xE9",
+          "surstocks",
+          "\xE9lectronique"
+        ],
+        brands: [
+          "mixte"
+        ],
+        productTypes: [
+          "used",
+          "refurbished",
+          "lots",
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Remarketer europ\xE9en qui rach\xE8te retours/surstocks et les revend via sa boutique ou son r\xE9seau de ~350 partenaires (distributeurs, revendeurs, outlets). Devenir partenaire acheteur sur contact.",
+        accessModes: [
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "Chaque retour grad\xE9 individuellement et \xE9tiquet\xE9 par code-barres unique",
+        whyUseful: "Acteur allemand du remarketing de retours avec grading unitaire : permet d'obtenir des lots d'\xE9lectronique grad\xE9s plut\xF4t que des palettes '\xE0 l'aveugle'.",
+        howToGetCatalog: "1) Contacter AVIDES via avides.com pour rejoindre le r\xE9seau de revendeurs. 2) Demander les listes d'offres (cat\xE9gorie \xE9lectronique/smartphones) et le format. 3) Pages anciennes : confirmer que l'activit\xE9 smartphones est toujours trait\xE9e.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.avides.com/en/",
+          "https://www.avides.com/en/services/customer-returns-re-marketing/",
+          "https://www.avides.com/en/services/excess-overstock-refurbished/",
+          "https://www.avides.com/en/press-and-news/b2b-second-life/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "retourendirekt",
+        name: "RetourenDirekt (Auctum GmbH)",
+        segment: "C_liquidation",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU"
+        ],
+        website: "https://retourendirekt.de/en",
+        catalogUrl: "https://retourendirekt.de/en/amazon-retouren-paletten-kaufen",
+        categories: [
+          "palettes retours Amazon/Shein mixtes",
+          "\xE9lectronique & smart home (15\u201325 %)"
+        ],
+        brands: [
+          "mixte"
+        ],
+        productTypes: [
+          "used",
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Vente uniquement aux entreprises ; facturation nette en autoliquidation pour acheteurs UE avec TVA valide. Pas de manifeste (marchandise non tri\xE9e), prix fixes par pi\xE8ce.",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "1 palette (~600 pi\xE8ces)",
+        shipping: "2\u20135 jours ouvr\xE9s vers tous pays UE depuis Schorfheide ; frais affich\xE9s s\xE9par\xE9ment",
+        warranty: null,
+        partQuality: "Mix A/B/C non tri\xE9",
+        whyUseful: "Grille de prix publique par pi\xE8ce, d\xE9gressive de la palette au conteneur et livraison UE : utile pour comparer le co\xFBt d'achat de retours, mais faible part d'\xE9lectronique et pas de manifeste (risque \xE9lev\xE9).",
+        howToGetCatalog: "1) Consulter les paliers de prix publics sur retourendirekt.de. 2) Cr\xE9er un compte B2B avec n\xB0 TVA. 3) Commander une palette test ; r\xE9clamation sous 7 jours en cas de d\xE9faut prouv\xE9.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://retourendirekt.de/en",
+          "https://retourendirekt.de/en/amazon-retouren-paletten-kaufen",
+          "https://retourendirekt.de/ratgeber/retouren-paletten-preise-2026",
+          "https://retourendirekt.de/ist-retourendirekt-serioes"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "punto-ingrosso",
+        name: "Punto Ingrosso",
+        segment: "D_distributor",
+        country: "IT",
+        deliveryZones: [
+          "IT"
+        ],
+        website: "https://www.puntoingrosso.it/",
+        catalogUrl: "https://www.puntoingrosso.it/categoria-prodotto/ricambi-smartphone/",
+        categories: [
+          "\xE9lectronique grand public",
+          "pi\xE8ces smartphones",
+          "notebooks reconditionn\xE9s"
+        ],
+        brands: [
+          "multi-marques"
+        ],
+        productTypes: [
+          "new",
+          "parts",
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Portail r\xE9serv\xE9 aux entreprises : impossible de finaliser une commande sans num\xE9ro de Partita IVA valide.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "24/48 h via GLS, SDA, BRT ; gratuit au-del\xE0 de 500 \u20AC",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Catalogue en ligne (pi\xE8ces smartphones + notebooks reconditionn\xE9s) consultable publiquement : utile pour comparer prix italiens.",
+        howToGetCatalog: "1) Consulter le catalogue en ligne. 2) Cr\xE9er un compte et v\xE9rifier si un n\xB0 TVA intracom FR est accept\xE9 (le site exige une P.IVA valide). 3) Demander livraison France.",
+        verified: true,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.puntoingrosso.it/",
+          "https://www.puntoingrosso.it/categoria-prodotto/ricambi-smartphone/",
+          "https://www.puntoingrosso.it/categoria-prodotto/computer-notebook/notebook-computer-notebook/notebook-ricondizionati-notebook-computer-notebook/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "smartphone-italia",
+        name: "Smartphone Italia Srl",
+        segment: "E_specialist",
+        country: "IT",
+        deliveryZones: [
+          "IT"
+        ],
+        website: "https://smartphoneitalia.it/it/",
+        catalogUrl: "https://smartphoneitalia.it/45-SMARTPHONE",
+        categories: [
+          "smartphones neufs",
+          "iPhone reconditionn\xE9s",
+          "tablettes"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "multi-marques"
+        ],
+        productTypes: [
+          "new",
+          "used",
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste (Naples, ATECO 46.52.01) r\xE9serv\xE9 aux titulaires de Partita IVA : inscription avec donn\xE9es soci\xE9t\xE9, v\xE9rification commerciale, puis activation listino/prix/disponibilit\xE9s.",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "Livraisons rapides en Italie (export non confirm\xE9)",
+        warranty: null,
+        partQuality: "iPhone reconditionn\xE9s grades A+, A, A- (avec bo\xEEte)",
+        whyUseful: "Sp\xE9cialiste smartphones neuf + reconditionn\xE9 grad\xE9 A+/A/A- avec stock mis \xE0 jour derri\xE8re login : source italienne pour iPhone grad\xE9s.",
+        howToGetCatalog: "1) Remplir 'Registrazione Rivenditori B2B' sur smartphoneitalia.it. 2) Attendre la v\xE9rification commerciale. 3) Demander livraison France et facturation intracom.",
+        verified: true,
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://smartphoneitalia.it/it/",
+          "https://smartphoneitalia.it/content/6-registrazione-rivenditori-b2b",
+          "https://smartphoneitalia.it/it/content/17-distribuzione-telefonia",
+          "https://atoka.io/public/it/azienda/smartphone-italia-srl/2d7120a0b7b2"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "telehurt",
+        name: "TELEHURT",
+        segment: "B_parts",
+        country: "PL",
+        deliveryZones: [
+          "PL"
+        ],
+        website: "https://telehurt.pl/",
+        catalogUrl: "https://telehurt.pl/",
+        categories: [
+          "\xE9crans (dont Hard OLED iPhone)",
+          "pi\xE8ces GSM",
+          "accessoires"
+        ],
+        brands: [
+          "Apple",
+          "multi-marques"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: false,
+        accessConditions: "Prix nets et bruts affich\xE9s publiquement (ex. \xE9cran Hard OLED iPhone 17e : 152,79 PLN HT). Conditions export \xE0 demander.",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "PLN",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "Qualit\xE9s indiqu\xE9es (ex. Hard OLED)",
+        whyUseful: "Prix HT publics sans compte : permet un scraping/benchmark direct des prix de gros polonais sur \xE9crans iPhone r\xE9cents.",
+        howToGetCatalog: "1) Consulter telehurt.pl (prix nets visibles). 2) Contacter la boutique pour compte pro, facturation intracom et exp\xE9dition France.",
+        verified: true,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://telehurt.pl/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobilepart-pl",
+        name: "Mobilepart.pl",
+        segment: "B_parts",
+        country: "PL",
+        deliveryZones: [
+          "PL"
+        ],
+        website: "https://mobilepart.pl/pl/",
+        catalogUrl: "https://mobilepart.pl/pl/142-czesci-gsm",
+        categories: [
+          "\xE9crans",
+          "pi\xE8ces GSM d'origine et compatibles"
+        ],
+        brands: [
+          "multi-marques"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Grossiste GSM B2B, ventes en gros sur facture nette ; ~722 produits pi\xE8ces visibles avec prix nets.",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "PLN",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "Originales et de remplacement",
+        whyUseful: "Petit grossiste polonais avec catalogue pi\xE8ces affichant des prix nets, utile comme point de comparaison prix.",
+        howToGetCatalog: "1) Consulter la cat\xE9gorie 'Cz\u0119\u015Bci GSM'. 2) Cr\xE9er un compte firme. 3) Demander conditions d'exp\xE9dition UE/France.",
+        verified: false,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://mobilepart.pl/pl/",
+          "https://mobilepart.pl/pl/142-czesci-gsm"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "hurtowniagsm-pl",
+        name: "hurtowniagsm.pl",
+        segment: "B_parts",
+        country: "PL",
+        deliveryZones: [
+          "PL"
+        ],
+        website: "https://www.hurtowniagsm.pl/",
+        catalogUrl: "https://www.hurtowniagsm.pl/",
+        categories: [
+          "pi\xE8ces GSM d'origine"
+        ],
+        brands: [
+          "multi-marques"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Gros et d\xE9tail ; uniquement pi\xE8ces neuves d'origine issues de la distribution europ\xE9enne (d\xE9claratif). Un connecteur Base.com/Sky-Shop 'hurtowniaGSM' existe (dropshipping, sync stock/prix) \u2013 correspondance exacte avec ce domaine \xE0 confirmer.",
+        accessModes: [
+          "public_catalog",
+          "feed"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "PLN",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "Original (distribution UE, d\xE9claratif)",
+        whyUseful: "Sp\xE9cialiste pi\xE8ces d'origine avec int\xE9gration de flux via Base.com/Sky-Shop : piste pour automatiser la synchro prix/stock de pi\xE8ces OEM.",
+        howToGetCatalog: "1) Consulter hurtowniagsm.pl. 2) Cr\xE9er un compte firme et demander l'URL du flux. 3) V\xE9rifier si le connecteur Base.com 'Hurtowniagsm' correspond bien \xE0 ce fournisseur.",
+        verified: false,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.hurtowniagsm.pl/",
+          "https://base.com/en-US/integrations/hurtowniagsm",
+          "https://sky-shop.pl/integracja-z-hurtownia-hurtowniagsm/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "gsp-electronics",
+        name: "GSP Electronics Gro\xDFhandel",
+        segment: "B_parts",
+        country: "DE",
+        deliveryZones: [
+          "DE"
+        ],
+        website: "https://gspelectronics-grosshandel.de/",
+        catalogUrl: "https://gspelectronics-grosshandel.de/Handy-Ersatzteile/",
+        categories: [
+          "\xE9crans LCD",
+          "batteries",
+          "accessoires"
+        ],
+        brands: [
+          "multi-marques"
+        ],
+        productTypes: [
+          "parts",
+          "accessories"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Grossiste pi\xE8ces/accessoires pour clients professionnels (d\xE9tails d'inscription non relev\xE9s).",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "6 mois",
+        partQuality: null,
+        whyUseful: "Petit grossiste allemand de pi\xE8ces avec garantie 6 mois annonc\xE9e ; \xE0 tester pour pi\xE8ces courantes.",
+        howToGetCatalog: "1) Consulter la rubrique Handy-Ersatzteile. 2) Contacter le grossiste pour compte pro, prix nets et livraison France.",
+        verified: false,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://gspelectronics-grosshandel.de/Handy-Ersatzteile/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "pc-ricondizionati",
+        name: "PC Ricondizionati",
+        segment: "A_refurb",
+        country: "IT",
+        deliveryZones: [
+          "IT"
+        ],
+        website: "https://www.pc-ricondizionati.com/",
+        catalogUrl: null,
+        categories: [
+          "PC reconditionn\xE9s",
+          "notebooks",
+          "workstations"
+        ],
+        brands: [
+          "multi-marques"
+        ],
+        productTypes: [
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Listino d\xE9di\xE9 revendeurs B2B ; stocks constants de PC reconditionn\xE9s en gros ; services trade-in/asset recovery et programme d'affiliation B2B (d\xE9claratif).",
+        accessModes: [
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Fournisseur italien de laptops/workstations reconditionn\xE9s avec listino revendeurs d\xE9di\xE9 : source alternative de lots ex-leasing.",
+        howToGetCatalog: "1) Contacter via pc-ricondizionati.com pour demander le listino revendeurs B2B. 2) Pr\xE9ciser configurations, grades, volumes, livraison France.",
+        verified: false,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.pc-ricondizionati.com/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "portatilmovil",
+        name: "Portatilmovil",
+        segment: "A_refurb",
+        country: "ES",
+        deliveryZones: [
+          "ES",
+          "EU"
+        ],
+        website: "https://www.portatilmovil.com/",
+        catalogUrl: "https://www.portatilmovil.com/it/content/73-vendita-allingrosso-portatili-ricondizionati",
+        categories: [
+          "laptops reconditionn\xE9s"
+        ],
+        brands: [
+          "multi-marques"
+        ],
+        productTypes: [
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Page d\xE9di\xE9e \xE0 la vente en gros de portables reconditionn\xE9s, avec tra\xE7abilit\xE9 par tests et num\xE9ro de s\xE9rie par unit\xE9.",
+        accessModes: [
+          "email_pricelist"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Vendeur espagnol avec page de vente en gros multilingue (IT) et tra\xE7abilit\xE9 par n\xB0 de s\xE9rie : utile pour lots de laptops livrables en UE.",
+        howToGetCatalog: "1) Consulter la page vente en gros. 2) Demander liste de stock (Excel) et conditions de livraison France.",
+        verified: false,
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.portatilmovil.com/it/content/73-vendita-allingrosso-portatili-ricondizionati"
+        ],
+        checkedAt: "2026-10-10"
       }
     ];
   }
@@ -10928,6 +14007,7 @@ var supplier_directory_exports = {};
 __export(supplier_directory_exports, {
   DIRECTORY_CHECK_BATCH: () => DIRECTORY_CHECK_BATCH,
   DIRECTORY_RESEARCH_DATE: () => DIRECTORY_RESEARCH_DATE,
+  DIRECTORY_TIERS: () => DIRECTORY_TIERS,
   SUPPLIER_DIRECTORY: () => SUPPLIER_DIRECTORY,
   accessRequestEmail: () => accessRequestEmail,
   checkDirectoryWebsite: () => checkDirectoryWebsite,
@@ -10935,8 +14015,10 @@ __export(supplier_directory_exports, {
   directoryForOrg: () => directoryForOrg,
   directoryKeyForSupplierName: () => directoryKeyForSupplierName,
   directoryStages: () => directoryStages,
+  directoryTier: () => directoryTier,
   integrationOf: () => integrationOf,
   nameKey: () => nameKey,
+  nextAction: () => nextAction,
   primaryStage: () => primaryStage,
   runDirectoryChecks: () => runDirectoryChecks
 });
@@ -10960,6 +14042,28 @@ function directoryStages(entry, check, facts) {
 }
 function primaryStage(stages) {
   return STAGE_RANK.find((s) => stages.includes(s)) ?? "identified";
+}
+function directoryTier(entry, stages, activeInOrg) {
+  if (activeInOrg || stages.includes("import_tested")) return "connected";
+  if (stages.includes("connector_ready") || entry.accessModes.some((m) => IMPORTABLE_MODES.has(m))) return "importable";
+  if (stages.includes("public_access") || stages.includes("verified") && entry.accessModes.includes("public_catalog")) return "accessible";
+  if (stages.includes("verified")) return "verified";
+  return "identified";
+}
+function nextAction(entry, tier, stages) {
+  const integration = integrationOf(entry.key);
+  if (tier === "connected") return "Source active : r\xE9importez le catalogue \xE0 chaque nouvelle liste de prix (ou laissez le flux se mettre \xE0 jour).";
+  if (stages.includes("unavailable")) return "Site injoignable depuis le serveur au dernier contr\xF4le : v\xE9rifiez-le manuellement avant de demander un acc\xE8s.";
+  if (integration.kind === "library") return "Activez la source dans Sourcing \u2192 Sources fournisseurs (apr\xE8s lecture des CGU).";
+  if (integration.kind === "connector") return "Ouvrez un compte revendeur, puis enregistrez vos identifiants d'API c\xF4t\xE9 serveur pour activer le connecteur.";
+  const modes = new Set(entry.accessModes);
+  const account = entry.proAccountRequired ? "Cr\xE9ez un compte professionnel, puis " : "";
+  if ([...modes].some((m) => m.startsWith("feed") || m === "edi") || modes.has("api")) return `${account}demandez l'URL du flux ou l'acc\xE8s API (e-mail de demande pr\xEAt) ; en attendant, importez un export du catalogue.`;
+  if (modes.has("manual_download")) return `${account}t\xE9l\xE9chargez la liste de prix (CSV / XLSX) depuis l'espace revendeur et importez-la (Sourcing \u2192 Importer).`;
+  if (modes.has("email_pricelist")) return "Envoyez l'e-mail de demande de liste de prix, puis importez le fichier re\xE7u (Sourcing \u2192 Importer).";
+  if (modes.has("public_catalog")) return "Catalogue consultable en ligne : demandez un export (e-mail pr\xEAt) pour l'importer ; ne recopiez pas les prix \xE0 la main.";
+  if (modes.has("pro_portal")) return `${account || "Cr\xE9ez un compte professionnel, puis "}demandez un export du catalogue pour l'importer.`;
+  return "Contactez le fournisseur (e-mail de demande pr\xEAt) pour obtenir son catalogue et ses conditions.";
 }
 function nameKey(s) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(sas|sarl|sa|bv|gmbh|ltd|srl|s\.?a\.?)\b/g, "").replace(/[^a-z0-9]+/g, "");
@@ -11112,7 +14216,11 @@ async function directoryForOrg(ctx) {
   const entries = SUPPLIER_DIRECTORY.map((e) => {
     const check = checks.get(e.key) ?? null;
     const stages = directoryStages(e, check, facts);
+    const activeInOrg = facts.activeKeys.has(e.key);
+    const tier = directoryTier(e, stages, activeInOrg);
     return {
+      tier,
+      nextAction: nextAction(e, tier, stages),
       key: e.key,
       name: e.name,
       segment: e.segment,
@@ -11150,7 +14258,7 @@ async function directoryForOrg(ctx) {
   });
   return { entries, researchDate: DIRECTORY_RESEARCH_DATE, lastCheckAt };
 }
-var SUPPLIER_DIRECTORY, DIRECTORY_RESEARCH_DATE, LIBRARY_BY_DIRECTORY_KEY, CONNECTOR_BY_DIRECTORY_KEY, STAGE_RANK, DIRECTORY_CHECK_BATCH;
+var SUPPLIER_DIRECTORY, DIRECTORY_RESEARCH_DATE, LIBRARY_BY_DIRECTORY_KEY, CONNECTOR_BY_DIRECTORY_KEY, STAGE_RANK, DIRECTORY_TIERS, IMPORTABLE_MODES, DIRECTORY_CHECK_BATCH;
 var init_supplier_directory2 = __esm({
   "src/services/sourcing/supplier-directory.ts"() {
     "use strict";
@@ -11163,9 +14271,11 @@ var init_supplier_directory2 = __esm({
     init_source_library();
     SUPPLIER_DIRECTORY = supplier_directory_default;
     DIRECTORY_RESEARCH_DATE = "2026-10-10";
-    LIBRARY_BY_DIRECTORY_KEY = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone" };
+    LIBRARY_BY_DIRECTORY_KEY = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone", "refreshed-apples": "refreshed-apples", "fixje-zakelijk": "fixje", "servisnidily-cz": "servisni-dily" };
     CONNECTOR_BY_DIRECTORY_KEY = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
     STAGE_RANK = ["import_tested", "public_access", "connector_ready", "account_required", "verified", "unavailable", "identified"];
+    DIRECTORY_TIERS = ["connected", "importable", "accessible", "verified", "identified"];
+    IMPORTABLE_MODES = /* @__PURE__ */ new Set(["feed", "feed_csv", "feed_xml", "feed_json", "edi", "api", "manual_download", "email_pricelist"]);
     DIRECTORY_CHECK_BATCH = 16;
   }
 });
@@ -17581,8 +20691,8 @@ function detectOpportunities(offer, priceHistory, stockHistory, now = /* @__PURE
     const usual = prices.filter((p) => toTime(p.recordedAt) >= cutoff && p.price !== offer.price).map((p) => p.price);
     const med = median(usual);
     if (med !== null && usual.length >= MIN_HISTORY_POINTS && offer.price < med * ABNORMAL_LOW_RATIO) {
-      const pct2 = (med - offer.price) / med * 100;
-      out.push({ kind: "abnormal_low_price", value: Math.round(pct2 * 10) / 10, message: `Prix anormalement bas : ${fmt(offer.price, offer.currency)}, soit ${pct2.toFixed(0)} % sous le prix habituel (${fmt(med, offer.currency)} sur 30 jours)` });
+      const pct3 = (med - offer.price) / med * 100;
+      out.push({ kind: "abnormal_low_price", value: Math.round(pct3 * 10) / 10, message: `Prix anormalement bas : ${fmt(offer.price, offer.currency)}, soit ${pct3.toFixed(0)} % sous le prix habituel (${fmt(med, offer.currency)} sur 30 jours)` });
     }
   }
   const stocks = [...stockHistory].sort((a, b) => toTime(a.recordedAt) - toTime(b.recordedAt));
@@ -17890,7 +21000,19 @@ async function runImportSelfTest() {
   if (orgErr || !org) return { ok: false, result: null, offers: 0, runStatus: null, error: orgErr?.message ?? "organisation non cr\xE9\xE9e", cleaned: true };
   const cleanup = async () => !(await admin.from("organizations").delete().eq("id", org.id)).error;
   try {
-    const csv = ["R\xE9f.;D\xE9signation article;Prix HT (\u20AC);Qt\xE9 dispo", "TEST-IMPORT-1;Article de contr\xF4le A (test serveur);10,50;3", "TEST-IMPORT-2;Article de contr\xF4le B (test serveur);1 249,00;1", "TEST-IMPORT-3;Article sans prix (test serveur);;0"].join("\r\n");
+    const header = "R\xE9f.;D\xE9signation article;Prix HT (\u20AC);Qt\xE9 dispo";
+    const base = [
+      ["TEST-IMPORT-1", "Article de contr\xF4le A (test serveur)", "10,50", "3"],
+      ["TEST-IMPORT-2", "Article de contr\xF4le B (test serveur)", "1 249,00", "1"],
+      ["TEST-IMPORT-3", "Article de contr\xF4le C (test serveur)", "45,00", "2"],
+      ["TEST-IMPORT-4", "Article de contr\xF4le D (test serveur)", "79,90", "5"],
+      ["TEST-IMPORT-5", "Article de contr\xF4le E (test serveur)", "12,00", "8"],
+      ["TEST-IMPORT-6", "Article de contr\xF4le F (test serveur)", "230,00", "1"]
+    ];
+    const toFile = (rows, name) => {
+      const csv = [header, ...rows.map((r) => r.join(";"))].join("\r\n");
+      return { fileName: name, contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
+    };
     const ctx = {
       supabase: admin,
       user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" },
@@ -17899,13 +21021,34 @@ async function runImportSelfTest() {
       role: "owner",
       memberships: []
     };
-    const file = { fileName: "controle.csv", contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
     const { previewCatalogFile: previewCatalogFile2, importCatalogFile: importCatalogFile2 } = await Promise.resolve().then(() => (init_catalog_import(), catalog_import_exports));
+    const file = toFile([...base, ["TEST-IMPORT-7", "Article sans prix (test serveur)", "", "0"]], "controle.csv");
     const preview = previewCatalogFile2({ file }, "EUR");
-    const r = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)" });
+    const first = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)" });
+    const priceOf = async () => (await admin.from("sourcing_offers").select("original_price").eq("organization_id", org.id).eq("external_offer_id", "TEST-IMPORT-4").maybeSingle()).data?.original_price ?? null;
+    const priceAfterFirst = await priceOf();
+    const shifted = toFile(base.map((r) => [r[0], r[1], String(Math.round(Number(r[2].replace(/\s/g, "").replace(",", ".")) * 100)), r[3]]), "controle-defectueux.csv");
+    const bad = await importCatalogFile2(ctx, { file: shifted, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const priceAfterBad = await priceOf();
+    const update = toFile([...base.map((r) => r[0] === "TEST-IMPORT-4" ? [r[0], r[1], "74,90", r[3]] : r), base[0]], "controle-maj.csv");
+    const third = await importCatalogFile2(ctx, { file: update, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const priceAfterUpdate = await priceOf();
     const { count } = await admin.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
     const { data: run } = await admin.from("sync_runs").select("status").eq("organization_id", org.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
-    return { ok: r.result.stored === 2 && r.result.invalidRows === 1, result: { preview: { validCount: preview.validCount, invalidCount: preview.invalidCount, mapping: preview.mapping }, import: r.result }, offers: count ?? 0, runStatus: run?.status ?? null, error: null, cleaned: await cleanup() };
+    const ok = first.result.stored === 6 && first.result.invalidRows === 1 && bad.result.quarantined === true && bad.result.stored === 0 && Number(priceAfterBad) === Number(priceAfterFirst) && third.result.quarantined === false && third.result.duplicates === 1 && Number(priceAfterUpdate) === 74.9;
+    return {
+      ok,
+      result: {
+        preview: { validCount: preview.validCount, invalidCount: preview.invalidCount, mapping: preview.mapping },
+        import: first.result,
+        quarantine: { status: bad.result.status, quarantined: bad.result.quarantined, issues: bad.result.quality?.issues.map((i) => i.code), priceBefore: priceAfterFirst, priceAfter: priceAfterBad },
+        update: { status: third.result.status, duplicates: third.result.duplicates, price: priceAfterUpdate }
+      },
+      offers: count ?? 0,
+      runStatus: run?.status ?? null,
+      error: null,
+      cleaned: await cleanup()
+    };
   } catch (e) {
     return { ok: false, result: null, offers: 0, runStatus: null, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup() };
   }

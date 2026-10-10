@@ -65,7 +65,7 @@ export const DIRECTORY_RESEARCH_DATE = "2026-10-10";
 /** Intégration disponible dans MON STOCK pour une fiche (au-delà de l'import de fichier, toujours possible). */
 export type DirectoryIntegration = { kind: "library"; libraryKey: string } | { kind: "connector"; connectorKey: "bigbuy" | "ingram-micro" } | { kind: "file_import" };
 
-const LIBRARY_BY_DIRECTORY_KEY: Record<string, string> = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone" };
+const LIBRARY_BY_DIRECTORY_KEY: Record<string, string> = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone", "refreshed-apples": "refreshed-apples", "fixje-zakelijk": "fixje", "servisnidily-cz": "servisni-dily" };
 const CONNECTOR_BY_DIRECTORY_KEY: Record<string, "bigbuy" | "ingram-micro"> = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
 
 export function integrationOf(key: string): DirectoryIntegration {
@@ -114,6 +114,46 @@ const STAGE_RANK: DirectoryStage[] = ["import_tested", "public_access", "connect
 
 export function primaryStage(stages: readonly DirectoryStage[]): DirectoryStage {
   return STAGE_RANK.find((s) => stages.includes(s)) ?? "identified";
+}
+
+/**
+ * Niveau d'accès réel d'un fournisseur, du plus avancé au moins avancé :
+ *   connected  : source active ou import réussi dans l'organisation ;
+ *   importable : le fournisseur fournit un fichier, un flux ou une API que MON STOCK sait importer ;
+ *   accessible : catalogue public vérifié (bibliothèque) ou site joignable à catalogue public ;
+ *   verified   : site officiel joignable depuis le serveur ;
+ *   identified : fiche issue de la recherche, rien de vérifié.
+ * Un fournisseur découvert n'est jamais présenté comme connecté.
+ */
+export type DirectoryTier = "connected" | "importable" | "accessible" | "verified" | "identified";
+
+export const DIRECTORY_TIERS: DirectoryTier[] = ["connected", "importable", "accessible", "verified", "identified"];
+
+const IMPORTABLE_MODES = new Set(["feed", "feed_csv", "feed_xml", "feed_json", "edi", "api", "manual_download", "email_pricelist"]);
+
+export function directoryTier(entry: Pick<DirectoryEntry, "key" | "accessModes">, stages: readonly DirectoryStage[], activeInOrg: boolean): DirectoryTier {
+  if (activeInOrg || stages.includes("import_tested")) return "connected";
+  if (stages.includes("connector_ready") || entry.accessModes.some((m) => IMPORTABLE_MODES.has(m))) return "importable";
+  if (stages.includes("public_access") || (stages.includes("verified") && entry.accessModes.includes("public_catalog"))) return "accessible";
+  if (stages.includes("verified")) return "verified";
+  return "identified";
+}
+
+/** Prochaine action concrète pour activer la source (jamais « c'est fait » sans preuve). */
+export function nextAction(entry: Pick<DirectoryEntry, "key" | "accessModes" | "proAccountRequired">, tier: DirectoryTier, stages: readonly DirectoryStage[]): string {
+  const integration = integrationOf(entry.key);
+  if (tier === "connected") return "Source active : réimportez le catalogue à chaque nouvelle liste de prix (ou laissez le flux se mettre à jour).";
+  if (stages.includes("unavailable")) return "Site injoignable depuis le serveur au dernier contrôle : vérifiez-le manuellement avant de demander un accès.";
+  if (integration.kind === "library") return "Activez la source dans Sourcing → Sources fournisseurs (après lecture des CGU).";
+  if (integration.kind === "connector") return "Ouvrez un compte revendeur, puis enregistrez vos identifiants d'API côté serveur pour activer le connecteur.";
+  const modes = new Set(entry.accessModes);
+  const account = entry.proAccountRequired ? "Créez un compte professionnel, puis " : "";
+  if ([...modes].some((m) => m.startsWith("feed") || m === "edi") || modes.has("api")) return `${account}demandez l'URL du flux ou l'accès API (e-mail de demande prêt) ; en attendant, importez un export du catalogue.`;
+  if (modes.has("manual_download")) return `${account}téléchargez la liste de prix (CSV / XLSX) depuis l'espace revendeur et importez-la (Sourcing → Importer).`;
+  if (modes.has("email_pricelist")) return "Envoyez l'e-mail de demande de liste de prix, puis importez le fichier reçu (Sourcing → Importer).";
+  if (modes.has("public_catalog")) return "Catalogue consultable en ligne : demandez un export (e-mail prêt) pour l'importer ; ne recopiez pas les prix à la main.";
+  if (modes.has("pro_portal")) return `${account || "Créez un compte professionnel, puis "}demandez un export du catalogue pour l'importer.`;
+  return "Contactez le fournisseur (e-mail de demande prêt) pour obtenir son catalogue et ses conditions.";
 }
 
 /** Normalisation de nom pour rapprocher un fournisseur de l'organisation d'une fiche. */
@@ -300,7 +340,11 @@ export async function directoryForOrg(ctx: OrgContext): Promise<{ entries: Direc
   const entries: DirectoryEntryDTO[] = SUPPLIER_DIRECTORY.map((e) => {
     const check = checks.get(e.key) ?? null;
     const stages = directoryStages(e, check, facts);
+    const activeInOrg = facts.activeKeys.has(e.key);
+    const tier = directoryTier(e, stages, activeInOrg);
     return {
+      tier,
+      nextAction: nextAction(e, tier, stages),
       key: e.key,
       name: e.name,
       segment: e.segment,

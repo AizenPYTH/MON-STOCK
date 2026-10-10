@@ -1,4 +1,4 @@
-import { div, HUNDRED, isZero, mul, parseDecimal, sub, cmp, type Dec, type ParseError } from "./decimal";
+import { div, HUNDRED, isZero, mul, parseDecimal, sub, cmp, type Dec, type ParseError } from "@/domain/tools/decimal";
 
 /**
  * Calculateur de remise (module pur, calcul exact) :

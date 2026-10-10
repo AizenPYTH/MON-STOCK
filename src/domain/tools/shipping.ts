@@ -1,4 +1,4 @@
-import { cmp, parseDecimal, toPlainDecimal, type Dec } from "./decimal";
+import { cmp, parseDecimal, toPlainDecimal, type Dec } from "@/domain/tools/decimal";
 
 /**
  * Comparateur de frais de port (module pur).

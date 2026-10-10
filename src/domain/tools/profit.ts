@@ -1,5 +1,5 @@
 import { computeUnitEconomics, EMPTY_COST_SETTINGS, type RadarCostSettings, type RadarLine, type SupplierOrigin, type UnitEconomics, type VatRegime } from "@/domain/sourcing/radar";
-import { parseDecimal, toNumber, type ParseError } from "./decimal";
+import { parseDecimal, toNumber, type ParseError } from "@/domain/tools/decimal";
 
 /**
  * Calculateur de marge et calculateur de prix de vente (« Mes outils »).

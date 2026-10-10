@@ -1,0 +1,147 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fakeSupabase } from "./fake-supabase";
+import ToolsTab from "../src/app/(app)/(tabs)/tools";
+import VatTool from "../src/app/(app)/tools/vat";
+import MarginTool from "../src/app/(app)/tools/margin";
+import EbayFeesTool from "../src/app/(app)/tools/ebay-fees";
+import ShippingTool from "../src/app/(app)/tools/shipping";
+import TrackingList from "../src/app/(app)/tools/tracking/index";
+import NewParcel from "../src/app/(app)/tools/tracking/new";
+
+/**
+ * « Mes outils » (mobile) : catalogue, calculateur de TVA (exact, instantané, sans serveur),
+ * marge, frais eBay, comparateur de frais de port (aucun tarif inventé) et suivi de colis
+ * (aucun statut inventé), rendus avec des données simulées.
+ */
+const mockCallApi = jest.fn();
+const mockFrom = jest.fn();
+const mockPush = jest.fn();
+const mockSetString = jest.fn(() => Promise.resolve(true));
+jest.mock("~/lib/api", () => ({ callApi: (...a: unknown[]) => mockCallApi(...a) }));
+jest.mock("expo-clipboard", () => ({ setStringAsync: (...a: unknown[]) => mockSetString(...(a as [])) }));
+jest.mock("~/org/org-provider", () => ({ useActiveOrg: () => ({ active: { organization: { id: "org-1", name: "Boutique", currency: "EUR", settings: {} } }, permissions: { canWrite: true, isAdmin: true } }) }));
+jest.mock("expo-router", () => ({ router: { back: jest.fn(), push: (...a: unknown[]) => mockPush(...a), replace: jest.fn(), canGoBack: () => true }, useLocalSearchParams: () => ({}) }));
+jest.mock("~/lib/supabase", () => ({ requireSupabase: () => ({ from: (t: string) => mockFrom(t) }) }));
+
+jest.setTimeout(30_000);
+beforeEach(() => {
+  mockCallApi.mockReset();
+  mockFrom.mockReset();
+  mockPush.mockReset();
+  mockSetString.mockClear();
+  // Lectures Supabase par défaut : vides (aucune grille, aucun colis, aucun réglage).
+  mockFrom.mockImplementation((t: string) => (fakeSupabase({ [t]: { data: t === "organizations" ? { settings: {} } : [], error: null } }).client as unknown as { from: (x: string) => unknown }).from(t));
+});
+
+function wrap(node: React.ReactElement) {
+  const { QueryClient, QueryClientProvider } = jest.requireActual("@tanstack/react-query");
+  const { SafeAreaProvider } = jest.requireActual("react-native-safe-area-context");
+  const { ToastProvider } = jest.requireActual("~/components/ui");
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
+  return (
+    <QueryClientProvider client={qc}>
+      {/* petit écran (iPhone SE) */}
+      <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 320, height: 568 }, insets: { top: 20, left: 0, right: 0, bottom: 0 } }}>
+        <ToastProvider>{node}</ToastProvider>
+      </SafeAreaProvider>
+    </QueryClientProvider>
+  );
+}
+
+describe("catalogue Mes outils", () => {
+  it("outils disponibles ouvrables, outils à venir non ouvrables", async () => {
+    const Screen = ToolsTab;
+    render(wrap(<Screen />));
+    expect(screen.getByText("Mes outils")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("tool-vat"));
+    expect(mockPush).toHaveBeenCalledWith("/tools/vat");
+    expect(screen.getByText("À venir")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("tool-purchase-profitability"));
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("calculateur de TVA", () => {
+  it("100 € HT à 20 % → 20 € de TVA, 120 € TTC, calcul local instantané ; inversion ; copie", async () => {
+    const Screen = VatTool;
+    render(wrap(<Screen />));
+    expect(screen.getByText(/Saisissez un montant ht/i)).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId("vat-amount"), "100");
+    expect(screen.getByText("20,00 €")).toBeTruthy();
+    expect(screen.getByText("120,00 €")).toBeTruthy();
+    expect(mockCallApi).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByTestId("vat-invert"));
+    expect(screen.getByLabelText("Montant TTC")).toBeTruthy();
+    expect(screen.getByDisplayValue("120,00")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Copier les résultats"));
+    await waitFor(() => expect(mockSetString).toHaveBeenCalled());
+  });
+  it("19,99 € HT, taux 5,5 %, saisie invalide et champ vide", async () => {
+    const Screen = VatTool;
+    render(wrap(<Screen />));
+    fireEvent.press(screen.getByText("5,5 %"));
+    fireEvent.changeText(screen.getByTestId("vat-amount"), "19,99");
+    expect(screen.getByText("1,10 €")).toBeTruthy(); // 1,09945 → 1,10
+    expect(screen.getByText("21,09 €")).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId("vat-amount"), "12,,5");
+    expect(screen.getByText(/Montant invalide/)).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId("vat-amount"), "");
+    expect(screen.queryByText(/^Résultat · base/)).toBeNull();
+    expect(screen.getByText(/Saisissez un montant ht/i)).toBeTruthy();
+  });
+});
+
+describe("calculateur de marge", () => {
+  it("frais non saisis listés comme non déduits (estimation partielle)", async () => {
+    const Screen = MarginTool;
+    render(wrap(<Screen />));
+    fireEvent.changeText(screen.getByTestId("margin-sale"), "150");
+    fireEvent.changeText(screen.getByTestId("profit-purchase"), "100");
+    expect(screen.getByText("Bénéfice estimé (coûts connus)")).toBeTruthy();
+    expect(screen.getByText(/Non renseigné \(non déduit\)/)).toBeTruthy();
+    expect(screen.getByText("– commission marketplace")).toBeTruthy();
+  });
+});
+
+describe("frais eBay", () => {
+  it("aucun taux par défaut : sans commission saisie, elle est signalée et non déduite", async () => {
+    const Screen = EbayFeesTool;
+    render(wrap(<Screen />));
+    fireEvent.changeText(screen.getByTestId("ebay-item"), "100");
+    expect(screen.getByText("– commission sur la valeur finale")).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId("ebay-fvf"), "10");
+    expect(screen.getByText("90,00 €")).toBeTruthy();
+  });
+});
+
+describe("comparateur de frais de port", () => {
+  it("sans plateforme ni grille : aucun prix, message explicite", async () => {
+    mockCallApi.mockImplementation((path: string) => (path === "/tools/status" ? Promise.resolve({ shipping: [{ id: "packlink", label: "Packlink PRO", configured: false }, { id: "boxtal", label: "Boxtal", configured: false }], tracking: { laposte: false, ship24: false } }) : Promise.reject(new Error(path))));
+    const Screen = ShippingTool;
+    render(wrap(<Screen />));
+    await waitFor(() => expect(screen.getByText(/Aucun tarif réel disponible/)).toBeTruthy());
+    fireEvent.changeText(screen.getByTestId("ship-weight"), "1");
+    fireEvent.press(screen.getByTestId("ship-compare"));
+    expect(screen.getAllByText("Champ requis.").length).toBeGreaterThan(0);
+    expect(mockCallApi).not.toHaveBeenCalledWith("/shipping/quotes", expect.anything());
+  });
+});
+
+describe("suivi de colis", () => {
+  it("sans clé d'API : avertissement clair, aucun statut inventé", async () => {
+    mockCallApi.mockResolvedValue({ shipping: [], tracking: { laposte: false, ship24: false } });
+    const Screen = TrackingList;
+    render(wrap(<Screen />));
+    await waitFor(() => expect(screen.getByText(/Aucune API de suivi n'est encore configurée/)).toBeTruthy());
+    expect(screen.getByText("Aucun colis suivi")).toBeTruthy();
+  });
+  it("ajout : numéro invalide refusé, transporteur détecté", async () => {
+    const Screen = NewParcel;
+    render(wrap(<Screen />));
+    fireEvent.changeText(screen.getByTestId("tracking-number"), "ab#12");
+    expect(screen.getByText("Lettres et chiffres uniquement.")).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId("tracking-number"), "1Z5R89390357567127");
+    expect(screen.getByText(/Détecté : UPS/)).toBeTruthy();
+    expect(screen.getByText("Transporteur : UPS")).toBeTruthy();
+  });
+});
