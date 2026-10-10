@@ -351,6 +351,46 @@ var init_env = __esm({
   }
 });
 
+// src/lib/crypto.ts
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
+function key() {
+  const raw = serverEnv().TOKEN_ENCRYPTION_KEY;
+  const decoded = Buffer.from(raw, "base64");
+  if (decoded.length === 32) return decoded;
+  return createHash("sha256").update(raw, "utf8").digest();
+}
+function encryptSecret(plain) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key(), iv);
+  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [VERSION, iv.toString("base64"), enc.toString("base64"), tag.toString("base64")].join(":");
+}
+function decryptSecret(payload) {
+  const [version, ivB64, encB64, tagB64] = payload.split(":");
+  if (version !== VERSION || !ivB64 || !encB64 || !tagB64) {
+    throw new Error("Secret chiffr\xE9 illisible (format inattendu).");
+  }
+  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(ivB64, "base64"));
+  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(encB64, "base64")), decipher.final()]).toString("utf8");
+}
+function sha256Hex(input) {
+  return createHash("sha256").update(input).digest("hex");
+}
+function randomToken(bytes = 24) {
+  return randomBytes(bytes).toString("hex");
+}
+var VERSION;
+var init_crypto = __esm({
+  "src/lib/crypto.ts"() {
+    "use strict";
+    init_empty();
+    init_env();
+    VERSION = "v1";
+  }
+});
+
 // src/lib/supabase/admin.ts
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 function createAdminSupabaseClient() {
@@ -372,6 +412,85 @@ var init_admin = __esm({
   }
 });
 
+// src/integrations/core/errors.ts
+function isConnectorError(e) {
+  return e instanceof ConnectorError;
+}
+function connectorErrorToAppError(e) {
+  switch (e.code) {
+    case "AUTH_EXPIRED":
+      return new AppError("CONNECTION_EXPIRED", e.message, { action: RECONNECT_ACTION, details: e.details, cause: e });
+    case "RATE_LIMITED":
+      return new AppError("RATE_LIMITED", e.message, { details: e.details, cause: e });
+    case "NOT_CONFIGURED":
+      return new AppError("NOT_CONFIGURED", e.message, { details: e.details, cause: e });
+    case "NOT_IMPLEMENTED":
+      return new AppError("NOT_IMPLEMENTED", e.message, { details: e.details, cause: e });
+    case "INVALID_RESPONSE":
+    case "API_ERROR":
+    default:
+      return new AppError("EXTERNAL_API", e.message, { details: e.details, cause: e });
+  }
+}
+function describeError(e) {
+  if (isConnectorError(e)) return { code: e.code, message: e.message, details: { ...e.details, httpStatus: e.httpStatus } };
+  if (e instanceof AppError) return { code: e.code, message: e.message, details: e.details ?? {} };
+  if (e instanceof Error) return { code: "INTERNAL", message: e.message, details: {} };
+  return { code: "INTERNAL", message: String(e), details: {} };
+}
+var ConnectorError, RECONNECT_ACTION;
+var init_errors2 = __esm({
+  "src/integrations/core/errors.ts"() {
+    "use strict";
+    init_errors();
+    ConnectorError = class extends Error {
+      code;
+      provider;
+      details;
+      httpStatus;
+      retryable;
+      constructor(code, provider, message, options = {}) {
+        super(message, options.cause !== void 0 ? { cause: options.cause } : void 0);
+        this.name = "ConnectorError";
+        this.code = code;
+        this.provider = provider;
+        this.details = options.details ?? {};
+        this.httpStatus = options.httpStatus ?? null;
+        this.retryable = options.retryable ?? (code === "RATE_LIMITED" || code === "API_ERROR");
+      }
+    };
+    RECONNECT_ACTION = { label: "Reconnecter eBay", href: "/settings/integrations" };
+  }
+});
+
+// src/lib/supabase/paginate.ts
+async function fetchRowsUpTo(page2, limit, options = {}) {
+  const size = Math.max(1, options.pageSize ?? DB_PAGE_SIZE);
+  const wanted = limit + 1;
+  const rows = [];
+  for (let from = 0; from < wanted; from += size) {
+    const to = Math.min(from + size, wanted) - 1;
+    const { data, error } = await page2(from, to);
+    if (error) throw error;
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < to - from + 1) break;
+  }
+  const truncated = rows.length > limit;
+  return { rows: truncated ? rows.slice(0, limit) : rows, truncated };
+}
+async function fetchAllRows(page2, options = {}) {
+  const { rows } = await fetchRowsUpTo(page2, options.maxRows ?? 2e5, { pageSize: options.pageSize });
+  return rows;
+}
+var DB_PAGE_SIZE;
+var init_paginate = __esm({
+  "src/lib/supabase/paginate.ts"() {
+    "use strict";
+    DB_PAGE_SIZE = 1e3;
+  }
+});
+
 // src/lib/postgrest.ts
 function escapeLike(s) {
   return s.replace(/[%_\\]/g, (m) => `\\${m}`);
@@ -379,6 +498,1186 @@ function escapeLike(s) {
 var init_postgrest = __esm({
   "src/lib/postgrest.ts"() {
     "use strict";
+  }
+});
+
+// src/integrations/ebay/config.ts
+function ebayScopeList() {
+  return EBAY_SCOPES.map((s) => s.scope);
+}
+function createEbayConfig(env) {
+  const sandbox = env.EBAY_ENV === "sandbox";
+  return {
+    environment: env.EBAY_ENV,
+    clientId: env.EBAY_CLIENT_ID,
+    clientSecret: env.EBAY_CLIENT_SECRET,
+    ruName: env.EBAY_RU_NAME,
+    webhookVerificationToken: env.EBAY_WEBHOOK_VERIFICATION_TOKEN ?? null,
+    authorizeUrl: sandbox ? "https://auth.sandbox.ebay.com/oauth2/authorize" : "https://auth.ebay.com/oauth2/authorize",
+    tokenUrl: sandbox ? "https://api.sandbox.ebay.com/identity/v1/oauth2/token" : "https://api.ebay.com/identity/v1/oauth2/token",
+    apiBase: sandbox ? "https://api.sandbox.ebay.com" : "https://api.ebay.com",
+    apizBase: sandbox ? "https://apiz.sandbox.ebay.com" : "https://apiz.ebay.com",
+    tradingUrl: sandbox ? "https://api.sandbox.ebay.com/ws/api.dll" : "https://api.ebay.com/ws/api.dll"
+  };
+}
+var EBAY_PROVIDER, EBAY_TRADING_COMPATIBILITY_LEVEL, EBAY_SCOPES;
+var init_config = __esm({
+  "src/integrations/ebay/config.ts"() {
+    "use strict";
+    EBAY_PROVIDER = "ebay";
+    EBAY_TRADING_COMPATIBILITY_LEVEL = "1225";
+    EBAY_SCOPES = [
+      { scope: "https://api.ebay.com/oauth/api_scope", reason: "Scope de base requis par eBay pour tout token OAuth." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.fulfillment", reason: "Lecture des commandes (Sell Fulfillment API) : cr\xE9ation, paiement, exp\xE9dition, annulations." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.inventory", reason: "Lecture des annonces actives (GetMyeBaySelling) et mise \xE0 jour des quantit\xE9s (ReviseInventoryStatus)." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.account.readonly", reason: "Lecture des politiques m\xE9tier (paiement, retour, exp\xE9dition) n\xE9cessaires pour pr\xE9parer une annonce (Account API)." },
+      { scope: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly", reason: "Identifiant et pseudo du compte vendeur (Identity API) pour afficher le compte connect\xE9 et router les notifications." }
+    ];
+  }
+});
+
+// src/integrations/core/http.ts
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+function parseRetryAfterMs(header, now = Date.now()) {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (trimmed === "") return null;
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
+  const date = Date.parse(trimmed);
+  if (!Number.isNaN(date)) return Math.max(0, date - now);
+  return null;
+}
+function backoff(attempt) {
+  const base = Math.min(MAX_BACKOFF_MS, 500 * 2 ** attempt);
+  return base + Math.floor(Math.random() * 250);
+}
+async function fetchWithRetry(url, init, options) {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const retries = options.retries ?? DEFAULT_RETRIES;
+  const label = options.label ?? new URL(url).pathname;
+  let lastError = null;
+  let lastStatus = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    timer.unref?.();
+    try {
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      lastStatus = res.status;
+      if (res.status === 429 || res.status >= 500) {
+        clearTimeout(timer);
+        const requested = parseRetryAfterMs(res.headers.get("retry-after"));
+        await res.body?.cancel().catch(() => void 0);
+        const tooLong = requested !== null && requested > MAX_RETRY_AFTER_MS;
+        if (attempt < retries && !tooLong) {
+          const wait = requested ?? backoff(attempt);
+          log3.warn("r\xE9ponse transitoire, nouvelle tentative", { provider: options.provider, label, status: res.status, attempt: attempt + 1, waitMs: wait });
+          await sleep(wait);
+          continue;
+        }
+        const retryAfterSeconds = requested !== null ? Math.ceil(requested / 1e3) : null;
+        if (res.status === 429) {
+          const when = retryAfterSeconds !== null && retryAfterSeconds > 60 ? `r\xE9essayez dans ${Math.ceil(retryAfterSeconds / 60)} min` : "r\xE9essayez dans quelques minutes";
+          throw new ConnectorError("RATE_LIMITED", options.provider, `Quota API ${options.provider} atteint (HTTP 429) : ${when}.`, {
+            httpStatus: 429,
+            details: { label, retryAfterSeconds, attempts: attempt + 1 }
+          });
+        }
+        throw new ConnectorError("API_ERROR", options.provider, `L'API ${options.provider} est indisponible (HTTP ${res.status}) apr\xE8s ${attempt + 1} tentative(s).`, {
+          httpStatus: res.status,
+          details: { label, attempts: attempt + 1 }
+        });
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      if (e instanceof ConnectorError) throw e;
+      lastError = e;
+      const aborted2 = e instanceof Error && e.name === "AbortError";
+      if (attempt < retries) {
+        const wait = backoff(attempt);
+        log3.warn(aborted2 ? "d\xE9lai d\xE9pass\xE9, nouvelle tentative" : "erreur r\xE9seau, nouvelle tentative", { provider: options.provider, label, attempt: attempt + 1, waitMs: wait });
+        await sleep(wait);
+        continue;
+      }
+    }
+  }
+  const aborted = lastError instanceof Error && lastError.name === "AbortError";
+  throw new ConnectorError(
+    "API_ERROR",
+    options.provider,
+    aborted ? `L'API ${options.provider} n'a pas r\xE9pondu dans le d\xE9lai imparti (${Math.round(timeoutMs / 1e3)} s).` : `Impossible de joindre l'API ${options.provider} (erreur r\xE9seau).`,
+    { httpStatus: lastStatus, details: { label, attempts: retries + 1, reason: lastError instanceof Error ? lastError.message : String(lastError) }, cause: lastError }
+  );
+}
+async function readBodyText(res, provider = "api", label = "body") {
+  try {
+    return await res.text();
+  } catch (e) {
+    const aborted = e instanceof Error && e.name === "AbortError";
+    throw new ConnectorError(
+      "API_ERROR",
+      provider,
+      aborted ? `L'API ${provider} n'a pas fini d'envoyer sa r\xE9ponse dans le d\xE9lai imparti.` : `R\xE9ponse de l'API ${provider} interrompue pendant la lecture.`,
+      { httpStatus: res.status, details: { label, reason: e instanceof Error ? e.message : String(e) }, cause: e }
+    );
+  }
+}
+async function readJson(res, provider = "api") {
+  const text2 = await readBodyText(res, provider);
+  if (!text2) return null;
+  try {
+    return JSON.parse(text2);
+  } catch {
+    return null;
+  }
+}
+var log3, DEFAULT_TIMEOUT_MS, DEFAULT_RETRIES, MAX_BACKOFF_MS, MAX_RETRY_AFTER_MS;
+var init_http = __esm({
+  "src/integrations/core/http.ts"() {
+    "use strict";
+    init_errors2();
+    init_logger();
+    log3 = createLogger("HTTP");
+    DEFAULT_TIMEOUT_MS = 3e4;
+    DEFAULT_RETRIES = 3;
+    MAX_BACKOFF_MS = 8e3;
+    MAX_RETRY_AFTER_MS = MAX_BACKOFF_MS * 4;
+  }
+});
+
+// src/integrations/ebay/oauth.ts
+import { z as z7 } from "npm:zod@4.6.5";
+function buildAuthorizeUrl(config, state, scopes = ebayScopeList()) {
+  const url = new URL(config.authorizeUrl);
+  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("redirect_uri", config.ruName);
+  url.searchParams.set("scope", scopes.join(" "));
+  url.searchParams.set("state", state);
+  url.searchParams.set("prompt", "login");
+  return url.toString();
+}
+function basicAuth(config) {
+  return "Basic " + Buffer.from(`${config.clientId}:${config.clientSecret}`, "utf8").toString("base64");
+}
+async function tokenRequest(config, body, label) {
+  const res = await fetchWithRetry(
+    config.tokenUrl,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basicAuth(config), Accept: "application/json" },
+      body: body.toString()
+    },
+    { provider: EBAY_PROVIDER, label, retries: 2, timeoutMs: 2e4 }
+  );
+  const json2 = await readJson(res, EBAY_PROVIDER);
+  if (!res.ok) {
+    const err = tokenErrorSchema.safeParse(json2);
+    const code = err.success ? err.data.error : `http_${res.status}`;
+    const description = err.success ? err.data.error_description : void 0;
+    if (code === "invalid_client" || code === "unauthorized_client") {
+      throw new ConnectorError("NOT_CONFIGURED", EBAY_PROVIDER, "eBay refuse les identifiants de l'application (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET invalides ou environnement production/sandbox incoh\xE9rent).", {
+        httpStatus: res.status,
+        details: { oauthError: code, description: description ?? null, step: label },
+        retryable: false
+      });
+    }
+    if (code === "invalid_scope" && label === "oauth:refresh_token") {
+      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "eBay refuse les autorisations demand\xE9es : de nouvelles autorisations sont n\xE9cessaires. Reconnectez votre compte eBay pour les accorder.", {
+        httpStatus: res.status,
+        details: { oauthError: code, description: description ?? null, step: label },
+        retryable: false
+      });
+    }
+    if (code === "invalid_grant" || code === "invalid_token" || res.status === 401) {
+      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "L'autorisation eBay n'est plus valide (le token a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9). Reconnectez votre compte eBay.", {
+        httpStatus: res.status,
+        details: { oauthError: code, description: description ?? null, step: label },
+        retryable: false
+      });
+    }
+    throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `eBay a refus\xE9 la demande de token (${code}${description ? ` : ${description}` : ""}).`, {
+      httpStatus: res.status,
+      details: { oauthError: code, description: description ?? null, step: label },
+      retryable: false
+    });
+  }
+  const parsed = tokenResponseSchema.safeParse(json2);
+  if (!parsed.success) {
+    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse de token eBay inattendue (format non reconnu).", { details: { step: label, issues: parsed.error.issues.map((i) => i.path.join(".")) } });
+  }
+  return parsed.data;
+}
+function toTokenSet(data, now, previousRefresh) {
+  return {
+    accessToken: data.access_token,
+    accessTokenExpiresAt: new Date(now.getTime() + data.expires_in * 1e3),
+    refreshToken: data.refresh_token ?? previousRefresh?.token ?? null,
+    refreshTokenExpiresAt: data.refresh_token_expires_in ? new Date(now.getTime() + data.refresh_token_expires_in * 1e3) : previousRefresh?.expiresAt ?? null,
+    tokenType: data.token_type ?? "User Access Token"
+  };
+}
+async function exchangeAuthorizationCode(config, code, now = /* @__PURE__ */ new Date()) {
+  const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: config.ruName });
+  const data = await tokenRequest(config, body, "oauth:exchange_code");
+  return toTokenSet(data, now);
+}
+async function refreshAccessToken(config, refreshToken, scopes = ebayScopeList(), now = /* @__PURE__ */ new Date()) {
+  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, scope: scopes.join(" ") });
+  const data = await tokenRequest(config, body, "oauth:refresh_token");
+  return toTokenSet(data, now, { token: refreshToken, expiresAt: null });
+}
+async function getApplicationAccessToken(config, now = /* @__PURE__ */ new Date()) {
+  const body = new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" });
+  const data = await tokenRequest(config, body, "oauth:client_credentials");
+  return { accessToken: data.access_token, expiresAt: new Date(now.getTime() + data.expires_in * 1e3) };
+}
+var tokenResponseSchema, tokenErrorSchema;
+var init_oauth = __esm({
+  "src/integrations/ebay/oauth.ts"() {
+    "use strict";
+    init_errors2();
+    init_http();
+    init_config();
+    tokenResponseSchema = z7.object({
+      access_token: z7.string().min(1),
+      expires_in: z7.number().int().positive(),
+      token_type: z7.string().optional(),
+      refresh_token: z7.string().min(1).optional(),
+      refresh_token_expires_in: z7.number().int().positive().optional()
+    });
+    tokenErrorSchema = z7.object({
+      error: z7.string(),
+      error_description: z7.string().optional()
+    });
+  }
+});
+
+// src/integrations/core/types.ts
+import { z as z8 } from "npm:zod@4.6.5";
+var ORDER_STATUSES3, LISTING_STATUSES, isoDate2, nullableNumber, normalizedOrderItemSchema, normalizedOrderSchema, normalizedListingVariationSchema, normalizedListingSchema, accountInfoSchema, tokenSetSchema;
+var init_types = __esm({
+  "src/integrations/core/types.ts"() {
+    "use strict";
+    ORDER_STATUSES3 = ["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"];
+    LISTING_STATUSES = ["active", "ended", "unsold", "unknown"];
+    isoDate2 = z8.string().refine((s) => !Number.isNaN(Date.parse(s)), "Date ISO invalide");
+    nullableNumber = z8.number().finite().nullable();
+    normalizedOrderItemSchema = z8.object({
+      externalLineItemId: z8.string().min(1),
+      externalListingId: z8.string().min(1).nullable(),
+      /** Clé de variation ('' si l'article n'a pas de variation). Voir variationKey(). */
+      externalVariationId: z8.string(),
+      externalSku: z8.string().min(1).nullable(),
+      title: z8.string(),
+      quantity: z8.number().int().positive(),
+      unitPrice: nullableNumber,
+      currency: z8.string().length(3).nullable(),
+      total: nullableNumber
+    });
+    normalizedOrderSchema = z8.object({
+      externalOrderId: z8.string().min(1),
+      orderNumber: z8.string().nullable(),
+      status: z8.enum(ORDER_STATUSES3),
+      paymentStatus: z8.string().nullable(),
+      fulfillmentStatus: z8.string().nullable(),
+      cancelStatus: z8.string().nullable(),
+      buyerUsername: z8.string().nullable(),
+      currency: z8.string().length(3),
+      subtotal: nullableNumber,
+      shippingTotal: nullableNumber,
+      taxTotal: nullableNumber,
+      feeTotal: nullableNumber,
+      total: nullableNumber,
+      placedAt: isoDate2,
+      externalModifiedAt: isoDate2.nullable(),
+      payloadHash: z8.string().min(1),
+      items: z8.array(normalizedOrderItemSchema)
+    });
+    normalizedListingVariationSchema = z8.object({
+      sku: z8.string().min(1).nullable(),
+      specifics: z8.record(z8.string(), z8.string()),
+      quantityListed: z8.number().int().nullable(),
+      quantitySold: z8.number().int().nullable(),
+      quantityAvailable: z8.number().int().nullable(),
+      price: nullableNumber,
+      currency: z8.string().length(3).nullable()
+    });
+    normalizedListingSchema = z8.object({
+      externalListingId: z8.string().min(1),
+      title: z8.string(),
+      sku: z8.string().min(1).nullable(),
+      externalProductId: z8.string().nullable(),
+      quantityListed: z8.number().int().nullable(),
+      quantitySold: z8.number().int().nullable(),
+      quantityAvailable: z8.number().int().nullable(),
+      price: nullableNumber,
+      currency: z8.string().length(3).nullable(),
+      listingUrl: z8.string().nullable(),
+      imageUrl: z8.string().nullable(),
+      status: z8.enum(LISTING_STATUSES),
+      startedAt: isoDate2.nullable(),
+      endsAt: isoDate2.nullable(),
+      variations: z8.array(normalizedListingVariationSchema)
+    });
+    accountInfoSchema = z8.object({
+      externalAccountId: z8.string().min(1),
+      username: z8.string().min(1),
+      accountType: z8.string().nullable(),
+      registrationMarketplaceId: z8.string().nullable()
+    });
+    tokenSetSchema = z8.object({
+      accessToken: z8.string().min(1),
+      accessTokenExpiresAt: z8.date(),
+      refreshToken: z8.string().min(1).nullable(),
+      refreshTokenExpiresAt: z8.date().nullable(),
+      tokenType: z8.string()
+    });
+  }
+});
+
+// src/integrations/ebay/rest.ts
+import { z as z9 } from "npm:zod@4.6.5";
+function summarizeRestErrors(json2) {
+  const parsed = ebayRestErrorSchema.safeParse(json2);
+  if (!parsed.success || parsed.data.errors.length === 0) return { message: "", errorIds: [] };
+  const first = parsed.data.errors[0];
+  return {
+    message: first?.longMessage ?? first?.message ?? "",
+    errorIds: parsed.data.errors.map((e) => e.errorId).filter((x) => typeof x === "number")
+  };
+}
+async function ebayRestGet(auth, url, label, options = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
+    const res = await fetchWithRetry(
+      url,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Accept-Language": "fr-FR",
+          ...options.marketplaceId ? { "X-EBAY-C-MARKETPLACE-ID": options.marketplaceId } : {}
+        }
+      },
+      { provider: EBAY_PROVIDER, label }
+    );
+    const json2 = await readJson(res, EBAY_PROVIDER);
+    if (res.status === 401) {
+      if (attempt === 0) continue;
+      const { message, errorIds } = summarizeRestErrors(json2);
+      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", {
+        httpStatus: 401,
+        details: { label, ebayMessage: message || null, errorIds },
+        retryable: false
+      });
+    }
+    if (res.status === 403) {
+      const { message, errorIds } = summarizeRestErrors(json2);
+      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, `eBay refuse l'acc\xE8s (${message || "scope insuffisant"}). Reconnectez votre compte pour accorder les autorisations n\xE9cessaires.`, {
+        httpStatus: 403,
+        details: { label, ebayMessage: message || null, errorIds },
+        retryable: false
+      });
+    }
+    if (!res.ok) {
+      const { message, errorIds } = summarizeRestErrors(json2);
+      throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `Erreur de l'API eBay (HTTP ${res.status})${message ? ` : ${message}` : ""}.`, {
+        httpStatus: res.status,
+        details: { label, errorIds },
+        retryable: res.status >= 500
+      });
+    }
+    return json2;
+  }
+  throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "Appel eBay interrompu.", { details: { label } });
+}
+var ebayRestErrorSchema;
+var init_rest = __esm({
+  "src/integrations/ebay/rest.ts"() {
+    "use strict";
+    init_errors2();
+    init_http();
+    init_config();
+    ebayRestErrorSchema = z9.object({
+      errors: z9.array(
+        z9.object({
+          errorId: z9.number().optional(),
+          domain: z9.string().optional(),
+          category: z9.string().optional(),
+          message: z9.string().optional(),
+          longMessage: z9.string().optional()
+        })
+      )
+    });
+  }
+});
+
+// src/integrations/ebay/identity.ts
+import { z as z10 } from "npm:zod@4.6.5";
+function normalizeEbayUser(raw) {
+  const parsed = ebayUserSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse inattendue de l'Identity API eBay (impossible de lire le compte vendeur).", {
+      details: { issues: parsed.error.issues.map((i) => i.path.join(".")) }
+    });
+  }
+  return accountInfoSchema.parse({
+    externalAccountId: parsed.data.userId,
+    username: parsed.data.username,
+    accountType: parsed.data.accountType ?? null,
+    registrationMarketplaceId: parsed.data.registrationMarketplaceId ?? null
+  });
+}
+async function fetchEbayAccountInfo(config, auth) {
+  const json2 = await ebayRestGet(auth, `${config.apizBase}/commerce/identity/v1/user/`, "identity:getUser");
+  return normalizeEbayUser(json2);
+}
+var ebayUserSchema;
+var init_identity = __esm({
+  "src/integrations/ebay/identity.ts"() {
+    "use strict";
+    init_errors2();
+    init_types();
+    init_config();
+    init_rest();
+    ebayUserSchema = z10.object({
+      userId: z10.string().min(1),
+      username: z10.string().min(1),
+      accountType: z10.string().optional(),
+      registrationMarketplaceId: z10.string().optional(),
+      status: z10.string().optional()
+    });
+  }
+});
+
+// src/integrations/core/variation.ts
+function aspectsKey(aspects) {
+  const pairs = Array.isArray(aspects) ? aspects.map((a) => [a.name, a.value]) : Object.entries(aspects);
+  return pairs.map(([n, v2]) => [n.trim(), v2.trim()]).filter(([n, v2]) => n.length > 0 && v2.length > 0).sort(([a], [b]) => a.localeCompare(b)).map(([n, v2]) => `${n}=${v2}`).join("|");
+}
+function variationKey(input) {
+  const sku = input.sku?.trim();
+  if (sku) return sku;
+  if (input.aspects) {
+    const key2 = aspectsKey(input.aspects);
+    if (key2) return key2;
+  }
+  return input.fallbackId?.trim() ?? "";
+}
+var init_variation = __esm({
+  "src/integrations/core/variation.ts"() {
+    "use strict";
+  }
+});
+
+// src/integrations/ebay/fulfillment.ts
+import { createHash as createHash3 } from "node:crypto";
+import { z as z11 } from "npm:zod@4.6.5";
+function mapEbayOrderStatus(input) {
+  if (input.cancelState === "CANCELED") return "cancelled";
+  if (input.paymentStatus === "FULLY_REFUNDED") return "refunded";
+  if (input.fulfillmentStatus === "FULFILLED") return "shipped";
+  switch (input.paymentStatus) {
+    case "PAID":
+    case "PARTIALLY_REFUNDED":
+      return "paid";
+    case "PENDING":
+    case "FAILED":
+      return "pending";
+    default:
+      return input.fulfillmentStatus === "IN_PROGRESS" || input.fulfillmentStatus === "NOT_STARTED" ? "pending" : "unknown";
+  }
+}
+function stableHash(raw) {
+  return createHash3("sha256").update(JSON.stringify(raw)).digest("hex");
+}
+function normalizeLineItem(li, orderCurrency) {
+  const isVariation = Boolean(li.legacyVariationId) || (li.variationAspects?.length ?? 0) > 0;
+  const unitPrice = li.lineItemCost?.value ?? null;
+  const total = li.total?.value ?? (unitPrice !== null ? Math.round(unitPrice * li.quantity * 100) / 100 : null);
+  return {
+    externalLineItemId: li.lineItemId,
+    externalListingId: li.legacyItemId ?? null,
+    externalVariationId: isVariation ? variationKey({ sku: li.sku, aspects: li.variationAspects ?? null, fallbackId: li.legacyVariationId ?? null }) : "",
+    externalSku: li.sku?.trim() ? li.sku.trim() : null,
+    title: li.title ?? "",
+    quantity: li.quantity,
+    unitPrice,
+    currency: li.lineItemCost?.currency ?? li.total?.currency ?? orderCurrency,
+    total
+  };
+}
+function normalizeEbayOrder(raw) {
+  const parsed = ebayOrderSchema.safeParse(raw);
+  if (!parsed.success) {
+    const id = typeof raw === "object" && raw !== null && "orderId" in raw ? String(raw.orderId) : null;
+    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, `Commande eBay ${id ?? "(id inconnu)"} au format inattendu : ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}.`, {
+      details: { orderId: id, issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) },
+      retryable: false
+    });
+  }
+  const o = parsed.data;
+  const ps = o.pricingSummary;
+  const currency = ps?.total?.currency ?? ps?.priceSubtotal?.currency ?? o.lineItems[0]?.lineItemCost?.currency ?? "EUR";
+  const status = mapEbayOrderStatus({ cancelState: o.cancelStatus?.cancelState ?? null, paymentStatus: o.orderPaymentStatus ?? null, fulfillmentStatus: o.orderFulfillmentStatus ?? null });
+  const order = {
+    externalOrderId: o.orderId,
+    orderNumber: o.legacyOrderId ?? null,
+    status,
+    paymentStatus: o.orderPaymentStatus ?? null,
+    fulfillmentStatus: o.orderFulfillmentStatus ?? null,
+    cancelStatus: o.cancelStatus?.cancelState ?? null,
+    buyerUsername: o.buyer?.username ?? null,
+    currency,
+    subtotal: ps?.priceSubtotal?.value ?? null,
+    shippingTotal: ps?.deliveryCost?.value ?? null,
+    taxTotal: ps?.tax?.value ?? null,
+    feeTotal: o.totalMarketplaceFee?.value ?? ps?.fee?.value ?? null,
+    total: ps?.total?.value ?? null,
+    placedAt: new Date(o.creationDate).toISOString(),
+    externalModifiedAt: o.lastModifiedDate ? new Date(o.lastModifiedDate).toISOString() : null,
+    payloadHash: stableHash(raw),
+    items: o.lineItems.map((li) => normalizeLineItem(li, currency))
+  };
+  return normalizedOrderSchema.parse(order);
+}
+function buildLastModifiedFilter(since2, until) {
+  const from = since2.toISOString();
+  return until ? `lastmodifieddate:[${from}..${until.toISOString()}]` : `lastmodifieddate:[${from}..]`;
+}
+async function* iterateEbayOrders(config, auth, params) {
+  let offset = 0;
+  for (let page2 = 0; page2 < EBAY_ORDERS_MAX_PAGES; page2++) {
+    const url = new URL(`${config.apiBase}/sell/fulfillment/v1/order`);
+    url.searchParams.set("filter", buildLastModifiedFilter(params.since, params.until));
+    url.searchParams.set("limit", String(EBAY_ORDERS_PAGE_SIZE));
+    url.searchParams.set("offset", String(offset));
+    const json2 = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders");
+    const parsed = ebayOrdersPageSchema.safeParse(json2);
+    if (!parsed.success) {
+      throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse inattendue de la Fulfillment API eBay (liste de commandes illisible).", {
+        details: { issues: parsed.error.issues.map((i) => i.path.join(".")) }
+      });
+    }
+    const orders = [];
+    const invalid = [];
+    for (const raw of parsed.data.orders) {
+      try {
+        orders.push(normalizeEbayOrder(raw));
+      } catch (e) {
+        const id = typeof raw === "object" && raw !== null && "orderId" in raw ? String(raw.orderId) : null;
+        invalid.push({ orderId: id, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    const total = parsed.data.total ?? null;
+    const hasNext = Boolean(parsed.data.next) && parsed.data.orders.length > 0;
+    const truncated = hasNext && page2 === EBAY_ORDERS_MAX_PAGES - 1;
+    yield { orders, invalid, total, truncated, hasMore: hasNext };
+    if (!hasNext) return;
+    offset += parsed.data.orders.length;
+  }
+}
+var amountSchema, lineItemSchema, ebayOrderSchema, ebayOrdersPageSchema, EBAY_ORDERS_PAGE_SIZE, EBAY_ORDERS_MAX_PAGES;
+var init_fulfillment = __esm({
+  "src/integrations/ebay/fulfillment.ts"() {
+    "use strict";
+    init_errors2();
+    init_types();
+    init_variation();
+    init_config();
+    init_rest();
+    amountSchema = z11.object({
+      value: z11.union([z11.string(), z11.number()]),
+      currency: z11.string().optional(),
+      convertedFromValue: z11.union([z11.string(), z11.number()]).optional(),
+      convertedFromCurrency: z11.string().optional()
+    }).transform((a) => {
+      const n = typeof a.value === "number" ? a.value : Number(a.value);
+      return { value: Number.isFinite(n) ? n : null, currency: a.currency ?? null };
+    });
+    lineItemSchema = z11.object({
+      lineItemId: z11.string().min(1),
+      legacyItemId: z11.string().optional(),
+      legacyVariationId: z11.string().optional(),
+      sku: z11.string().optional(),
+      title: z11.string().optional(),
+      quantity: z11.number().int().positive(),
+      lineItemCost: amountSchema.optional(),
+      total: amountSchema.optional(),
+      lineItemFulfillmentStatus: z11.string().optional(),
+      variationAspects: z11.array(z11.object({ name: z11.string(), value: z11.string() })).optional()
+    });
+    ebayOrderSchema = z11.object({
+      orderId: z11.string().min(1),
+      legacyOrderId: z11.string().optional(),
+      creationDate: z11.string(),
+      lastModifiedDate: z11.string().optional(),
+      orderFulfillmentStatus: z11.string().optional(),
+      orderPaymentStatus: z11.string().optional(),
+      cancelStatus: z11.object({ cancelState: z11.string().optional() }).passthrough().optional(),
+      buyer: z11.object({ username: z11.string().optional() }).passthrough().optional(),
+      pricingSummary: z11.object({
+        priceSubtotal: amountSchema.optional(),
+        deliveryCost: amountSchema.optional(),
+        tax: amountSchema.optional(),
+        total: amountSchema.optional(),
+        fee: amountSchema.optional()
+      }).passthrough().optional(),
+      totalMarketplaceFee: amountSchema.optional(),
+      lineItems: z11.array(lineItemSchema).default([])
+    });
+    ebayOrdersPageSchema = z11.object({
+      total: z11.number().int().nonnegative().optional(),
+      limit: z11.number().int().optional(),
+      offset: z11.number().int().optional(),
+      next: z11.string().optional(),
+      orders: z11.array(z11.unknown()).default([])
+    });
+    EBAY_ORDERS_PAGE_SIZE = 100;
+    EBAY_ORDERS_MAX_PAGES = 50;
+  }
+});
+
+// src/integrations/ebay/trading.ts
+import { XMLParser } from "npm:fast-xml-parser@5.11.2";
+function node(v2) {
+  return v2 && typeof v2 === "object" && !Array.isArray(v2) ? v2 : null;
+}
+function arr(v2) {
+  if (v2 === void 0 || v2 === null) return [];
+  return Array.isArray(v2) ? v2 : [v2];
+}
+function text(v2) {
+  if (v2 === void 0 || v2 === null) return null;
+  if (typeof v2 === "string") return v2;
+  if (typeof v2 === "number" || typeof v2 === "boolean") return String(v2);
+  const n = node(v2);
+  if (n && typeof n["#text"] === "string") return n["#text"];
+  return null;
+}
+function int(v2) {
+  const t = text(v2);
+  if (t === null || t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+function money(v2) {
+  const t = text(v2);
+  const n = t === null || t === "" ? NaN : Number(t);
+  const nd = node(v2);
+  const currency = nd && typeof nd["@_currencyID"] === "string" ? nd["@_currencyID"] : null;
+  return { value: Number.isFinite(n) ? n : null, currency: currency && currency.length === 3 ? currency : null };
+}
+function isoOrNull(v2) {
+  const t = text(v2);
+  if (!t) return null;
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+function extractTradingErrors(response) {
+  return arr(response?.Errors).map(node).filter((e) => e !== null).map((e) => ({
+    code: text(e.ErrorCode) ?? "",
+    shortMessage: text(e.ShortMessage) ?? "",
+    longMessage: text(e.LongMessage) ?? "",
+    severity: text(e.SeverityCode) ?? ""
+  }));
+}
+function isTradingAuthError(errors) {
+  return errors.some((e) => TRADING_AUTH_ERROR_CODES.has(e.code) || /(iaf|auth)\s*token.*(expired|invalid|hard expired)|invalid.*token|token.*(expired|invalid)/i.test(`${e.shortMessage} ${e.longMessage}`));
+}
+function assertTradingAck(callName, response) {
+  if (!response) {
+    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, `R\xE9ponse XML illisible pour l'appel Trading ${callName}.`, { details: { callName } });
+  }
+  const ack = text(response.Ack) ?? "";
+  const errors = extractTradingErrors(response);
+  const failures = errors.filter((e) => e.severity !== "Warning");
+  const warnings = errors.filter((e) => e.severity === "Warning").map((e) => e.longMessage || e.shortMessage);
+  if (ack === "Success" || ack === "Warning") return { warnings };
+  if (isTradingAuthError(errors)) {
+    throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", {
+      details: { callName, errorCodes: failures.map((e) => e.code) },
+      retryable: false
+    });
+  }
+  const first = failures[0] ?? errors[0];
+  const message = first ? first.longMessage || first.shortMessage : `Ack=${ack || "absent"}`;
+  const errorSummary = failures.map((e) => ({ code: e.code, message: e.shortMessage }));
+  if (failures.some((e) => TRADING_RATE_LIMIT_ERROR_CODES.has(e.code) || /usage limit|call limit/i.test(`${e.shortMessage} ${e.longMessage}`))) {
+    throw new ConnectorError("RATE_LIMITED", EBAY_PROVIDER, `Quota d'appels de la Trading API eBay atteint (${callName}) : la synchronisation reprendra au prochain run.`, {
+      details: { callName, ack, errors: errorSummary },
+      retryable: true
+    });
+  }
+  throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `eBay a refus\xE9 l'appel ${callName} : ${message}`, {
+    details: { callName, ack, errors: errorSummary },
+    retryable: failures.some((e) => TRADING_TRANSIENT_ERROR_CODES.has(e.code))
+  });
+}
+function xmlEscape(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+function buildGetMyeBaySellingRequest(pageNumber, entriesPerPage = GET_MY_EBAY_SELLING_PAGE_SIZE) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<GetMyeBaySellingRequest xmlns="${EBAY_TRADING_NS}">
+  <ErrorLanguage>fr_FR</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+  <DetailLevel>ReturnAll</DetailLevel>
+  <ActiveList>
+    <Include>true</Include>
+    <IncludeNotes>false</IncludeNotes>
+    <Sort>TimeLeft</Sort>
+    <Pagination>
+      <EntriesPerPage>${entriesPerPage}</EntriesPerPage>
+      <PageNumber>${pageNumber}</PageNumber>
+    </Pagination>
+  </ActiveList>
+</GetMyeBaySellingRequest>`;
+}
+function buildReviseInventoryStatusRequest(ref, quantity) {
+  const sku = ref.variationSku ? `
+    <SKU>${xmlEscape(ref.variationSku)}</SKU>` : "";
+  return `<?xml version="1.0" encoding="utf-8"?>
+<ReviseInventoryStatusRequest xmlns="${EBAY_TRADING_NS}">
+  <ErrorLanguage>fr_FR</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+  <InventoryStatus>
+    <ItemID>${xmlEscape(ref.externalListingId)}</ItemID>${sku}
+    <Quantity>${Math.max(0, Math.trunc(quantity))}</Quantity>
+  </InventoryStatus>
+</ReviseInventoryStatusRequest>`;
+}
+function parseVariation(v2) {
+  const specifics = {};
+  for (const nv of arr(node(v2.VariationSpecifics)?.NameValueList).map(node)) {
+    if (!nv) continue;
+    const name = text(nv.Name);
+    const value = arr(nv.Value).map(text).filter((x) => Boolean(x)).join(", ");
+    if (name && value) specifics[name] = value;
+  }
+  const listed = int(v2.Quantity);
+  const sold = int(node(v2.SellingStatus)?.QuantitySold);
+  const price = money(v2.StartPrice);
+  return {
+    sku: text(v2.SKU)?.trim() || null,
+    specifics,
+    quantityListed: listed,
+    quantitySold: sold,
+    quantityAvailable: listed !== null ? Math.max(0, listed - (sold ?? 0)) : null,
+    price: price.value,
+    currency: price.currency
+  };
+}
+function parseItem(item) {
+  const selling = node(item.SellingStatus);
+  const listed = int(item.Quantity);
+  const sold = int(selling?.QuantitySold);
+  const explicitAvailable = int(item.QuantityAvailable);
+  const current = money(selling?.CurrentPrice);
+  const bin = money(item.BuyItNowPrice);
+  const start = money(item.StartPrice);
+  const price = current.value !== null ? current : bin.value !== null ? bin : start;
+  const details = node(item.ListingDetails);
+  const pictures = node(item.PictureDetails);
+  const firstPicture = arr(pictures?.PictureURL).map(text).find((x) => Boolean(x)) ?? text(pictures?.GalleryURL);
+  const variations = arr(node(item.Variations)?.Variation).map(node).filter((v2) => v2 !== null).map(parseVariation);
+  const listingStatus = text(selling?.ListingStatus);
+  const status = listingStatus === "Active" ? "active" : listingStatus === "Completed" || listingStatus === "Ended" ? "ended" : listingStatus ? "unknown" : "active";
+  const variationAvailable = variations.length > 0 ? variations.reduce((acc, v2) => v2.quantityAvailable === null ? acc : (acc ?? 0) + v2.quantityAvailable, null) : null;
+  return normalizedListingSchema.parse({
+    externalListingId: text(item.ItemID) ?? "",
+    title: text(item.Title) ?? "",
+    sku: text(item.SKU)?.trim() || null,
+    externalProductId: text(node(item.ProductListingDetails)?.ProductReferenceID) ?? null,
+    quantityListed: listed,
+    quantitySold: sold,
+    quantityAvailable: explicitAvailable ?? variationAvailable ?? (listed !== null ? Math.max(0, listed - (sold ?? 0)) : null),
+    price: price.value,
+    currency: price.currency ?? (text(item.Currency)?.length === 3 ? text(item.Currency) : null),
+    listingUrl: text(details?.ViewItemURL) ?? null,
+    imageUrl: firstPicture ?? null,
+    status,
+    startedAt: isoOrNull(details?.StartTime),
+    endsAt: isoOrNull(details?.EndTime),
+    variations
+  });
+}
+function parseGetMyeBaySellingResponse(xml) {
+  const doc = node(parser.parse(xml));
+  const response = node(doc?.GetMyeBaySellingResponse);
+  const { warnings } = assertTradingAck("GetMyeBaySelling", response);
+  const active = node(response?.ActiveList);
+  const pagination = node(active?.PaginationResult);
+  const listings = [];
+  const invalid = [];
+  for (const item of arr(node(active?.ItemArray)?.Item).map(node)) {
+    if (!item) continue;
+    try {
+      listings.push(parseItem(item));
+    } catch (e) {
+      invalid.push({ itemId: text(item.ItemID), message: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return {
+    listings,
+    invalid,
+    pageNumber: int(node(active?.Pagination)?.PageNumber) ?? 1,
+    totalPages: int(pagination?.TotalNumberOfPages) ?? 1,
+    totalEntries: int(pagination?.TotalNumberOfEntries),
+    warnings
+  };
+}
+function parseReviseInventoryStatusResponse(xml) {
+  const doc = node(parser.parse(xml));
+  const response = node(doc?.ReviseInventoryStatusResponse);
+  return assertTradingAck("ReviseInventoryStatus", response);
+}
+async function tradingCall(config, auth, callName, body) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
+    const res = await fetchWithRetry(
+      config.tradingUrl,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/xml; charset=utf-8",
+          "X-EBAY-API-SITEID": EBAY_TRADING_SITE_ID,
+          "X-EBAY-API-COMPATIBILITY-LEVEL": EBAY_TRADING_COMPATIBILITY_LEVEL,
+          "X-EBAY-API-CALL-NAME": callName,
+          "X-EBAY-API-IAF-TOKEN": token
+        },
+        body
+      },
+      { provider: EBAY_PROVIDER, label: `trading:${callName}`, timeoutMs: 6e4 }
+    );
+    const xml = await readBodyText(res, EBAY_PROVIDER, `trading:${callName}`);
+    if (res.status === 401 && attempt === 0) continue;
+    if (!res.ok) {
+      throw new ConnectorError(res.status === 401 ? "AUTH_EXPIRED" : "API_ERROR", EBAY_PROVIDER, `La Trading API eBay a r\xE9pondu HTTP ${res.status} pour ${callName}.`, { httpStatus: res.status, details: { callName } });
+    }
+    if (attempt === 0) {
+      const probe = node(node(parser.parse(xml))?.[`${callName}Response`]);
+      if (probe && text(probe.Ack) === "Failure" && isTradingAuthError(extractTradingErrors(probe))) continue;
+    }
+    return xml;
+  }
+  throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", { details: { callName } });
+}
+async function* iterateGetMyeBaySelling(config, auth) {
+  for (let page2 = 1; page2 <= GET_MY_EBAY_SELLING_MAX_PAGES; page2++) {
+    const xml = await tradingCall(config, auth, "GetMyeBaySelling", buildGetMyeBaySellingRequest(page2));
+    const parsed = parseGetMyeBaySellingResponse(xml);
+    yield parsed;
+    if (page2 >= parsed.totalPages) return;
+  }
+}
+async function reviseInventoryStatus(config, auth, ref, quantity) {
+  if (!Number.isInteger(quantity) || quantity < 0) {
+    throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "La quantit\xE9 \xE0 envoyer \xE0 eBay doit \xEAtre un entier positif ou nul.", { retryable: false });
+  }
+  const xml = await tradingCall(config, auth, "ReviseInventoryStatus", buildReviseInventoryStatusRequest(ref, quantity));
+  const { warnings } = parseReviseInventoryStatusResponse(xml);
+  return { ok: true, quantity, warnings };
+}
+var EBAY_TRADING_NS, TRADING_AUTH_ERROR_CODES, TRADING_RATE_LIMIT_ERROR_CODES, TRADING_TRANSIENT_ERROR_CODES, EBAY_TRADING_SITE_ID, GET_MY_EBAY_SELLING_PAGE_SIZE, GET_MY_EBAY_SELLING_MAX_PAGES, ARRAY_PATHS, parser;
+var init_trading = __esm({
+  "src/integrations/ebay/trading.ts"() {
+    "use strict";
+    init_errors2();
+    init_http();
+    init_types();
+    init_config();
+    EBAY_TRADING_NS = "urn:ebay:apis:eBLBaseComponents";
+    TRADING_AUTH_ERROR_CODES = /* @__PURE__ */ new Set(["931", "932", "17470", "21916984", "21917053", "21916017", "21916018"]);
+    TRADING_RATE_LIMIT_ERROR_CODES = /* @__PURE__ */ new Set(["518"]);
+    TRADING_TRANSIENT_ERROR_CODES = /* @__PURE__ */ new Set(["10007"]);
+    EBAY_TRADING_SITE_ID = "0";
+    GET_MY_EBAY_SELLING_PAGE_SIZE = 200;
+    GET_MY_EBAY_SELLING_MAX_PAGES = 50;
+    ARRAY_PATHS = /* @__PURE__ */ new Set([
+      "GetMyeBaySellingResponse.ActiveList.ItemArray.Item",
+      "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.Variations.Variation",
+      "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.Variations.Variation.VariationSpecifics.NameValueList",
+      "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.Variations.Variation.VariationSpecifics.NameValueList.Value",
+      "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.PictureDetails.PictureURL",
+      "GetMyeBaySellingResponse.Errors",
+      "ReviseInventoryStatusResponse.Errors",
+      "ReviseInventoryStatusResponse.InventoryStatus"
+    ]);
+    parser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: "@_",
+      textNodeName: "#text",
+      removeNSPrefix: true,
+      // Les identifiants (ItemID…) restent des chaînes : aucune perte de précision.
+      parseTagValue: false,
+      parseAttributeValue: false,
+      trimValues: true,
+      isArray: (_name, jpath) => ARRAY_PATHS.has(typeof jpath === "string" ? jpath : jpath.toString())
+    });
+  }
+});
+
+// src/integrations/ebay/connector.ts
+var log4, EbayConnector;
+var init_connector = __esm({
+  "src/integrations/ebay/connector.ts"() {
+    "use strict";
+    init_errors2();
+    init_logger();
+    init_env();
+    init_config();
+    init_oauth();
+    init_identity();
+    init_fulfillment();
+    init_trading();
+    log4 = createLogger("EBAY");
+    EbayConnector = class {
+      provider = EBAY_PROVIDER;
+      label = "eBay";
+      available = true;
+      scopes = EBAY_SCOPES;
+      configOverride;
+      constructor(config) {
+        this.configOverride = config ?? null;
+      }
+      /** Configuration courante (null si EBAY_* absentes). */
+      config() {
+        if (this.configOverride) return this.configOverride;
+        const env = ebayEnv();
+        return env ? createEbayConfig(env) : null;
+      }
+      isConfigured() {
+        return this.config() !== null;
+      }
+      configurationIssues() {
+        return this.configOverride ? [] : ebayEnvIssues();
+      }
+      requireConfig() {
+        const config = this.config();
+        if (!config) {
+          throw new ConnectorError("NOT_CONFIGURED", EBAY_PROVIDER, "Int\xE9gration eBay non configur\xE9e sur ce serveur : renseignez EBAY_CLIENT_ID, EBAY_CLIENT_SECRET et EBAY_RU_NAME (voir docs/ebay-setup.md).", {
+            details: { missing: ebayEnvIssues() },
+            retryable: false
+          });
+        }
+        return config;
+      }
+      getAuthorizeUrl(state) {
+        return buildAuthorizeUrl(this.requireConfig(), state, ebayScopeList());
+      }
+      exchangeCode(code) {
+        return exchangeAuthorizationCode(this.requireConfig(), code);
+      }
+      refreshToken(refreshToken) {
+        return refreshAccessToken(this.requireConfig(), refreshToken, ebayScopeList());
+      }
+      getAccountInfo(auth) {
+        return fetchEbayAccountInfo(this.requireConfig(), auth);
+      }
+      async *getOrders(auth, params) {
+        const config = this.requireConfig();
+        for await (const page2 of iterateEbayOrders(config, auth, params)) {
+          for (const inv of page2.invalid) log4.warn("commande eBay ignor\xE9e (format inattendu)", { orderId: inv.orderId, reason: inv.message });
+          if (page2.truncated) log4.warn("r\xE9cup\xE9ration des commandes tronqu\xE9e (limite de pages atteinte) : la suite sera reprise au prochain run");
+          yield { orders: page2.orders, invalid: page2.invalid.map((i) => ({ ref: i.orderId, message: i.message })), truncated: page2.truncated, hasMore: page2.hasMore };
+        }
+      }
+      async *getListings(auth) {
+        const config = this.requireConfig();
+        let pageIndex = 0;
+        for await (const page2 of iterateGetMyeBaySelling(config, auth)) {
+          pageIndex++;
+          for (const inv of page2.invalid) log4.warn("annonce eBay ignor\xE9e (format inattendu)", { itemId: inv.itemId, reason: inv.message });
+          const truncated = pageIndex >= GET_MY_EBAY_SELLING_MAX_PAGES && page2.totalPages > pageIndex;
+          if (truncated) log4.warn("liste d'annonces tronqu\xE9e (limite de pages atteinte)", { pages: pageIndex, totalPages: page2.totalPages });
+          yield { listings: page2.listings, invalid: page2.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page2.warnings, truncated };
+        }
+      }
+      /** Les quantités eBay sont celles des annonces : GetMyeBaySelling est la source de vérité. */
+      async *getInventory(auth) {
+        for await (const page2 of this.getListings(auth)) {
+          const levels = [];
+          for (const l of page2.listings) {
+            if (l.variations.length === 0) {
+              levels.push({ ref: { externalListingId: l.externalListingId, variationSku: null }, quantityAvailable: l.quantityAvailable });
+            } else {
+              for (const v2 of l.variations) levels.push({ ref: { externalListingId: l.externalListingId, variationSku: v2.sku }, quantityAvailable: v2.quantityAvailable });
+            }
+          }
+          yield levels;
+        }
+      }
+      /**
+       * ReviseInventoryStatus. Limitation connue : les annonces créées via l'Inventory API (offres)
+       * refusent les révisions Trading ; eBay renvoie alors une erreur explicite qui est remontée telle quelle.
+       */
+      updateListingInventory(auth, ref, quantity) {
+        return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity);
+      }
+      /**
+       * eBay ne publie pas d'endpoint de révocation des tokens utilisateur : les tokens sont
+       * supprimés de notre base, et le vendeur peut retirer l'autorisation côté eBay
+       * (Mon eBay → Compte → Préférences du site → Autorisations tierces).
+       */
+      async revoke(_auth) {
+        return {
+          revoked: false,
+          note: "Les tokens ont \xE9t\xE9 supprim\xE9s de MON STOCK. eBay n'offre pas d'API publique de r\xE9vocation : pour retirer l'autorisation c\xF4t\xE9 eBay, allez dans Mon eBay \u2192 Compte \u2192 Pr\xE9f\xE9rences du site \u2192 Autorisations tierces."
+        };
+      }
+    };
+  }
+});
+
+// src/integrations/amazon/connector.ts
+function notImplemented() {
+  throw new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE, { retryable: false });
+}
+var MESSAGE, AmazonConnector;
+var init_connector2 = __esm({
+  "src/integrations/amazon/connector.ts"() {
+    "use strict";
+    init_errors2();
+    MESSAGE = "L'int\xE9gration Amazon (Selling Partner API) n'est pas encore disponible dans MON STOCK. Aucune donn\xE9e Amazon n'est simul\xE9e.";
+    AmazonConnector = class {
+      provider = "amazon";
+      label = "Amazon";
+      available = false;
+      scopes = [];
+      isConfigured() {
+        return false;
+      }
+      configurationIssues() {
+        return [MESSAGE];
+      }
+      getAuthorizeUrl() {
+        return notImplemented();
+      }
+      exchangeCode() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
+      }
+      refreshToken() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
+      }
+      getAccountInfo() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
+      }
+      async *getOrders() {
+        notImplemented();
+      }
+      async *getListings() {
+        notImplemented();
+      }
+      async *getInventory() {
+        notImplemented();
+      }
+      updateListingInventory() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
+      }
+      revoke() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
+      }
+    };
+  }
+});
+
+// src/integrations/shopify/connector.ts
+function notImplemented2() {
+  throw new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2, { retryable: false });
+}
+var MESSAGE2, ShopifyConnector;
+var init_connector3 = __esm({
+  "src/integrations/shopify/connector.ts"() {
+    "use strict";
+    init_errors2();
+    MESSAGE2 = "L'int\xE9gration Shopify (Admin API) n'est pas encore disponible dans MON STOCK. Aucune donn\xE9e Shopify n'est simul\xE9e.";
+    ShopifyConnector = class {
+      provider = "shopify";
+      label = "Shopify";
+      available = false;
+      scopes = [];
+      isConfigured() {
+        return false;
+      }
+      configurationIssues() {
+        return [MESSAGE2];
+      }
+      getAuthorizeUrl() {
+        return notImplemented2();
+      }
+      exchangeCode() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
+      }
+      refreshToken() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
+      }
+      getAccountInfo() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
+      }
+      async *getOrders() {
+        notImplemented2();
+      }
+      async *getListings() {
+        notImplemented2();
+      }
+      async *getInventory() {
+        notImplemented2();
+      }
+      updateListingInventory() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
+      }
+      revoke() {
+        return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
+      }
+    };
+  }
+});
+
+// src/integrations/core/registry.ts
+function getConnector(provider) {
+  switch (provider) {
+    case "ebay":
+      return ebay ??= new EbayConnector();
+    case "amazon":
+      return amazon ??= new AmazonConnector();
+    case "shopify":
+      return shopify ??= new ShopifyConnector();
+    case "woocommerce":
+      throw new ConnectorError("NOT_IMPLEMENTED", "woocommerce", "L'int\xE9gration WooCommerce n'est pas encore disponible dans MON STOCK. Aucune donn\xE9e n'est simul\xE9e.", { retryable: false });
+    case "manual":
+      throw new ConnectorError("NOT_IMPLEMENTED", "manual", "Le canal \xAB Ventes manuelles \xBB n'a pas de connecteur : les ventes y sont saisies \xE0 la main.", { retryable: false });
+  }
+}
+function getEbayConnector() {
+  return getConnector("ebay");
+}
+function listConnectorCatalog() {
+  return [...CONNECTOR_CATALOG];
+}
+var CONNECTOR_CATALOG, ebay, amazon, shopify;
+var init_registry = __esm({
+  "src/integrations/core/registry.ts"() {
+    "use strict";
+    init_errors2();
+    init_connector();
+    init_connector2();
+    init_connector3();
+    CONNECTOR_CATALOG = [
+      { provider: "ebay", label: "eBay", available: true, description: "Annonces, commandes et quantit\xE9s via les API officielles eBay (OAuth 2.0)." },
+      { provider: "amazon", label: "Amazon", available: false, description: "Selling Partner API : pr\xE9vu dans l'architecture, pas encore impl\xE9ment\xE9." },
+      { provider: "shopify", label: "Shopify", available: false, description: "Admin API : pr\xE9vu dans l'architecture, pas encore impl\xE9ment\xE9." },
+      { provider: "woocommerce", label: "WooCommerce", available: false, description: "REST API WooCommerce : pr\xE9vu dans l'architecture, pas encore impl\xE9ment\xE9." }
+    ];
+    ebay = null;
+    amazon = null;
+    shopify = null;
   }
 });
 
@@ -1256,7 +2555,7 @@ async function fetchText(url, options) {
   }
 }
 var DEFAULT_TIMEOUT_MS2, DEFAULT_MAX_BYTES, MAX_REDIRECTS;
-var init_http = __esm({
+var init_http2 = __esm({
   "src/services/sourcing/http.ts"() {
     "use strict";
     DEFAULT_TIMEOUT_MS2 = 3e4;
@@ -1265,9 +2564,213 @@ var init_http = __esm({
   }
 });
 
+// src/integrations/sourcing/shared.ts
+function createAdapterHttp(ctx) {
+  const requests = [];
+  const startedAt = Date.now();
+  const budget = ctx.timeoutMs ?? null;
+  const sleep3 = ctx.sleep ?? defaultSleep;
+  let lastRequestAt = null;
+  const remainingMs = () => budget === null ? Number.POSITIVE_INFINITY : Math.max(0, budget - (Date.now() - startedAt));
+  return {
+    requests,
+    remainingMs,
+    exhausted: () => remainingMs() <= 0,
+    countOffers(n) {
+      const last = requests[requests.length - 1];
+      if (last) last.offers = n;
+    },
+    async request(url, options = {}) {
+      const minDelay = ctx.minDelayMs ?? 0;
+      if (lastRequestAt !== null && minDelay > 0) {
+        const wait = minDelay - (Date.now() - lastRequestAt);
+        if (wait > 0) await sleep3(wait);
+      }
+      const remaining = remainingMs();
+      if (remaining <= 0) throw new Error("Budget de temps \xE9puis\xE9 avant la requ\xEAte.");
+      const t0 = Date.now();
+      lastRequestAt = t0;
+      let traced = false;
+      try {
+        const res = await fetchText(url, {
+          userAgent: ctx.userAgent,
+          fetchImpl: ctx.fetchImpl,
+          resolver: ctx.resolver,
+          accept: options.accept,
+          headers: options.headers,
+          method: options.method,
+          body: options.body,
+          maxBytes: options.maxBytes,
+          timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, Number.isFinite(remaining) ? remaining : DEFAULT_REQUEST_TIMEOUT_MS)
+        });
+        requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: res.ok ? null : `HTTP ${res.status}` });
+        traced = true;
+        if (!res.ok) throw new Error(`HTTP ${res.status} (${url})`);
+        return res;
+      } catch (e) {
+        if (!traced) requests.push({ url, status: null, durationMs: Date.now() - t0, offers: 0, error: errorMessage(e) });
+        throw e;
+      }
+    }
+  };
+}
+function errorMessage(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+function failedSearch(method, error, requests = []) {
+  return { offers: [], method, requests, error, truncated: false };
+}
+function applyQueryTemplate(template, rawQuery) {
+  return template.replace(/\{query\}/g, encodeURIComponent(rawQuery.trim()));
+}
+function trimSlash(base) {
+  return base.replace(/\/+$/, "");
+}
+function joinUrl(base, path) {
+  return `${trimSlash(base)}/${path.replace(/^\/+/, "")}`;
+}
+function str(v2) {
+  if (v2 === null || v2 === void 0) return null;
+  const s = String(v2).trim();
+  return s.length > 0 ? s : null;
+}
+function digits(v2) {
+  const s = str(v2)?.replace(/\D/g, "") ?? "";
+  return s.length >= 8 ? s : null;
+}
+function stripHtml(html) {
+  if (!html) return "";
+  return html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+function inferConditionFromText(text2) {
+  const t = (text2 ?? "").slice(0, 4e3);
+  if (!t.trim()) return { condition: null, grade: null, inferred: [] };
+  const inferred = [];
+  const condition = normalizeCondition(t);
+  const normalizedForGrade = normalizeProduct(t);
+  const grade = normalizedForGrade.grade ?? normalizeGrade(t.match(/\b(?:grade|gr\.?)\s?[abc]\+?\b/i)?.[0] ?? null);
+  if (condition !== "unknown") inferred.push("condition");
+  if (grade) inferred.push("grade");
+  return { condition: condition === "unknown" ? null : condition, grade, inferred };
+}
+function cleanId(s) {
+  return (s ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+}
+function matchesQuery(parsed, candidate) {
+  if (parsed.kind === "empty") return false;
+  const text2 = normalizeText(`${candidate.title} ${candidate.brand ?? ""} ${candidate.mpn ?? ""} ${candidate.sku ?? ""} ${candidate.extraText ?? ""}`);
+  if (parsed.ean) {
+    const ean = (candidate.ean ?? "").replace(/\D/g, "");
+    return ean.length >= 8 && (ean === parsed.ean || ean.replace(/^0+/, "") === parsed.ean.replace(/^0+/, ""));
+  }
+  if (parsed.kind === "mpn" && parsed.mpn) {
+    const q = cleanId(parsed.mpn);
+    if (cleanId(candidate.mpn) === q || cleanId(candidate.sku) === q) return true;
+    return text2.replace(/[^a-z0-9]/g, "").includes(q.toLowerCase());
+  }
+  const tokensOk = parsed.tokens.length > 0 && parsed.tokens.every((t) => text2.includes(t));
+  if (parsed.kind !== "structured") return tokensOk;
+  const n = normalizeProduct(candidate.title, { brand: candidate.brand ?? null, ean: candidate.ean ?? null, mpn: candidate.mpn ?? null });
+  const c = parsed.criteria;
+  if (c.brand && n.brand && c.brand !== n.brand) return false;
+  if (c.model && n.model && !n.inferred.includes("model") && c.model !== n.model) return false;
+  if (c.model && (!n.model || n.inferred.includes("model"))) return tokensOk;
+  if (c.storage && n.storage && c.storage !== n.storage) return false;
+  if (c.color && n.color && c.color !== n.color) return false;
+  if (c.grade && n.grade && c.grade !== n.grade) return false;
+  return Boolean(c.model || tokensOk);
+}
+function settingString(settings, key2) {
+  return str(settings[key2]);
+}
+function settingInt(settings, key2, fallback, min, max) {
+  const v2 = settings[key2];
+  const n = typeof v2 === "number" ? v2 : typeof v2 === "string" ? Number(v2) : Number.NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+var DEFAULT_REQUEST_TIMEOUT_MS, defaultSleep, TtlCache;
+var init_shared = __esm({
+  "src/integrations/sourcing/shared.ts"() {
+    "use strict";
+    init_normalizer();
+    init_http2();
+    DEFAULT_REQUEST_TIMEOUT_MS = 15e3;
+    defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    TtlCache = class {
+      constructor(ttlMs) {
+        this.ttlMs = ttlMs;
+      }
+      ttlMs;
+      store = /* @__PURE__ */ new Map();
+      get(key2, now = Date.now()) {
+        const hit = this.store.get(key2);
+        if (!hit) return null;
+        if (hit.expiresAt <= now) {
+          this.store.delete(key2);
+          return null;
+        }
+        return hit.value;
+      }
+      set(key2, value, now = Date.now(), ttlMs = this.ttlMs) {
+        this.store.set(key2, { value, expiresAt: now + ttlMs });
+      }
+      clear() {
+        this.store.clear();
+      }
+    };
+  }
+});
+
+// src/integrations/sourcing/jsonld-public/crawler.ts
+import { z as z12 } from "npm:zod@4.6.5";
+function parseJsonLdSettings(settings) {
+  const parsed = jsonLdSettingsSchema.safeParse(settings);
+  return parsed.success ? parsed.data : {};
+}
+function sameHost(baseUrl, url) {
+  if (!baseUrl) return true;
+  try {
+    return new URL(url).host.toLowerCase() === new URL(baseUrl).host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+function searchUrlFor(config, rawQuery) {
+  const settings = parseJsonLdSettings(config.settings);
+  const template = settings.search_url?.trim();
+  if (!template || !template.includes("{query}") || !rawQuery.trim()) return null;
+  const url = applyQueryTemplate(template, rawQuery);
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  return sameHost(config.baseUrl, url) ? url : null;
+}
+function catalogUrls(config) {
+  const settings = parseJsonLdSettings(config.settings);
+  const max = Math.min(settings.max_pages ?? DEFAULT_MAX_PAGES, 50);
+  return (settings.urls ?? []).filter((u) => sameHost(config.baseUrl, u)).slice(0, max);
+}
+var jsonLdSettingsSchema, DEFAULT_MAX_PAGES;
+var init_crawler = __esm({
+  "src/integrations/sourcing/jsonld-public/crawler.ts"() {
+    "use strict";
+    init_shared();
+    jsonLdSettingsSchema = z12.object({
+      search_url: z12.string().max(2e3).optional(),
+      urls: z12.array(z12.string().max(2e3)).max(50).optional(),
+      max_pages: z12.number().int().min(1).max(50).optional()
+    });
+    DEFAULT_MAX_PAGES = 20;
+  }
+});
+
 // src/domain/sourcing/types.ts
 var RAW_OFFER_FIELDS;
-var init_types = __esm({
+var init_types2 = __esm({
   "src/domain/sourcing/types.ts"() {
     "use strict";
     RAW_OFFER_FIELDS = [
@@ -1573,7 +3076,7 @@ var feedOptionsSchema, fieldMappingSchema, MAX_FEED_ROWS, LOOSE_HEADER_PATTERNS;
 var init_feed_parsers = __esm({
   "src/services/sourcing/feed-parsers.ts"() {
     "use strict";
-    init_types();
+    init_types2();
     init_normalizer();
     feedOptionsSchema = z13.object({
       delimiter: z13.string().min(1).max(3).optional(),
@@ -1607,6 +3110,2210 @@ var init_feed_parsers = __esm({
       ["shipping_cost", [/ (port|livraison|shipping|transport) /]],
       ["delivery_days", [/ (delai|lead time|delivery) /]]
     ];
+  }
+});
+
+// src/services/sourcing/crawler/parsers/jsonld-parser.ts
+import { z as z14 } from "npm:zod@4.6.5";
+function typeIncludes(t, wanted) {
+  if (!t) return false;
+  const list = Array.isArray(t) ? t : [t];
+  return list.some((x) => x.toLowerCase().endsWith(wanted.toLowerCase()));
+}
+function collectNodes(node2, out, depth = 0) {
+  if (depth > 8 || node2 === null || typeof node2 !== "object") return;
+  if (Array.isArray(node2)) {
+    for (const n of node2) collectNodes(n, out, depth + 1);
+    return;
+  }
+  const obj2 = node2;
+  out.push(obj2);
+  for (const key2 of ["@graph", "itemListElement", "mainEntity", "item", "hasVariant", "isVariantOf"]) {
+    if (obj2[key2] !== void 0) collectNodes(obj2[key2], out, depth + 1);
+  }
+}
+function extractJsonLdBlocks(html) {
+  const blocks = [];
+  for (const m of html.matchAll(SCRIPT_RE)) {
+    const raw = (m[1] ?? "").trim();
+    if (!raw) continue;
+    try {
+      blocks.push(JSON.parse(raw));
+    } catch {
+    }
+  }
+  return blocks;
+}
+function conditionFrom(itemCondition) {
+  if (!itemCondition) return null;
+  const c = itemCondition.toLowerCase();
+  if (c.includes("new")) return "new";
+  if (c.includes("refurbished")) return "refurbished";
+  if (c.includes("used")) return "used";
+  return null;
+}
+function resolveUrl(url, base) {
+  if (!url) return null;
+  try {
+    return new URL(url, base).toString();
+  } catch {
+    return null;
+  }
+}
+function offersOf(p) {
+  if (!p.offers) return [];
+  const list = Array.isArray(p.offers) ? p.offers : [p.offers];
+  const out = [];
+  for (const o of list) {
+    const nested = o.offers;
+    if (nested && typeIncludes(o["@type"], "AggregateOffer")) {
+      const inner = Array.isArray(nested) ? nested : [nested];
+      for (const n of inner) {
+        const parsed = offerSchema.safeParse(n);
+        if (parsed.success) out.push(parsed.data);
+      }
+    } else out.push(o);
+  }
+  return out;
+}
+function parseJsonLdProducts(html, pageUrl) {
+  const nodes = [];
+  for (const block of extractJsonLdBlocks(html)) collectNodes(block, nodes);
+  const products = nodes.map((n) => productSchema.safeParse(n)).filter((r) => r.success).map((r) => r.data).filter((p) => typeIncludes(p["@type"], "Product") && p.name);
+  const offers = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const p of products) {
+    const gtin = [p.gtin13, p.gtin, p.gtin14, p.gtin12, p.gtin8].map((g) => g === void 0 ? null : String(g).replace(/\D/g, "")).find((g) => g && g.length >= 8) ?? null;
+    const brand = typeof p.brand === "string" ? p.brand : p.brand?.name ?? null;
+    const productOffers = offersOf(p);
+    const sku = p.sku !== void 0 ? String(p.sku) : p.productID !== void 0 ? String(p.productID) : null;
+    const productUrl = resolveUrl(p.url, pageUrl);
+    if (productOffers.length === 0) continue;
+    productOffers.forEach((o, index) => {
+      const spec = Array.isArray(o.priceSpecification) ? o.priceSpecification[0] : o.priceSpecification;
+      const price = toNumber(o.price ?? o.lowPrice ?? spec?.price);
+      const currency = (o.priceCurrency ?? spec?.priceCurrency ?? null)?.toUpperCase() ?? null;
+      const url = resolveUrl(o.url, pageUrl) ?? productUrl ?? pageUrl;
+      const offerSku = o.sku ?? sku;
+      const id = offerSku ?? gtin ?? url;
+      const externalOfferId = productOffers.length > 1 && !o.sku ? `${id}#${index}` : id;
+      if (seen.has(externalOfferId)) return;
+      seen.add(externalOfferId);
+      const inv = o.inventoryLevel;
+      const qty = inv === void 0 ? null : typeof inv === "object" ? toNumber(inv.value) : toNumber(inv);
+      const stockStatus = o.availability ? toStockStatus(o.availability.replace(/^https?:\/\/schema\.org\//i, "")) : "unknown";
+      const taxType = spec?.valueAddedTaxIncluded === true ? "ttc" : spec?.valueAddedTaxIncluded === false ? "ht" : "unknown";
+      offers.push({
+        externalOfferId,
+        externalProductId: sku,
+        title: p.name,
+        price,
+        currency,
+        taxType,
+        moq: toNumber(o.eligibleQuantity?.minValue) ? Math.round(toNumber(o.eligibleQuantity?.minValue)) : null,
+        availableQuantity: qty !== null && qty >= 0 ? Math.round(qty) : null,
+        stockStatus,
+        url,
+        ean: gtin,
+        mpn: p.mpn !== void 0 ? String(p.mpn) : null,
+        brand,
+        color: p.color ?? null,
+        condition: conditionFrom(o.itemCondition ?? p.itemCondition),
+        supplierSku: offerSku,
+        raw: { product: { name: p.name, sku, gtin, brand }, offer: { price: o.price ?? o.lowPrice, currency, availability: o.availability } }
+      });
+    });
+  }
+  return offers;
+}
+var SCRIPT_RE, offerSchema, productSchema, jsonLdParser;
+var init_jsonld_parser = __esm({
+  "src/services/sourcing/crawler/parsers/jsonld-parser.ts"() {
+    "use strict";
+    init_feed_parsers();
+    SCRIPT_RE = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    offerSchema = z14.object({
+      "@type": z14.union([z14.string(), z14.array(z14.string())]).optional(),
+      price: z14.union([z14.string(), z14.number()]).optional(),
+      lowPrice: z14.union([z14.string(), z14.number()]).optional(),
+      priceCurrency: z14.string().optional(),
+      availability: z14.string().optional(),
+      url: z14.string().optional(),
+      itemCondition: z14.string().optional(),
+      sku: z14.string().optional(),
+      inventoryLevel: z14.union([z14.object({ value: z14.union([z14.string(), z14.number()]).optional() }), z14.string(), z14.number()]).optional(),
+      eligibleQuantity: z14.object({ minValue: z14.union([z14.string(), z14.number()]).optional() }).optional(),
+      priceSpecification: z14.union([
+        z14.object({ price: z14.union([z14.string(), z14.number()]).optional(), priceCurrency: z14.string().optional(), valueAddedTaxIncluded: z14.boolean().optional() }),
+        z14.array(z14.object({ price: z14.union([z14.string(), z14.number()]).optional(), priceCurrency: z14.string().optional(), valueAddedTaxIncluded: z14.boolean().optional() }))
+      ]).optional(),
+      areaServed: z14.unknown().optional()
+    }).passthrough();
+    productSchema = z14.object({
+      "@type": z14.union([z14.string(), z14.array(z14.string())]).optional(),
+      name: z14.string().optional(),
+      sku: z14.union([z14.string(), z14.number()]).optional(),
+      productID: z14.union([z14.string(), z14.number()]).optional(),
+      gtin13: z14.union([z14.string(), z14.number()]).optional(),
+      gtin: z14.union([z14.string(), z14.number()]).optional(),
+      gtin12: z14.union([z14.string(), z14.number()]).optional(),
+      gtin14: z14.union([z14.string(), z14.number()]).optional(),
+      gtin8: z14.union([z14.string(), z14.number()]).optional(),
+      mpn: z14.union([z14.string(), z14.number()]).optional(),
+      brand: z14.union([z14.string(), z14.object({ name: z14.string().optional() }).passthrough()]).optional(),
+      color: z14.string().optional(),
+      url: z14.string().optional(),
+      itemCondition: z14.string().optional(),
+      offers: z14.union([offerSchema, z14.array(offerSchema)]).optional()
+    }).passthrough();
+    jsonLdParser = {
+      key: "jsonld",
+      label: "G\xE9n\xE9rique schema.org (JSON-LD)",
+      description: "Lit les blocs JSON-LD Product/Offer d\xE9clar\xE9s par la page (nom, SKU, GTIN, MPN, marque, prix, devise, disponibilit\xE9, \xE9tat, URL). Si la page n'en d\xE9clare pas, aucune offre n'est extraite.",
+      parse: parseJsonLdProducts
+    };
+  }
+});
+
+// src/integrations/sourcing/jsonld-public/parser.ts
+function parseJsonLdPage(html, pageUrl) {
+  return parseJsonLdProducts(html, pageUrl);
+}
+var init_parser = __esm({
+  "src/integrations/sourcing/jsonld-public/parser.ts"() {
+    "use strict";
+    init_jsonld_parser();
+  }
+});
+
+// src/integrations/sourcing/jsonld-public/mapper.ts
+function mapJsonLdOffer(offer, config, pageUrl) {
+  return {
+    ...offer,
+    currency: offer.currency ?? config.defaultCurrency ?? null,
+    taxType: offer.taxType && offer.taxType !== "unknown" ? offer.taxType : config.defaultTaxType,
+    country: offer.country ?? config.defaultCountry ?? null,
+    url: offer.url ?? pageUrl,
+    raw: { page_url: pageUrl, jsonld: offer.raw ?? null }
+  };
+}
+var init_mapper = __esm({
+  "src/integrations/sourcing/jsonld-public/mapper.ts"() {
+    "use strict";
+  }
+});
+
+// src/integrations/sourcing/jsonld-public/index.ts
+async function fetchPage(config, url, ctx) {
+  const http = createAdapterHttp(ctx);
+  const res = await http.request(url, { accept: HTML_ACCEPT });
+  const offers = parseJsonLdPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
+  http.countOffers(offers.length);
+  return { offers, requests: http.requests };
+}
+var HTML_ACCEPT, jsonLdPublicAdapter;
+var init_jsonld_public = __esm({
+  "src/integrations/sourcing/jsonld-public/index.ts"() {
+    "use strict";
+    init_shared();
+    init_crawler();
+    init_parser();
+    init_mapper();
+    HTML_ACCEPT = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5";
+    jsonLdPublicAdapter = {
+      key: "jsonld-public",
+      label: "Page publique (JSON-LD schema.org)",
+      description: "Lit les blocs JSON-LD Product/Offer d\xE9clar\xE9s par une page publique (nom, SKU, GTIN, MPN, marque, prix, devise, disponibilit\xE9, \xE9tat). Recherche via une URL de recherche du site contenant {query} ; catalogue via une liste d'URLs. Sans JSON-LD, aucune offre n'est extraite. V\xE9rifi\xE9 sur fixtures uniquement.",
+      method: "public_html",
+      access: "public",
+      capabilities: { search: true, catalog: true, stockQuantity: false },
+      credentialFields: [],
+      configFields: [
+        { name: "search_url", label: "URL de recherche du site (avec {query})", required: false, placeholder: "https://boutique.example/recherche?q={query}", help: "Doit \xEAtre sur le m\xEAme h\xF4te que l'URL de base. Sans cette URL, la source n'est pas interrog\xE9e en direct (catalogue uniquement)." },
+        { name: "urls", label: "Pages de catalogue (une par ligne)", required: false, help: "Pages produit ou cat\xE9gorie lues lors des synchronisations (50 maximum)." },
+        { name: "max_pages", label: "Pages maximum par synchronisation", required: false, placeholder: "20" }
+      ],
+      htmlParser: jsonLdParser,
+      verification: "fixtures",
+      urlsForQuery(config, _query, rawQuery) {
+        const url = searchUrlFor(config, rawQuery);
+        return url ? [url] : [];
+      },
+      urlsForCatalog(config) {
+        return catalogUrls(config);
+      },
+      async search(config, _query, rawQuery, ctx) {
+        const url = searchUrlFor(config, rawQuery);
+        if (!url) return failedSearch("public_html", "Aucune URL de recherche configur\xE9e (r\xE9glage search_url avec {query}) : recherche en direct impossible pour cette source.");
+        if (ctx.disallowedUrls?.includes(url)) return failedSearch("public_html", "URL de recherche interdite par robots.txt.");
+        try {
+          const { offers, requests } = await fetchPage(config, url, ctx);
+          return { offers, method: "public_html", requests, error: null, truncated: false };
+        } catch (e) {
+          return failedSearch("public_html", errorMessage(e));
+        }
+      },
+      async fetchCatalog(config, cursor, ctx) {
+        const urls = catalogUrls(config);
+        const index = cursor ? Number(cursor) : 0;
+        const url = Number.isInteger(index) && index >= 0 ? urls[index] : void 0;
+        if (!url) return { offers: [], method: "public_html", requests: [], nextCursor: null };
+        if (ctx.disallowedUrls?.includes(url)) return { offers: [], method: "public_html", requests: [{ url, status: null, durationMs: 0, offers: 0, error: "Interdite par robots.txt" }], nextCursor: index + 1 < urls.length ? String(index + 1) : null };
+        try {
+          const { offers, requests } = await fetchPage(config, url, ctx);
+          return { offers, method: "public_html", requests, nextCursor: index + 1 < urls.length ? String(index + 1) : null };
+        } catch (e) {
+          return { offers: [], method: "public_html", requests: [{ url, status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: index + 1 < urls.length ? String(index + 1) : null };
+        }
+      },
+      async testConnection(config, ctx) {
+        const urls = catalogUrls(config);
+        const probe = urls[0] ?? config.baseUrl;
+        if (!probe) return { ok: false, message: "Aucune URL configur\xE9e (URL de base ou pages de catalogue)." };
+        try {
+          const http = createAdapterHttp(ctx);
+          const res = await http.request(probe, { accept: HTML_ACCEPT, maxBytes: 5 * 1024 * 1024 });
+          const offers = parseJsonLdPage(res.text, res.finalUrl || probe);
+          return { ok: true, message: offers.length > 0 ? `Page lue : ${offers.length} offre(s) JSON-LD d\xE9tect\xE9e(s).` : "Page lue, mais aucun bloc JSON-LD Product n'a \xE9t\xE9 d\xE9tect\xE9 : v\xE9rifiez que le site d\xE9clare ses produits en schema.org." };
+        } catch (e) {
+          return { ok: false, message: errorMessage(e) };
+        }
+      }
+    };
+  }
+});
+
+// src/integrations/sourcing/shopify-storefront/crawler.ts
+function productsUrl(baseUrl, page2, limit = SHOPIFY_PAGE_LIMIT) {
+  return `${joinUrl(baseUrl, SHOPIFY_PRODUCTS_PATH)}?limit=${limit}&page=${page2}`;
+}
+function suggestUrl(baseUrl, query, limit = SHOPIFY_SUGGEST_LIMIT) {
+  const params = new URLSearchParams({ q: query.trim() });
+  params.set("resources[type]", "product");
+  params.set("resources[limit]", String(limit));
+  params.set("resources[options][unavailable_products]", "show");
+  return `${joinUrl(baseUrl, SHOPIFY_SUGGEST_PATH)}?${params.toString()}`;
+}
+function productDetailUrl(baseUrl, handle2) {
+  return joinUrl(baseUrl, SHOPIFY_PRODUCT_DETAIL_PATH(handle2));
+}
+var SHOPIFY_PRODUCTS_PATH, SHOPIFY_SUGGEST_PATH, SHOPIFY_PRODUCT_DETAIL_PATH, SHOPIFY_PAGE_LIMIT, SHOPIFY_SUGGEST_LIMIT, SHOPIFY_MAX_DETAILS_PER_SEARCH, SHOPIFY_MAX_CATALOG_PAGES;
+var init_crawler2 = __esm({
+  "src/integrations/sourcing/shopify-storefront/crawler.ts"() {
+    "use strict";
+    init_shared();
+    SHOPIFY_PRODUCTS_PATH = "/products.json";
+    SHOPIFY_SUGGEST_PATH = "/search/suggest.json";
+    SHOPIFY_PRODUCT_DETAIL_PATH = (handle2) => `/products/${encodeURIComponent(handle2)}.json`;
+    SHOPIFY_PAGE_LIMIT = 250;
+    SHOPIFY_SUGGEST_LIMIT = 20;
+    SHOPIFY_MAX_DETAILS_PER_SEARCH = 5;
+    SHOPIFY_MAX_CATALOG_PAGES = 40;
+  }
+});
+
+// src/integrations/sourcing/shopify-storefront/parser.ts
+import { z as z15 } from "npm:zod@4.6.5";
+function parseProductsJson(text2) {
+  const parsed = shopifyProductsResponseSchema.safeParse(JSON.parse(text2));
+  if (!parsed.success) throw new Error(`R\xE9ponse products.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
+  return parsed.data.products;
+}
+function parseProductDetailJson(text2) {
+  const parsed = shopifyProductDetailResponseSchema.safeParse(JSON.parse(text2));
+  if (!parsed.success) throw new Error(`R\xE9ponse products/{handle}.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
+  return parsed.data.product;
+}
+function parseSuggestJson(text2) {
+  const parsed = shopifySuggestResponseSchema.safeParse(JSON.parse(text2));
+  if (!parsed.success) throw new Error(`R\xE9ponse search/suggest.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
+  return parsed.data.resources.results.products;
+}
+var numOrStr, shopifyVariantSchema, shopifyProductSchema, shopifyProductsResponseSchema, shopifyProductDetailResponseSchema, shopifySuggestProductSchema, shopifySuggestResponseSchema;
+var init_parser2 = __esm({
+  "src/integrations/sourcing/shopify-storefront/parser.ts"() {
+    "use strict";
+    numOrStr = z15.union([z15.number(), z15.string()]);
+    shopifyVariantSchema = z15.looseObject({
+      id: numOrStr,
+      title: z15.string().nullish(),
+      option1: z15.string().nullish(),
+      option2: z15.string().nullish(),
+      option3: z15.string().nullish(),
+      sku: z15.string().nullish(),
+      barcode: z15.string().nullish(),
+      price: numOrStr.nullish(),
+      compare_at_price: numOrStr.nullish(),
+      available: z15.boolean().nullish(),
+      inventory_quantity: z15.number().nullish(),
+      taxable: z15.boolean().nullish()
+    });
+    shopifyProductSchema = z15.looseObject({
+      id: numOrStr,
+      title: z15.string(),
+      handle: z15.string(),
+      body_html: z15.string().nullish(),
+      vendor: z15.string().nullish(),
+      product_type: z15.string().nullish(),
+      tags: z15.union([z15.array(z15.string()), z15.string()]).nullish(),
+      variants: z15.array(shopifyVariantSchema).default([]),
+      options: z15.array(z15.looseObject({ name: z15.string(), position: z15.number().optional(), values: z15.array(z15.string()).optional() })).default([])
+    });
+    shopifyProductsResponseSchema = z15.looseObject({ products: z15.array(shopifyProductSchema) });
+    shopifyProductDetailResponseSchema = z15.looseObject({ product: shopifyProductSchema });
+    shopifySuggestProductSchema = z15.looseObject({
+      id: numOrStr,
+      title: z15.string(),
+      handle: z15.string(),
+      url: z15.string().nullish(),
+      price: numOrStr.nullish(),
+      available: z15.boolean().nullish(),
+      vendor: z15.string().nullish(),
+      type: z15.string().nullish(),
+      body: z15.string().nullish(),
+      variants: z15.array(z15.looseObject({ id: numOrStr, title: z15.string().nullish(), sku: z15.string().nullish(), price: numOrStr.nullish(), available: z15.boolean().nullish(), url: z15.string().nullish() })).optional()
+    });
+    shopifySuggestResponseSchema = z15.looseObject({
+      resources: z15.looseObject({ results: z15.looseObject({ products: z15.array(shopifySuggestProductSchema).default([]) }) })
+    });
+  }
+});
+
+// src/integrations/sourcing/shopify-storefront/mapper.ts
+function optionValue(product, variant, matcher) {
+  const values = [variant.option1, variant.option2, variant.option3];
+  for (const [i, opt] of product.options.entries()) {
+    const position = (opt.position ?? i + 1) - 1;
+    if (matcher.test(opt.name.trim())) return str(values[position]);
+  }
+  return null;
+}
+function mapShopifyProduct(product, config, baseUrl, requestUrl) {
+  const productUrl = joinUrl(baseUrl, `/products/${encodeURIComponent(product.handle)}`);
+  const description = stripHtml(product.body_html);
+  const inferred = inferConditionFromText(`${product.title} ${description}`);
+  const variants = product.variants.length > 0 ? product.variants : [];
+  return variants.map((v2) => {
+    const price = toNumber(v2.price);
+    const quantity = typeof v2.inventory_quantity === "number" ? Math.max(0, Math.round(v2.inventory_quantity)) : null;
+    const stockStatus = v2.available === true ? quantity !== null && quantity === 0 ? "unknown" : "in_stock" : v2.available === false ? "out_of_stock" : "unknown";
+    const variantTitle = str(v2.title) && v2.title !== "Default Title" ? v2.title : null;
+    const conditionOption = optionValue(product, v2, CONDITION_OPTION);
+    const title = variantTitle ? `${product.title} ${variantTitle}` : product.title;
+    const variantId = String(v2.id);
+    return {
+      externalOfferId: `${product.id}:${variantId}`,
+      externalProductId: String(product.id),
+      title,
+      price,
+      currency: config.defaultCurrency ?? null,
+      taxType: config.defaultTaxType,
+      availableQuantity: quantity,
+      stockStatus,
+      url: `${productUrl}?variant=${encodeURIComponent(variantId)}`,
+      ean: str(v2.barcode)?.replace(/\D/g, "") || null,
+      brand: str(product.vendor),
+      storage: optionValue(product, v2, STORAGE_OPTION),
+      color: optionValue(product, v2, COLOR_OPTION),
+      grade: inferred.grade,
+      condition: conditionOption ?? inferred.condition,
+      supplierSku: str(v2.sku),
+      country: config.defaultCountry ?? null,
+      raw: {
+        request_url: requestUrl,
+        handle: product.handle,
+        product_type: product.product_type ?? null,
+        variant: { id: variantId, title: v2.title ?? null, sku: v2.sku ?? null, price: v2.price ?? null, compare_at_price: v2.compare_at_price ?? null, available: v2.available ?? null, inventory_quantity: v2.inventory_quantity ?? null },
+        currency_source: config.defaultCurrency ? "config" : "absent",
+        inferred: conditionOption ? inferred.inferred.filter((f) => f !== "condition") : inferred.inferred,
+        condition_source: conditionOption ? "option" : inferred.condition ? "description" : null
+      }
+    };
+  });
+}
+var STORAGE_OPTION, COLOR_OPTION, CONDITION_OPTION;
+var init_mapper2 = __esm({
+  "src/integrations/sourcing/shopify-storefront/mapper.ts"() {
+    "use strict";
+    init_shared();
+    init_feed_parsers();
+    STORAGE_OPTION = /^(storage|stockage|capacit[ée]|m[ée]moire|memory|taille de stockage|capacity)$/i;
+    COLOR_OPTION = /^(color|colour|couleur|coloris)$/i;
+    CONDITION_OPTION = /^(condition|[ée]tat|grade|qualit[ée])$/i;
+  }
+});
+
+// src/integrations/sourcing/shopify-storefront/index.ts
+function baseOf(config) {
+  return config.baseUrl ? trimSlash(config.baseUrl) : null;
+}
+var JSON_ACCEPT, shopifyStorefrontAdapter;
+var init_shopify_storefront = __esm({
+  "src/integrations/sourcing/shopify-storefront/index.ts"() {
+    "use strict";
+    init_shared();
+    init_crawler2();
+    init_parser2();
+    init_mapper2();
+    JSON_ACCEPT = "application/json;q=0.9,*/*;q=0.5";
+    shopifyStorefrontAdapter = {
+      key: "shopify-storefront",
+      label: "Boutique Shopify (JSON public)",
+      description: "Interroge les endpoints JSON publics d'une boutique Shopify : suggestions de recherche puis fiches produit (titre, marque, SKU, prix, disponibilit\xE9, options stockage/couleur). La devise et le HT/TTC ne sont pas fournis par Shopify : ils proviennent des r\xE9glages de la source. Quantit\xE9 en stock uniquement si la boutique l'expose. V\xE9rifi\xE9 sur fixtures uniquement.",
+      method: "public_json",
+      access: "public",
+      capabilities: { search: true, catalog: true, stockQuantity: false },
+      credentialFields: [],
+      configFields: [
+        { name: "max_details", label: "Fiches produit lues par recherche", required: false, placeholder: String(SHOPIFY_MAX_DETAILS_PER_SEARCH), help: "Chaque fiche est une requ\xEAte suppl\xE9mentaire (d\xE9lai de politesse appliqu\xE9)." },
+        { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(SHOPIFY_MAX_CATALOG_PAGES) }
+      ],
+      verification: "fixtures",
+      urlsForQuery(config, _query, rawQuery) {
+        const base = baseOf(config);
+        if (!base || !rawQuery.trim()) return [];
+        return [suggestUrl(base, rawQuery), productDetailUrl(base, "exemple")];
+      },
+      urlsForCatalog(config) {
+        const base = baseOf(config);
+        return base ? [productsUrl(base, 1)] : [];
+      },
+      async search(config, _query, rawQuery, ctx) {
+        const base = baseOf(config);
+        if (!base) return failedSearch("public_json", "URL de base de la boutique manquante.");
+        const http = createAdapterHttp(ctx);
+        const maxDetails = settingInt(config.settings, "max_details", SHOPIFY_MAX_DETAILS_PER_SEARCH, 1, 20);
+        try {
+          const sUrl = suggestUrl(base, rawQuery);
+          const res = await http.request(sUrl, { accept: JSON_ACCEPT });
+          const suggestions = parseSuggestJson(res.text);
+          http.countOffers(suggestions.length);
+          const offers = [];
+          let truncated = suggestions.length > maxDetails;
+          for (const s of suggestions.slice(0, maxDetails)) {
+            if (http.exhausted()) {
+              truncated = true;
+              break;
+            }
+            const dUrl = productDetailUrl(base, s.handle);
+            if (ctx.disallowedUrls?.includes(dUrl)) continue;
+            try {
+              const d = await http.request(dUrl, { accept: JSON_ACCEPT });
+              const mapped = mapShopifyProduct(parseProductDetailJson(d.text), config, base, dUrl);
+              http.countOffers(mapped.length);
+              offers.push(...mapped);
+            } catch {
+            }
+          }
+          return { offers, method: "public_json", requests: http.requests, error: null, truncated };
+        } catch (e) {
+          return failedSearch("public_json", errorMessage(e), http.requests);
+        }
+      },
+      async fetchCatalog(config, cursor, ctx) {
+        const base = baseOf(config);
+        if (!base) return { offers: [], method: "public_json", requests: [{ url: "", status: null, durationMs: 0, offers: 0, error: "URL de base manquante." }], nextCursor: null };
+        const page2 = Math.max(1, cursor ? Number(cursor) || 1 : 1);
+        const maxPages = settingInt(config.settings, "max_pages", SHOPIFY_MAX_CATALOG_PAGES, 1, 200);
+        const http = createAdapterHttp(ctx);
+        const url = productsUrl(base, page2);
+        try {
+          const res = await http.request(url, { accept: JSON_ACCEPT });
+          const products = parseProductsJson(res.text);
+          const offers = products.flatMap((p) => mapShopifyProduct(p, config, base, url));
+          http.countOffers(offers.length);
+          const hasMore = products.length >= SHOPIFY_PAGE_LIMIT && page2 < maxPages;
+          return { offers, method: "public_json", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
+        } catch (e) {
+          return { offers: [], method: "public_json", requests: http.requests.length > 0 ? http.requests : [{ url, status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
+        }
+      },
+      async testConnection(config, ctx) {
+        const base = baseOf(config);
+        if (!base) return { ok: false, message: "URL de base de la boutique manquante." };
+        try {
+          const http = createAdapterHttp(ctx);
+          const res = await http.request(productsUrl(base, 1, 1), { accept: JSON_ACCEPT, maxBytes: 2 * 1024 * 1024 });
+          const products = parseProductsJson(res.text);
+          return { ok: true, message: products.length > 0 ? `Boutique Shopify accessible : products.json r\xE9pond (${products.length} produit lu).` : "products.json r\xE9pond mais ne liste aucun produit publi\xE9." };
+        } catch (e) {
+          return { ok: false, message: `products.json inaccessible : ${errorMessage(e)}` };
+        }
+      }
+    };
+  }
+});
+
+// src/integrations/sourcing/woocommerce-store/crawler.ts
+function productsSearchUrl(baseUrl, query, page2, perPage = WC_PAGE_SIZE) {
+  const params = new URLSearchParams({ search: query.trim(), per_page: String(perPage), page: String(page2) });
+  return `${joinUrl(baseUrl, WC_STORE_PRODUCTS_PATH)}?${params.toString()}`;
+}
+function productsCatalogUrl(baseUrl, page2, perPage = WC_PAGE_SIZE) {
+  const params = new URLSearchParams({ per_page: String(perPage), page: String(page2) });
+  return `${joinUrl(baseUrl, WC_STORE_PRODUCTS_PATH)}?${params.toString()}`;
+}
+var WC_STORE_PRODUCTS_PATH, WC_PAGE_SIZE, WC_MAX_CATALOG_PAGES, WC_MAX_SEARCH_PAGES;
+var init_crawler3 = __esm({
+  "src/integrations/sourcing/woocommerce-store/crawler.ts"() {
+    "use strict";
+    init_shared();
+    WC_STORE_PRODUCTS_PATH = "/wp-json/wc/store/v1/products";
+    WC_PAGE_SIZE = 100;
+    WC_MAX_CATALOG_PAGES = 50;
+    WC_MAX_SEARCH_PAGES = 2;
+  }
+});
+
+// src/integrations/sourcing/woocommerce-store/parser.ts
+import { z as z16 } from "npm:zod@4.6.5";
+function parseWcProducts(text2) {
+  const parsed = z16.array(wcProductSchema).safeParse(JSON.parse(text2));
+  if (!parsed.success) throw new Error(`R\xE9ponse Store API inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
+  return parsed.data;
+}
+function minorToAmount(value, minorUnit) {
+  if (value === null || value === void 0 || value === "") return null;
+  const n = typeof value === "number" ? value : Number(String(value).trim());
+  if (!Number.isFinite(n)) return null;
+  const unit = minorUnit ?? 2;
+  return Math.round(n) / 10 ** unit;
+}
+var numOrStr2, wcPricesSchema, wcProductSchema;
+var init_parser3 = __esm({
+  "src/integrations/sourcing/woocommerce-store/parser.ts"() {
+    "use strict";
+    numOrStr2 = z16.union([z16.number(), z16.string()]);
+    wcPricesSchema = z16.looseObject({
+      price: numOrStr2.nullish(),
+      regular_price: numOrStr2.nullish(),
+      sale_price: numOrStr2.nullish(),
+      currency_code: z16.string().nullish(),
+      currency_minor_unit: z16.number().int().min(0).max(6).nullish()
+    });
+    wcProductSchema = z16.looseObject({
+      id: numOrStr2,
+      name: z16.string(),
+      slug: z16.string().nullish(),
+      type: z16.string().nullish(),
+      permalink: z16.string().nullish(),
+      sku: z16.string().nullish(),
+      short_description: z16.string().nullish(),
+      description: z16.string().nullish(),
+      prices: wcPricesSchema.nullish(),
+      is_in_stock: z16.boolean().nullish(),
+      is_purchasable: z16.boolean().nullish(),
+      is_on_backorder: z16.boolean().nullish(),
+      low_stock_remaining: z16.number().nullish(),
+      categories: z16.array(z16.looseObject({ id: numOrStr2.optional(), name: z16.string().optional(), slug: z16.string().optional() })).nullish(),
+      attributes: z16.array(z16.looseObject({ id: numOrStr2.optional(), name: z16.string(), taxonomy: z16.string().nullish(), terms: z16.array(z16.looseObject({ name: z16.string().optional(), slug: z16.string().optional() })).optional() })).nullish(),
+      add_to_cart: z16.looseObject({ minimum: z16.number().nullish(), maximum: z16.number().nullish(), multiple: z16.number().nullish() }).nullish()
+    });
+  }
+});
+
+// src/integrations/sourcing/woocommerce-store/mapper.ts
+function attr(product, matcher) {
+  for (const a of product.attributes ?? []) {
+    const key2 = (a.taxonomy ?? a.name).trim();
+    if (!matcher.test(key2) && !matcher.test(a.name.trim())) continue;
+    const terms = (a.terms ?? []).map((t) => str(t.name)).filter((x) => Boolean(x));
+    if (terms.length === 1) return terms[0];
+  }
+  return null;
+}
+function mapWcProduct(product, config, requestUrl) {
+  const prices = product.prices ?? null;
+  const price = minorToAmount(prices?.price ?? prices?.sale_price ?? prices?.regular_price, prices?.currency_minor_unit);
+  const currency = str(prices?.currency_code)?.toUpperCase() ?? config.defaultCurrency ?? null;
+  const lowStock = typeof product.low_stock_remaining === "number" ? Math.max(0, Math.round(product.low_stock_remaining)) : null;
+  const stockStatus = product.is_in_stock === true ? lowStock !== null ? "low" : "in_stock" : product.is_in_stock === false ? product.is_on_backorder ? "unknown" : "out_of_stock" : "unknown";
+  const description = stripHtml(`${product.short_description ?? ""} ${product.description ?? ""}`);
+  const inferred = inferConditionFromText(`${product.name} ${description}`);
+  const conditionAttr = attr(product, CONDITION_ATTR);
+  const moq = product.add_to_cart?.minimum && product.add_to_cart.minimum > 1 ? Math.round(product.add_to_cart.minimum) : null;
+  return {
+    externalOfferId: String(product.id),
+    externalProductId: String(product.id),
+    title: product.name,
+    price,
+    currency,
+    taxType: config.defaultTaxType,
+    moq,
+    availableQuantity: lowStock,
+    stockStatus,
+    url: str(product.permalink),
+    brand: attr(product, BRAND_ATTR),
+    storage: attr(product, STORAGE_ATTR),
+    color: attr(product, COLOR_ATTR),
+    grade: inferred.grade,
+    condition: conditionAttr ?? inferred.condition,
+    supplierSku: str(product.sku),
+    country: config.defaultCountry ?? null,
+    raw: {
+      request_url: requestUrl,
+      type: product.type ?? null,
+      prices: prices ? { price: prices.price ?? null, regular_price: prices.regular_price ?? null, sale_price: prices.sale_price ?? null, currency_code: prices.currency_code ?? null, currency_minor_unit: prices.currency_minor_unit ?? null } : null,
+      is_in_stock: product.is_in_stock ?? null,
+      is_on_backorder: product.is_on_backorder ?? null,
+      low_stock_remaining: product.low_stock_remaining ?? null,
+      categories: (product.categories ?? []).map((c) => c.name ?? null).filter(Boolean).slice(0, 10),
+      currency_source: str(prices?.currency_code) ? "payload" : config.defaultCurrency ? "config" : "absent",
+      inferred: conditionAttr ? inferred.inferred.filter((f) => f !== "condition") : inferred.inferred,
+      condition_source: conditionAttr ? "attribute" : inferred.condition ? "description" : null
+    }
+  };
+}
+var STORAGE_ATTR, COLOR_ATTR, BRAND_ATTR, CONDITION_ATTR;
+var init_mapper3 = __esm({
+  "src/integrations/sourcing/woocommerce-store/mapper.ts"() {
+    "use strict";
+    init_shared();
+    init_parser3();
+    STORAGE_ATTR = /^(pa_)?(storage|stockage|capacit[ée]|m[ée]moire|memory|capacity)$/i;
+    COLOR_ATTR = /^(pa_)?(color|colour|couleur|coloris)$/i;
+    BRAND_ATTR = /^(pa_)?(brand|marque|manufacturer|fabricant)$/i;
+    CONDITION_ATTR = /^(pa_)?(condition|[ée]tat|grade)$/i;
+  }
+});
+
+// src/integrations/sourcing/woocommerce-store/index.ts
+function baseOf2(config) {
+  return config.baseUrl ? trimSlash(config.baseUrl) : null;
+}
+var JSON_ACCEPT2, wooCommerceStoreAdapter;
+var init_woocommerce_store = __esm({
+  "src/integrations/sourcing/woocommerce-store/index.ts"() {
+    "use strict";
+    init_shared();
+    init_crawler3();
+    init_parser3();
+    init_mapper3();
+    JSON_ACCEPT2 = "application/json;q=0.9,*/*;q=0.5";
+    wooCommerceStoreAdapter = {
+      key: "woocommerce-store",
+      label: "Boutique WooCommerce (Store API publique)",
+      description: "Interroge l'API Store publique de WooCommerce (recherche texte pagin\xE9e) : nom, SKU, prix et devise, promotion, disponibilit\xE9, quantit\xE9 restante si faible, minimum de commande, attributs (marque, stockage, couleur). HT/TTC non pr\xE9cis\xE9 par l'API : r\xE9glage de la source. V\xE9rifi\xE9 sur fixtures uniquement.",
+      method: "public_json",
+      access: "public",
+      capabilities: { search: true, catalog: true, stockQuantity: false },
+      credentialFields: [],
+      configFields: [
+        { name: "max_search_pages", label: "Pages lues par recherche", required: false, placeholder: String(WC_MAX_SEARCH_PAGES) },
+        { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(WC_MAX_CATALOG_PAGES) }
+      ],
+      verification: "fixtures",
+      urlsForQuery(config, _query, rawQuery) {
+        const base = baseOf2(config);
+        return base && rawQuery.trim() ? [productsSearchUrl(base, rawQuery, 1)] : [];
+      },
+      urlsForCatalog(config) {
+        const base = baseOf2(config);
+        return base ? [productsCatalogUrl(base, 1)] : [];
+      },
+      async search(config, _query, rawQuery, ctx) {
+        const base = baseOf2(config);
+        if (!base) return failedSearch("public_json", "URL de base de la boutique manquante.");
+        const http = createAdapterHttp(ctx);
+        const maxPages = settingInt(config.settings, "max_search_pages", WC_MAX_SEARCH_PAGES, 1, 10);
+        const offers = [];
+        let truncated = false;
+        try {
+          for (let page2 = 1; page2 <= maxPages; page2++) {
+            const url = productsSearchUrl(base, rawQuery, page2);
+            if (page2 > 1 && http.exhausted()) {
+              truncated = true;
+              break;
+            }
+            const res = await http.request(url, { accept: JSON_ACCEPT2 });
+            const products = parseWcProducts(res.text);
+            const mapped = products.map((p) => mapWcProduct(p, config, url)).filter((o) => o !== null);
+            http.countOffers(mapped.length);
+            offers.push(...mapped);
+            if (products.length < WC_PAGE_SIZE) break;
+            if (page2 === maxPages) truncated = true;
+          }
+          return { offers, method: "public_json", requests: http.requests, error: null, truncated };
+        } catch (e) {
+          if (offers.length > 0) return { offers, method: "public_json", requests: http.requests, error: null, truncated: true };
+          return failedSearch("public_json", errorMessage(e), http.requests);
+        }
+      },
+      async fetchCatalog(config, cursor, ctx) {
+        const base = baseOf2(config);
+        if (!base) return { offers: [], method: "public_json", requests: [{ url: "", status: null, durationMs: 0, offers: 0, error: "URL de base manquante." }], nextCursor: null };
+        const page2 = Math.max(1, cursor ? Number(cursor) || 1 : 1);
+        const maxPages = settingInt(config.settings, "max_pages", WC_MAX_CATALOG_PAGES, 1, 200);
+        const http = createAdapterHttp(ctx);
+        const url = productsCatalogUrl(base, page2);
+        try {
+          const res = await http.request(url, { accept: JSON_ACCEPT2 });
+          const products = parseWcProducts(res.text);
+          const offers = products.map((p) => mapWcProduct(p, config, url)).filter((o) => o !== null);
+          http.countOffers(offers.length);
+          const hasMore = products.length >= WC_PAGE_SIZE && page2 < maxPages;
+          return { offers, method: "public_json", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
+        } catch (e) {
+          return { offers: [], method: "public_json", requests: http.requests.length > 0 ? http.requests : [{ url, status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
+        }
+      },
+      async testConnection(config, ctx) {
+        const base = baseOf2(config);
+        if (!base) return { ok: false, message: "URL de base de la boutique manquante." };
+        try {
+          const http = createAdapterHttp(ctx);
+          const res = await http.request(productsCatalogUrl(base, 1, 1), { accept: JSON_ACCEPT2, maxBytes: 2 * 1024 * 1024 });
+          const products = parseWcProducts(res.text);
+          return { ok: true, message: products.length > 0 ? "API Store WooCommerce accessible (produit lu)." : "API Store accessible mais aucun produit publi\xE9." };
+        } catch (e) {
+          return { ok: false, message: `API Store inaccessible : ${errorMessage(e)}` };
+        }
+      }
+    };
+  }
+});
+
+// src/integrations/sourcing/google-merchant-feed/crawler.ts
+function feedUrlOf(config) {
+  const explicit = settingString(config.settings, "feed_url");
+  if (explicit) return explicit;
+  const base = config.baseUrl?.trim();
+  if (!base) return null;
+  return /\.(xml|rss|atom|tsv|csv|txt)(\?.*)?$/i.test(base) ? base : null;
+}
+function detectFeedFormat(text2, contentType) {
+  const head = text2.slice(0, 2e3).trimStart();
+  if (head.startsWith("<")) return "xml";
+  if (contentType && /xml/i.test(contentType) && !/csv|tab-separated/i.test(contentType)) return "xml";
+  return "tsv";
+}
+var GMC_FEED_ACCEPT, GMC_CACHE_TTL_MS, GMC_CATALOG_PAGE_SIZE, GMC_MAX_BYTES;
+var init_crawler4 = __esm({
+  "src/integrations/sourcing/google-merchant-feed/crawler.ts"() {
+    "use strict";
+    init_shared();
+    GMC_FEED_ACCEPT = "application/xml,text/xml,application/rss+xml,application/atom+xml,text/csv,text/tab-separated-values,text/plain;q=0.9,*/*;q=0.5";
+    GMC_CACHE_TTL_MS = 10 * 6e4;
+    GMC_CATALOG_PAGE_SIZE = 1e3;
+    GMC_MAX_BYTES = 50 * 1024 * 1024;
+  }
+});
+
+// src/integrations/sourcing/google-merchant-feed/parser.ts
+import { parse as parseCsv2 } from "npm:csv-parse@7.0.3/sync";
+import { XMLParser as XMLParser3 } from "npm:fast-xml-parser@5.11.2";
+import { z as z17 } from "npm:zod@4.6.5";
+function textOf(v2) {
+  const parsed = anyField.safeParse(v2);
+  if (!parsed.success) return null;
+  const first = Array.isArray(parsed.data) ? parsed.data[0] : parsed.data;
+  if (first === void 0 || first === null) return null;
+  if (typeof first === "object") {
+    const t = first["#text"];
+    return t === void 0 ? null : String(t).trim() || null;
+  }
+  const s = String(first).trim();
+  return s.length > 0 ? s : null;
+}
+function field(item, name) {
+  if (item[`g:${name}`] !== void 0) return item[`g:${name}`];
+  if (item[name] !== void 0) return item[name];
+  const lower = name.toLowerCase();
+  for (const [k, v2] of Object.entries(item)) {
+    const key2 = k.toLowerCase().replace(/^g:/, "");
+    if (key2 === lower) return v2;
+  }
+  return void 0;
+}
+function parseGmcPrice(raw) {
+  if (!raw) return null;
+  const m = raw.trim().match(/^([\d\s.,]+)\s*([A-Za-z]{3})?$/);
+  if (!m || !m[1]) return null;
+  const numeric = m[1].replace(/\s/g, "");
+  const normalized = /,\d{1,2}$/.test(numeric) && numeric.includes(".") ? numeric.replace(/\./g, "").replace(",", ".") : /\.\d{1,2}$/.test(numeric) && numeric.includes(",") ? numeric.replace(/,/g, "") : numeric.replace(",", ".");
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) return null;
+  return { amount, currency: m[2] ? m[2].toUpperCase() : null };
+}
+function linkOf(item) {
+  const g = textOf(field(item, "link"));
+  if (g && /^https?:\/\//i.test(g)) return g;
+  const raw = item.link;
+  const list = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
+  for (const l of list) {
+    if (l && typeof l === "object") {
+      const href = l["@_href"];
+      if (typeof href === "string" && /^https?:\/\//i.test(href)) return href;
+    }
+  }
+  return g;
+}
+function shippingOf(item) {
+  const raw = field(item, "shipping");
+  const list = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
+  const out = [];
+  for (const s of list) {
+    if (!s || typeof s !== "object") continue;
+    const rec = s;
+    out.push({ country: textOf(field(rec, "country"))?.toUpperCase().slice(0, 2) ?? null, price: parseGmcPrice(textOf(field(rec, "price"))) });
+  }
+  return out;
+}
+function toItem(record) {
+  const id = textOf(field(record, "id"));
+  const title = textOf(field(record, "title"));
+  if (!id || !title) return null;
+  const quantityRaw = textOf(field(record, "quantity"));
+  const quantity = quantityRaw !== null && /^\d+$/.test(quantityRaw) ? Number(quantityRaw) : null;
+  const raw = {};
+  for (const key2 of ["id", "title", "price", "sale_price", "availability", "gtin", "mpn", "brand", "condition", "item_group_id", "link"]) {
+    const v2 = textOf(field(record, key2));
+    if (v2 !== null) raw[key2] = v2;
+  }
+  return {
+    id,
+    title,
+    description: textOf(field(record, "description")),
+    link: linkOf(record),
+    price: parseGmcPrice(textOf(field(record, "price"))),
+    salePrice: parseGmcPrice(textOf(field(record, "sale_price"))),
+    availability: textOf(field(record, "availability"))?.toLowerCase() ?? null,
+    gtin: textOf(field(record, "gtin"))?.replace(/\D/g, "") || null,
+    mpn: textOf(field(record, "mpn")),
+    brand: textOf(field(record, "brand")),
+    condition: textOf(field(record, "condition"))?.toLowerCase() ?? null,
+    itemGroupId: textOf(field(record, "item_group_id")),
+    color: textOf(field(record, "color")),
+    size: textOf(field(record, "size")),
+    shipping: shippingOf(record),
+    quantity,
+    raw
+  };
+}
+function parseGmcXml(text2) {
+  const parser3 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
+  const doc = parser3.parse(text2.replace(/^\uFEFF/, ""));
+  const rss = doc.rss;
+  const channel = rss?.channel;
+  const feed = doc.feed;
+  const rawItems = channel?.item ?? feed?.entry ?? null;
+  if (rawItems === null || rawItems === void 0) throw new Error("Flux non reconnu : ni <rss><channel><item>, ni <feed><entry>.");
+  const list = Array.isArray(rawItems) ? rawItems : [rawItems];
+  const items = [];
+  for (const entry of list.slice(0, MAX_FEED_ITEMS)) {
+    const parsed = gmcItemSchema.safeParse(entry);
+    if (!parsed.success) continue;
+    const item = toItem(parsed.data);
+    if (item) items.push(item);
+  }
+  return items;
+}
+function parseGmcTsv(text2) {
+  const clean = text2.replace(/^\uFEFF/, "");
+  const firstLine = clean.split(/\r?\n/)[0] ?? "";
+  const delimiter = firstLine.includes("	") ? "	" : firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
+  const rows = parseCsv2(clean, { columns: (header) => header.map((h) => h.trim().toLowerCase().replace(/^g:/, "")), delimiter, bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true, to: MAX_FEED_ITEMS + 1 });
+  const items = [];
+  for (const row of rows) {
+    const parsed = gmcItemSchema.safeParse(row);
+    if (!parsed.success) continue;
+    const record = { ...parsed.data };
+    const shippingCol = Object.keys(record).find((k) => k.startsWith("shipping"));
+    if (shippingCol && typeof record[shippingCol] === "string") {
+      const [country, ...rest] = record[shippingCol].split(":");
+      record.shipping = rest.length > 0 ? { country: country?.trim() ?? null, price: rest.join(":").trim() } : { price: record[shippingCol] };
+    }
+    const item = toItem(record);
+    if (item) items.push(item);
+  }
+  return items;
+}
+function parseGmcFeed(text2, format) {
+  return format === "xml" ? parseGmcXml(text2) : parseGmcTsv(text2);
+}
+var MAX_FEED_ITEMS, scalar, textNode, anyField, gmcItemSchema;
+var init_parser4 = __esm({
+  "src/integrations/sourcing/google-merchant-feed/parser.ts"() {
+    "use strict";
+    MAX_FEED_ITEMS = 5e4;
+    scalar = z17.union([z17.string(), z17.number(), z17.boolean()]);
+    textNode = z17.union([scalar, z17.looseObject({ "#text": scalar.optional() })]);
+    anyField = z17.union([textNode, z17.array(textNode)]);
+    gmcItemSchema = z17.record(z17.string(), z17.unknown());
+  }
+});
+
+// src/integrations/sourcing/google-merchant-feed/mapper.ts
+function gmcAvailability(value) {
+  switch (value) {
+    case "in_stock":
+    case "in stock":
+      return "in_stock";
+    case "limited_availability":
+    case "limited availability":
+      return "low";
+    case "out_of_stock":
+    case "out of stock":
+      return "out_of_stock";
+    case "preorder":
+    case "backorder":
+      return "unknown";
+    default:
+      return "unknown";
+  }
+}
+function gmcCondition(value) {
+  if (value === "new" || value === "refurbished" || value === "used") return value;
+  return null;
+}
+function mapGmcItem(item, config, feedUrl) {
+  const sale = item.salePrice && item.price && item.salePrice.amount > 0 && item.salePrice.amount < item.price.amount ? item.salePrice : null;
+  const effective = sale ?? item.price;
+  const currency = effective?.currency ?? item.price?.currency ?? config.defaultCurrency ?? null;
+  const shipping = item.shipping.find((s) => !config.defaultCountry || !s.country || s.country === config.defaultCountry) ?? item.shipping[0] ?? null;
+  return {
+    externalOfferId: item.id,
+    externalProductId: item.itemGroupId ?? item.id,
+    title: item.title,
+    price: effective?.amount ?? null,
+    currency,
+    taxType: config.defaultTaxType,
+    availableQuantity: item.quantity,
+    stockStatus: gmcAvailability(item.availability),
+    shippingCost: shipping?.price?.amount ?? null,
+    shippingCurrency: shipping?.price?.currency ?? currency,
+    url: item.link,
+    ean: item.gtin,
+    mpn: item.mpn,
+    brand: item.brand,
+    color: item.color,
+    condition: gmcCondition(item.condition),
+    supplierSku: item.id,
+    country: shipping?.country ?? config.defaultCountry ?? null,
+    raw: { feed_url: feedUrl, item: item.raw, availability: item.availability, sale_price_applied: sale !== null, currency_source: effective?.currency ? "feed" : config.defaultCurrency ? "config" : "absent" }
+  };
+}
+var init_mapper4 = __esm({
+  "src/integrations/sourcing/google-merchant-feed/mapper.ts"() {
+    "use strict";
+  }
+});
+
+// src/integrations/sourcing/google-merchant-feed/index.ts
+async function loadFeed(config, ctx, options) {
+  const url = feedUrlOf(config);
+  if (!url) throw new Error("URL du flux manquante (r\xE9glage feed_url ou URL de base pointant vers un fichier).");
+  const now = ctx.now ? ctx.now().getTime() : Date.now();
+  const cached2 = options.useCache ? feedCache.get(url, now) : null;
+  if (cached2) return { url, feed: cached2, requests: [], fromCache: true };
+  const http = createAdapterHttp(ctx);
+  const res = await http.request(url, { accept: GMC_FEED_ACCEPT, maxBytes: GMC_MAX_BYTES });
+  const format = detectFeedFormat(res.text, res.contentType);
+  const items = parseGmcFeed(res.text, format);
+  const offers = items.map((i) => mapGmcItem(i, config, res.finalUrl || url));
+  http.countOffers(offers.length);
+  const feed = { offers, fetchedAt: new Date(now).toISOString(), format };
+  feedCache.set(url, feed, now);
+  return { url, feed, requests: http.requests, fromCache: false };
+}
+var feedCache, googleMerchantFeedAdapter;
+var init_google_merchant_feed = __esm({
+  "src/integrations/sourcing/google-merchant-feed/index.ts"() {
+    "use strict";
+    init_shared();
+    init_crawler4();
+    init_parser4();
+    init_mapper4();
+    feedCache = new TtlCache(GMC_CACHE_TTL_MS);
+    googleMerchantFeedAdapter = {
+      key: "google-merchant-feed",
+      label: "Flux Google Merchant (RSS / Atom / TSV)",
+      description: "Lit un flux produit public au format Google Merchant Center (g:id, g:title, g:price \xAB 229.00 EUR \xBB, g:sale_price, g:availability, g:gtin, g:mpn, g:brand, g:condition, g:link, g:shipping, g:item_group_id). La recherche filtre le flux lu (mis en cache 10 min) : aucune requ\xEAte suppl\xE9mentaire par recherche. V\xE9rifi\xE9 sur fixtures uniquement.",
+      method: "public_feed",
+      access: "public",
+      capabilities: { search: true, catalog: true, stockQuantity: false },
+      credentialFields: [],
+      configFields: [{ name: "feed_url", label: "URL du flux Google Merchant", required: true, placeholder: "https://boutique.example/feeds/google.xml" }],
+      verification: "fixtures",
+      urlsForQuery(config) {
+        const url = feedUrlOf(config);
+        return url ? [url] : [];
+      },
+      urlsForCatalog(config) {
+        const url = feedUrlOf(config);
+        return url ? [url] : [];
+      },
+      async search(config, query, _rawQuery, ctx) {
+        const feedUrl = feedUrlOf(config);
+        if (feedUrl && ctx.disallowedUrls?.includes(feedUrl)) return failedSearch("public_feed", "URL du flux interdite par robots.txt.");
+        try {
+          const { url, feed, requests, fromCache } = await loadFeed(config, ctx, { useCache: true });
+          const offers = feed.offers.filter((o) => matchesQuery(query, { title: o.title, brand: o.brand, ean: o.ean, mpn: o.mpn, sku: o.supplierSku }));
+          return { offers, method: "public_feed", requests: fromCache ? [{ url, status: null, durationMs: 0, offers: offers.length, error: null }] : requests, error: null, truncated: false };
+        } catch (e) {
+          return failedSearch("public_feed", errorMessage(e));
+        }
+      },
+      async fetchCatalog(config, cursor, ctx) {
+        const offset = Math.max(0, cursor ? Number(cursor) || 0 : 0);
+        try {
+          const { feed, requests } = await loadFeed(config, ctx, { useCache: offset > 0 });
+          const page2 = feed.offers.slice(offset, offset + GMC_CATALOG_PAGE_SIZE);
+          const next = offset + GMC_CATALOG_PAGE_SIZE < feed.offers.length ? String(offset + GMC_CATALOG_PAGE_SIZE) : null;
+          return { offers: page2, method: "public_feed", requests, nextCursor: next };
+        } catch (e) {
+          return { offers: [], method: "public_feed", requests: [{ url: feedUrlOf(config) ?? "", status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
+        }
+      },
+      async testConnection(config, ctx) {
+        try {
+          const { feed } = await loadFeed(config, ctx, { useCache: false });
+          return { ok: true, message: `Flux lu (${feed.format.toUpperCase()}) : ${feed.offers.length} article(s).` };
+        } catch (e) {
+          return { ok: false, message: errorMessage(e) };
+        }
+      }
+    };
+  }
+});
+
+// src/integrations/sourcing/bigbuy/crawler.ts
+function bigbuyBase(sandbox, override) {
+  return override ?? (sandbox ? BIGBUY_SANDBOX_BASE : BIGBUY_API_BASE);
+}
+function productsUrl2(base, isoCode, page2, pageSize = BIGBUY_PAGE_SIZE) {
+  return `${joinUrl(base, BIGBUY_PRODUCTS_PATH)}?isoCode=${encodeURIComponent(isoCode)}&page=${page2}&pageSize=${pageSize}`;
+}
+function productsInformationUrl(base, isoCode, page2, pageSize = BIGBUY_PAGE_SIZE) {
+  return `${joinUrl(base, BIGBUY_PRODUCTS_INFORMATION_PATH)}?isoCode=${encodeURIComponent(isoCode)}&page=${page2}&pageSize=${pageSize}`;
+}
+function productsStockAvailableUrl(base) {
+  return joinUrl(base, BIGBUY_PRODUCTS_STOCK_AVAILABLE_PATH);
+}
+function manufacturersUrl(base) {
+  return joinUrl(base, BIGBUY_MANUFACTURERS_PATH);
+}
+function testUrl(base) {
+  return joinUrl(base, BIGBUY_TEST_PATH);
+}
+function authHeaders(apiKey) {
+  return { Authorization: `Bearer ${apiKey}`, Accept: "application/json" };
+}
+var BIGBUY_API_BASE, BIGBUY_SANDBOX_BASE, BIGBUY_PRODUCTS_PATH, BIGBUY_PRODUCTS_INFORMATION_PATH, BIGBUY_PRODUCTS_STOCK_AVAILABLE_PATH, BIGBUY_MANUFACTURERS_PATH, BIGBUY_TEST_PATH, BIGBUY_PAGE_SIZE, BIGBUY_MAX_CATALOG_PAGES, BIGBUY_SEARCH_INDEX_PAGES, BIGBUY_CACHE_TTL_MS, BIGBUY_DEFAULT_ISO, BIGBUY_MAX_BYTES;
+var init_crawler5 = __esm({
+  "src/integrations/sourcing/bigbuy/crawler.ts"() {
+    "use strict";
+    init_shared();
+    BIGBUY_API_BASE = "https://api.bigbuy.eu";
+    BIGBUY_SANDBOX_BASE = "https://api.sandbox.bigbuy.eu";
+    BIGBUY_PRODUCTS_PATH = "/rest/catalog/products.json";
+    BIGBUY_PRODUCTS_INFORMATION_PATH = "/rest/catalog/productsinformation.json";
+    BIGBUY_PRODUCTS_STOCK_AVAILABLE_PATH = "/rest/catalog/productsstockavailable.json";
+    BIGBUY_MANUFACTURERS_PATH = "/rest/catalog/manufacturers.json";
+    BIGBUY_TEST_PATH = "/rest/user/purchase.json";
+    BIGBUY_PAGE_SIZE = 1e3;
+    BIGBUY_MAX_CATALOG_PAGES = 20;
+    BIGBUY_SEARCH_INDEX_PAGES = 3;
+    BIGBUY_CACHE_TTL_MS = 10 * 6e4;
+    BIGBUY_DEFAULT_ISO = "fr";
+    BIGBUY_MAX_BYTES = 60 * 1024 * 1024;
+  }
+});
+
+// src/integrations/sourcing/bigbuy/parser.ts
+import { z as z18 } from "npm:zod@4.6.5";
+function parseList(text2, schema, label) {
+  const json2 = JSON.parse(text2);
+  const parsed = z18.array(schema).safeParse(json2);
+  if (!parsed.success) throw new Error(`R\xE9ponse ${label} inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
+  return parsed.data;
+}
+var numOrStr3, bigbuyProductSchema, bigbuyProductInformationSchema, bigbuyStockSchema, bigbuyManufacturerSchema, parseBigbuyProducts, parseBigbuyProductsInformation, parseBigbuyStock, parseBigbuyManufacturers;
+var init_parser5 = __esm({
+  "src/integrations/sourcing/bigbuy/parser.ts"() {
+    "use strict";
+    numOrStr3 = z18.union([z18.number(), z18.string()]);
+    bigbuyProductSchema = z18.looseObject({
+      id: numOrStr3,
+      sku: z18.string().nullish(),
+      ean13: numOrStr3.nullish(),
+      manufacturer: numOrStr3.nullish(),
+      wholesalePrice: numOrStr3.nullish(),
+      retailPrice: numOrStr3.nullish(),
+      taxRate: numOrStr3.nullish(),
+      active: z18.union([z18.boolean(), z18.number()]).nullish(),
+      condition: z18.string().nullish()
+    });
+    bigbuyProductInformationSchema = z18.looseObject({
+      id: numOrStr3,
+      sku: z18.string().nullish(),
+      name: z18.string().nullish(),
+      description: z18.string().nullish(),
+      url: z18.string().nullish(),
+      isoCode: z18.string().nullish()
+    });
+    bigbuyStockSchema = z18.looseObject({
+      id: numOrStr3,
+      sku: z18.string().nullish(),
+      stocks: z18.array(z18.looseObject({ quantity: numOrStr3.nullish(), minHandlingDays: numOrStr3.nullish(), maxHandlingDays: numOrStr3.nullish(), warehouse: numOrStr3.nullish() })).default([])
+    });
+    bigbuyManufacturerSchema = z18.looseObject({ id: numOrStr3, name: z18.string().nullish() });
+    parseBigbuyProducts = (text2) => parseList(text2, bigbuyProductSchema, "products.json");
+    parseBigbuyProductsInformation = (text2) => parseList(text2, bigbuyProductInformationSchema, "productsinformation.json");
+    parseBigbuyStock = (text2) => parseList(text2, bigbuyStockSchema, "productsstockavailable.json");
+    parseBigbuyManufacturers = (text2) => parseList(text2, bigbuyManufacturerSchema, "manufacturers.json");
+  }
+});
+
+// src/integrations/sourcing/bigbuy/mapper.ts
+function mapBigbuyProduct(product, info, stock, brandName, requestUrl) {
+  const title = str(info?.name);
+  if (!title) return null;
+  const quantities = (stock?.stocks ?? []).map((s) => toNumber(s.quantity)).filter((n) => n !== null && n >= 0);
+  const availableQuantity = stock ? Math.round(quantities.reduce((a, b) => a + b, 0)) : null;
+  const minDays = (stock?.stocks ?? []).map((s) => toNumber(s.minHandlingDays)).filter((n) => n !== null);
+  const maxDays = (stock?.stocks ?? []).map((s) => toNumber(s.maxHandlingDays)).filter((n) => n !== null);
+  const condition = normalizeCondition(product.condition ?? null);
+  const taxRate = toNumber(product.taxRate);
+  return {
+    externalOfferId: String(product.id),
+    externalProductId: String(product.id),
+    title,
+    price: toNumber(product.wholesalePrice),
+    currency: BIGBUY_CURRENCY,
+    taxType: "ht",
+    vatRate: taxRate !== null && taxRate >= 0 && taxRate <= 100 ? taxRate : null,
+    availableQuantity,
+    stockStatus: availableQuantity === null ? "unknown" : availableQuantity > 0 ? "in_stock" : "out_of_stock",
+    deliveryMinDays: minDays.length > 0 ? Math.round(Math.min(...minDays)) : null,
+    deliveryMaxDays: maxDays.length > 0 ? Math.round(Math.max(...maxDays)) : null,
+    url: str(info?.url),
+    ean: str(product.ean13)?.replace(/\D/g, "") || null,
+    brand: brandName,
+    condition: condition === "unknown" ? null : condition,
+    supplierSku: str(product.sku),
+    raw: {
+      request_url: requestUrl,
+      product: { id: product.id, sku: product.sku ?? null, ean13: product.ean13 ?? null, manufacturer: product.manufacturer ?? null, wholesalePrice: product.wholesalePrice ?? null, retailPrice: product.retailPrice ?? null, taxRate: product.taxRate ?? null, condition: product.condition ?? null },
+      description_excerpt: stripHtml(info?.description).slice(0, 300) || null,
+      stock: stock ? stock.stocks.map((s) => ({ quantity: s.quantity ?? null, minHandlingDays: s.minHandlingDays ?? null, maxHandlingDays: s.maxHandlingDays ?? null, warehouse: s.warehouse ?? null })) : null,
+      price_basis: "wholesalePrice (hors TVA, EUR, documentation BigBuy)"
+    }
+  };
+}
+var BIGBUY_CURRENCY;
+var init_mapper5 = __esm({
+  "src/integrations/sourcing/bigbuy/mapper.ts"() {
+    "use strict";
+    init_normalizer();
+    init_feed_parsers();
+    init_shared();
+    BIGBUY_CURRENCY = "EUR";
+  }
+});
+
+// src/integrations/sourcing/bigbuy/index.ts
+import { createHash as createHash4 } from "node:crypto";
+function session(config, ctx) {
+  const apiKey = ctx.credentials?.api_key?.trim();
+  if (!apiKey) return null;
+  const sandbox = config.settings.sandbox === true || config.settings.sandbox === "true";
+  const base = bigbuyBase(sandbox, settingString(config.settings, "api_base"));
+  const isoCode = (settingString(config.settings, "iso_code") ?? BIGBUY_DEFAULT_ISO).toLowerCase();
+  const cacheKey2 = `${createHash4("sha256").update(apiKey).digest("hex").slice(0, 16)}|${base}|${isoCode}`;
+  return { base, apiKey, isoCode, headers: authHeaders(apiKey), cacheKey: cacheKey2 };
+}
+function nowOf(ctx) {
+  return ctx.now ? ctx.now().getTime() : Date.now();
+}
+async function loadManufacturers(s, http, ctx) {
+  const cached2 = manufacturerCache.get(s.cacheKey, nowOf(ctx));
+  if (cached2) return cached2;
+  const map = /* @__PURE__ */ new Map();
+  try {
+    const res = await http.request(manufacturersUrl(s.base), { headers: s.headers, accept: "application/json" });
+    for (const m of parseBigbuyManufacturers(res.text)) if (m.name) map.set(String(m.id), m.name);
+    manufacturerCache.set(s.cacheKey, map, nowOf(ctx));
+  } catch {
+  }
+  return map;
+}
+async function loadStock(s, http, ctx) {
+  const cached2 = stockCache.get(s.cacheKey, nowOf(ctx));
+  if (cached2) return cached2;
+  try {
+    const res = await http.request(productsStockAvailableUrl(s.base), { headers: s.headers, accept: "application/json", maxBytes: BIGBUY_MAX_BYTES });
+    const map = /* @__PURE__ */ new Map();
+    for (const st of parseBigbuyStock(res.text)) map.set(String(st.id), st);
+    http.countOffers(map.size);
+    stockCache.set(s.cacheKey, map, nowOf(ctx));
+    return map;
+  } catch {
+    return null;
+  }
+}
+async function loadCatalogPage(s, http, ctx, page2, pageSize) {
+  const pUrl = productsUrl2(s.base, s.isoCode, page2, pageSize);
+  const products = parseBigbuyProducts((await http.request(pUrl, { headers: s.headers, accept: "application/json", maxBytes: BIGBUY_MAX_BYTES })).text);
+  http.countOffers(products.length);
+  if (products.length === 0) return { offers: [], productCount: 0 };
+  const iUrl = productsInformationUrl(s.base, s.isoCode, page2, pageSize);
+  const infos = parseBigbuyProductsInformation((await http.request(iUrl, { headers: s.headers, accept: "application/json", maxBytes: BIGBUY_MAX_BYTES })).text);
+  const infoById = new Map(infos.map((i) => [String(i.id), i]));
+  const [brands, stock] = [await loadManufacturers(s, http, ctx), await loadStock(s, http, ctx)];
+  const offers = [];
+  for (const p of products) {
+    if (p.active === false || p.active === 0) continue;
+    const id = String(p.id);
+    const mapped = mapBigbuyProduct(p, infoById.get(id) ?? null, stock?.get(id) ?? null, p.manufacturer !== null && p.manufacturer !== void 0 ? brands.get(String(p.manufacturer)) ?? null : null, pUrl);
+    if (mapped) offers.push(mapped);
+  }
+  return { offers, productCount: products.length };
+}
+async function buildSearchIndex(s, config, http, ctx) {
+  const cached2 = indexCache.get(s.cacheKey, nowOf(ctx));
+  if (cached2) return cached2;
+  const pages = settingInt(config.settings, "search_pages", BIGBUY_SEARCH_INDEX_PAGES, 1, 20);
+  const pageSize = settingInt(config.settings, "page_size", BIGBUY_PAGE_SIZE, 50, BIGBUY_PAGE_SIZE);
+  const offers = [];
+  let truncated = false;
+  for (let page2 = 0; page2 < pages; page2++) {
+    if (page2 > 0 && http.exhausted()) {
+      truncated = true;
+      break;
+    }
+    const { offers: pageOffers, productCount } = await loadCatalogPage(s, http, ctx, page2, pageSize);
+    offers.push(...pageOffers);
+    if (productCount < pageSize) break;
+    if (page2 === pages - 1) truncated = true;
+  }
+  const index = { offers, truncated };
+  if (offers.length > 0) indexCache.set(s.cacheKey, index, nowOf(ctx));
+  return index;
+}
+var stockCache, manufacturerCache, indexCache, bigbuyAdapter;
+var init_bigbuy = __esm({
+  "src/integrations/sourcing/bigbuy/index.ts"() {
+    "use strict";
+    init_shared();
+    init_crawler5();
+    init_parser5();
+    init_mapper5();
+    stockCache = new TtlCache(BIGBUY_CACHE_TTL_MS);
+    manufacturerCache = new TtlCache(BIGBUY_CACHE_TTL_MS);
+    indexCache = new TtlCache(BIGBUY_CACHE_TTL_MS);
+    bigbuyAdapter = {
+      key: "bigbuy",
+      label: "BigBuy (API officielle, cl\xE9 API)",
+      description: "Catalogue grossiste BigBuy via l'API REST officielle avec votre cl\xE9 API : nom, SKU, EAN, marque, prix de gros HT (EUR), taux de TVA, stock par entrep\xF4t, d\xE9lais de pr\xE9paration. Pas de recherche texte c\xF4t\xE9 BigBuy : la recherche en direct filtre les premi\xE8res pages du catalogue (index en cache 10 min) et est signal\xE9e comme partielle. Impl\xE9ment\xE9 d'apr\xE8s la documentation publique, non exerc\xE9 en conditions r\xE9elles depuis cet environnement.",
+      method: "official_api",
+      access: "account",
+      capabilities: { search: true, catalog: true, stockQuantity: true },
+      credentialFields: [{ name: "api_key", label: "Cl\xE9 API BigBuy", secret: true, placeholder: "Cl\xE9 g\xE9n\xE9r\xE9e dans votre espace BigBuy (API)" }],
+      configFields: [
+        { name: "iso_code", label: "Langue du catalogue (isoCode)", required: false, placeholder: BIGBUY_DEFAULT_ISO },
+        { name: "sandbox", label: "Environnement bac \xE0 sable (true/false)", required: false, placeholder: "false" },
+        { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(BIGBUY_MAX_CATALOG_PAGES) },
+        { name: "search_pages", label: "Pages index\xE9es pour la recherche en direct", required: false, placeholder: String(BIGBUY_SEARCH_INDEX_PAGES) }
+      ],
+      verification: "fixtures",
+      async search(config, query, _rawQuery, ctx) {
+        const s = session(config, ctx);
+        if (!s) return failedSearch("official_api", "Cl\xE9 API BigBuy absente : connectez votre compte fournisseur.");
+        const http = createAdapterHttp(ctx);
+        try {
+          const index = await buildSearchIndex(s, config, http, ctx);
+          const offers = index.offers.filter((o) => matchesQuery(query, { title: o.title, brand: o.brand, ean: o.ean, sku: o.supplierSku }));
+          return { offers, method: "official_api", requests: http.requests, error: null, truncated: index.truncated };
+        } catch (e) {
+          return failedSearch("official_api", errorMessage(e), http.requests);
+        }
+      },
+      async fetchCatalog(config, cursor, ctx) {
+        const s = session(config, ctx);
+        if (!s) return { offers: [], method: "official_api", requests: [], nextCursor: null };
+        const page2 = Math.max(0, cursor ? Number(cursor) || 0 : 0);
+        const maxPages = settingInt(config.settings, "max_pages", BIGBUY_MAX_CATALOG_PAGES, 1, 500);
+        const pageSize = settingInt(config.settings, "page_size", BIGBUY_PAGE_SIZE, 50, BIGBUY_PAGE_SIZE);
+        const http = createAdapterHttp(ctx);
+        try {
+          const { offers, productCount } = await loadCatalogPage(s, http, ctx, page2, pageSize);
+          const hasMore = productCount >= pageSize && page2 + 1 < maxPages;
+          return { offers, method: "official_api", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
+        } catch (e) {
+          return { offers: [], method: "official_api", requests: http.requests.length > 0 ? http.requests : [{ url: productsUrl2(s.base, s.isoCode, page2, pageSize), status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
+        }
+      },
+      async testConnection(config, ctx) {
+        const s = session(config, ctx);
+        if (!s) return { ok: false, message: "Cl\xE9 API BigBuy absente." };
+        try {
+          const http = createAdapterHttp(ctx);
+          const res = await http.request(testUrl(s.base), { headers: s.headers, accept: "application/json", maxBytes: 2 * 1024 * 1024 });
+          JSON.parse(res.text);
+          return { ok: true, message: "Cl\xE9 API BigBuy accept\xE9e (r\xE9ponse authentifi\xE9e re\xE7ue)." };
+        } catch (e) {
+          const msg = errorMessage(e);
+          return { ok: false, message: /HTTP 401|HTTP 403/.test(msg) ? "Cl\xE9 API BigBuy refus\xE9e (401/403) : v\xE9rifiez la cl\xE9 et l'environnement (production / bac \xE0 sable)." : `BigBuy injoignable : ${msg}` };
+        }
+      }
+    };
+  }
+});
+
+// src/integrations/sourcing/ingram-micro/crawler.ts
+function ingramBase(sandbox, override) {
+  return override ?? (sandbox ? INGRAM_SANDBOX_BASE : INGRAM_API_BASE);
+}
+function tokenUrl(base) {
+  const origin = new URL(base).origin;
+  return joinUrl(base.endsWith("/sandbox") ? base : origin, INGRAM_TOKEN_PATH);
+}
+function catalogUrl(base, params) {
+  const q = new URLSearchParams({ pageNumber: String(params.pageNumber), pageSize: String(params.pageSize) });
+  if (params.keyword?.trim()) q.set("keyword", params.keyword.trim());
+  return `${joinUrl(base, INGRAM_CATALOG_PATH)}?${q.toString()}`;
+}
+function priceAvailabilityUrl(base) {
+  return `${joinUrl(base, INGRAM_PRICE_AVAILABILITY_PATH)}?${INGRAM_PA_QUERY}`;
+}
+function tokenRequestBody(clientId, clientSecret) {
+  return new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret }).toString();
+}
+function ingramHeaders(input) {
+  return {
+    Authorization: `Bearer ${input.accessToken}`,
+    "IM-CustomerNumber": input.customerNumber,
+    "IM-CountryCode": input.countryCode.toUpperCase(),
+    "IM-CorrelationID": input.correlationId,
+    "IM-SenderID": input.senderId,
+    "Accept-Language": input.language,
+    Accept: "application/json",
+    "Content-Type": "application/json"
+  };
+}
+var INGRAM_API_BASE, INGRAM_SANDBOX_BASE, INGRAM_TOKEN_PATH, INGRAM_CATALOG_PATH, INGRAM_PRICE_AVAILABILITY_PATH, INGRAM_PA_QUERY, INGRAM_PA_BATCH, INGRAM_SEARCH_PAGE_SIZE, INGRAM_CATALOG_PAGE_SIZE, INGRAM_MAX_CATALOG_PAGES, INGRAM_DEFAULT_SENDER_ID, INGRAM_DEFAULT_LANGUAGE, INGRAM_TOKEN_SAFETY_S;
+var init_crawler6 = __esm({
+  "src/integrations/sourcing/ingram-micro/crawler.ts"() {
+    "use strict";
+    init_shared();
+    INGRAM_API_BASE = "https://api.ingrammicro.com";
+    INGRAM_SANDBOX_BASE = "https://api.ingrammicro.com/sandbox";
+    INGRAM_TOKEN_PATH = "/oauth/oauth20/token";
+    INGRAM_CATALOG_PATH = "/resellers/v6/catalog";
+    INGRAM_PRICE_AVAILABILITY_PATH = "/resellers/v6/catalog/priceandavailability";
+    INGRAM_PA_QUERY = "includeAvailability=true&includePricing=true&includeProductAttributes=false";
+    INGRAM_PA_BATCH = 50;
+    INGRAM_SEARCH_PAGE_SIZE = 25;
+    INGRAM_CATALOG_PAGE_SIZE = 50;
+    INGRAM_MAX_CATALOG_PAGES = 20;
+    INGRAM_DEFAULT_SENDER_ID = "MON STOCK";
+    INGRAM_DEFAULT_LANGUAGE = "fr-FR";
+    INGRAM_TOKEN_SAFETY_S = 60;
+  }
+});
+
+// src/integrations/sourcing/ingram-micro/parser.ts
+import { z as z19 } from "npm:zod@4.6.5";
+function parseIngramToken(text2) {
+  const parsed = ingramTokenSchema.safeParse(JSON.parse(text2));
+  if (!parsed.success) throw new Error("R\xE9ponse du serveur de jetons inattendue (access_token absent).");
+  const exp = parsed.data.expires_in === null || parsed.data.expires_in === void 0 ? Number.NaN : Number(parsed.data.expires_in);
+  return { accessToken: parsed.data.access_token, expiresInS: Number.isFinite(exp) && exp > 0 ? exp : null };
+}
+function parseIngramCatalog(text2) {
+  const parsed = ingramCatalogResponseSchema.safeParse(JSON.parse(text2));
+  if (!parsed.success) throw new Error(`R\xE9ponse catalogue inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
+  const rf = Number(parsed.data.recordsFound ?? Number.NaN);
+  return { items: parsed.data.catalog ?? [], recordsFound: Number.isFinite(rf) ? rf : null };
+}
+function parseIngramPriceAvailability(text2) {
+  const json2 = JSON.parse(text2);
+  const parsed = z19.array(ingramPriceAvailabilityItemSchema).safeParse(json2);
+  if (!parsed.success) throw new Error(`R\xE9ponse prix & disponibilit\xE9 inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
+  return parsed.data;
+}
+var numOrStr4, ingramTokenSchema, ingramCatalogItemSchema, ingramCatalogResponseSchema, ingramAvailabilityByWarehouseSchema, ingramPriceAvailabilityItemSchema;
+var init_parser6 = __esm({
+  "src/integrations/sourcing/ingram-micro/parser.ts"() {
+    "use strict";
+    numOrStr4 = z19.union([z19.number(), z19.string()]);
+    ingramTokenSchema = z19.looseObject({
+      access_token: z19.string().min(1),
+      token_type: z19.string().nullish(),
+      expires_in: numOrStr4.nullish()
+    });
+    ingramCatalogItemSchema = z19.looseObject({
+      ingramPartNumber: z19.string().nullish(),
+      vendorPartNumber: z19.string().nullish(),
+      upcCode: z19.string().nullish(),
+      vendorName: z19.string().nullish(),
+      description: z19.string().nullish(),
+      extraDescription: z19.string().nullish(),
+      category: z19.string().nullish(),
+      subCategory: z19.string().nullish(),
+      productType: z19.string().nullish(),
+      discontinued: z19.union([z19.boolean(), z19.string()]).nullish(),
+      authorizedToPurchase: z19.union([z19.boolean(), z19.string()]).nullish(),
+      links: z19.array(z19.looseObject({ topic: z19.string().nullish(), href: z19.string().nullish(), type: z19.string().nullish() })).nullish()
+    });
+    ingramCatalogResponseSchema = z19.looseObject({
+      recordsFound: numOrStr4.nullish(),
+      pageSize: numOrStr4.nullish(),
+      pageNumber: numOrStr4.nullish(),
+      catalog: z19.array(ingramCatalogItemSchema).nullish()
+    });
+    ingramAvailabilityByWarehouseSchema = z19.looseObject({
+      location: z19.string().nullish(),
+      warehouseId: numOrStr4.nullish(),
+      quantityAvailable: numOrStr4.nullish(),
+      quantityBackordered: numOrStr4.nullish()
+    });
+    ingramPriceAvailabilityItemSchema = z19.looseObject({
+      productStatusCode: z19.string().nullish(),
+      productStatusMessage: z19.string().nullish(),
+      ingramPartNumber: z19.string().nullish(),
+      vendorPartNumber: z19.string().nullish(),
+      upc: z19.string().nullish(),
+      vendorName: z19.string().nullish(),
+      description: z19.string().nullish(),
+      uom: z19.string().nullish(),
+      productAuthorized: z19.union([z19.boolean(), z19.string()]).nullish(),
+      availability: z19.looseObject({
+        available: z19.union([z19.boolean(), z19.string()]).nullish(),
+        totalAvailability: numOrStr4.nullish(),
+        availabilityByWarehouse: z19.array(ingramAvailabilityByWarehouseSchema).nullish()
+      }).nullish(),
+      pricing: z19.looseObject({
+        currencyCode: z19.string().nullish(),
+        retailPrice: numOrStr4.nullish(),
+        customerPrice: numOrStr4.nullish()
+      }).nullish()
+    });
+  }
+});
+
+// src/integrations/sourcing/ingram-micro/mapper.ts
+function truthy(v2) {
+  if (v2 === null || v2 === void 0) return null;
+  if (typeof v2 === "boolean") return v2;
+  return /^(true|yes|y|1)$/i.test(v2) ? true : /^(false|no|n|0)$/i.test(v2) ? false : null;
+}
+function mapIngramOffer(pa, catalog, config, requestUrl) {
+  const partNumber = str(pa.ingramPartNumber) ?? str(catalog?.ingramPartNumber);
+  if (!partNumber) return null;
+  if (pa.productStatusCode && /^e$/i.test(pa.productStatusCode)) return null;
+  const price = toNumber(pa.pricing?.customerPrice);
+  const currency = str(pa.pricing?.currencyCode)?.toUpperCase() ?? config.defaultCurrency ?? null;
+  if (price === null) return null;
+  const title = str(pa.description) ?? str(catalog?.description);
+  if (!title) return null;
+  const total = toNumber(pa.availability?.totalAvailability);
+  const available = truthy(pa.availability?.available);
+  const availableQuantity = total !== null && total >= 0 ? Math.round(total) : null;
+  const stockStatus = availableQuantity !== null ? availableQuantity > 0 ? "in_stock" : "out_of_stock" : available === true ? "in_stock" : available === false ? "out_of_stock" : "unknown";
+  const vendorPart = str(pa.vendorPartNumber) ?? str(catalog?.vendorPartNumber);
+  const upc = digits(pa.upc ?? catalog?.upcCode);
+  const link = catalog?.links?.find((l) => l.href && /^https?:\/\//i.test(l.href))?.href ?? null;
+  return {
+    externalOfferId: partNumber,
+    externalProductId: partNumber,
+    title: catalog?.extraDescription ? `${title} ${catalog.extraDescription}`.trim() : title,
+    price,
+    currency,
+    taxType: config.defaultTaxType,
+    availableQuantity,
+    stockStatus,
+    url: link,
+    ean: upc,
+    mpn: vendorPart,
+    brand: str(pa.vendorName) ?? str(catalog?.vendorName),
+    supplierSku: partNumber,
+    country: config.defaultCountry ?? null,
+    raw: {
+      request_url: requestUrl,
+      ingramPartNumber: partNumber,
+      vendorPartNumber: vendorPart,
+      upc: pa.upc ?? catalog?.upcCode ?? null,
+      pricing: pa.pricing ? { currencyCode: pa.pricing.currencyCode ?? null, customerPrice: pa.pricing.customerPrice ?? null, retailPrice: pa.pricing.retailPrice ?? null } : null,
+      availability: pa.availability ? { available: pa.availability.available ?? null, totalAvailability: pa.availability.totalAvailability ?? null, warehouses: (pa.availability.availabilityByWarehouse ?? []).map((w2) => ({ location: w2.location ?? null, quantityAvailable: w2.quantityAvailable ?? null })).slice(0, 20) } : null,
+      productStatusCode: pa.productStatusCode ?? null,
+      category: catalog?.category ?? null,
+      discontinued: catalog?.discontinued ?? null,
+      price_basis: "pricing.customerPrice (prix revendeur du compte, API Reseller v6)"
+    }
+  };
+}
+var init_mapper6 = __esm({
+  "src/integrations/sourcing/ingram-micro/mapper.ts"() {
+    "use strict";
+    init_shared();
+    init_feed_parsers();
+  }
+});
+
+// src/integrations/sourcing/ingram-micro/index.ts
+import { createHash as createHash5, randomUUID } from "node:crypto";
+function session2(config, ctx) {
+  const c = ctx.credentials ?? {};
+  const clientId = c.client_id?.trim();
+  const clientSecret = c.client_secret?.trim();
+  const customerNumber = c.customer_number?.trim();
+  const countryCode = (c.country_code?.trim() || config.defaultCountry || "").toUpperCase();
+  if (!clientId || !clientSecret || !customerNumber || !countryCode) return null;
+  const sandbox = config.settings.sandbox === true || config.settings.sandbox === "true";
+  const base = ingramBase(sandbox, settingString(config.settings, "api_base"));
+  return {
+    base,
+    clientId,
+    clientSecret,
+    customerNumber,
+    countryCode,
+    senderId: settingString(config.settings, "sender_id") ?? INGRAM_DEFAULT_SENDER_ID,
+    language: settingString(config.settings, "language") ?? INGRAM_DEFAULT_LANGUAGE,
+    cacheKey: `${createHash5("sha256").update(`${clientId}:${clientSecret}`).digest("hex").slice(0, 16)}|${base}`
+  };
+}
+function nowOf2(ctx) {
+  return ctx.now ? ctx.now().getTime() : Date.now();
+}
+async function accessToken(s, http, ctx) {
+  const cached2 = tokenCache.get(s.cacheKey, nowOf2(ctx));
+  if (cached2) return cached2;
+  const res = await http.request(tokenUrl(s.base), { method: "POST", body: tokenRequestBody(s.clientId, s.clientSecret), headers: { "Content-Type": "application/x-www-form-urlencoded" }, accept: "application/json" });
+  const token = parseIngramToken(res.text);
+  const ttlS = Math.max(60, (token.expiresInS ?? 3600) - INGRAM_TOKEN_SAFETY_S);
+  tokenCache.set(s.cacheKey, token.accessToken, nowOf2(ctx), ttlS * 1e3);
+  return token.accessToken;
+}
+function headersFor(s, token) {
+  return ingramHeaders({ accessToken: token, customerNumber: s.customerNumber, countryCode: s.countryCode, senderId: s.senderId, correlationId: randomUUID().replace(/-/g, "").slice(0, 32), language: s.language });
+}
+async function priceAndAvailability(s, token, http, items, config) {
+  const offers = [];
+  const byPart = new Map(items.filter((i) => i.ingramPartNumber).map((i) => [i.ingramPartNumber.trim().toUpperCase(), i]));
+  const parts = Array.from(byPart.keys());
+  for (let i = 0; i < parts.length; i += INGRAM_PA_BATCH) {
+    const batch = parts.slice(i, i + INGRAM_PA_BATCH);
+    const url = priceAvailabilityUrl(s.base);
+    const res = await http.request(url, { method: "POST", body: JSON.stringify({ products: batch.map((p) => ({ ingramPartNumber: p })) }), headers: headersFor(s, token), accept: "application/json" });
+    const rows = parseIngramPriceAvailability(res.text);
+    let count = 0;
+    for (const row of rows) {
+      const key2 = (row.ingramPartNumber ?? "").trim().toUpperCase();
+      const mapped = mapIngramOffer(row, byPart.get(key2) ?? null, config, url);
+      if (mapped) {
+        offers.push(mapped);
+        count++;
+      }
+    }
+    http.countOffers(count);
+    if (http.exhausted()) break;
+  }
+  return offers;
+}
+var tokenCache, ingramMicroAdapter;
+var init_ingram_micro = __esm({
+  "src/integrations/sourcing/ingram-micro/index.ts"() {
+    "use strict";
+    init_shared();
+    init_crawler6();
+    init_parser6();
+    init_mapper6();
+    tokenCache = new TtlCache(60 * 6e4);
+    ingramMicroAdapter = {
+      key: "ingram-micro",
+      label: "Ingram Micro (Reseller API v6, OAuth2)",
+      description: "Catalogue, prix revendeur et disponibilit\xE9 Ingram Micro via l'API Reseller v6 avec les identifiants OAuth2 de votre compte (num\xE9ro client et pays requis). Recherche par mot-cl\xE9 puis prix & disponibilit\xE9 par lot de 50 r\xE9f\xE9rences ; quantit\xE9 totale disponible, r\xE9f\xE9rence fabricant, UPC, marque. HT/TTC non pr\xE9cis\xE9 par l'API : r\xE9glage de la source. Impl\xE9ment\xE9 d'apr\xE8s la documentation publique, non exerc\xE9 en conditions r\xE9elles depuis cet environnement.",
+      method: "official_api",
+      access: "account",
+      capabilities: { search: true, catalog: true, stockQuantity: true },
+      credentialFields: [
+        { name: "client_id", label: "Client ID (application Ingram Micro)", secret: false },
+        { name: "client_secret", label: "Client Secret", secret: true },
+        { name: "customer_number", label: "Num\xE9ro client Ingram (IM-CustomerNumber)", secret: false, placeholder: "20-222222" },
+        { name: "country_code", label: "Code pays du compte (IM-CountryCode)", secret: false, placeholder: "FR" }
+      ],
+      configFields: [
+        { name: "sandbox", label: "Environnement bac \xE0 sable (true/false)", required: false, placeholder: "false" },
+        { name: "sender_id", label: "Identifiant d'exp\xE9diteur (IM-SenderID)", required: false, placeholder: INGRAM_DEFAULT_SENDER_ID },
+        { name: "language", label: "Langue des libell\xE9s (Accept-Language)", required: false, placeholder: INGRAM_DEFAULT_LANGUAGE },
+        { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(INGRAM_MAX_CATALOG_PAGES) }
+      ],
+      verification: "fixtures",
+      async search(config, _query, rawQuery, ctx) {
+        const s = session2(config, ctx);
+        if (!s) return failedSearch("official_api", "Identifiants Ingram Micro incomplets (client_id, client_secret, num\xE9ro client, pays).");
+        const http = createAdapterHttp(ctx);
+        try {
+          const token = await accessToken(s, http, ctx);
+          const pageSize = settingInt(config.settings, "search_page_size", INGRAM_SEARCH_PAGE_SIZE, 1, INGRAM_PA_BATCH);
+          const url = catalogUrl(s.base, { pageNumber: 1, pageSize, keyword: rawQuery });
+          const res = await http.request(url, { headers: headersFor(s, token), accept: "application/json" });
+          const { items, recordsFound } = parseIngramCatalog(res.text);
+          http.countOffers(items.length);
+          const offers = items.length > 0 ? await priceAndAvailability(s, token, http, items, config) : [];
+          return { offers, method: "official_api", requests: http.requests, error: null, truncated: recordsFound !== null && recordsFound > items.length };
+        } catch (e) {
+          return failedSearch("official_api", errorMessage(e), http.requests);
+        }
+      },
+      async fetchCatalog(config, cursor, ctx) {
+        const s = session2(config, ctx);
+        if (!s) return { offers: [], method: "official_api", requests: [], nextCursor: null };
+        const page2 = Math.max(1, cursor ? Number(cursor) || 1 : 1);
+        const maxPages = settingInt(config.settings, "max_pages", INGRAM_MAX_CATALOG_PAGES, 1, 500);
+        const http = createAdapterHttp(ctx);
+        try {
+          const token = await accessToken(s, http, ctx);
+          const keyword = settingString(config.settings, "catalog_keyword");
+          const url = catalogUrl(s.base, { pageNumber: page2, pageSize: INGRAM_CATALOG_PAGE_SIZE, keyword });
+          const res = await http.request(url, { headers: headersFor(s, token), accept: "application/json" });
+          const { items, recordsFound } = parseIngramCatalog(res.text);
+          http.countOffers(items.length);
+          const offers = items.length > 0 ? await priceAndAvailability(s, token, http, items, config) : [];
+          const hasMore = items.length >= INGRAM_CATALOG_PAGE_SIZE && page2 < maxPages && (recordsFound === null || page2 * INGRAM_CATALOG_PAGE_SIZE < recordsFound);
+          return { offers, method: "official_api", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
+        } catch (e) {
+          return { offers: [], method: "official_api", requests: http.requests.length > 0 ? http.requests : [{ url: catalogUrl(s.base, { pageNumber: page2, pageSize: INGRAM_CATALOG_PAGE_SIZE }), status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
+        }
+      },
+      async testConnection(config, ctx) {
+        const s = session2(config, ctx);
+        if (!s) return { ok: false, message: "Identifiants Ingram Micro incomplets (client_id, client_secret, num\xE9ro client, pays)." };
+        try {
+          const http = createAdapterHttp(ctx);
+          const token = await accessToken(s, http, ctx);
+          const res = await http.request(catalogUrl(s.base, { pageNumber: 1, pageSize: 1 }), { headers: headersFor(s, token), accept: "application/json", maxBytes: 2 * 1024 * 1024 });
+          const { recordsFound } = parseIngramCatalog(res.text);
+          return { ok: true, message: `Jeton OAuth2 obtenu et catalogue accessible${recordsFound !== null ? ` (${recordsFound} r\xE9f\xE9rence(s) annonc\xE9e(s))` : ""}.` };
+        } catch (e) {
+          const msg = errorMessage(e);
+          return { ok: false, message: /HTTP 401|HTTP 403/.test(msg) ? "Identifiants refus\xE9s (401/403) : v\xE9rifiez client_id / client_secret, le num\xE9ro client et le pays." : `Ingram Micro injoignable : ${msg}` };
+        }
+      }
+    };
+  }
+});
+
+// src/domain/sourcing/query-parser.ts
+function parseQuery2(input) {
+  const raw = (input ?? "").trim();
+  const normalized = normalizeProduct(raw);
+  const structuredModel = normalized.model && !normalized.inferred.includes("model") ? normalized.model : null;
+  const criteria = {
+    brand: normalized.brand,
+    model: structuredModel,
+    storage: normalized.storage,
+    color: normalized.color,
+    grade: normalized.grade,
+    condition: normalized.inferred.includes("condition") ? "unknown" : normalized.condition
+  };
+  const tokens = normalizeText(raw).split(" ").filter((t) => t.length >= 2 && !NOISE_TOKENS.has(t));
+  let kind = "text";
+  if (!raw) kind = "empty";
+  else if (normalized.ean) kind = "ean";
+  else if (normalized.mpn && !structuredModel) kind = "mpn";
+  else if (structuredModel || normalized.brand && (normalized.storage || normalized.color || normalized.grade)) kind = "structured";
+  return {
+    raw,
+    kind,
+    ean: normalized.ean,
+    mpn: normalized.mpn,
+    criteria,
+    tokens,
+    freeText: normalized.remainingText,
+    normalized
+  };
+}
+var init_query_parser = __esm({
+  "src/domain/sourcing/query-parser.ts"() {
+    "use strict";
+    init_normalizer();
+    init_dictionaries();
+  }
+});
+
+// src/integrations/sourcing/ebay-browse/index.ts
+import { z as z20 } from "npm:zod@4.6.5";
+function apiBase(env) {
+  return env.EBAY_ENV === "sandbox" ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
+}
+function base64(s) {
+  return typeof btoa === "function" ? btoa(s) : Buffer.from(s, "utf8").toString("base64");
+}
+async function getAppToken(ctx) {
+  const env = ebayEnv();
+  if (!env) throw new Error("Cl\xE9s de l'application eBay absentes du serveur (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_RU_NAME).");
+  const key2 = `${env.EBAY_ENV}:${env.EBAY_CLIENT_ID}`;
+  const now = (ctx.now ?? (() => /* @__PURE__ */ new Date()))().getTime();
+  if (appToken && appToken.key === key2 && appToken.expiresAt - 5 * 6e4 > now) return appToken.token;
+  const fetchImpl = ctx.fetchImpl ?? fetch;
+  const res = await fetchImpl(`${apiBase(env)}/identity/v1/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${base64(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`)}` },
+    body: new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" }).toString()
+  });
+  const json2 = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(res.status === 401 ? "eBay refuse les cl\xE9s de l'application (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET)." : `Jeton d'application eBay refus\xE9 (HTTP ${res.status}).`);
+  const t = tokenSchema.parse(json2);
+  appToken = { token: t.access_token, expiresAt: now + t.expires_in * 1e3, key: key2 };
+  return t.access_token;
+}
+function money2(a) {
+  const v2 = a?.value !== void 0 ? Number(a.value) : NaN;
+  return { value: Number.isFinite(v2) ? v2 : null, currency: a?.currency && /^[A-Z]{3}$/.test(a.currency) ? a.currency : null };
+}
+function ebayCondition(item) {
+  const id = item.conditionId ?? "";
+  const fromTitle = inferConditionFromText(item.title);
+  if (id === "1000") return { condition: "new", grade: null };
+  if (["2000", "2010", "2020", "2030", "2500"].includes(id)) return { condition: "refurbished", grade: fromTitle.grade };
+  if (["3000", "4000", "5000", "6000", "7000"].includes(id)) return { condition: "used", grade: fromTitle.grade };
+  const inferred = inferConditionFromText(`${item.condition ?? ""} ${item.title}`);
+  return { condition: inferred.condition, grade: inferred.grade };
+}
+function mapEbayItem(item, requestUrl) {
+  const price = money2(item.price);
+  if (price.value === null || price.value <= 0) return null;
+  const shipping = item.shippingOptions?.[0];
+  const ship = money2(shipping?.shippingCost);
+  const cond = ebayCondition(item);
+  const lot = /\blots?\b|\bx\s?\d{2,}\b|\d{2,}\s?(pcs|pi[eè]ces|unit[ée]s)\b/i.test(item.title);
+  return {
+    externalOfferId: item.itemId,
+    externalProductId: item.epid ?? null,
+    title: item.title,
+    price: price.value,
+    currency: price.currency,
+    // eBay affiche des prix TTC pour les acheteurs particuliers en France (TVA incluse « where applicable »).
+    taxType: "unknown",
+    shippingCost: ship.value,
+    shippingCurrency: ship.currency,
+    country: item.itemLocation?.country && /^[A-Z]{2}$/.test(item.itemLocation.country) ? item.itemLocation.country : null,
+    url: item.itemWebUrl ?? null,
+    condition: cond.condition,
+    grade: cond.grade,
+    stockStatus: "unknown",
+    availableQuantity: null,
+    raw: {
+      request_url: requestUrl,
+      seller: item.seller ?? null,
+      condition_label: item.condition ?? null,
+      condition_id: item.conditionId ?? null,
+      buying_options: item.buyingOptions ?? null,
+      shipping_cost_type: shipping?.shippingCostType ?? null,
+      is_lot: lot,
+      price_basis: "prix affich\xE9 sur eBay (marketplace et livraison France) \u2014 offre publi\xE9e, quantit\xE9 non fournie par la recherche"
+    }
+  };
+}
+function ebaySearchUrl(env, rawQuery, settings) {
+  const url = new URL(`${apiBase(env)}/buy/browse/v1/item_summary/search`);
+  url.searchParams.set("q", rawQuery.trim().slice(0, 100));
+  url.searchParams.set("limit", String(settingInt(settings, "limit", EBAY_BROWSE_DEFAULT_LIMIT, 1, 100)));
+  const delivery = settingString(settings, "delivery_country") ?? "FR";
+  const filters = [`deliveryCountry:${delivery}`, "buyingOptions:{FIXED_PRICE|BEST_OFFER}"];
+  const categories = settingString(settings, "category_ids");
+  if (categories) url.searchParams.set("category_ids", categories);
+  url.searchParams.set("filter", filters.join(","));
+  return url.toString();
+}
+var EBAY_BROWSE_DEFAULT_MARKETPLACE, EBAY_BROWSE_DEFAULT_LIMIT, tokenSchema, amountSchema2, itemSummarySchema, searchResponseSchema, appToken, ebayBrowseAdapter;
+var init_ebay_browse = __esm({
+  "src/integrations/sourcing/ebay-browse/index.ts"() {
+    "use strict";
+    init_shared();
+    init_env();
+    init_query_parser();
+    EBAY_BROWSE_DEFAULT_MARKETPLACE = "EBAY_FR";
+    EBAY_BROWSE_DEFAULT_LIMIT = 30;
+    tokenSchema = z20.object({ access_token: z20.string().min(1), expires_in: z20.number().int().positive() });
+    amountSchema2 = z20.object({ value: z20.string(), currency: z20.string() }).partial();
+    itemSummarySchema = z20.object({
+      itemId: z20.string(),
+      title: z20.string(),
+      price: amountSchema2.optional(),
+      condition: z20.string().optional(),
+      conditionId: z20.string().optional(),
+      itemWebUrl: z20.string().optional(),
+      itemLocation: z20.object({ country: z20.string().optional(), postalCode: z20.string().optional() }).partial().optional(),
+      seller: z20.object({ username: z20.string().optional(), feedbackPercentage: z20.string().optional(), feedbackScore: z20.number().optional() }).partial().optional(),
+      shippingOptions: z20.array(z20.object({ shippingCost: amountSchema2.optional(), shippingCostType: z20.string().optional() }).partial()).optional(),
+      buyingOptions: z20.array(z20.string()).optional(),
+      epid: z20.string().optional(),
+      itemGroupType: z20.string().optional()
+    });
+    searchResponseSchema = z20.object({ total: z20.number().optional(), itemSummaries: z20.array(z20.unknown()).optional() });
+    appToken = null;
+    ebayBrowseAdapter = {
+      key: "ebay-browse",
+      label: "eBay \u2014 annonces publi\xE9es (API Browse officielle)",
+      description: "Recherche les annonces eBay (marketplace FR, livraison en France) via l'API officielle Buy Browse avec les cl\xE9s de l'application du serveur : titre, prix, \xE9tat/grade (programme reconditionn\xE9 eBay), frais de port affich\xE9s, vendeur, lien. La quantit\xE9 disponible n'est pas fournie par la recherche (inconnue).",
+      method: "official_api",
+      access: "public",
+      capabilities: { search: true, catalog: false, stockQuantity: false },
+      credentialFields: [],
+      configFields: [
+        { name: "marketplace", label: "Marketplace eBay", required: false, placeholder: EBAY_BROWSE_DEFAULT_MARKETPLACE },
+        { name: "category_ids", label: "Cat\xE9gories eBay (identifiants, facultatif)", required: false }
+      ],
+      verification: "fixtures",
+      async search(config, _query, rawQuery, ctx) {
+        const env = ebayEnv();
+        if (!env) return failedSearch("official_api", "Cl\xE9s de l'application eBay non configur\xE9es sur le serveur : recherche eBay indisponible.");
+        if (!rawQuery.trim()) return failedSearch("official_api", "Requ\xEAte vide.");
+        const http = createAdapterHttp(ctx);
+        const url = ebaySearchUrl(env, rawQuery, config.settings);
+        try {
+          const token = await getAppToken(ctx);
+          const marketplace = settingString(config.settings, "marketplace") ?? EBAY_BROWSE_DEFAULT_MARKETPLACE;
+          const res = await http.request(url, { accept: "application/json", headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": marketplace, "Accept-Language": "fr-FR" } });
+          const body = searchResponseSchema.parse(JSON.parse(res.text));
+          const offers = [];
+          for (const raw of body.itemSummaries ?? []) {
+            const parsed = itemSummarySchema.safeParse(raw);
+            if (!parsed.success) continue;
+            const offer = mapEbayItem(parsed.data, url);
+            if (offer) offers.push(offer);
+          }
+          http.countOffers(offers.length);
+          return { offers, method: "official_api", requests: http.requests, error: null, truncated: (body.total ?? 0) > offers.length };
+        } catch (e) {
+          return failedSearch("official_api", `eBay : ${errorMessage(e)}`, http.requests);
+        }
+      },
+      async testConnection(config, ctx) {
+        const r = await ebayBrowseAdapter.search(config, parseQuery2("iphone"), "iphone", ctx);
+        return r.error ? { ok: false, message: r.error } : { ok: true, message: `API eBay joignable : ${r.offers.length} annonce(s) pour \xAB iphone \xBB.` };
+      }
+    };
+  }
+});
+
+// src/services/sourcing/crawler/robots.ts
+function parseRobotsTxt(text2) {
+  const groups = [];
+  const sitemaps = [];
+  let current = null;
+  let lastWasAgent = false;
+  for (const rawLine of text2.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const idx = line.indexOf(":");
+    if (idx < 0) continue;
+    const key2 = line.slice(0, idx).trim().toLowerCase();
+    const value = line.slice(idx + 1).trim();
+    if (key2 === "user-agent") {
+      if (!current || !lastWasAgent) {
+        current = { agents: [], allow: [], disallow: [], crawlDelay: null };
+        groups.push(current);
+      }
+      current.agents.push(value.toLowerCase());
+      lastWasAgent = true;
+      continue;
+    }
+    lastWasAgent = false;
+    if (key2 === "sitemap") {
+      sitemaps.push(value);
+      continue;
+    }
+    if (!current) continue;
+    if (key2 === "allow") current.allow.push(value);
+    else if (key2 === "disallow") current.disallow.push(value);
+    else if (key2 === "crawl-delay") {
+      const n = Number(value.replace(",", "."));
+      if (Number.isFinite(n) && n >= 0) current.crawlDelay = n;
+    }
+  }
+  return { groups, sitemaps };
+}
+function patternToRegex(pattern) {
+  const anchored = pattern.endsWith("$");
+  const body = (anchored ? pattern.slice(0, -1) : pattern).split("*").map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  return new RegExp(`^${body}${anchored ? "$" : ""}`);
+}
+function userAgentToken(userAgent) {
+  return (userAgent.split(/[\s/]/)[0] ?? userAgent).toLowerCase();
+}
+function selectGroup(rules, userAgent) {
+  const token = userAgentToken(userAgent);
+  let best = null;
+  let bestLen = -1;
+  for (const g of rules.groups) {
+    for (const a of g.agents) {
+      if (a !== "*" && token.startsWith(a) && a.length > bestLen) {
+        best = g;
+        bestLen = a.length;
+      }
+    }
+  }
+  if (best) return best;
+  return rules.groups.find((g) => g.agents.includes("*")) ?? null;
+}
+function evaluateRobots(rules, userAgent, path) {
+  const group = selectGroup(rules, userAgent);
+  if (!group) return { allowed: true, crawlDelay: null, matchedAgent: null, rule: null };
+  const p = path.startsWith("/") ? path : `/${path}`;
+  let bestLen = -1;
+  let allowed = true;
+  let rule = null;
+  const consider = (patterns, isAllow) => {
+    for (const pat of patterns) {
+      if (pat === "") continue;
+      if (!patternToRegex(pat).test(p)) continue;
+      const len = pat.length;
+      if (len > bestLen || len === bestLen && isAllow) {
+        bestLen = len;
+        allowed = isAllow;
+        rule = `${isAllow ? "Allow" : "Disallow"}: ${pat}`;
+      }
+    }
+  };
+  consider(group.disallow, false);
+  consider(group.allow, true);
+  return { allowed, crawlDelay: group.crawlDelay, matchedAgent: group.agents[0] ?? null, rule };
+}
+async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e4) {
+  const empty = { groups: [], sitemaps: [] };
+  let origin;
+  try {
+    origin = new URL(baseUrl).origin;
+  } catch {
+    return { status: "error", rules: empty, httpStatus: null, error: "URL de base invalide." };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(`${origin}/robots.txt`, { headers: { "User-Agent": userAgent, Accept: "text/plain" }, redirect: "follow", signal: controller.signal });
+    if (res.status === 404 || res.status === 410) return { status: "missing", rules: empty, httpStatus: res.status, error: null };
+    if (!res.ok) return { status: "error", rules: empty, httpStatus: res.status, error: `robots.txt inaccessible (HTTP ${res.status}).` };
+    const text2 = await res.text();
+    return { status: "ok", rules: parseRobotsTxt(text2.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
+  } catch (e) {
+    return { status: "error", rules: empty, httpStatus: null, error: e instanceof Error ? e.message : "Erreur r\xE9seau." };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch) {
+  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl);
+  if (fetched.status === "error") {
+    return { allowed: false, robotsStatus: "error", crawlDelay: null, disallowedUrls: urls, details: fetched.error ?? "robots.txt inaccessible." };
+  }
+  if (fetched.status === "missing") {
+    return { allowed: true, robotsStatus: "missing", crawlDelay: null, disallowedUrls: [], details: "Aucun robots.txt : aucune restriction d\xE9clar\xE9e (les CGU du site restent \xE0 v\xE9rifier)." };
+  }
+  const disallowed = [];
+  let crawlDelay = null;
+  for (const u of urls) {
+    let path = "/";
+    try {
+      const parsed = new URL(u);
+      path = parsed.pathname + parsed.search;
+    } catch {
+      disallowed.push(u);
+      continue;
+    }
+    const d = evaluateRobots(fetched.rules, userAgent, path);
+    if (d.crawlDelay !== null) crawlDelay = d.crawlDelay;
+    if (!d.allowed) disallowed.push(u);
+  }
+  const group = selectGroup(fetched.rules, userAgent);
+  const agent = group?.agents[0] ?? "*";
+  return {
+    allowed: disallowed.length === 0,
+    robotsStatus: "ok",
+    crawlDelay,
+    disallowedUrls: disallowed,
+    details: disallowed.length === 0 ? `robots.txt lu (groupe \xAB ${agent} \xBB) : toutes les URLs sont autoris\xE9es${crawlDelay !== null ? `, d\xE9lai demand\xE9 ${crawlDelay} s` : ""}.` : `robots.txt (groupe \xAB ${agent} \xBB) interdit ${disallowed.length} URL(s) : le crawl est refus\xE9.`
+  };
+}
+var init_robots = __esm({
+  "src/services/sourcing/crawler/robots.ts"() {
+    "use strict";
+  }
+});
+
+// src/integrations/sourcing/sitemap-jsonld/index.ts
+function parseSitemapXml(xml) {
+  const kind = /<sitemapindex[\s>]/i.test(xml) ? "index" : /<urlset[\s>]/i.test(xml) ? "urlset" : "unknown";
+  const locs = [];
+  const re = /<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi;
+  let m;
+  while ((m = re.exec(xml)) && locs.length < SITEMAP_MAX_URLS) locs.push(m[1].replace(/&amp;/g, "&"));
+  return { kind, locs };
+}
+function rankChildSitemaps(locs) {
+  const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer/i;
+  const score = (u) => /product|produit|(^|[^a-z])items?([^a-z]|$)/i.test(u) ? 0 : 1;
+  return locs.filter((u) => !skip.test(u) && !/\.gz($|\?)/i.test(u)).sort((a, b) => score(a) - score(b));
+}
+function queryTokens(rawQuery) {
+  return [...new Set(normalizeText(rawQuery).split(/[^a-z0-9]+/).filter((t) => t.length >= 2 && !STOP.has(t)))].slice(0, 8);
+}
+function matchProductUrls(urls, rawQuery, max) {
+  const tokens = queryTokens(rawQuery);
+  if (tokens.length === 0) return [];
+  const need = Math.min(2, tokens.length);
+  const scored = [];
+  for (const url of urls) {
+    let path;
+    try {
+      path = normalizeText(decodeURIComponent(new URL(url).pathname));
+    } catch {
+      continue;
+    }
+    const parts = new Set(path.split(/[^a-z0-9]+/));
+    let matched = 0;
+    let score = 0;
+    for (const t of tokens) {
+      if (!parts.has(t)) continue;
+      matched += 1;
+      score += /^\d+$/.test(t) ? 1.5 : 1;
+    }
+    if (matched >= need) scored.push({ url, score, len: path.length });
+  }
+  scored.sort((a, b) => b.score - a.score || a.len - b.len);
+  return scored.slice(0, max).map((s) => s.url);
+}
+async function loadIndex(base, ctx, http, settings) {
+  const now = (ctx.now ?? (() => /* @__PURE__ */ new Date()))().getTime();
+  const hit = cache2.get(base);
+  if (hit && now - hit.at < SITEMAP_CACHE_TTL_MS) return hit;
+  let robots = null;
+  try {
+    const r = await http.request(`${base}/robots.txt`, { accept: "text/plain" });
+    robots = parseRobotsTxt(r.text.slice(0, 512 * 1024));
+  } catch {
+    robots = null;
+  }
+  const configured = settingString(settings, "sitemap_url");
+  const roots = configured ? [configured] : robots?.sitemaps.length ? robots.sitemaps.slice(0, 3) : [`${base}/sitemap.xml`];
+  const urls = [];
+  const read = [];
+  const queue = [...roots];
+  while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
+    const sm = queue.shift();
+    if (new URL(sm).host !== new URL(base).host) continue;
+    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 6e6 });
+    read.push(sm);
+    const parsed = parseSitemapXml(res.text);
+    if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
+    else for (const u of parsed.locs) if (urls.length < SITEMAP_MAX_URLS) urls.push(u);
+  }
+  const index = { at: now, urls, robots, sitemaps: read };
+  if (urls.length > 0) cache2.set(base, index);
+  return index;
+}
+function allowedByRobots(robots, userAgent, url) {
+  if (!robots) return true;
+  const u = new URL(url);
+  return evaluateRobots(robots, userAgent, u.pathname + u.search).allowed;
+}
+var SITEMAP_MAX_CHILDREN, SITEMAP_MAX_URLS, SITEMAP_DEFAULT_PAGES, SITEMAP_CACHE_TTL_MS, cache2, STOP, sitemapJsonLdAdapter;
+var init_sitemap_jsonld = __esm({
+  "src/integrations/sourcing/sitemap-jsonld/index.ts"() {
+    "use strict";
+    init_query_parser();
+    init_normalizer();
+    init_shared();
+    init_robots();
+    init_parser();
+    init_mapper();
+    SITEMAP_MAX_CHILDREN = 6;
+    SITEMAP_MAX_URLS = 4e4;
+    SITEMAP_DEFAULT_PAGES = 3;
+    SITEMAP_CACHE_TTL_MS = 6 * 36e5;
+    cache2 = /* @__PURE__ */ new Map();
+    STOP = /* @__PURE__ */ new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
+    sitemapJsonLdAdapter = {
+      key: "sitemap-jsonld",
+      label: "Boutique publique (sitemap + donn\xE9es structur\xE9es)",
+      description: "Trouve les fiches produit correspondant \xE0 la recherche dans le plan du site (sitemap publi\xE9 pour les robots), puis lit leurs donn\xE9es structur\xE9es schema.org (prix, devise, disponibilit\xE9, \xE9tat, marque, SKU/GTIN). Chaque URL est v\xE9rifi\xE9e contre robots.txt ; 3 fiches par recherche, une requ\xEAte \xE0 la fois.",
+      method: "public_html",
+      access: "public",
+      capabilities: { search: true, catalog: false, stockQuantity: false },
+      credentialFields: [],
+      configFields: [
+        { name: "sitemap_url", label: "URL du sitemap (facultatif)", required: false, help: "Par d\xE9faut : sitemaps d\xE9clar\xE9s dans robots.txt, sinon /sitemap.xml." },
+        { name: "max_pages", label: "Fiches lues par recherche", required: false, placeholder: String(SITEMAP_DEFAULT_PAGES) }
+      ],
+      searchBudgetMs: 25e3,
+      verification: "fixtures",
+      urlsForQuery(config) {
+        if (!config.baseUrl) return [];
+        const base = trimSlash(config.baseUrl);
+        return [settingString(config.settings, "sitemap_url") ?? `${base}/sitemap.xml`];
+      },
+      async search(config, _query, rawQuery, ctx) {
+        if (!config.baseUrl) return failedSearch("public_html", "URL de base de la boutique manquante.");
+        const base = trimSlash(config.baseUrl);
+        const http = createAdapterHttp(ctx);
+        try {
+          const index = await loadIndex(base, ctx, http, config.settings);
+          if (index.urls.length === 0) return failedSearch("public_html", "Plan du site (sitemap) introuvable ou vide : la boutique n'est pas interrogeable de cette fa\xE7on.", http.requests);
+          const max = settingInt(config.settings, "max_pages", SITEMAP_DEFAULT_PAGES, 1, 6);
+          const candidates = matchProductUrls(index.urls, rawQuery, max * 2).filter((u) => new URL(u).host === new URL(base).host && allowedByRobots(index.robots, ctx.userAgent, u));
+          if (candidates.length === 0) return { offers: [], method: "public_html", requests: http.requests, error: null, truncated: false };
+          const offers = [];
+          let pages = 0;
+          for (const url of candidates) {
+            if (pages >= max || http.exhausted()) break;
+            try {
+              const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
+              pages += 1;
+              const found = parseJsonLdPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
+              http.countOffers(found.length);
+              offers.push(...found);
+            } catch {
+              pages += 1;
+            }
+          }
+          return { offers, method: "public_html", requests: http.requests, error: null, truncated: candidates.length > pages };
+        } catch (e) {
+          return failedSearch("public_html", errorMessage(e), http.requests);
+        }
+      },
+      async testConnection(config, ctx) {
+        const r = await sitemapJsonLdAdapter.search(config, parseQuery2("iphone"), "iphone", ctx);
+        return r.error ? { ok: false, message: r.error } : { ok: true, message: `${r.offers.length} offre(s) structur\xE9e(s) lue(s) pour \xAB iphone \xBB.` };
+      }
+    };
+  }
+});
+
+// src/integrations/sourcing/registry.ts
+function listSourceAdapters() {
+  return SOURCE_ADAPTERS;
+}
+function getSourceAdapter(key2) {
+  if (!key2) return null;
+  return SOURCE_ADAPTERS.find((a) => a.key === key2) ?? null;
+}
+function listAccountAdapters() {
+  return SOURCE_ADAPTERS.filter((a) => a.access === "account");
+}
+function listAdapterHtmlParsers() {
+  const out = [];
+  for (const a of SOURCE_ADAPTERS) {
+    if (a.htmlParser && !out.some((p) => p.key === a.htmlParser.key)) out.push(a.htmlParser);
+  }
+  return out;
+}
+var SOURCE_ADAPTERS;
+var init_registry2 = __esm({
+  "src/integrations/sourcing/registry.ts"() {
+    "use strict";
+    init_jsonld_public();
+    init_shopify_storefront();
+    init_woocommerce_store();
+    init_google_merchant_feed();
+    init_bigbuy();
+    init_ingram_micro();
+    init_ebay_browse();
+    init_sitemap_jsonld();
+    SOURCE_ADAPTERS = [jsonLdPublicAdapter, shopifyStorefrontAdapter, wooCommerceStoreAdapter, googleMerchantFeedAdapter, bigbuyAdapter, ingramMicroAdapter, ebayBrowseAdapter, sitemapJsonLdAdapter];
   }
 });
 
@@ -2361,6 +6068,328 @@ var init_sync_runs = __esm({
   }
 });
 
+// src/services/sync/alerts.ts
+async function upsertAlert(admin, input) {
+  const { data: existing } = await admin.from("alerts").select("id").eq("organization_id", input.organizationId).eq("dedupe_key", input.dedupeKey).neq("status", "resolved").maybeSingle();
+  if (existing) {
+    const { error: error2 } = await admin.from("alerts").update({ title: input.title, message: input.message, severity: input.severity, action_href: input.actionHref ?? null }).eq("id", existing.id);
+    if (error2) log13.warn("mise \xE0 jour d'alerte impossible", { dedupeKey: input.dedupeKey, error: error2.message });
+    return;
+  }
+  const { error } = await admin.from("alerts").insert({
+    organization_id: input.organizationId,
+    type: input.type,
+    severity: input.severity,
+    title: input.title,
+    message: input.message,
+    dedupe_key: input.dedupeKey,
+    entity_type: input.entityType ?? null,
+    entity_id: input.entityId ?? null,
+    action_href: input.actionHref ?? null,
+    status: "open"
+  });
+  if (error && error.code !== "23505") log13.warn("cr\xE9ation d'alerte impossible", { dedupeKey: input.dedupeKey, error: error.message });
+}
+async function resolveAlerts(admin, organizationId, dedupeKeys) {
+  if (dedupeKeys.length === 0) return;
+  const { error } = await admin.from("alerts").update({ status: "resolved", resolved_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", organizationId).in("dedupe_key", dedupeKeys).neq("status", "resolved");
+  if (error) log13.warn("r\xE9solution d'alertes impossible", { dedupeKeys, error: error.message });
+}
+var log13, connectionExpiredKey, syncFailedKey;
+var init_alerts = __esm({
+  "src/services/sync/alerts.ts"() {
+    "use strict";
+    init_empty();
+    init_logger();
+    log13 = createLogger("ALERTS");
+    connectionExpiredKey = (connectionId) => `connection_expired:${connectionId}`;
+    syncFailedKey = (connectionId) => `sync_failed:${connectionId}`;
+  }
+});
+
+// src/services/sync/context.ts
+function sanitizeDetails(details) {
+  if (!details) return {};
+  const cleaned = scrubDeep(details);
+  const json2 = JSON.stringify(cleaned);
+  if (json2.length <= 4e3) return cleaned;
+  return { truncated: true, preview: json2.slice(0, 3900) };
+}
+function sanitizeMessage(message, max = 2e3) {
+  return scrubSecrets(message).slice(0, max);
+}
+function chunk2(items, size) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+var init_context = __esm({
+  "src/services/sync/context.ts"() {
+    "use strict";
+    init_empty();
+    init_sanitize();
+    init_paginate();
+  }
+});
+
+// src/services/channels/connection-store.ts
+async function loadConnection(connectionId) {
+  const admin = createAdminSupabaseClient();
+  const { data, error } = await admin.from("channel_connections").select("*").eq("id", connectionId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  return data ?? null;
+}
+async function loadConnectionForOrg(connectionId, organizationId) {
+  const admin = createAdminSupabaseClient();
+  const { data, error } = await admin.from("channel_connections").select("*").eq("id", connectionId).eq("organization_id", organizationId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  return data ?? null;
+}
+async function listDueConnections(now = /* @__PURE__ */ new Date()) {
+  const admin = createAdminSupabaseClient();
+  const { data, error } = await admin.from("channel_connections").select("*").in("status", ["connected", "error"]).eq("auto_sync", true).order("last_sync_at", { ascending: true, nullsFirst: true }).limit(200);
+  if (error) throw fromPostgrestError(error);
+  return (data ?? []).filter((c) => {
+    if (!c.last_sync_at) return true;
+    const due = new Date(c.last_sync_at).getTime() + c.sync_interval_minutes * 6e4;
+    return due <= now.getTime();
+  });
+}
+async function findConnectionsByExternalAccount(provider, account) {
+  const admin = createAdminSupabaseClient();
+  const found = /* @__PURE__ */ new Map();
+  if (account.userId) {
+    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_account_id", account.userId);
+    if (error) throw fromPostgrestError(error);
+    for (const c of data ?? []) found.set(c.id, c);
+  }
+  if (account.username) {
+    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_username", account.username);
+    if (error) throw fromPostgrestError(error);
+    for (const c of data ?? []) found.set(c.id, c);
+  }
+  return Array.from(found.values());
+}
+async function saveConnectionTokens(connectionId, tokens) {
+  const admin = createAdminSupabaseClient();
+  const { error: secretsError } = await admin.from("channel_connection_secrets").upsert(
+    {
+      connection_id: connectionId,
+      access_token_enc: encryptSecret(tokens.accessToken),
+      ...tokens.refreshToken ? { refresh_token_enc: encryptSecret(tokens.refreshToken) } : {},
+      key_version: 1,
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    },
+    { onConflict: "connection_id" }
+  );
+  if (secretsError) throw fromPostgrestError(secretsError);
+  const { error } = await admin.from("channel_connections").update({
+    token_expires_at: tokens.accessTokenExpiresAt.toISOString(),
+    ...tokens.refreshTokenExpiresAt ? { refresh_token_expires_at: tokens.refreshTokenExpiresAt.toISOString() } : {}
+  }).eq("id", connectionId);
+  if (error) throw fromPostgrestError(error);
+}
+async function upsertOAuthConnection(input) {
+  const admin = createAdminSupabaseClient();
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  const label = PROVIDER_LABEL[input.provider];
+  const { data: existingList, error: listError } = await admin.from("channel_connections").select("*").eq("organization_id", input.organizationId).eq("provider", input.provider).order("created_at", { ascending: true });
+  if (listError) throw fromPostgrestError(listError);
+  const existing = (existingList ?? []).find((c) => c.external_account_id === input.account.externalAccountId) ?? (existingList ?? []).find((c) => !c.external_account_id && c.status === "pending") ?? null;
+  const patch = {
+    status: "connected",
+    environment: input.environment,
+    external_account_id: input.account.externalAccountId,
+    external_username: input.account.username,
+    scopes: input.scopes,
+    connected_at: nowIso,
+    disconnected_at: null,
+    last_error: null,
+    token_expires_at: input.tokens.accessTokenExpiresAt.toISOString(),
+    refresh_token_expires_at: input.tokens.refreshTokenExpiresAt?.toISOString() ?? null
+  };
+  let connection;
+  let isNew = false;
+  if (existing) {
+    const { data, error } = await admin.from("channel_connections").update(patch).eq("id", existing.id).select("*").single();
+    if (error) throw fromPostgrestError(error);
+    connection = data;
+    await admin.from("sales_channels").update({ name: `${label} \xB7 ${input.account.username}`, is_active: true }).eq("id", existing.sales_channel_id);
+  } else {
+    const { data: org } = await admin.from("organizations").select("default_currency").eq("id", input.organizationId).maybeSingle();
+    const { data: channel, error: channelError } = await admin.from("sales_channels").insert({ organization_id: input.organizationId, provider: input.provider, name: `${label} \xB7 ${input.account.username}`, currency: org?.default_currency ?? "EUR" }).select("*").single();
+    if (channelError) throw fromPostgrestError(channelError);
+    const { data, error } = await admin.from("channel_connections").insert({ organization_id: input.organizationId, sales_channel_id: channel.id, provider: input.provider, ...patch }).select("*").single();
+    if (error) throw fromPostgrestError(error);
+    connection = data;
+    isNew = true;
+  }
+  await saveConnectionTokens(connection.id, input.tokens);
+  await resolveAlerts(admin, input.organizationId, [connectionExpiredKey(connection.id), syncFailedKey(connection.id)]);
+  log14.info("connexion enregistr\xE9e", { provider: input.provider, connectionId: connection.id, orgId: input.organizationId, isNew, username: input.account.username });
+  return { connection, isNew };
+}
+async function markConnectionExpired(connectionId, reason) {
+  const admin = createAdminSupabaseClient();
+  const cleanReason = sanitizeMessage(reason, 500);
+  const { data } = await admin.from("channel_connections").update({ status: "expired", last_error: cleanReason }).eq("id", connectionId).neq("status", "disconnected").select("organization_id, provider, external_username").maybeSingle();
+  if (data) {
+    await upsertAlert(admin, {
+      organizationId: data.organization_id,
+      type: "connection_expired",
+      severity: "critical",
+      title: `Connexion ${PROVIDER_LABEL[data.provider]} expir\xE9e`,
+      message: `${cleanReason} Reconnectez votre compte ${PROVIDER_LABEL[data.provider]}${data.external_username ? ` (${data.external_username})` : ""} pour reprendre la synchronisation.`,
+      dedupeKey: connectionExpiredKey(connectionId),
+      entityType: "channel_connection",
+      entityId: connectionId,
+      actionHref: "/settings/integrations"
+    });
+    log14.warn("connexion marqu\xE9e expir\xE9e", { connectionId, reason: cleanReason });
+  }
+}
+function expired(connectionId, message, details = {}) {
+  return new ConnectorError("AUTH_EXPIRED", "ebay", message, { details: { connectionId, ...details }, retryable: false });
+}
+async function loadTokenState(connectionId) {
+  const admin = createAdminSupabaseClient();
+  const connection = await loadConnection(connectionId);
+  if (!connection) throw new AppError("NOT_FOUND", "Connexion introuvable.");
+  const { data: secrets, error } = await admin.from("channel_connection_secrets").select("access_token_enc, refresh_token_enc").eq("connection_id", connectionId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  return { connection, secrets: secrets ?? null };
+}
+function accessTokenIsFresh(state, now) {
+  const expiresAt = state.connection.token_expires_at ? new Date(state.connection.token_expires_at).getTime() : 0;
+  return Boolean(state.secrets?.access_token_enc) && expiresAt - now > ACCESS_TOKEN_REFRESH_MARGIN_MS;
+}
+async function getValidAccessToken(connectionId, options = {}) {
+  const state = await loadTokenState(connectionId);
+  const { connection, secrets } = state;
+  if (connection.status === "disconnected") {
+    throw expired(connectionId, "Cette connexion a \xE9t\xE9 d\xE9connect\xE9e : reconnectez votre compte pour reprendre la synchronisation.");
+  }
+  if (!secrets || !secrets.access_token_enc && !secrets.refresh_token_enc) {
+    await markConnectionExpired(connectionId, "Aucun token enregistr\xE9 pour cette connexion.");
+    throw expired(connectionId, "Impossible de synchroniser : aucun token d'autorisation enregistr\xE9. Reconnectez votre compte.");
+  }
+  const now = Date.now();
+  if (!options.forceRefresh && accessTokenIsFresh(state, now) && secrets.access_token_enc) {
+    return safeDecrypt(connectionId, secrets.access_token_enc);
+  }
+  if (!secrets.refresh_token_enc) {
+    await markConnectionExpired(connectionId, "Le token d'acc\xE8s a expir\xE9 et aucun refresh token n'est disponible.");
+    throw expired(connectionId, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9.");
+  }
+  if (connection.refresh_token_expires_at && new Date(connection.refresh_token_expires_at).getTime() <= now) {
+    await markConnectionExpired(connectionId, "L'autorisation eBay (refresh token, validit\xE9 ~18 mois) a expir\xE9.");
+    throw expired(connectionId, "Impossible de synchroniser eBay : l'autorisation accord\xE9e a expir\xE9 (refresh token de 18 mois). Reconnectez votre compte.");
+  }
+  const pending = inflightRefresh.get(connectionId);
+  if (pending) return pending;
+  const refreshEnc = secrets.refresh_token_enc;
+  const promise = refreshAndStore(connection, refreshEnc).finally(() => inflightRefresh.delete(connectionId));
+  inflightRefresh.set(connectionId, promise);
+  return promise;
+}
+async function refreshAndStore(connection, refreshEnc) {
+  const admin = createAdminSupabaseClient();
+  const connectionId = connection.id;
+  const connector = getConnector(connection.provider);
+  const refreshToken = await safeDecrypt(connectionId, refreshEnc);
+  let tokens;
+  try {
+    tokens = await connector.refreshToken(refreshToken);
+  } catch (e) {
+    if (isConnectorError(e) && e.code === "AUTH_EXPIRED") {
+      const latest = await loadTokenState(connectionId).catch(() => null);
+      if (latest?.secrets?.refresh_token_enc && latest.secrets.refresh_token_enc !== refreshEnc && latest.connection.status !== "disconnected") {
+        log14.info("refresh token remplac\xE9 pendant le rafra\xEEchissement (reconnexion) : la connexion n'est pas marqu\xE9e expir\xE9e", { connectionId });
+        if (latest.secrets.access_token_enc && accessTokenIsFresh(latest, Date.now())) return safeDecrypt(connectionId, latest.secrets.access_token_enc);
+        throw e;
+      }
+      await markConnectionExpired(connectionId, e.message);
+    }
+    throw e;
+  }
+  const { data: outcome, error } = await admin.rpc("store_refreshed_access_token", {
+    p_connection_id: connectionId,
+    p_access_token_enc: encryptSecret(tokens.accessToken),
+    p_expires_at: tokens.accessTokenExpiresAt.toISOString(),
+    p_refresh_token_enc_used: refreshEnc
+  });
+  if (error) {
+    log14.error("token rafra\xEEchi mais non enregistr\xE9", { connectionId, error: error.message });
+    return tokens.accessToken;
+  }
+  if (outcome === "disconnected") {
+    throw expired(connectionId, "La connexion a \xE9t\xE9 d\xE9connect\xE9e pendant la synchronisation : aucun token n'a \xE9t\xE9 conserv\xE9.");
+  }
+  if (outcome === "stale") {
+    const latest = await loadTokenState(connectionId);
+    if (latest.secrets?.access_token_enc && accessTokenIsFresh(latest, Date.now())) {
+      log14.info("token plus r\xE9cent d\xE9j\xE0 enregistr\xE9 par un autre processus", { connectionId });
+      return safeDecrypt(connectionId, latest.secrets.access_token_enc);
+    }
+    return tokens.accessToken;
+  }
+  log14.info("access token rafra\xEEchi", { connectionId, provider: connection.provider, expiresAt: tokens.accessTokenExpiresAt.toISOString() });
+  return tokens.accessToken;
+}
+async function safeDecrypt(connectionId, payload) {
+  try {
+    return decryptSecret(payload);
+  } catch {
+    const message = "Les tokens eBay enregistr\xE9s ne peuvent pas \xEAtre d\xE9chiffr\xE9s (la cl\xE9 TOKEN_ENCRYPTION_KEY du serveur a probablement chang\xE9). Reconnectez votre compte eBay.";
+    await markConnectionExpired(connectionId, message);
+    throw new ConnectorError("AUTH_EXPIRED", "ebay", message, { details: { connectionId, reason: "decrypt_failed" }, retryable: false });
+  }
+}
+function connectorAuthFor(connectionId) {
+  return { getAccessToken: (options) => getValidAccessToken(connectionId, options) };
+}
+async function disconnectConnection(connectionId, organizationId) {
+  const admin = createAdminSupabaseClient();
+  const connection = await loadConnectionForOrg(connectionId, organizationId);
+  if (!connection) throw new AppError("NOT_FOUND", "Connexion introuvable dans votre organisation.");
+  const connector = getConnector(connection.provider);
+  let revoked = false;
+  let note = "";
+  try {
+    const result = await connector.revoke(connectorAuthFor(connectionId));
+    revoked = result.revoked;
+    note = result.note;
+  } catch (e) {
+    note = `R\xE9vocation distante impossible (${e instanceof Error ? e.message : String(e)}). Les tokens ont \xE9t\xE9 supprim\xE9s de MON STOCK.`;
+  }
+  const { error: delError } = await admin.from("channel_connection_secrets").delete().eq("connection_id", connectionId);
+  if (delError) throw fromPostgrestError(delError);
+  const { error } = await admin.from("channel_connections").update({ status: "disconnected", disconnected_at: (/* @__PURE__ */ new Date()).toISOString(), token_expires_at: null, refresh_token_expires_at: null, last_error: null }).eq("id", connectionId).eq("organization_id", organizationId);
+  if (error) throw fromPostgrestError(error);
+  await resolveAlerts(admin, organizationId, [connectionExpiredKey(connectionId), syncFailedKey(connectionId)]);
+  log14.info("connexion d\xE9connect\xE9e", { connectionId, orgId: organizationId, revoked });
+  return { revoked, note };
+}
+var log14, PROVIDER_LABEL, ACCESS_TOKEN_REFRESH_MARGIN_MS, inflightRefresh;
+var init_connection_store = __esm({
+  "src/services/channels/connection-store.ts"() {
+    "use strict";
+    init_empty();
+    init_admin();
+    init_crypto();
+    init_errors();
+    init_logger();
+    init_errors2();
+    init_registry();
+    init_alerts();
+    init_context();
+    log14 = createLogger("CONNECTIONS");
+    PROVIDER_LABEL = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "Ventes manuelles" };
+    ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 6e4;
+    inflightRefresh = /* @__PURE__ */ new Map();
+  }
+});
+
 // src/services/sourcing/feed-ingestion.ts
 function parseFeedConfig(feed) {
   const mapping = fieldMappingSchema.safeParse(feed.field_mapping ?? {});
@@ -2470,7 +6499,7 @@ var init_feed_ingestion = __esm({
     init_admin();
     init_env();
     init_logger();
-    init_http();
+    init_http2();
     init_feed_parsers();
     init_offer_storage();
     init_sync_runs();
@@ -2481,6 +6510,321 @@ var init_feed_ingestion = __esm({
       xml: "application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.5",
       json: "application/json,text/json;q=0.9,*/*;q=0.5"
     };
+  }
+});
+
+// src/services/sourcing/source-library.ts
+function getLibrarySource(key2) {
+  return SOURCE_LIBRARY.find((s) => s.key === key2) ?? null;
+}
+function adapterConfig(s) {
+  return { baseUrl: s.baseUrl, settings: { adapter: s.adapter, library_key: s.key }, defaultCurrency: s.currency, defaultTaxType: s.taxType, defaultCountry: s.country.length === 2 && s.country !== "EU" ? s.country : null };
+}
+async function checkLibrarySource(s, runtime = {}) {
+  const t0 = Date.now();
+  const adapter = getSourceAdapter(s.adapter);
+  const base = { key: s.key, adapter: s.adapter, robotsAllowed: null, httpStatus: null, productCount: 0, sample: [] };
+  if (!adapter) return { ...base, status: "not_configured", message: `Adaptateur ${s.adapter} absent.`, durationMs: Date.now() - t0 };
+  if (s.adapter === "ebay-browse" && !ebayEnv()) return { ...base, status: "not_configured", message: "Cl\xE9s de l'application eBay non configur\xE9es sur le serveur.", durationMs: Date.now() - t0 };
+  const config = adapterConfig(s);
+  const parsed = parseQuery2(s.probeQuery);
+  const userAgent = serverEnv().SOURCING_USER_AGENT;
+  if (adapter.urlsForQuery) {
+    const urls = adapter.urlsForQuery(config, parsed, s.probeQuery);
+    const robots = await checkRobotsForUrls(s.baseUrl, urls, userAgent, runtime.fetchImpl ?? fetch).catch((e) => ({ allowed: false, details: e instanceof Error ? e.message : String(e), crawlDelay: null }));
+    base.robotsAllowed = robots.allowed;
+    if (!robots.allowed) return { ...base, status: "robots_disallowed", message: robots.details, durationMs: Date.now() - t0 };
+  }
+  const r = await adapter.search(config, parsed, s.probeQuery, { userAgent, timeoutMs: 2e4, minDelayMs: 1500, ...runtime });
+  const last = r.requests[r.requests.length - 1];
+  base.httpStatus = last?.status ?? null;
+  const priced = r.offers.filter((o) => o.price !== null && o.price > 0);
+  base.productCount = priced.length;
+  base.sample = priced.slice(0, 3).map((o) => ({ title: o.title.slice(0, 160), price: o.price, currency: o.currency ?? s.currency, url: o.url ?? null }));
+  if (r.error) {
+    const unreachable = !last || last.status === null;
+    return { ...base, status: unreachable ? "unreachable" : "http_error", message: r.error.slice(0, 500), durationMs: Date.now() - t0 };
+  }
+  if (priced.length === 0) return { ...base, status: "no_products", message: `Aucun produit avec prix pour \xAB ${s.probeQuery} \xBB.`, durationMs: Date.now() - t0 };
+  return { ...base, status: "ok", message: `${priced.length} produit(s) avec prix pour \xAB ${s.probeQuery} \xBB.`, durationMs: Date.now() - t0 };
+}
+async function checkLibrarySourceDetect(s, runtime = {}) {
+  const first = await checkLibrarySource(s, runtime);
+  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access === "official_api") return first;
+  const messages = [first.message];
+  const order = ["shopify-storefront", "woocommerce-store", "sitemap-jsonld"];
+  for (const other of order.filter((a) => a !== s.adapter)) {
+    const next = await checkLibrarySource({ ...s, adapter: other }, runtime);
+    if (next.status === "ok") return next;
+    messages.push(`${other} : ${next.message}`);
+  }
+  return { ...first, message: messages.join(" | ").slice(0, 500) };
+}
+async function runLibraryChecks(keys) {
+  const admin = createAdminSupabaseClient();
+  const out = [];
+  for (const s of SOURCE_LIBRARY) {
+    if (keys && !keys.includes(s.key)) continue;
+    let r;
+    try {
+      r = await checkLibrarySourceDetect(s);
+    } catch (e) {
+      r = { key: s.key, status: "unreachable", adapter: s.adapter, robotsAllowed: null, httpStatus: null, productCount: 0, sample: [], message: e instanceof Error ? e.message.slice(0, 500) : String(e), durationMs: 0 };
+    }
+    out.push(r);
+    const { error } = await admin.from("sourcing_library_checks").upsert({
+      key: r.key,
+      checked_at: (/* @__PURE__ */ new Date()).toISOString(),
+      status: r.status,
+      adapter: r.adapter,
+      robots_allowed: r.robotsAllowed,
+      http_status: r.httpStatus,
+      product_count: r.productCount,
+      sample: r.sample,
+      message: r.message,
+      duration_ms: r.durationMs
+    });
+    if (error) log22.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
+  }
+  return out;
+}
+async function sourceLibrary(ctx) {
+  const [checks, sources] = await Promise.all([
+    ctx.supabase.from("sourcing_library_checks").select("*"),
+    ctx.supabase.from("supplier_sources").select("id, config").eq("organization_id", ctx.organization.id)
+  ]);
+  if (checks.error) throw checks.error;
+  if (sources.error) throw sources.error;
+  const byKey = new Map((checks.data ?? []).map((c) => [c.key, c]));
+  const activated = /* @__PURE__ */ new Map();
+  for (const src of sources.data ?? []) {
+    const k = src.config?.library_key;
+    if (typeof k === "string") activated.set(k, src.id);
+  }
+  return {
+    entries: SOURCE_LIBRARY.map((s) => {
+      const c = byKey.get(s.key);
+      return {
+        key: s.key,
+        name: s.name,
+        website: s.website,
+        segment: s.segment,
+        country: s.country,
+        currency: s.currency,
+        access: s.access,
+        termsUrl: s.termsUrl,
+        notes: s.notes,
+        check: c ? { status: c.status, checkedAt: c.checked_at, productCount: c.product_count, message: c.message, sample: c.sample } : null,
+        activatable: c?.status === "ok",
+        sourceId: activated.get(s.key) ?? null
+      };
+    })
+  };
+}
+async function activateLibrarySource(ctx, key2) {
+  const s = getLibrarySource(key2);
+  if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
+  const { data: check } = await ctx.supabase.from("sourcing_library_checks").select("status, checked_at, adapter").eq("key", key2).maybeSingle();
+  if (check?.status !== "ok") throw new AppError("VALIDATION", "Cette source n'a pas pass\xE9 la v\xE9rification en direct (robots.txt + produits avec prix) : elle ne peut pas \xEAtre activ\xE9e.");
+  const { data: existing } = await ctx.supabase.from("supplier_sources").select("id, supplier_id, config").eq("organization_id", ctx.organization.id);
+  const found = (existing ?? []).find((r) => r.config?.library_key === key2);
+  if (found) return { sourceId: found.id, supplierId: found.supplier_id, alreadyActive: true };
+  const country = s.country.length === 2 && s.country !== "EU" ? s.country : null;
+  const { data: supplier, error: supErr } = await ctx.supabase.from("suppliers").insert({ organization_id: ctx.organization.id, name: s.name.slice(0, 200), website: s.website, country, currency: s.currency, notes: `Ajout\xE9 depuis la biblioth\xE8que de sources MON STOCK (${s.key}). ${s.notes}` }).select("id").single();
+  if (supErr || !supplier) throw supErr ?? new AppError("INTERNAL", "Fournisseur non cr\xE9\xE9.");
+  const attestation = `Conditions d'utilisation (${s.termsUrl}) d\xE9clar\xE9es lues et acc\xE8s automatis\xE9 attest\xE9 par l'utilisateur ${ctx.user.email ?? ctx.user.id} le ${(/* @__PURE__ */ new Date()).toISOString()} (application mobile).`;
+  const { data: source, error: srcErr } = await ctx.supabase.from("supplier_sources").insert({
+    organization_id: ctx.organization.id,
+    supplier_id: supplier.id,
+    name: s.name.slice(0, 200),
+    source_type: s.access === "official_api" ? "API" : "PUBLIC_WEB",
+    base_url: s.baseUrl,
+    country,
+    default_currency: s.currency,
+    default_tax_type: s.taxType,
+    access_conditions: attestation,
+    automated_access_confirmed: true,
+    robots_checked_at: check.checked_at,
+    robots_allowed: s.access === "official_api" ? null : true,
+    sync_frequency: "manual",
+    status: "active",
+    // Adaptateur ayant réellement répondu lors de la vérification (détection de plateforme).
+    config: { adapter: check.adapter ?? s.adapter, library_key: s.key }
+  }).select("id").single();
+  if (srcErr || !source) {
+    await ctx.supabase.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", ctx.organization.id);
+    throw srcErr ?? new AppError("INTERNAL", "Source non cr\xE9\xE9e.");
+  }
+  log22.info("source de biblioth\xE8que activ\xE9e", { orgId: ctx.organization.id, key: key2 });
+  return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
+}
+var log22, shopifyTerms, SOURCE_LIBRARY;
+var init_source_library = __esm({
+  "src/services/sourcing/source-library.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_env();
+    init_logger();
+    init_admin();
+    init_query_parser();
+    init_registry2();
+    init_robots();
+    init_env();
+    log22 = createLogger("SOURCE_LIBRARY");
+    shopifyTerms = (base) => `${base}/policies/terms-of-service`;
+    SOURCE_LIBRARY = [
+      {
+        key: "ebay-fr",
+        name: "eBay France \u2014 annonces (lots, reconditionn\xE9s, pi\xE8ces)",
+        website: "https://www.ebay.fr",
+        baseUrl: "https://api.ebay.com",
+        adapter: "ebay-browse",
+        segment: "marketplace",
+        country: "FR",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: "https://developer.ebay.com/join/api-license-agreement",
+        access: "official_api",
+        notes: "API officielle Buy Browse (cl\xE9s de l'application eBay du serveur). Offres publi\xE9es par des vendeurs pros et particuliers ; quantit\xE9 non fournie par la recherche.",
+        probeQuery: "iphone 13 128"
+      },
+      {
+        key: "foneday",
+        name: "Foneday (NL) \u2014 pi\xE8ces d\xE9tach\xE9es, B2B",
+        website: "https://www.foneday.shop",
+        baseUrl: "https://www.foneday.shop",
+        adapter: "shopify-storefront",
+        segment: "parts",
+        country: "NL",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://www.foneday.shop"),
+        access: "public_json",
+        notes: "Grossiste n\xE9erlandais de pi\xE8ces et accessoires pour r\xE9parateurs (client\xE8le principalement professionnelle, selon la recherche web).",
+        probeQuery: "iphone 13 screen"
+      },
+      {
+        key: "mobileparts-shop",
+        name: "MobileParts.shop (2Service, NL) \u2014 pi\xE8ces",
+        website: "https://www.mobileparts.shop",
+        baseUrl: "https://www.mobileparts.shop",
+        adapter: "shopify-storefront",
+        segment: "parts",
+        country: "NL",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://www.mobileparts.shop"),
+        access: "public_json",
+        notes: "Pi\xE8ces d'origine, compatibles et de r\xE9cup\xE9ration pour r\xE9parateurs, reconditionneurs et grossistes (selon la recherche web).",
+        probeQuery: "iphone 13 display"
+      },
+      {
+        key: "mobilesentrix-eu",
+        name: "MobileSentrix Europe (NL) \u2014 pi\xE8ces",
+        website: "https://www.mobilesentrix.eu",
+        baseUrl: "https://www.mobilesentrix.eu",
+        adapter: "shopify-storefront",
+        segment: "parts",
+        country: "NL",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://www.mobilesentrix.eu"),
+        access: "public_json",
+        notes: "Distributeur de pi\xE8ces (centre logistique aux Pays-Bas) ; plateforme \xE0 confirmer par la v\xE9rification.",
+        probeQuery: "iphone 13 screen"
+      },
+      {
+        key: "replacebase",
+        name: "ReplaceBase (UK) \u2014 \xE9crans et batteries",
+        website: "https://www.replacebase.co.uk",
+        baseUrl: "https://www.replacebase.co.uk",
+        adapter: "shopify-storefront",
+        segment: "parts",
+        country: "GB",
+        currency: "GBP",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://www.replacebase.co.uk"),
+        access: "public_json",
+        notes: "\xC9crans reconditionn\xE9s et batteries, exp\xE9dition depuis le Royaume-Uni (selon la recherche web) ; frais de douane possibles vers la France.",
+        probeQuery: "iphone 13 screen"
+      },
+      {
+        key: "rewa-eu",
+        name: "REWA Europe \u2014 outils, \xE9crans, batteries",
+        website: "https://rewa.tech",
+        baseUrl: "https://rewa.tech",
+        adapter: "shopify-storefront",
+        segment: "parts",
+        country: "EU",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://rewa.tech"),
+        access: "public_json",
+        notes: "Outillage et pi\xE8ces de r\xE9paration (pays d'exp\xE9dition \xE0 confirmer).",
+        probeQuery: "iphone screen"
+      },
+      {
+        key: "ifixit-eu-pro",
+        name: "iFixit Pro Store EU \u2014 pi\xE8ces et outils",
+        website: "https://eu-pro-store.ifixit.com",
+        baseUrl: "https://eu-pro-store.ifixit.com",
+        adapter: "shopify-storefront",
+        segment: "parts",
+        country: "EU",
+        currency: "EUR",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://eu-pro-store.ifixit.com"),
+        access: "public_json",
+        notes: "Boutique professionnelle iFixit pour l'Europe (plateforme Shopify suppos\xE9e d'apr\xE8s ses URL, confirm\xE9e seulement par la v\xE9rification).",
+        probeQuery: "iphone 13 battery"
+      },
+      {
+        key: "jobalots",
+        name: "Jobalots (UK/EU) \u2014 lots de retours",
+        website: "https://jobalots.com",
+        baseUrl: "https://jobalots.com",
+        adapter: "shopify-storefront",
+        segment: "lots",
+        country: "GB",
+        currency: "GBP",
+        taxType: "unknown",
+        termsUrl: shopifyTerms("https://jobalots.com"),
+        access: "public_json",
+        notes: "Lots de retours clients et de surplus (\xE9lectronique, t\xE9l\xE9phonie) ; prix par lot.",
+        probeQuery: "phone"
+      },
+      {
+        key: "brico-phone",
+        name: "Brico-phone (FR) \u2014 pi\xE8ces d\xE9tach\xE9es",
+        website: "https://www.brico-phone.com",
+        baseUrl: "https://www.brico-phone.com",
+        adapter: "sitemap-jsonld",
+        segment: "parts",
+        country: "FR",
+        currency: "EUR",
+        taxType: "ttc",
+        termsUrl: "https://www.brico-phone.com",
+        access: "public_html",
+        notes: "Pi\xE8ces d\xE9tach\xE9es (\xE9crans, batteries, connecteurs) vendues en France. Lu via le plan du site publi\xE9 et les donn\xE9es structur\xE9es des fiches (prix TTC affich\xE9s au public).",
+        probeQuery: "ecran iphone 13"
+      },
+      {
+        key: "utopya",
+        name: "Utopya (FR) \u2014 distributeur B2B de pi\xE8ces",
+        website: "https://www.utopya.fr",
+        baseUrl: "https://www.utopya.fr",
+        adapter: "woocommerce-store",
+        segment: "parts",
+        country: "FR",
+        currency: "EUR",
+        taxType: "ht",
+        termsUrl: "https://www.utopya.fr",
+        access: "public_json",
+        notes: "Distributeur B2B de pi\xE8ces et accessoires (Paris). Prix pros potentiellement r\xE9serv\xE9s aux comptes : v\xE9rification requise.",
+        probeQuery: "iphone 13"
+      }
+    ];
   }
 });
 
@@ -2768,7 +7112,7 @@ var init_catalog_import = __esm({
     "use strict";
     init_empty();
     init_errors();
-    init_types();
+    init_types2();
     init_feed_parsers();
     init_feed_ingestion();
     init_xlsx();
@@ -2837,48 +7181,3943 @@ var init_catalog_import = __esm({
   }
 });
 
+// src/integrations/ebay/listing.ts
+import { z as z29 } from "npm:zod@4.6.5";
+function checkListingDraft(input) {
+  const parsed = listingDraftSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "annonce"} : ${i.message}`), warnings: [], draft: null };
+  const d = parsed.data;
+  const errors = [];
+  const warnings = [];
+  if (!d.policies) errors.push("Politiques m\xE9tier eBay (paiement, retour, exp\xE9dition) non choisies.");
+  if (!d.merchantLocationKey) errors.push("Emplacement d'inventaire eBay (merchantLocationKey) non choisi.");
+  const aspectNames = Object.keys(d.aspects).map((a) => a.toLowerCase());
+  if (!d.brand && !aspectNames.includes("marque") && !aspectNames.includes("brand")) warnings.push("Marque non renseign\xE9e : souvent obligatoire.");
+  if (!aspectNames.includes("mod\xE8le") && !aspectNames.includes("model")) warnings.push("Caract\xE9ristique \xAB Mod\xE8le \xBB absente : souvent obligatoire pour les t\xE9l\xE9phones.");
+  if (/[<>]/.test(d.title)) errors.push("Le titre ne doit pas contenir de balises.");
+  if (d.title === d.title.toUpperCase() && /[A-Z]{6,}/.test(d.title)) warnings.push("Titre enti\xE8rement en majuscules : d\xE9conseill\xE9 par eBay.");
+  if (d.condition.endsWith("_REFURBISHED") && d.condition !== "SELLER_REFURBISHED") warnings.push("\xC9tat \xAB reconditionn\xE9 \xBB du programme eBay : v\xE9rifiez votre agr\xE9ment pour cette cat\xE9gorie.");
+  warnings.push("Caract\xE9ristiques obligatoires et \xE9tats autoris\xE9s de la cat\xE9gorie v\xE9rifi\xE9s par eBay au moment de la publication.");
+  return { ok: errors.length === 0, errors, warnings, draft: d };
+}
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function descriptionHtml(text2) {
+  return text2.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
+}
+function buildInventoryItem(d) {
+  const aspects = { ...d.aspects };
+  if (d.brand && !aspects.Marque) aspects.Marque = [d.brand];
+  return {
+    availability: { shipToLocationAvailability: { quantity: d.quantity } },
+    condition: d.condition,
+    ...d.conditionDescription ? { conditionDescription: d.conditionDescription } : {},
+    product: {
+      title: d.title,
+      description: descriptionHtml(d.description),
+      aspects,
+      imageUrls: d.imageUrls,
+      ...d.brand ? { brand: d.brand } : {},
+      ...d.mpn ? { mpn: d.mpn } : {},
+      ...d.ean ? { ean: [d.ean] } : {}
+    }
+  };
+}
+function buildOffer(d) {
+  return {
+    sku: d.sku,
+    marketplaceId: d.marketplaceId,
+    format: "FIXED_PRICE",
+    availableQuantity: d.quantity,
+    categoryId: d.categoryId,
+    listingDescription: descriptionHtml(d.description),
+    ...d.policies ? { listingPolicies: d.policies } : {},
+    ...d.merchantLocationKey ? { merchantLocationKey: d.merchantLocationKey } : {},
+    pricingSummary: { price: { value: d.price.toFixed(2), currency: d.currency } }
+  };
+}
+async function ebayRestSend(auth, method, url, label, body) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
+    const res = await fetchWithRetry(
+      url,
+      {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Accept-Language": "fr-FR",
+          "Content-Language": "fr-FR",
+          ...body !== void 0 ? { "Content-Type": "application/json" } : {}
+        },
+        body: body === void 0 ? void 0 : JSON.stringify(body)
+      },
+      // POST non idempotent (création d'offre, publication) : jamais rejoué automatiquement (anti-doublon).
+      { provider: EBAY_PROVIDER, label, retries: method === "POST" ? 0 : void 0 }
+    );
+    const json2 = res.status === 204 ? null : await readJson(res, EBAY_PROVIDER);
+    if (res.status === 401 && attempt === 0) continue;
+    return { status: res.status, json: json2 };
+  }
+  throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Autorisation eBay expir\xE9e : reconnectez votre compte.", { retryable: false });
+}
+function fail(step, status, json2) {
+  const { message, errorIds } = summarizeRestErrors(json2);
+  const auth = status === 401 || status === 403;
+  throw new ConnectorError(auth ? "AUTH_EXPIRED" : "API_ERROR", EBAY_PROVIDER, `${step} refus\xE9 par eBay (HTTP ${status})${message ? ` : ${message}` : ""}.`, {
+    httpStatus: status,
+    details: { step, errorIds },
+    retryable: status >= 500
+  });
+}
+async function publishListing(auth, apiBase2, d) {
+  const base = `${apiBase2.replace(/\/+$/, "")}/sell/inventory/v1`;
+  const sku = encodeURIComponent(d.sku);
+  const item = await ebayRestSend(auth, "PUT", `${base}/inventory_item/${sku}`, "createOrReplaceInventoryItem", buildInventoryItem(d));
+  if (item.status >= 300) fail("Enregistrement de l'article", item.status, item.json);
+  const existing = await ebayRestSend(auth, "GET", `${base}/offer?sku=${sku}&marketplace_id=${d.marketplaceId}`, "getOffers");
+  let offerId = null;
+  if (existing.status === 200) {
+    const offers = existing.json?.offers ?? [];
+    offerId = offers.find((o) => o.marketplaceId === d.marketplaceId && (o.format ?? "FIXED_PRICE") === "FIXED_PRICE")?.offerId ?? null;
+  } else if (existing.status !== 404) fail("Lecture des offres existantes", existing.status, existing.json);
+  let created = false;
+  if (offerId) {
+    const upd = await ebayRestSend(auth, "PUT", `${base}/offer/${encodeURIComponent(offerId)}`, "updateOffer", buildOffer(d));
+    if (upd.status >= 300) fail("Mise \xE0 jour de l'offre", upd.status, upd.json);
+  } else {
+    const cre = await ebayRestSend(auth, "POST", `${base}/offer`, "createOffer", buildOffer(d));
+    if (cre.status >= 300) fail("Cr\xE9ation de l'offre", cre.status, cre.json);
+    offerId = cre.json?.offerId ?? null;
+    if (!offerId) throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "eBay n'a pas renvoy\xE9 d'identifiant d'offre.", { retryable: false });
+    created = true;
+  }
+  const pub = await ebayRestSend(auth, "POST", `${base}/offer/${encodeURIComponent(offerId)}/publish`, "publishOffer");
+  if (pub.status >= 300) fail("Publication", pub.status, pub.json);
+  return { sku: d.sku, offerId, listingId: pub.json?.listingId ?? null, createdOffer: created };
+}
+function publicationGate(input) {
+  const reasons = [];
+  if (input.enabledFlag !== "true") reasons.push("Publication eBay d\xE9sactiv\xE9e sur le serveur (EBAY_LISTING_ENABLED \u2260 true).");
+  if (!input.isAdmin) reasons.push("Seul un administrateur peut publier une annonce.");
+  if (!input.confirm) reasons.push("Confirmation explicite requise.");
+  if (!input.connected) reasons.push("Aucun compte eBay connect\xE9.");
+  return { allowed: reasons.length === 0, reasons };
+}
+var EBAY_CONDITIONS, SKU_RE, listingDraftSchema;
+var init_listing = __esm({
+  "src/integrations/ebay/listing.ts"() {
+    "use strict";
+    init_errors2();
+    init_http();
+    init_config();
+    init_rest();
+    EBAY_CONDITIONS = [
+      "NEW",
+      "LIKE_NEW",
+      "NEW_OTHER",
+      "NEW_WITH_DEFECTS",
+      "CERTIFIED_REFURBISHED",
+      "EXCELLENT_REFURBISHED",
+      "VERY_GOOD_REFURBISHED",
+      "GOOD_REFURBISHED",
+      "SELLER_REFURBISHED",
+      "USED_EXCELLENT",
+      "USED_VERY_GOOD",
+      "USED_GOOD",
+      "USED_ACCEPTABLE",
+      "FOR_PARTS_OR_NOT_WORKING"
+    ];
+    SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
+    listingDraftSchema = z29.object({
+      sku: z29.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
+      marketplaceId: z29.literal("EBAY_FR").default("EBAY_FR"),
+      title: z29.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
+      description: z29.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
+      categoryId: z29.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
+      condition: z29.enum(EBAY_CONDITIONS),
+      conditionDescription: z29.string().trim().max(1e3).optional(),
+      price: z29.number().finite().positive("Prix positif requis.").max(1e6),
+      currency: z29.literal("EUR").default("EUR"),
+      quantity: z29.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
+      imageUrls: z29.array(z29.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
+      aspects: z29.record(z29.string().min(1).max(65), z29.array(z29.string().min(1).max(65)).min(1)).default({}),
+      brand: z29.string().trim().max(65).optional(),
+      mpn: z29.string().trim().max(65).optional(),
+      ean: z29.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
+      policies: z29.object({ fulfillmentPolicyId: z29.string().min(1), paymentPolicyId: z29.string().min(1), returnPolicyId: z29.string().min(1) }).optional(),
+      merchantLocationKey: z29.string().trim().min(1).max(36).optional()
+    });
+  }
+});
+
+// src/services/channels/ebay-listing-service.ts
+var ebay_listing_service_exports = {};
+__export(ebay_listing_service_exports, {
+  checkListing: () => checkListing,
+  disconnectEbay: () => disconnectEbay,
+  disconnectSchema: () => disconnectSchema,
+  ebayAccountSetup: () => ebayAccountSetup,
+  listingRequestSchema: () => listingRequestSchema,
+  prefillListing: () => prefillListing,
+  publishListingForOrg: () => publishListingForOrg
+});
+import { z as z30 } from "npm:zod@4.6.5";
+async function connectedEbay(ctx) {
+  const { data, error } = await ctx.supabase.from("channel_connections").select("id, status").eq("organization_id", ctx.organization.id).eq("provider", "ebay").eq("status", "connected").limit(1).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  return data ? { id: data.id } : null;
+}
+async function prefillListing(ctx, skuId) {
+  const { data: sku, error } = await ctx.supabase.from("skus").select("id, code, barcode, sale_price, currency, product:products(name, brand, attributes, description), variant:product_variants(name, condition, grade, attributes)").eq("organization_id", ctx.organization.id).eq("id", skuId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!sku) throw new AppError("NOT_FOUND", "SKU introuvable.");
+  const { data: inv } = await ctx.supabase.from("v_stock_overview").select("quantity_available").eq("organization_id", ctx.organization.id).eq("sku_id", skuId).maybeSingle();
+  const product = Array.isArray(sku.product) ? sku.product[0] : sku.product;
+  const variant = Array.isArray(sku.variant) ? sku.variant[0] : sku.variant;
+  const attrs = { ...product?.attributes ?? {}, ...variant?.attributes ?? {} };
+  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : null;
+  const model = str3(attrs.model);
+  const storage = str3(attrs.storage);
+  const color = str3(attrs.color);
+  const aspects = {};
+  if (product?.brand) aspects.Marque = [product.brand];
+  if (model) aspects["Mod\xE8le"] = [model];
+  if (storage) aspects["Capacit\xE9 de stockage"] = [storage];
+  if (color) aspects.Couleur = [color];
+  const title = [product?.name, variant?.name && variant.name !== "Standard" ? variant.name : null].filter(Boolean).join(" ").replace(/\s+/g, " ").slice(0, 80);
+  return {
+    draft: {
+      sku: sku.code,
+      marketplaceId: "EBAY_FR",
+      title,
+      description: product?.description ?? "",
+      categoryId: "",
+      condition: null,
+      price: sku.sale_price,
+      currency: "EUR",
+      quantity: Math.max(0, inv?.quantity_available ?? 0),
+      imageUrls: [],
+      aspects,
+      brand: product?.brand ?? void 0,
+      ean: sku.barcode && /^\d{8,14}$/.test(sku.barcode) ? sku.barcode : void 0
+    },
+    notes: [
+      "Choisissez la cat\xE9gorie eBay et l'\xE9tat : MON STOCK ne convertit pas les grades A/B/C en \xE9tats eBay (aucune \xE9quivalence officielle).",
+      "Ajoutez au moins une photo (URL HTTPS).",
+      ...variant?.grade ? [`Grade MON STOCK : ${variant.grade} \u2014 \xE0 d\xE9crire dans la description de l'\xE9tat.`] : []
+    ]
+  };
+}
+async function ebayAccountSetup(ctx) {
+  const env = ebayEnv();
+  if (!env) return { configured: false, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Cl\xE9s eBay non configur\xE9es sur le serveur."] };
+  const conn = await connectedEbay(ctx);
+  if (!conn) return { configured: true, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Aucun compte eBay connect\xE9."] };
+  const cfg = createEbayConfig(env);
+  const auth = connectorAuthFor(conn.id);
+  const errors = [];
+  const read = async (path, key2, map) => {
+    try {
+      const json2 = await ebayRestGet(auth, `${cfg.apiBase}${path}`, key2, { marketplaceId: "EBAY_FR" });
+      return (json2[key2] ?? []).map(map);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+      return [];
+    }
+  };
+  const policy = (idKey) => (x) => ({ id: String(x[idKey] ?? ""), name: String(x.name ?? "") });
+  const [fulfillment, payment, ret, locations] = await Promise.all([
+    read("/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_FR", "fulfillmentPolicies", policy("fulfillmentPolicyId")),
+    read("/sell/account/v1/payment_policy?marketplace_id=EBAY_FR", "paymentPolicies", policy("paymentPolicyId")),
+    read("/sell/account/v1/return_policy?marketplace_id=EBAY_FR", "returnPolicies", policy("returnPolicyId")),
+    read("/sell/inventory/v1/location?limit=100", "locations", (x) => ({ id: String(x.merchantLocationKey ?? ""), name: String(x.name ?? x.merchantLocationKey ?? "") }))
+  ]);
+  return { configured: true, connected: true, fulfillment, payment, return: ret, locations, errors: [...new Set(errors)] };
+}
+async function checkListing(ctx, input) {
+  const check = checkListingDraft(input.draft);
+  const conn = ebayEnv() ? await connectedEbay(ctx) : null;
+  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: true, connected: Boolean(conn) });
+  return {
+    ok: check.ok,
+    errors: check.errors,
+    warnings: check.warnings,
+    payload: check.draft ? { inventoryItem: buildInventoryItem(check.draft), offer: buildOffer(check.draft) } : null,
+    publication: { allowed: check.ok && gate.allowed, blockers: gate.reasons }
+  };
+}
+async function publishListingForOrg(ctx, input) {
+  const check = checkListingDraft(input.draft);
+  if (!check.ok || !check.draft) throw new AppError("VALIDATION", check.errors[0] ?? "Annonce invalide.");
+  const env = ebayEnv();
+  const conn = env ? await connectedEbay(ctx) : null;
+  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: input.confirm, connected: Boolean(conn) });
+  if (!gate.allowed || !env || !conn) throw new AppError("FORBIDDEN", gate.reasons.join(" "));
+  return publishListing(connectorAuthFor(conn.id), createEbayConfig(env).apiBase, check.draft);
+}
+async function disconnectEbay(ctx, connectionId) {
+  const { data } = await ctx.supabase.from("channel_connections").select("id").eq("organization_id", ctx.organization.id).eq("id", connectionId).maybeSingle();
+  if (!data) throw new AppError("NOT_FOUND", "Connexion introuvable dans cette organisation.");
+  return disconnectConnection(connectionId, ctx.organization.id);
+}
+var listingRequestSchema, disconnectSchema;
+var init_ebay_listing_service = __esm({
+  "src/services/channels/ebay-listing-service.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_env();
+    init_config();
+    init_rest();
+    init_listing();
+    init_connection_store();
+    listingRequestSchema = z30.object({ draft: z30.unknown(), confirm: z30.boolean().default(false) });
+    disconnectSchema = z30.object({ connectionId: z30.string().uuid() });
+  }
+});
+
+// src/services/sourcing/offer-linking.ts
+var offer_linking_exports = {};
+__export(offer_linking_exports, {
+  confirmOfferLink: () => confirmOfferLink,
+  decideMatch: () => decideMatch,
+  listMatchSuggestions: () => listMatchSuggestions,
+  matchDecisionSchema: () => matchDecisionSchema2
+});
+import { z as z31 } from "npm:zod@4.6.5";
+async function confirmOfferLink(orgId, supabase, userId, offerId, skuId, sourcingProductId) {
+  const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", orgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (existing) await supabase.from("product_matches").update({ status: "confirmed", decided_by: userId, decided_at: now }).eq("id", existing.id);
+  else await supabase.from("product_matches").insert({ organization_id: orgId, offer_id: offerId, sourcing_product_id: sourcingProductId, sku_id: skuId, confidence: 1, method: "supplier_sku", reasons: ["Association confirm\xE9e manuellement"], status: "confirmed", created_by: userId, decided_by: userId, decided_at: now });
+  await supabase.from("product_matches").update({ status: "rejected", decided_by: userId, decided_at: now }).eq("organization_id", orgId).eq("offer_id", offerId).neq("sku_id", skuId).eq("status", "suggested");
+  await applyConfirmedMatch(supabase, orgId, { offerId, skuId, sourcingProductId });
+}
+async function listMatchSuggestions(ctx, limit = 100) {
+  const { data, error } = await ctx.supabase.from("product_matches").select("id, confidence, method, reasons, offer:sourcing_offers(id, title_original, normalized_price, normalized_currency, supplier:suppliers(name)), sku:skus(id, code, product:products(name), variant:product_variants(name))").eq("organization_id", ctx.organization.id).eq("status", "suggested").not("offer_id", "is", null).order("confidence", { ascending: false }).limit(limit);
+  if (error) throw fromPostgrestError(error);
+  const one2 = (v2) => Array.isArray(v2) ? v2[0] ?? null : v2 ?? null;
+  return (data ?? []).flatMap((m) => {
+    const offer = one2(m.offer);
+    const sku = one2(m.sku);
+    if (!offer || !sku) return [];
+    return [
+      {
+        matchId: m.id,
+        confidence: m.confidence,
+        method: m.method,
+        reasons: Array.isArray(m.reasons) ? m.reasons : [],
+        offer: { id: offer.id, title: offer.title_original, price: offer.normalized_price, currency: offer.normalized_currency, supplierName: one2(offer.supplier)?.name ?? "Fournisseur" },
+        sku: { id: sku.id, code: sku.code, name: [one2(sku.product)?.name, one2(sku.variant)?.name].filter(Boolean).join(" \xB7 ") }
+      }
+    ];
+  });
+}
+async function decideMatch(ctx, input) {
+  const orgId = ctx.organization.id;
+  const { data: match } = await ctx.supabase.from("product_matches").select("id, offer_id, sku_id, sourcing_product_id, status").eq("organization_id", orgId).eq("id", input.matchId).maybeSingle();
+  if (!match) throw new AppError("NOT_FOUND", "Correspondance introuvable.");
+  if (match.status !== "suggested") throw new AppError("CONFLICT", "Cette correspondance a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
+  if (input.decision === "reject") {
+    const { error } = await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", orgId).eq("id", match.id);
+    if (error) throw fromPostgrestError(error);
+    return { status: "rejected" };
+  }
+  if (!match.offer_id) throw new AppError("VALIDATION", "Correspondance sans offre.");
+  await confirmOfferLink(orgId, ctx.supabase, ctx.user.id, match.offer_id, match.sku_id, match.sourcing_product_id);
+  return { status: "confirmed" };
+}
+var matchDecisionSchema2;
+var init_offer_linking = __esm({
+  "src/services/sourcing/offer-linking.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_matching_service();
+    matchDecisionSchema2 = z31.object({ matchId: z31.string().uuid(), decision: z31.enum(["confirm", "reject"]) });
+  }
+});
+
+// src/domain/sourcing/radar.ts
+function freshnessOf(lastSeenAt, now) {
+  if (!lastSeenAt) return { freshness: "unknown", ageDays: null };
+  const t = new Date(lastSeenAt).getTime();
+  if (Number.isNaN(t)) return { freshness: "unknown", ageDays: null };
+  const ageDays = Math.max(0, (now.getTime() - t) / 864e5);
+  return { freshness: ageDays <= FRESH_DAYS ? "fresh" : ageDays <= STALE_DAYS ? "recent" : "stale", ageDays: Math.floor(ageDays) };
+}
+function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
+  const missing = [];
+  const cautions = [];
+  const reasons = [];
+  const breakdown = [];
+  const { freshness: freshness2, ageDays } = freshnessOf(offer.lastSeenAt, now);
+  const revenueBasis = sku.avgSalePrice30d !== null ? "avg_sale_30d" : sku.salePrice !== null ? "sku_sale_price" : null;
+  const revenue = sku.avgSalePrice30d ?? sku.salePrice ?? null;
+  if (revenue === null) missing.push("prix de vente (aucune vente sur 30 jours et aucun prix de vente sur le SKU)");
+  if (revenueBasis === "sku_sale_price") cautions.push("Prix de vente issu de la fiche SKU (pas de vente constat\xE9e sur 30 jours).");
+  if (offer.price === null) missing.push("prix fournisseur");
+  if (offer.currency && sku.currency && offer.currency.toUpperCase() !== sku.currency.toUpperCase()) {
+    missing.push(`devise diff\xE9rente (${offer.currency} vs ${sku.currency}) : aucune conversion suppos\xE9e`);
+  }
+  if (missing.length > 0) {
+    return { status: "insufficient_data", revenue, revenueBasis, revenueExVat: null, purchaseCost: null, landedCost: null, grossMargin: null, estimatedProfit: null, marginPercent: null, breakdown, missing, cautions, reasons, freshness: freshness2, ageDays, score: 0 };
+  }
+  const price = offer.price;
+  const sale = revenue;
+  const vatRate = s.vatRate;
+  let purchaseCost;
+  if (offer.taxType === "ht") {
+    if (s.vatRecoverable === true) purchaseCost = price;
+    else if (s.vatRecoverable === false && vatRate !== null) {
+      purchaseCost = r2(price * (1 + vatRate / 100));
+      cautions.push("TVA non r\xE9cup\xE9rable : TVA ajout\xE9e au prix d'achat HT.");
+    } else {
+      purchaseCost = price;
+      missing.push("r\xE9cup\xE9ration de la TVA sur achats (param\xE8tres de co\xFBts)");
+    }
+  } else if (offer.taxType === "ttc") {
+    if (s.vatRecoverable === true && vatRate !== null) purchaseCost = r2(price / (1 + vatRate / 100));
+    else {
+      purchaseCost = price;
+      if (s.vatRecoverable === null) missing.push("r\xE9cup\xE9ration de la TVA sur achats (param\xE8tres de co\xFBts)");
+    }
+  } else {
+    purchaseCost = price;
+    missing.push("type de prix fournisseur (HT ou TTC)");
+  }
+  breakdown.push({ label: "Prix d'achat retenu", amount: purchaseCost });
+  let landed = purchaseCost;
+  if (offer.shippingCost !== null) {
+    const perUnit = r2(offer.shippingCost / Math.max(1, offer.moq ?? 1));
+    landed = r2(landed + perUnit);
+    breakdown.push({ label: `Transport fournisseur (\xF7 ${Math.max(1, offer.moq ?? 1)})`, amount: perUnit });
+  } else missing.push("transport fournisseur");
+  const country = offer.supplierCountry?.toUpperCase() ?? null;
+  if (country && !EU.has(country)) {
+    if (s.importDutyPercent !== null) {
+      const duty = r2(price * s.importDutyPercent / 100);
+      landed = r2(landed + duty);
+      breakdown.push({ label: `Douane / import (${s.importDutyPercent} %)`, amount: duty });
+    } else missing.push(`droits de douane (fournisseur hors UE : ${country})`);
+  } else if (!country) cautions.push("Pays du fournisseur inconnu : frais d'import \xE9ventuels non \xE9valu\xE9s.");
+  breakdown.push({ label: "Co\xFBt d'achat rendu", amount: landed });
+  let revenueExVat = null;
+  let marginVat = 0;
+  if (s.vatRegime === "normal") {
+    if (vatRate !== null) revenueExVat = r2(sale / (1 + vatRate / 100));
+    else missing.push("taux de TVA");
+  } else if (s.vatRegime === "margin") {
+    revenueExVat = sale;
+    if (vatRate !== null) {
+      const m = sale - landed;
+      marginVat = m > 0 ? r2(m * vatRate / (100 + vatRate)) : 0;
+    } else missing.push("taux de TVA");
+  } else if (s.vatRegime === "franchise") revenueExVat = sale;
+  else missing.push("r\xE9gime de TVA (normal, marge ou franchise)");
+  const base = revenueExVat ?? sale;
+  breakdown.unshift({ label: revenueBasis === "avg_sale_30d" ? "Prix de vente moyen constat\xE9 (30 j)" : "Prix de vente du SKU", amount: sale });
+  if (revenueExVat !== null && revenueExVat !== sale) breakdown.splice(1, 0, { label: "CA hors TVA", amount: revenueExVat });
+  const grossMargin = r2(base - landed - marginVat);
+  if (marginVat > 0) breakdown.push({ label: "TVA sur marge", amount: marginVat });
+  breakdown.push({ label: "Marge brute", amount: grossMargin });
+  let fees = 0;
+  const fee = (label, value, missingLabel) => {
+    if (value === null) missing.push(missingLabel);
+    else {
+      fees += value;
+      breakdown.push({ label, amount: r2(value) });
+    }
+  };
+  fee("Commission marketplace", s.marketplaceFeePercent === null ? null : sale * s.marketplaceFeePercent / 100, "commission marketplace");
+  fee(
+    "Frais de paiement",
+    s.paymentFeePercent === null && s.paymentFeeFixed === null ? null : sale * (s.paymentFeePercent ?? 0) / 100 + (s.paymentFeeFixed ?? 0),
+    "frais de paiement"
+  );
+  fee("Exp\xE9dition au client", s.shippingToCustomer, "exp\xE9dition au client");
+  fee("Emballage", s.packagingCost, "emballage");
+  fee("Provision retours / garantie", s.returnProvisionPercent === null ? null : sale * s.returnProvisionPercent / 100, "provision retours / garantie");
+  const estimatedProfit = r2(grossMargin - fees);
+  const marginPercent = sale > 0 ? r2(estimatedProfit / sale * 100) : null;
+  breakdown.push({ label: missing.length ? "B\xE9n\xE9fice estim\xE9 (co\xFBts connus seulement)" : "B\xE9n\xE9fice estim\xE9", amount: estimatedProfit });
+  if (freshness2 === "stale") cautions.push(`Prix vu il y a ${ageDays} jours : \xE0 rev\xE9rifier avant de commander.`);
+  if (freshness2 === "unknown") cautions.push("Date de relev\xE9 du prix inconnue.");
+  if (offer.priceOrigin !== "verified_live") cautions.push(PRICE_ORIGIN_LABEL[offer.priceOrigin] + ".");
+  if (offer.stockStatus === "unknown" && offer.availableQuantity === null) cautions.push("Disponibilit\xE9 non communiqu\xE9e.");
+  if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) cautions.push("Rupture chez le fournisseur.");
+  if (sku.currentCost !== null && sku.currentCost > 0 && purchaseCost < sku.currentCost) {
+    const pct2 = Math.round((sku.currentCost - purchaseCost) / sku.currentCost * 100);
+    if (pct2 >= 3) reasons.push(`Prix ${pct2} % sous votre co\xFBt d'achat actuel (${sku.currentCost.toFixed(2)}).`);
+  }
+  if (offer.previousPrice !== null && offer.previousPrice > price) {
+    const pct2 = Math.round((offer.previousPrice - price) / offer.previousPrice * 100);
+    if (pct2 >= 5) reasons.push(`Prix en baisse de ${pct2} % chez ce fournisseur.`);
+  }
+  const lowStock = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 1);
+  if (sku.units30d > 0 && lowStock) reasons.push(`Stock bas (${sku.quantityAvailable}) pour un produit vendu ${sku.units30d} fois en 30 jours.`);
+  else if (sku.units30d > 0) reasons.push(`Vous en vendez ${sku.units30d} par mois.`);
+  if (estimatedProfit > 0 && marginPercent !== null) reasons.push(`B\xE9n\xE9fice estim\xE9 ${estimatedProfit.toFixed(2)} par unit\xE9 (${marginPercent} %).`);
+  const status = estimatedProfit <= 0 ? "unprofitable" : missing.length === 0 && freshness2 !== "stale" ? "profitable" : "estimated";
+  let score = 0;
+  if (estimatedProfit > 0) {
+    score += Math.min(40, estimatedProfit / 2);
+    score += Math.min(20, Math.max(0, marginPercent ?? 0) / 2);
+  }
+  score += Math.min(15, sku.units30d * 2);
+  if (offer.stockStatus === "in_stock" || (offer.availableQuantity ?? 0) > 0) score += 10;
+  score += freshness2 === "fresh" ? 10 : freshness2 === "recent" ? 6 : 0;
+  score += missing.length === 0 ? 5 : Math.max(0, 5 - missing.length);
+  return { status, revenue: sale, revenueBasis, revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, breakdown, missing, cautions, reasons, freshness: freshness2, ageDays, score: Math.round(Math.min(100, score)) };
+}
+function compareRadar(sort) {
+  return (a, b) => {
+    const st = STATUS_ORDER[a.evaluation.status] - STATUS_ORDER[b.evaluation.status];
+    const n = (v2) => v2 ?? Number.NEGATIVE_INFINITY;
+    switch (sort) {
+      case "profit":
+        return n(b.evaluation.estimatedProfit) - n(a.evaluation.estimatedProfit) || st;
+      case "margin":
+        return n(b.evaluation.marginPercent) - n(a.evaluation.marginPercent) || st;
+      case "availability":
+        return n(b.offer.availableQuantity) - n(a.offer.availableQuantity) || st;
+      case "freshness":
+        return (a.evaluation.ageDays ?? Number.POSITIVE_INFINITY) - (b.evaluation.ageDays ?? Number.POSITIVE_INFINITY) || st;
+      default:
+        return st || b.evaluation.score - a.evaluation.score;
+    }
+  };
+}
+function missingSettings(s) {
+  const out = [];
+  if (s.vatRegime === null) out.push("r\xE9gime de TVA");
+  if (s.vatRate === null) out.push("taux de TVA");
+  if (s.vatRecoverable === null) out.push("TVA r\xE9cup\xE9rable sur achats");
+  if (s.marketplaceFeePercent === null) out.push("commission marketplace");
+  if (s.paymentFeePercent === null && s.paymentFeeFixed === null) out.push("frais de paiement");
+  if (s.shippingToCustomer === null) out.push("exp\xE9dition au client");
+  if (s.packagingCost === null) out.push("emballage");
+  if (s.returnProvisionPercent === null) out.push("provision retours / garantie");
+  return out;
+}
+var EMPTY_COST_SETTINGS, PRICE_ORIGIN_LABEL, EU, FRESH_DAYS, STALE_DAYS, r2, STATUS_ORDER;
+var init_radar = __esm({
+  "src/domain/sourcing/radar.ts"() {
+    "use strict";
+    EMPTY_COST_SETTINGS = {
+      vatRegime: null,
+      vatRate: null,
+      vatRecoverable: null,
+      marketplaceFeePercent: null,
+      paymentFeePercent: null,
+      paymentFeeFixed: null,
+      shippingToCustomer: null,
+      packagingCost: null,
+      returnProvisionPercent: null,
+      importDutyPercent: null
+    };
+    PRICE_ORIGIN_LABEL = {
+      verified_live: "Prix v\xE9rifi\xE9 \xE0 la derni\xE8re interrogation",
+      observed_public: "Prix observ\xE9 sur le site du fournisseur",
+      catalog_import: "Prix import\xE9 d'un catalogue fournisseur",
+      supplier_communicated: "Prix communiqu\xE9 par le fournisseur",
+      manual_entry: "Prix saisi manuellement",
+      unknown: "Origine du prix inconnue"
+    };
+    EU = /* @__PURE__ */ new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
+    FRESH_DAYS = 2;
+    STALE_DAYS = 7;
+    r2 = (n) => Math.round(n * 100) / 100;
+    STATUS_ORDER = { profitable: 0, estimated: 1, unprofitable: 2, insufficient_data: 3 };
+  }
+});
+
+// src/services/radar/radar.ts
+var radar_exports = {};
+__export(radar_exports, {
+  buildRadar: () => buildRadar,
+  priceOriginOf: () => priceOriginOf,
+  radarSettingsSchema: () => radarSettingsSchema,
+  readCostSettings: () => readCostSettings,
+  saveCostSettings: () => saveCostSettings
+});
+import { z as z32 } from "npm:zod@4.6.5";
+function readCostSettings(orgSettings, channel) {
+  const raw = orgSettings?.radar ?? {};
+  const s = { ...EMPTY_COST_SETTINGS };
+  for (const [key2, schema] of Object.entries(radarSettingsSchema.shape)) {
+    if (!(key2 in raw)) continue;
+    const parsed = schema.safeParse(raw[key2]);
+    if (parsed.success) s[key2] = parsed.data;
+  }
+  const fromChannel = [];
+  if (channel) {
+    if (s.marketplaceFeePercent === null && channel.fee_percent !== null) {
+      s.marketplaceFeePercent = channel.fee_percent;
+      fromChannel.push("commission marketplace");
+    }
+    if (s.paymentFeePercent === null && s.paymentFeeFixed === null && (channel.payment_fee_percent !== null || channel.payment_fee_fixed !== null)) {
+      s.paymentFeePercent = channel.payment_fee_percent;
+      s.paymentFeeFixed = channel.payment_fee_fixed;
+      fromChannel.push("frais de paiement");
+    }
+    if (s.shippingToCustomer === null && channel.default_shipping_cost !== null) {
+      s.shippingToCustomer = channel.default_shipping_cost;
+      fromChannel.push("exp\xE9dition au client");
+    }
+  }
+  return { settings: s, fromChannel };
+}
+function priceOriginOf(sourceType, sourceConfig) {
+  const kind = sourceConfig?.kind;
+  if (sourceType === "API") return "verified_live";
+  if (sourceType === "PUBLIC_WEB") return "observed_public";
+  if (sourceType === "MANUAL") return "manual_entry";
+  if (kind === "catalog_file_import") return "catalog_import";
+  if (["CSV", "XML", "JSON", "PARTNER_FEED", "SUPPLIER_ACCOUNT"].includes(sourceType)) return "supplier_communicated";
+  return "unknown";
+}
+function one(v2) {
+  if (v2 === null || v2 === void 0) return null;
+  return Array.isArray(v2) ? v2[0] ?? null : v2;
+}
+async function buildRadar(ctx, options = {}) {
+  const orgId = ctx.organization.id;
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const [stockRes, offersRes, savedRes, channelsRes, unlinkedRes] = await Promise.all([
+    ctx.supabase.from("v_stock_overview").select("sku_id, code, product_name, variant_name, currency, avg_sale_price_30d, sale_price, cost_price, units_30d, quantity_available, reorder_point").eq("organization_id", orgId).eq("product_archived", false).limit(5e3),
+    ctx.supabase.from("sourcing_offers").select(OFFER_SELECT2).eq("organization_id", orgId).eq("status", "active").not("sku_id", "is", null).limit(3e3),
+    ctx.supabase.from("sourcing_saved_offers").select("offer_id, price_at_save, note, created_at").eq("organization_id", orgId).limit(1e3),
+    ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost, is_active").eq("organization_id", orgId),
+    ctx.supabase.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("status", "active").is("sku_id", null)
+  ]);
+  for (const r of [stockRes, offersRes, savedRes, channelsRes]) if (r.error) throw fromPostgrestError(r.error);
+  const channels = channelsRes.data ?? [];
+  const channel = channels.find((c) => c.provider === "ebay") ?? channels.find((c) => c.provider !== "manual") ?? channels[0] ?? null;
+  const { settings, fromChannel } = readCostSettings(ctx.organization.settings, channel);
+  const skus = /* @__PURE__ */ new Map();
+  for (const r of stockRes.data ?? []) {
+    if (!r.sku_id) continue;
+    skus.set(r.sku_id, {
+      skuId: r.sku_id,
+      code: r.code ?? "",
+      name: [r.product_name, r.variant_name && r.variant_name !== "Standard" ? r.variant_name : null].filter(Boolean).join(" \xB7 "),
+      currency: r.currency ?? ctx.organization.default_currency,
+      avgSalePrice30d: r.avg_sale_price_30d,
+      salePrice: r.sale_price,
+      currentCost: r.cost_price,
+      units30d: r.units_30d ?? 0,
+      quantityAvailable: r.quantity_available ?? 0,
+      reorderPoint: r.reorder_point
+    });
+  }
+  const saved = new Map((savedRes.data ?? []).map((s) => [s.offer_id, s]));
+  const offers = (offersRes.data ?? []).filter((o) => o.sku_id && skus.has(o.sku_id));
+  const previous = /* @__PURE__ */ new Map();
+  const ids = offers.map((o) => o.id).slice(0, 1e3);
+  if (ids.length) {
+    const { data: hist } = await ctx.supabase.from("supplier_price_history").select("offer_id, normalized_price, recorded_at").eq("organization_id", orgId).in("offer_id", ids).order("recorded_at", { ascending: false }).limit(5e3);
+    const byOffer = /* @__PURE__ */ new Map();
+    for (const h of hist ?? []) if (h.normalized_price !== null) byOffer.set(h.offer_id, [...byOffer.get(h.offer_id) ?? [], h.normalized_price]);
+    for (const o of offers) {
+      const prices = byOffer.get(o.id) ?? [];
+      const prev = prices.find((p) => p !== o.normalized_price);
+      if (prev !== void 0) previous.set(o.id, prev);
+    }
+  }
+  const perSku = /* @__PURE__ */ new Map();
+  for (const o of offers) if (o.normalized_price !== null) perSku.set(o.sku_id, [...perSku.get(o.sku_id) ?? [], o.normalized_price]);
+  const items = offers.map((o) => {
+    const sku = skus.get(o.sku_id);
+    const supplier = one(o.supplier);
+    const source = one(o.source);
+    const input = {
+      offerId: o.id,
+      supplierName: supplier?.name ?? "Fournisseur",
+      supplierCountry: supplier?.country ?? o.country ?? null,
+      title: o.title_original,
+      sourceUrl: o.source_url,
+      price: o.normalized_price,
+      currency: o.normalized_currency,
+      taxType: o.tax_type,
+      shippingCost: o.shipping_cost,
+      moq: o.moq,
+      availableQuantity: o.available_quantity,
+      stockStatus: o.stock_status,
+      lastSeenAt: o.last_seen_at,
+      priceOrigin: priceOriginOf(source?.source_type ?? "", source?.config ?? null),
+      previousPrice: previous.get(o.id) ?? null,
+      saved: saved.has(o.id)
+    };
+    const evaluation = evaluateRadarOffer(input, sku, settings, now);
+    const competing = perSku.get(sku.skuId) ?? [];
+    if (competing.length > 1 && o.normalized_price !== null) {
+      const min = Math.min(...competing);
+      const max = Math.max(...competing);
+      if (o.normalized_price === min && max > min) evaluation.reasons.unshift(`Meilleur prix parmi ${competing.length} offres (\xE9cart ${(max - min).toFixed(2)}).`);
+    }
+    const s = saved.get(o.id);
+    return { supplierId: o.supplier_id, sku: { id: sku.skuId, code: sku.code, name: sku.name, currency: sku.currency, units30d: sku.units30d, quantityAvailable: sku.quantityAvailable }, offer: input, savedAt: s?.created_at ?? null, priceAtSave: s?.price_at_save ?? null, evaluation, offersForSku: competing.length };
+  });
+  items.sort(compareRadar(options.sort ?? "score"));
+  const restock = [];
+  for (const sku of skus.values()) {
+    if (sku.units30d <= 0) continue;
+    const daily = sku.units30d / 30;
+    const daysOfCover = daily > 0 ? Math.floor(sku.quantityAvailable / daily) : null;
+    const low = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 0) || daysOfCover !== null && daysOfCover < 14;
+    if (!low) continue;
+    const best = items.filter((i) => i.sku.id === sku.skuId && i.offer.price !== null).sort((a, b) => (a.offer.price ?? 0) - (b.offer.price ?? 0))[0];
+    restock.push({ skuId: sku.skuId, code: sku.code, name: sku.name, quantityAvailable: sku.quantityAvailable, units30d: sku.units30d, daysOfCover, bestOfferId: best?.offer.offerId ?? null, bestPrice: best?.offer.price ?? null, bestSupplier: best?.offer.supplierName ?? null });
+  }
+  restock.sort((a, b) => (a.daysOfCover ?? 0) - (b.daysOfCover ?? 0));
+  return {
+    items: items.slice(0, 300),
+    restock: restock.slice(0, 100),
+    settings,
+    settingsFromChannel: fromChannel,
+    missingSettings: missingSettings(settings),
+    counts: {
+      profitable: items.filter((i) => i.evaluation.status === "profitable").length,
+      estimated: items.filter((i) => i.evaluation.status === "estimated").length,
+      unprofitable: items.filter((i) => i.evaluation.status === "unprofitable").length,
+      insufficient: items.filter((i) => i.evaluation.status === "insufficient_data").length,
+      unlinkedOffers: unlinkedRes.count ?? 0,
+      skus: skus.size
+    },
+    computedAt: now.toISOString()
+  };
+}
+async function saveCostSettings(ctx, input) {
+  const parsed = radarSettingsSchema.parse(input);
+  const { data: org, error } = await ctx.supabase.from("organizations").select("settings").eq("id", ctx.organization.id).single();
+  if (error || !org) throw fromPostgrestError(error ?? { message: "Organisation introuvable" });
+  const current = org.settings ?? {};
+  const { error: upErr } = await ctx.supabase.from("organizations").update({ settings: { ...current, radar: parsed } }).eq("id", ctx.organization.id);
+  if (upErr) {
+    if (/row-level security|permission/i.test(upErr.message)) throw new AppError("FORBIDDEN", "Seul un administrateur peut modifier les param\xE8tres de co\xFBts.");
+    throw fromPostgrestError(upErr);
+  }
+  return parsed;
+}
+var nullableNumber2, radarSettingsSchema, OFFER_SELECT2;
+var init_radar2 = __esm({
+  "src/services/radar/radar.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_radar();
+    nullableNumber2 = (min, max) => z32.number().finite().min(min).max(max).nullable();
+    radarSettingsSchema = z32.object({
+      vatRegime: z32.enum(["normal", "margin", "franchise"]).nullable(),
+      vatRate: nullableNumber2(0, 30),
+      vatRecoverable: z32.boolean().nullable(),
+      marketplaceFeePercent: nullableNumber2(0, 50),
+      paymentFeePercent: nullableNumber2(0, 20),
+      paymentFeeFixed: nullableNumber2(0, 50),
+      shippingToCustomer: nullableNumber2(0, 500),
+      packagingCost: nullableNumber2(0, 100),
+      returnProvisionPercent: nullableNumber2(0, 50),
+      importDutyPercent: nullableNumber2(0, 100)
+    });
+    OFFER_SELECT2 = "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, tax_type, shipping_cost, moq, available_quantity, stock_status, last_seen_at, country, supplier:suppliers(name, country), source:supplier_sources(source_type, config)";
+  }
+});
+
+// src/services/sourcing/data/supplier-directory.json
+var supplier_directory_default;
+var init_supplier_directory = __esm({
+  "src/services/sourcing/data/supplier-directory.json"() {
+    supplier_directory_default = [
+      {
+        key: "foxway",
+        name: "Foxway (Reseller Portal / Wholesale)",
+        segment: "A_refurb",
+        country: "EE",
+        deliveryZones: [
+          "EU",
+          "Nordics",
+          "UK"
+        ],
+        website: "https://www.foxway.com/en/buy-devices/",
+        catalogUrl: "https://resellers.foxway.com/",
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories",
+          "lots"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Lenovo",
+          "HP",
+          "Microsoft"
+        ],
+        productTypes: [
+          "new",
+          "used",
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte revendeur sur le Reseller Portal (validation) ; Wholesale s\xE9par\xE9 (wholesale.foxway.com, deals ex-works UK selon doc repo)",
+        accessModes: [
+          "pro_portal",
+          "manual_download"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "Deals wholesale 'take-all' (lot complet) selon doc repo ; Reseller Portal \xE0 l'unit\xE9 : \xE0 v\xE9rifier",
+        shipping: "Wholesale : prix ex-works UK, hors transport/droits (doc repo)",
+        warranty: "90 jours (doc repo, \xE0 confirmer)",
+        partQuality: null,
+        whyUseful: "Un des plus gros fournisseurs B2B europ\xE9ens de smartphones/PC reconditionn\xE9s et used, avec stock en temps r\xE9el et ench\xE8res pour revendeurs.",
+        howToGetCatalog: "Cr\xE9er un compte sur resellers.foxway.com ; le portail affiche une 'live stocklist' et un checkout en ligne ; demander \xE0 l'account manager un export CSV/XLSX ou une API partenaire (non document\xE9e publiquement).",
+        verified: "Portail revendeur avec live stocklist, checkout et ench\xE8res confirm\xE9 par un article tiers (substack) ; marque Teqcycle (~1 000 partenaires) confirm\xE9e par communiqu\xE9s Cision ; URLs portails issues de la doc repo ; aucune API publique trouv\xE9e.",
+        verificationLevel: "search_snippets+repo_doc",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://platformprofessional.substack.com/p/the-rise-of-foxway-and-circular-it",
+          "https://news.cision.com/foxway/r/foxway-brings-new-device-confidence-to-renewed-tech-across-the-nordics,c4293276",
+          "https://csr.dk/foxway",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "back-market-pro",
+        name: "Back Market Pro",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "BE",
+          "UK",
+          "US"
+        ],
+        website: "https://pro.backmarket.fr/",
+        catalogUrl: "https://pro.backmarket.fr/",
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte entreprise ; paiement CB/virement, paiement \xE0 30 jours pour certains profils",
+        accessModes: [
+          "pro_portal",
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Acc\xE8s B2B en volume \xE0 l'offre reconditionn\xE9e Back Market avec conseillers d\xE9di\xE9s (achat pour revente : conditions \xE0 v\xE9rifier).",
+        howToGetCatalog: "Ouvrir un compte sur pro.backmarket.fr et demander un devis volume au conseiller ; l'API Back Market document\xE9e est c\xF4t\xE9 vendeur uniquement, pas d'API acheteur trouv\xE9e.",
+        verified: "Existence de Back Market Pro (FR/BE/UK/US), paiements, conseillers : snippets Back Market help + Sacra ; API = c\xF4t\xE9 vendeur uniquement (Sellercloud, Nango).",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://help.backmarket.com/hc/en-us/articles/15855626593948-What-B2B-services-does-Back-Market-offer",
+          "https://sacra.com/c/back-market/",
+          "https://nango.dev/docs/api-integrations/back-market.md",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "refurbed-business",
+        name: "refurbed Business",
+        segment: "A_refurb",
+        country: "AT",
+        deliveryZones: [
+          "DE",
+          "AT",
+          "IE",
+          "CH"
+        ],
+        website: "https://business.refurbed.de/",
+        catalogUrl: "https://business.refurbed.de/angebot",
+        categories: [
+          "smartphones",
+          "laptops",
+          "tablets"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Demande de devis ; refurbed est contractant direct en B2B",
+        accessModes: [
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "10 articles minimum (offre B2B Irlande) ; FR/DE : \xE0 v\xE9rifier",
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Offre B2B devis par refurbed lui-m\xEAme (et non par les marchands de la marketplace) ; utile pour volumes moyens.",
+        howToGetCatalog: "Demande d'offre sur business.refurbed.de (devis individuel) ; aucun flux/API trouv\xE9 ; livraison France non confirm\xE9e.",
+        verified: "Mod\xE8le B2B (contractant direct, devis) via WEKA ; MOQ 10 articles via Irish Tech News (IE uniquement) ; lancement CH avril 2026 via IT Reseller.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.weka.de/einkauf-logistik/refurbed-bereitet-handys-jetzt-auch-fuer-b2b-auf/",
+          "https://irishtechnews.ie/?p=151794",
+          "https://www.itreseller.ch/Artikel/105297/Neuer_Refurbished-Anbieter_fuer_die_Schweiz.html",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "largo-business",
+        name: "Largo (Largo Business / distributeurs)",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "BE",
+          "CH",
+          "PT"
+        ],
+        website: "https://www.largo.fr/",
+        catalogUrl: "https://www.largo.fr/content/devenir-distributeur.html",
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Programme distributeurs / Largo Business sur demande (extranet selon doc repo)",
+        accessModes: [
+          "pro_portal",
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "Garantie contractuelle revendeurs (page sav.largo.fr cit\xE9e dans doc repo)",
+        partQuality: null,
+        whyUseful: "Reconditionneur industriel fran\xE7ais cot\xE9 (Nantes) avec canal revendeurs et distribution B2B (Bouygues Telecom Entreprises, grossiste portugais).",
+        howToGetCatalog: "Candidater via la page 'devenir distributeur' ; demander l'acc\xE8s extranet et un export stock (non document\xE9 publiquement).",
+        verified: "Activit\xE9 B2B Largo Business, partenariats distribution (Bluetooth PT 2021, Bouygues 2024) via communiqu\xE9s AMF/BusinessWire ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur (SERVER.md).",
+        verificationLevel: "search_snippets+repo_doc",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.businesswire.com/news/home/20241211518258/fr",
+          "https://echanges.dila.gouv.fr/OPENDATA/AMF/BWR/2021/07/FCBWR135156_20210712.pdf",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "recommerce",
+        name: "Recommerce Group",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.recommerce-group.com/",
+        catalogUrl: null,
+        categories: [
+          "smartphones"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Partenariat distributeur/op\xE9rateur (pas de portail revendeur public trouv\xE9)",
+        accessModes: [
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "24 mois (annuaire tiers, consumer)",
+        partQuality: null,
+        whyUseful: "Reconditionneur fran\xE7ais majeur (label RecQ) distribuant via op\xE9rateurs, distributeurs et marketplaces en Europe.",
+        howToGetCatalog: "Contact commercial B2B via recommerce-group.com ; pas de flux public ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur.",
+        verified: "Distribution via r\xE9seau de distributeurs/op\xE9rateurs/marketplaces (profil motherbase) ; aucune info revendeur PME.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://my.motherbase.ai/company/6466-recommerce-group",
+          "https://www.maddyness.com/2022/02/07/recommerce-united-b-levee-reconditionne/",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "smaaart",
+        name: "Smaaart (groupe Econocom)",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://smaaart.fr/",
+        catalogUrl: "https://smaaart.fr/content/21-solutions-pour-entreprises",
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Offre entreprises/distributeurs sur contact",
+        accessModes: [
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Reconditionneur fran\xE7ais (atelier dans l'H\xE9rault) vendant aux entreprises et distributeurs.",
+        howToGetCatalog: "Contacter via la page 'solutions pour entreprises' ; aucun flux public (SERVER.md : pas de catalogue lisible).",
+        verified: "B2B + B2C et distributeurs : fiches startup/FrenchWeb ; rachat Econocom via FrenchWeb.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://lespepitestech.com/node/16921",
+          "https://www.frenchweb.fr/smaaart-startup-specialiste-des-smartphones-reconditionnes-reunit-4-millions-deuros/380447",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ioutlet-business",
+        name: "iOutlet Business (The iOutlet, trade)",
+        segment: "A_refurb",
+        country: "GB",
+        deliveryZones: [
+          "UK",
+          "EU"
+        ],
+        website: "https://business.theioutlet.com/",
+        catalogUrl: "https://business.theioutlet.com/",
+        categories: [
+          "smartphones",
+          "tablets",
+          "lots"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "used",
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Demande de compte trade (revue sous 1-2 jours ouvr\xE9s)",
+        accessModes: [
+          "pro_portal",
+          "manual_download",
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "GBP",
+        moq: null,
+        shipping: "UK + EU (post-Brexit : droits/TVA import \xE0 pr\xE9voir vers FR)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Envoie une stock list + price sheet quotidienne aux comptes trade (grades A+ \xE0 C, D = grade r\xE9paration), base id\xE9ale d'un import tableur automatis\xE9.",
+        howToGetCatalog: "Demander un compte trade sur business.theioutlet.com ; recevoir la price sheet quotidienne (format exact non confirm\xE9, probablement tableur) et l'importer.",
+        verified: "Grades A+/A/B/C/D, price sheets quotidiennes ou \xE0 la demande, vente UK+EU : snippets de business.theioutlet.com.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://business.theioutlet.com/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "callisto-alchemy",
+        name: "Callisto (Alchemy) \u2014 marketplace B2B secondaire",
+        segment: "A_refurb",
+        country: "US",
+        deliveryZones: [
+          "Global"
+        ],
+        website: "https://callisto.tech",
+        catalogUrl: "https://callisto.tech/wholesale-used-smartphones-on-callisto",
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories",
+          "lots"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "used",
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Inscription acheteur avec KYC ; paiement en escrow",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "USD",
+        moq: "Lots/bulk ; certaines r\xE9f\xE9rences uniquement en ench\xE8res hebdomadaires",
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Marketplace B2B mondiale de smartphones used/refurb/endommag\xE9s (sources OEM, op\xE9rateurs, retailers) avec grading Alchemy et ench\xE8res.",
+        howToGetCatalog: "S'inscrire comme acheteur (KYC) ; catalogue \xE0 prix fixe, offres bulk, ench\xE8res live/silencieuses ; aucune API trouv\xE9e.",
+        verified: "Mod\xE8le (catalogue, offres, ench\xE8res, escrow, KYC) : pages callisto.tech ; chiffres GMV : RecyclingToday/OHS (auto-d\xE9clar\xE9s).",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://callisto.tech/wholesale-used-smartphones-on-callisto",
+          "https://callisto.tech/wholesale-secondary-tablets-callisto",
+          "https://recyclingtoday.com/news/alchemys-callisto-platform-connects-wholesalers-of-secondary-and-used-technology"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobile-express-hde",
+        name: "Mobile Express (HDE Global Mobile Tech B.V.)",
+        segment: "A_refurb",
+        country: "NL",
+        deliveryZones: [
+          "EU"
+        ],
+        website: null,
+        catalogUrl: "https://www.refurbed.ie/m/1962",
+        categories: [
+          "smartphones"
+        ],
+        brands: [],
+        productTypes: [
+          "used"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Division B2B pour retailers/revendeurs : contact direct (site propre non trouv\xE9)",
+        accessModes: [
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grossiste n\xE9erlandais de smartphones d'occasion grad\xE9s avec division B2B.",
+        howToGetCatalog: "Identifier le site/contact B2B (KvK 94898014, Beverwijk) puis demander la stock list ; non v\xE9rifi\xE9.",
+        verified: "Fiche vendeur refurbed uniquement (entit\xE9, adresse, TVA NL866929149B01, KvK 94898014) ; site propre NON trouv\xE9.",
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.refurbed.ie/m/1962"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "gsmexchange",
+        name: "gsmExchange",
+        segment: "A_refurb",
+        country: "IE",
+        deliveryZones: [
+          "Global"
+        ],
+        website: "https://www.gsmexchange.com/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "new",
+          "used",
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Adh\xE9sion v\xE9rifi\xE9e : historique commercial + 2 r\xE9f\xE9rences de membres (articles 2008-2012)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: null,
+        moq: "~100 unit\xE9s indicatif ; phoneLot pour plus petits volumes (sources anciennes)",
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Bourse B2B historique du n\xE9goce de t\xE9l\xE9phones (prix guides visibles des membres).",
+        howToGetCatalog: "Adh\xE9sion payante/v\xE9rifi\xE9e ; consultation manuelle ; la doc repo indique que l'acc\xE8s automatis\xE9 est interdit par les CGU.",
+        verified: "Uniquement articles de presse 2008-2012 et annuaire ; statut actuel non confirm\xE9 dans cette session.",
+        verificationLevel: "search_snippets+repo_doc",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://mobilenewscwp.co.uk/features/article/grey-matters-work-for-gsmexchange/",
+          "https://www.serchen.com/company/gsmexchange-com",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "handelot",
+        name: "Handelot",
+        segment: "A_refurb",
+        country: "PL",
+        deliveryZones: [
+          "Global"
+        ],
+        website: "https://www.handelot.com/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new",
+          "used",
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Membres VIP/VIP Gold/Junior ; 2 r\xE9f\xE9rences commerciales, > 1 an d'activit\xE9 (doc repo)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: null,
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Plateforme de trading B2B d'\xE9lectronique de marque (Wroc\u0142aw), alternative europ\xE9enne \xE0 gsmExchange.",
+        howToGetCatalog: "Adh\xE9sion puis consultation manuelle des offres ; aucun flux trouv\xE9.",
+        verified: "Non re-v\xE9rifi\xE9 dans cette session ; donn\xE9es issues de la doc repo (partielle).",
+        verificationLevel: "repo_doc_only",
+        knownInApp: false,
+        sourcesChecked: [
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "swappie-business",
+        name: "Swappie for Business",
+        segment: "A_refurb",
+        country: "FI",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://business.swappie.com/services/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "laptops"
+        ],
+        brands: [
+          "Apple"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Services pour marketplaces, leasing, op\xE9rateurs (pas un portail grossiste revendeurs)",
+        accessModes: [
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "12 mois (offre Swappie Business IT, date inconnue)",
+        partQuality: null,
+        whyUseful: "Gros reconditionneur iPhone europ\xE9en ; partenariats B2B possibles mais pas d'offre revendeur standard identifi\xE9e.",
+        howToGetCatalog: "Contact via business.swappie.com ; pas de catalogue revendeur public.",
+        verified: "Page business.swappie.com/services (marketplaces, leasing, telcos, ITAD) via snippet ; offre 'Swappie Business' via 01net.it.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://business.swappie.com/services/",
+          "https://www.01net.it/iphone-ricondizionati-aziende-professionisti-offerta-swappie/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "afb-france",
+        name: "AfB social & green IT (France)",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "EU"
+        ],
+        website: null,
+        catalogUrl: null,
+        categories: [
+          "laptops",
+          "smartphones",
+          "tablets"
+        ],
+        brands: [
+          "Lenovo",
+          "HP",
+          "Dell",
+          "Apple"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Boutique AfB + ventes aux PME/\xE9coles/associations",
+        accessModes: [
+          "public_catalog",
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "12 mois, extensible \xE0 24 (fiche Combak)",
+        partQuality: null,
+        whyUseful: "ITAD/reconditionneur social (si\xE8ge FR \xE0 Annecy) issu de parcs d'entreprises : source de PC portables business reconditionn\xE9s.",
+        howToGetCatalog: "Identifier la boutique AfB France et demander une offre revendeur ; achat pour revente non confirm\xE9.",
+        verified: "Activit\xE9 FR (Annecy, 2012) et garantie via Combak ; domaine de la boutique FR non confirm\xE9 dans cette session.",
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.combak.co/marchands/afb",
+          "https://good-search.org/about/en/making-the-world-a-greener-and-more-socially-responsible-place-with-used-it-equipment/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "certideal",
+        name: "Certideal",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "EU"
+        ],
+        website: "https://eu.certideal.com",
+        catalogUrl: null,
+        categories: [
+          "smartphones"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: "B2C",
+        proAccountRequired: false,
+        accessConditions: "Site grand public ; aucune offre volume/pro trouv\xE9e",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: "24 \xE0 30 mois selon sources",
+        partQuality: null,
+        whyUseful: "R\xE9f\xE9rence de prix public reconditionn\xE9 (benchmark), pas un fournisseur B2B.",
+        howToGetCatalog: "Pas d'acc\xE8s automatis\xE9 (robots.txt/403 constat\xE9 c\xF4t\xE9 serveur) ; utiliser seulement comme veille prix manuelle.",
+        verified: "B2C confirm\xE9 (siecledigital, reepeat) ; aucune offre B2B trouv\xE9e.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://eu.certideal.com/en/certideal-concept",
+          "https://www.reepeat.fr/boutiques/comparison/certideal-vs-easycash",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "easycash",
+        name: "Easycash",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://www.easycash.fr",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops"
+        ],
+        brands: [],
+        productTypes: [
+          "used",
+          "refurbished"
+        ],
+        sales: "B2C",
+        proAccountRequired: false,
+        accessConditions: "R\xE9seau de magasins + e-commerce grand public ; aucune offre pro trouv\xE9e",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Benchmark prix occasion grand public ; pas une source B2B.",
+        howToGetCatalog: "Veille manuelle uniquement (SERVER.md : pas de catalogue public lisible).",
+        verified: "B2C confirm\xE9 par comparatifs ; aucune offre pro trouv\xE9e. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.reepeat.fr/boutiques/comparison/certideal-vs-easycash",
+          "https://www.combak.co/blog/easycash-avis",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "yes-yes",
+        name: "YesYes",
+        segment: "A_refurb",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: null,
+        catalogUrl: null,
+        categories: [
+          "smartphones"
+        ],
+        brands: [],
+        productTypes: [
+          "refurbished"
+        ],
+        sales: null,
+        proAccountRequired: null,
+        accessConditions: null,
+        accessModes: [],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Start-up fran\xE7aise du reconditionn\xE9 (lev\xE9e de 2,7 M\u20AC) ; mod\xE8le B2B non confirm\xE9.",
+        howToGetCatalog: "Non d\xE9termin\xE9 : aucune offre B2B trouv\xE9e ; SERVER.md : pas de donn\xE9e structur\xE9e publique.",
+        verified: "Seulement un titre LSA (lev\xE9e de fonds) ; rien sur l'acc\xE8s revendeur.",
+        verificationLevel: "unverified",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.lsa-conso.fr/la-start-up-de-produits-reconditionnes-yes-yes-leve-2-7-millions-d-euros,385973",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "foneday",
+        name: "Foneday",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.foneday.shop",
+        catalogUrl: "https://www.foneday.shop",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi",
+          "Google"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte professionnel (client\xE8le principalement B2B, > 14 pays)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "Grossiste NL 'one-stop-shop' pi\xE8ces/outils smartphone-tablette pour r\xE9parateurs europ\xE9ens.",
+        howToGetCatalog: "Ouvrir un compte pro ; demander \xE0 Foneday s'il existe un export CSV/API (aucune API publique trouv\xE9e ; SERVER.md : pas de catalogue public lisible).",
+        verified: "Activit\xE9, si\xE8ge Gilze, fond\xE9 2015, > 14 pays : jobicy/werkzoeken ; aucune doc API trouv\xE9e ; WebFetch bloqu\xE9.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://jobicy.com/company/foneday",
+          "https://www.werkzoeken.nl/bedrijf/8729-foneday",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobileparts-shop",
+        name: "Mobileparts.shop (2Service B.V.)",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.mobileparts.shop",
+        catalogUrl: "https://www.mobileparts.shop/fr",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte professionnel (r\xE9parateurs, refurbishers, grossistes)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "Partenaire officiel Samsung/Apple annonc\xE9 : pi\xE8ces genuine + compatibles + r\xE9cup\xE9r\xE9es, > 5 000 r\xE9f\xE9rences, vitrine FR.",
+        howToGetCatalog: "Ouvrir un compte pro ; demander un export ; soci\xE9t\xE9s s\u0153urs SamsungParts.eu / SamsungSelfRepair.shop pour pi\xE8ces Samsung d'origine.",
+        verified: "Profil IFA Berlin (2Service, Arnhem, 84 marques, genuine/compatible/harvested) et Trusted Shops (vitrine FR) ; SERVER.md : pas de catalogue public lisible.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://ifa-berlin.com/exhibitors/2service-bv",
+          "https://www.trustedshops.de/company/2service_b_v_/",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobilesentrix-eu",
+        name: "MobileSentrix Europe",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "EU",
+          "UK"
+        ],
+        website: "https://www.mobilesentrix.eu",
+        catalogUrl: "https://genuineparts.mobilesentrix.eu/about",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Google"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte grossiste",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "Cut-off tardif, livraison J+1 annonc\xE9e (UK 21h GMT)",
+        warranty: "Lifetime warranty annonc\xE9e (site UK)",
+        partQuality: "mixed",
+        whyUseful: "Grand grossiste nord-am\xE9ricain implant\xE9 aux Pays-Bas (rachat TouchFix) avec section pi\xE8ces d'origine.",
+        howToGetCatalog: "Compte grossiste ; l'int\xE9gration catalogue document\xE9e (RepairDesk) ne couvre que les vitrines US/CA ; demander un export pour l'UE.",
+        verified: "Pr\xE9sence NL/UK (IFA 2025, rachat TouchFix) ; int\xE9gration RepairDesk (t\xE9l\xE9chargement catalogue US/CA, stock temps r\xE9el) ; pas d'API publique.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.ifa-berlin.com/exhibitors/mobilesentrix",
+          "https://www.repairdesk.co/mobilesentrix-integration",
+          "https://www.trysignalbase.com/news/acquisitions/touchfix-acquired-by-mobilesentrix-acquisition",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "replacebase",
+        name: "ReplaceBase",
+        segment: "B_parts",
+        country: "GB",
+        deliveryZones: [
+          "UK",
+          "EU"
+        ],
+        website: "https://www.replacebase.co.uk",
+        catalogUrl: null,
+        categories: [
+          "spare_parts"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Compte trade",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "GBP",
+        moq: null,
+        shipping: "Depuis le UK (droits/TVA import vers FR)",
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "> 14 000 SKU t\xE9l\xE9phone/tablette/MacBook, 4 000-6 000 composants exp\xE9di\xE9s/jour.",
+        howToGetCatalog: "Compte trade ; l'\xE9tude de cas mentionne une int\xE9gration POS, pas d'API client publique ; demander un export.",
+        verified: "\xC9tude de cas EvinceDev + page about (miroir) ; pas d'API trouv\xE9e ; SERVER.md : pas de catalogue public lisible.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://evincedev.com/online-replacement-parts-case-study-replacebase",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "rewa-eu",
+        name: "REWA EU (avec GSM Parts Center)",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://rewa.tech",
+        catalogUrl: "https://rewaeu.com",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Site EU d\xE9di\xE9 ; conditions de compte non confirm\xE9es",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "Fabricant/grossiste de Shenzhen (35 000+ produits, outils de refurbishing) avec entit\xE9 EU lanc\xE9e en sept. 2025 avec GPC.",
+        howToGetCatalog: "Consulter rewaeu.com et ouvrir un compte ; aucun flux public trouv\xE9.",
+        verified: "Lancement REWA EU sept. 2025 en partenariat avec GPC et domaine rewaeu.com : pages rewa.tech (snippets).",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://rewa.tech/?p=30933",
+          "https://rewa.tech/products/",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ifixit-pro-eu",
+        name: "iFixit Pro (EU)",
+        segment: "B_parts",
+        country: "DE",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.ifixit.com/en-eu/pro",
+        catalogUrl: "https://eu-store.ifixit.com/pages/business-customers",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Google"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Inscription Pro gratuite ; formulaire de demande de tarifs (r\xE9ponse 2 jours ouvr\xE9s)",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "Livraison standard offerte au-del\xE0 d'un seuil (montants affich\xE9s en $ sur certaines pages)",
+        warranty: "Garantie \xE0 vie sur les pi\xE8ces (hors consommables comme batteries)",
+        partQuality: "mixed",
+        whyUseful: "Pi\xE8ces OEM (dont Google Pixel) et aftermarket avec remises pro 10-60 % affich\xE9es sur fiche produit.",
+        howToGetCatalog: "S'inscrire au programme Pro ; prix remis\xE9s visibles connect\xE9 ; pas d'API/flux trouv\xE9.",
+        verified: "Pages ifixit.com/en-eu/pro et eu-store business-customers (snippets) ; formulaire pro.ifixit.com.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.ifixit.com/en-eu/pro",
+          "https://eu-store.ifixit.com/pages/business-customers",
+          "https://pro.ifixit.com/repair-pricing-request"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "brico-phone",
+        name: "Brico-phone",
+        segment: "B_parts",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://www.brico-phone.com",
+        catalogUrl: "https://www.brico-phone.com",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Huawei",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2C",
+        proAccountRequired: false,
+        accessConditions: "Catalogue public (prix TTC)",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "Seule source pi\xE8ces avec catalogue public structur\xE9 d\xE9j\xE0 lu par MON STOCK (sitemap + JSON-LD) ; qualit\xE9s vari\xE9es (OLED compatible, reconditionn\xE9 d'origine, batterie originale).",
+        howToGetCatalog: "Connecteur existant sitemap + JSON-LD ; aucun tarif pro trouv\xE9.",
+        verified: "Fiches produits (qualit\xE9s de pi\xE8ces) via snippets ; extraction prix valid\xE9e c\xF4t\xE9 serveur le 2026-10-10 (SERVER.md).",
+        verificationLevel: "server_verified",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.brico-phone.com/pieces-detachees-pour-huawei-p30-pro-4457",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "utopya",
+        name: "Utopya",
+        segment: "B_parts",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "EU"
+        ],
+        website: "https://www.utopya.fr",
+        catalogUrl: null,
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte professionnel (conditions exactes non trouv\xE9es)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur B2B europ\xE9en bas\xE9 \xE0 Nice (CA 78 M\u20AC 2023) : pi\xE8ces/accessoires smartphones, tablettes, montres pour r\xE9parateurs et reconditionneurs.",
+        howToGetCatalog: "Ouvrir un compte pro ; robots.txt interdit les chemins n\xE9cessaires (SERVER.md) \u2192 demander un flux fournisseur.",
+        verified: "Profil IFA et fiche Xerfi (snippets) ; robots.txt constat\xE9 c\xF4t\xE9 serveur.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.ifa-berlin.com/exhibitors/utopya-2",
+          "https://www.xerfi.com/etudes-par-entreprise/utopya_791460660",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobilax",
+        name: "Mobilax (ND Distribution)",
+        segment: "B_parts",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "EU"
+        ],
+        website: "https://www.mobilax.fr",
+        catalogUrl: null,
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Xiaomi",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "R\xE9serv\xE9 exclusivement aux professionnels (application mobile B2B disponible)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "Livraison Europe annonc\xE9e",
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "Grossiste lyonnais (2010) de pi\xE8ces et accessoires r\xE9serv\xE9 aux r\xE9parateurs, avec app B2B.",
+        howToGetCatalog: "Compte pro ; aucune API publique trouv\xE9e ; SERVER.md : prix apr\xE8s connexion \u2192 demander un flux.",
+        verified: "Fiche app (publisher ND Distribution) et fiche French Tech ; domaine non confirm\xE9 dans cette session (WebFetch bloqu\xE9). \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://mwm.ai/apps/mobilax/1599510586",
+          "https://lespepitestech.com/node/18571",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "injured-gadgets",
+        name: "Injured Gadgets",
+        segment: "B_parts",
+        country: "US",
+        deliveryZones: [
+          "US",
+          "Global"
+        ],
+        website: "https://www.injuredgadgets.com",
+        catalogUrl: null,
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: "Compte grossiste ; certains articles non exp\xE9diables hors USA",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "USD",
+        moq: null,
+        shipping: "Restrictions export selon article ; droits/TVA import vers FR",
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "Grossiste US (Norcross, GA) int\xE9gr\xE9 \xE0 RepairDesk (stock temps r\xE9el) ; pertinent surtout pour r\xE9f\xE9rences introuvables en UE.",
+        howToGetCatalog: "Pas d'API publique ; int\xE9gration RepairDesk r\xE9serv\xE9e aux utilisateurs RepairDesk ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur.",
+        verified: "Int\xE9gration RepairDesk et restriction d'exp\xE9dition sur une fiche produit (snippets).",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://blog.repairdesk.co/?p=798",
+          "https://www.injuredgadgets.com/tools-equipment/soldering/diagnostics",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "fixez",
+        name: "Fixez",
+        segment: "B_parts",
+        country: "US",
+        deliveryZones: [],
+        website: "https://www.fixez.com",
+        catalogUrl: null,
+        categories: [
+          "spare_parts"
+        ],
+        brands: [],
+        productTypes: [
+          "parts"
+        ],
+        sales: null,
+        proAccountRequired: null,
+        accessConditions: null,
+        accessModes: [],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "USD",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "D\xE9j\xE0 pr\xE9sent dans l'app ; aucune information nouvelle trouv\xE9e.",
+        howToGetCatalog: "Non d\xE9termin\xE9 (robots.txt/403 constat\xE9 c\xF4t\xE9 serveur).",
+        verified: "Aucun r\xE9sultat de recherche pertinent dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "unverified",
+        knownInApp: true,
+        sourcesChecked: [
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "4phones",
+        name: "4Phones",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "BE",
+          "NL",
+          "LU",
+          "DE",
+          "ES",
+          "PT",
+          "TR"
+        ],
+        website: "https://4phones.eu",
+        catalogUrl: "https://acc.4phones.eu",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Webshop ferm\xE9 : demande de compte sans engagement, stock et prix visibles apr\xE8s approbation",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "Exp\xE9dition le jour m\xEAme (cut-off 18h00/19h30 CET selon fiches)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Importateur/distributeur de pi\xE8ces t\xE9l\xE9phone/tablette/laptop (Valkenswaard) actif Benelux, DE, ES, PT.",
+        howToGetCatalog: "Demander un compte sur acc.4phones.eu ; FR non list\xE9 dans les zones \u2192 confirmer la livraison France ; demander un export.",
+        verified: "Pages produit acc.4phones.eu (compte requis, cut-offs) et LinkedIn (zones) via snippets.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://acc.4phones.eu/products/a00004569",
+          "https://4phones.eu/pages/our-mission",
+          "https://linkedin.com/company/4phones"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "gsm-parts-center",
+        name: "GSM Parts Center (GPC Group Global B.V.)",
+        segment: "B_parts",
+        country: "NL",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.gsmpartscenter.com",
+        catalogUrl: null,
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Mod\xE8le 'registered dealers' (support 7j/7)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur B2B pi\xE8ces/accessoires/outils, partenaire de REWA EU et certifi\xE9 Phonecheck.",
+        howToGetCatalog: "Trouver le site officiel GPC et s'enregistrer comme dealer ; URL non confirm\xE9e.",
+        verified: "Uniquement fiche partenaire Phonecheck + mention REWA EU ; site propre non trouv\xE9. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.phonecheck.com/fr/partners/gsm-parts-center",
+          "https://rewa.tech/?p=30933",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "mobiparts-gsmnet",
+        name: "Mobiparts / GSMnet",
+        segment: "B_parts",
+        country: "RO",
+        deliveryZones: [
+          "RO",
+          "EU"
+        ],
+        website: "https://www.mobiparts.ro",
+        catalogUrl: "https://www.mobiparts.ro",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: true,
+        accessConditions: "Plateforme B2B en ligne (> 5 000 soci\xE9t\xE9s clientes)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur roumain (CA ~31 M\u20AC 2022, > 25 000 produits) avec stock temps r\xE9el affich\xE9 et account managers B2B.",
+        howToGetCatalog: "Ouvrir un compte B2B sur mobiparts.ro ; demander un export XML/CSV (non document\xE9).",
+        verified: "Plateforme B2B mobiparts.ro, 5 000 soci\xE9t\xE9s, stock temps r\xE9el : Revista Biz, IFA, Economica (snippets).",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.revistabiz.ro/afacerile-gsmnet-ro-in-crestere-pana-la-31-de-milioane-de-euro/",
+          "https://www.ifa-berlin.com/archived-exhibitor/mobiparts"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "sifar",
+        name: "Sifar Group (groupe Esprinet)",
+        segment: "B_parts",
+        country: "IT",
+        deliveryZones: [
+          "IT",
+          "EU"
+        ],
+        website: "https://www.sifar.it",
+        catalogUrl: null,
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [
+          "Samsung",
+          "Realme",
+          "Huawei",
+          "Oppo",
+          "Asus",
+          "OnePlus",
+          "Apple",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Plateforme web B2B (inscription revendeur)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "Livraison 24/48 h (Italie)",
+        warranty: null,
+        partQuality: "mixed",
+        whyUseful: "Distributeur autoris\xE9 de pi\xE8ces Samsung, Realme, Huawei, Oppo, Asus, OnePlus (originales + compatibles), > 20 000 r\xE9f\xE9rences.",
+        howToGetCatalog: "Inscription sur sifar.it ; demander si le flux espriCATALOG d'Esprinet couvre les pi\xE8ces Sifar.",
+        verified: "Rachat par Esprinet (ao\xFBt 2023) et statut distributeur autoris\xE9 : MilanoFinanza, Soldionline, IFA (snippets).",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.ifa-berlin.com/exhibitors/sifar-group-srl",
+          "https://www.milanofinanza.it/news/esprinet-acquisisce-sifar-group-per-16-milioni-di-euro-e-prende-in-contropiede-gli-shortisti-la-tabella-202307191530379702",
+          "https://atoka.io/public/it/azienda/sifar-group-srl/851f5c5be92a"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "life365",
+        name: "Life365",
+        segment: "E_specialist",
+        country: "IT",
+        deliveryZones: [
+          "IT",
+          "EU"
+        ],
+        website: "https://www.life365.eu",
+        catalogUrl: "https://info.life365.eu/en/settori/telephony-and-repairs",
+        categories: [
+          "spare_parts",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "parts",
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte B2B ; 'pas de minimum' annonc\xE9",
+        accessModes: [
+          "api",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "Aucun minimum annonc\xE9",
+        shipping: "48 h Italie, < 4 jours reste de l'Europe (annonc\xE9)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Plateforme B2B italienne (Forl\xEC) t\xE9l\xE9phonie/r\xE9paration qui annonce un 'API Access to Inventory' \u2014 candidat rare \xE0 une int\xE9gration API c\xF4t\xE9 pi\xE8ces.",
+        howToGetCatalog: "Contacter Life365 pour ouvrir un compte et obtenir la documentation API (non publique).",
+        verified: "'API Access to Inventory' et 'check availability through our APIs' sur pages Life365 (snippets) ; aucune doc technique trouv\xE9e.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://info.life365.eu/en/settori/telephony-and-repairs",
+          "https://info.life365.eu/en/settori/electrical-components",
+          "https://www.life365.eu/en/contatti"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "smartgrade",
+        name: "SmartGrade (Samsung Service Pack)",
+        segment: "B_parts",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "EU"
+        ],
+        website: "https://smartgrade.fr",
+        catalogUrl: "https://www.destockplus.com/boutique-grossiste-samsungservicepack.html",
+        categories: [
+          "spare_parts"
+        ],
+        brands: [
+          "Samsung"
+        ],
+        productTypes: [
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Demande par e-mail (mod\xE8les, couleurs, volumes hebdo/mensuels, prix cibles)",
+        accessModes: [
+          "email_quote"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: "original",
+        whyUseful: "Grossiste ni\xE7ois d'\xE9crans Samsung Service Pack (pi\xE8ces d'origine) \u2014 se dit fournisseur certifi\xE9 Samsung Enterprise (non v\xE9rifi\xE9).",
+        howToGetCatalog: "Envoyer la liste des mod\xE8les et volumes \xE0 l'adresse commerciale indiqu\xE9e sur ses annonces Destockplus ; devis manuel.",
+        verified: "Annonces Destockplus (contact, site smartgrade.fr) et forum Samsung 2017 (snippets) ; statut Samsung non v\xE9rifi\xE9.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.destockplus.com/acheter/c-904670-ecran-original-samsung-service.html",
+          "https://eu.community.samsung.com/t5/autres-smartphones/samsung-service-pack/m-p/323819/highlight/true"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "smartpart4u",
+        name: "smartpart4u (JH Internet GmbH)",
+        segment: "B_parts",
+        country: "DE",
+        deliveryZones: [
+          "DE"
+        ],
+        website: "https://smartpart4u.de",
+        catalogUrl: null,
+        categories: [
+          "spare_parts"
+        ],
+        brands: [],
+        productTypes: [
+          "parts"
+        ],
+        sales: null,
+        proAccountRequired: null,
+        accessConditions: null,
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: "Livraison J+1 annonc\xE9e",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Se pr\xE9sente comme grossiste de pi\xE8ces smartphone (DE) ; \xE0 qualifier.",
+        howToGetCatalog: "V\xE9rifier l'existence d'un acc\xE8s revendeur ; non v\xE9rifi\xE9.",
+        verified: "Uniquement profil Trusted Shops (en partie g\xE9n\xE9r\xE9 par IA selon la page).",
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.trustedshops.de/company/jh_internet_gmbh/"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "bstock-europe",
+        name: "B-Stock Europe (Amazon EU, Supply Europe\u2026)",
+        segment: "C_liquidation",
+        country: "US",
+        deliveryZones: [
+          "EU",
+          "UK"
+        ],
+        website: "https://bstock.com/europe/",
+        catalogUrl: "https://bstock.com/auctions/europe/",
+        categories: [
+          "lots",
+          "smartphones",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "lots",
+          "used"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Inscription gratuite par marketplace ; licence commerciale + n\xB0 TVA (UE) ; adresse de livraison europ\xE9enne",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "Palettes / camions",
+        shipping: "Acheteur responsable du transport, douane et droits",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Canal officiel des ench\xE8res de retours/surstocks Amazon EU et d'autres retailers europ\xE9ens, dont \xE9lectronique (neuf \xE0 salvage).",
+        howToGetCatalog: "S'inscrire sur chaque marketplace (Amazon EU, Supply Europe) ; manifestes par lot ; doc repo : acc\xE8s automatis\xE9 interdit par les CGU \u2192 mode manuel/alertes.",
+        verified: "Pages bstock.com (Amazon EU, Supply Europe, FAQ acheteurs : TVA, documents) via snippets.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://bstock.com/auctions/amazon-eu/",
+          "https://bstock.com/supplystoreeurope/faq/",
+          "https://bstock.com/supplystoreeurope/consumer-electronics/",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "merkandi",
+        name: "Merkandi",
+        segment: "C_liquidation",
+        country: "PL",
+        deliveryZones: [
+          "EU",
+          "Global"
+        ],
+        website: "https://merkandi.fr/",
+        catalogUrl: "https://merkandi.fr/",
+        categories: [
+          "lots",
+          "smartphones",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new",
+          "used",
+          "refurbished",
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Inscription ; contact vendeurs selon abonnement",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "Variable selon vendeur",
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grande place de march\xE9 B2B europ\xE9enne de surstocks, liquidations et retours (fiabilit\xE9 vendeurs in\xE9gale selon avis).",
+        howToGetCatalog: "Inscription acheteur ; le flux XML document\xE9 (AdTribes) sert aux VENDEURS pour publier, pas aux acheteurs ; aucune API acheteur trouv\xE9e.",
+        verified: "Flux XML vendeur via AdTribes ; avis Trustpilot ; robots.txt/403 c\xF4t\xE9 serveur.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://adtribes.io/?p=46813",
+          "https://ie.trustpilot.com/review/merkandi.com?page=2",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "stocklear",
+        name: "Stocklear",
+        segment: "C_liquidation",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "BE",
+          "DE",
+          "NL",
+          "ES",
+          "EU"
+        ],
+        website: "https://stocklear.fr/",
+        catalogUrl: "https://stocklear.fr/lots/cat/telephone-16",
+        categories: [
+          "lots",
+          "smartphones"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "lots",
+          "new",
+          "used"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte professionnel valid\xE9 (soldeurs, grossistes, reconditionneurs\u2026)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "Lots aux ench\xE8res",
+        shipping: "Transport propos\xE9 sur chaque commande",
+        warranty: "SAV garanti sur chaque commande (annonc\xE9)",
+        partQuality: null,
+        whyUseful: "Ench\xE8res B2B de retours clients/invendus de grandes marques (Apple, Samsung\u2026), 9 niveaux de qualit\xE9 du neuf au non test\xE9.",
+        howToGetCatalog: "Cr\xE9er un compte pro ; consulter les lots t\xE9l\xE9phonie ; pas d'API acheteur trouv\xE9e (un connecteur Contentserv existe c\xF4t\xE9 vendeurs).",
+        verified: "Mod\xE8le, qualit\xE9s, acheteurs cibles : La Libre, CB Insights, Destockplus (snippets).",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.lalibre.be/economie/entreprises-startup/2020/06/08/stocklear-la-crise-a-eu-un-double-effet-daubaine-LT7OOAKQKVGM7P5SWU27BLSACM/",
+          "https://marketplace.contentserv.com/connectors/stocklear-connector",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "jobalots",
+        name: "Jobalots",
+        segment: "C_liquidation",
+        country: "GB",
+        deliveryZones: [
+          "UK",
+          "EU"
+        ],
+        website: "https://jobalots.com",
+        catalogUrl: "https://jobalots.com",
+        categories: [
+          "lots"
+        ],
+        brands: [],
+        productTypes: [
+          "lots",
+          "used"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: false,
+        accessConditions: "Inscription ; ench\xE8res de lots",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "GBP",
+        moq: "Lots/palettes",
+        shipping: null,
+        warranty: "Aucune garantie sur les retours clients (non test\xE9s, non tri\xE9s, \xB110 % sur le manifeste)",
+        partQuality: null,
+        whyUseful: "Lots de retours clients avec manifeste ; utile pour sourcing opportuniste, risque \xE9lev\xE9.",
+        howToGetCatalog: "Consultation manuelle ; robots.txt interdit l'acc\xE8s automatis\xE9 (SERVER.md).",
+        verified: "Politique (pas de garantie, \xB110 %) via r\xE9ponses Jobalots sur reviews.io ; robots.txt constat\xE9 c\xF4t\xE9 serveur.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.reviews.io/company-reviews/store/jobalots.com-1gJ4Xrr/R1K",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "eurolots",
+        name: "EuroLots",
+        segment: "C_liquidation",
+        country: "BG",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.eurolots.com/en",
+        catalogUrl: "https://www.eurolots.com/en/fixed-price-lots",
+        categories: [
+          "lots"
+        ],
+        brands: [],
+        productTypes: [
+          "lots"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Inscription (remise premi\xE8re commande annonc\xE9e)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "Lots/palettes",
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Plateforme de liquidation (Plovdiv) avec photos r\xE9elles et manifestes d\xE9taill\xE9s, dont \xE9lectronique.",
+        howToGetCatalog: "Inscription ; consultation manuelle ; aucune API trouv\xE9e.",
+        verified: "Uniquement fiche annuaire tiers (bestfoodimporters) ; URLs de la doc repo.",
+        verificationLevel: "unverified",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://bestfoodimporters.com/company/eurolots/",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "wholesale-clearance-uk",
+        name: "Wholesale Clearance UK",
+        segment: "C_liquidation",
+        country: "GB",
+        deliveryZones: [
+          "UK"
+        ],
+        website: "https://www.wholesaleclearance.co.uk/",
+        catalogUrl: "https://www.wholesaleclearance.co.uk/electrical__5.htm",
+        categories: [
+          "lots",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "lots",
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: null,
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "GBP",
+        moq: null,
+        shipping: "UK (droits/TVA vers FR)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "D\xE9stockage UK (rayon \xE9lectrique) ; faible pertinence smartphones.",
+        howToGetCatalog: "Consultation manuelle ; doc repo : acc\xE8s automatis\xE9 interdit par les CGU.",
+        verified: "Aucun r\xE9sultat de recherche dans cette session ; URLs issues de la doc repo.",
+        verificationLevel: "repo_doc_only",
+        knownInApp: true,
+        sourcesChecked: [
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "destockplus",
+        name: "Destockplus",
+        segment: "C_liquidation",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://www.destockplus.com/",
+        catalogUrl: "https://www.destockplus.com/acheter/recherche-fournisseur-0-telephonie.html",
+        categories: [
+          "lots",
+          "smartphones",
+          "spare_parts",
+          "laptops"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "new",
+          "refurbished",
+          "lots",
+          "parts"
+        ],
+        sales: "B2B",
+        proAccountRequired: false,
+        accessConditions: "Annonces publiques ; contact vendeur apr\xE8s inscription",
+        accessModes: [
+          "public_catalog",
+          "feed_xml"
+        ],
+        apiDocsUrl: "https://www.destockplus.com/modules/annonces/rss.php",
+        pricesTax: null,
+        currency: "EUR",
+        moq: "Selon annonceur",
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Petites annonces B2B de grossistes FR/\xE9trangers (iPhone/Android reconditionn\xE9s, Service Pack, PC en lots) ; flux RSS/XML public des annonces.",
+        howToGetCatalog: "Le flux RSS/XML public (rss.php) permet de surveiller les nouvelles annonces ; prix souvent 'sur demande' \u2192 contact manuel ; prudence sur la qualit\xE9 des annonces.",
+        verified: "Page flux RSS (gratuit, imm\xE9diat) et service 'flux d'annonces' vendeurs via snippets ; annonces t\xE9l\xE9phonie dat\xE9es juillet-ao\xFBt 2026.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.destockplus.com/modules/annonces/rss.php",
+          "https://www.destockplus.com/lire/nos-services-1.html",
+          "https://www.destockplus.com/acheter/recherche-fournisseur-0-telephonie.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "troostwijk",
+        name: "Troostwijk Auctions",
+        segment: "C_liquidation",
+        country: "NL",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.troostwijkauctions.com",
+        catalogUrl: null,
+        categories: [
+          "lots"
+        ],
+        brands: [],
+        productTypes: [
+          "lots",
+          "used"
+        ],
+        sales: "B2B",
+        proAccountRequired: null,
+        accessConditions: "Inscription ench\xE9risseur",
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grande maison d'ench\xE8res B2B europ\xE9enne vendant chaque semaine des retours e-commerce (via Blue Banana Logistics).",
+        howToGetCatalog: "Consultation manuelle des ventes hebdomadaires de retours ; aucune vente smartphone sp\xE9cifique confirm\xE9e.",
+        verified: "Page partenaire bol.com (retours webshops, ventes hebdo) et page histoire Troostwijk (snippets).",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://partnerplatform.bol.com/en/cpdp/troostwijk-auctions",
+          "https://www.troostwijkauctions.com/fr/the-story-of-troostwijk-auctions"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "vavato",
+        name: "Vavato",
+        segment: "C_liquidation",
+        country: "BE",
+        deliveryZones: [
+          "BE",
+          "EU"
+        ],
+        website: "https://vavato.com",
+        catalogUrl: null,
+        categories: [
+          "lots"
+        ],
+        brands: [],
+        productTypes: [
+          "lots"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: null,
+        accessConditions: null,
+        accessModes: [
+          "public_catalog"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Plateforme d'ench\xE8res belge (overstock, insolvabilit\xE9s) ayant \xE9coul\xE9 39 % des retours Kr\xEBfel (2021).",
+        howToGetCatalog: "Consultation manuelle ; statut actuel (rachet\xE9/fusionn\xE9 selon PitchBook) \xE0 v\xE9rifier.",
+        verified: "RetailDetail/DH 2021 et PitchBook ; site non confirm\xE9 dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://retaildetail.be/nl/news/elektro/krefel-vend-ses-retours-aux-encheres-sur-internet",
+          "https://pitchbook.com/profiles/company/343218-52",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "restposten-de",
+        name: "Restposten.de",
+        segment: "C_liquidation",
+        country: "DE",
+        deliveryZones: [
+          "DE",
+          "EU"
+        ],
+        website: "https://restposten.de",
+        catalogUrl: null,
+        categories: [
+          "lots"
+        ],
+        brands: [],
+        productTypes: [
+          "lots",
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "R\xE9serv\xE9 aux entreprises",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Marketplace B2B germanophone de restes de stock, surplus et retours (Solingen) ; \xE9lectronique list\xE9e parmi les cat\xE9gories.",
+        howToGetCatalog: "Inscription entreprise ; consultation manuelle ; ne pas confondre avec Restposten24.",
+        verified: "Description via annuaire tiers uniquement.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.monsterdealz.de/magazin/restposten-kaufen",
+          "https://erfahrungenscout.de/online-einkaufen/restposten-bewertungen?page=2"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ebay-browse",
+        name: "eBay (Buy Browse API)",
+        segment: "C_liquidation",
+        country: "US",
+        deliveryZones: [
+          "FR",
+          "EU",
+          "Global"
+        ],
+        website: "https://www.ebay.fr",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "spare_parts",
+          "lots"
+        ],
+        brands: [],
+        productTypes: [
+          "new",
+          "used",
+          "refurbished",
+          "parts",
+          "lots"
+        ],
+        sales: "B2B+B2C",
+        proAccountRequired: false,
+        accessConditions: "Cl\xE9s d'application eBay ; sandbox ouvert, production des Buy APIs soumise \xE0 \xE9ligibilit\xE9/approbation/contrat",
+        accessModes: [
+          "api"
+        ],
+        apiDocsUrl: "https://developer.ebay.com/api-docs/buy/browse/overview.html",
+        pricesTax: "TTC",
+        currency: "EUR",
+        moq: null,
+        shipping: "Selon vendeur",
+        warranty: "Selon vendeur",
+        partQuality: null,
+        whyUseful: "Seule API officielle de recherche multi-vendeurs (lots, reconditionn\xE9s, pi\xE8ces) avec filtres GTIN/cat\xE9gorie.",
+        howToGetCatalog: "GET /buy/browse/v1/item_summary/search avec token d'application (client credentials) ; max 10 000 r\xE9sultats/requ\xEAte ; v\xE9rifier la nouvelle licence API (restrictions IA).",
+        verified: "Docs officielles developer.ebay.com (m\xE9thodes, overview, OAS3) via snippets.",
+        verificationLevel: "official_docs_snippet",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://developer.ebay.com/api-docs/buy/browse/overview.html",
+          "https://developer.ebay.com/api-docs/buy/browse/resources/methods",
+          "https://www.developer.ebay.com/api-docs/master/buy/browse/openapi/3/buy_browse_v1_oas3.yaml"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ingram-micro-fr",
+        name: "Ingram Micro (France / Xvantage)",
+        segment: "D_distributor",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://fr.ingrammicro.eu/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Lenovo",
+          "HP"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte revendeur (n\xB0 client) puis compte d\xE9veloppeur ; app \xE0 faire approuver",
+        accessModes: [
+          "api",
+          "pro_portal",
+          "manual_download"
+        ],
+        apiDocsUrl: "https://developer.ingrammicro.com/reseller/getting-started",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "API Reseller gratuite (OAuth) : recherche catalogue, d\xE9tail produit, prix et disponibilit\xE9 temps r\xE9el par entrep\xF4t ; fichier prix SFTP en secours.",
+        howToGetCatalog: "Ouvrir un compte Ingram FR ; cr\xE9er une app sur developer.ingrammicro.com avec le n\xB0 client, activer 'Product Catalog' ; sinon demander le fichier prix SFTP \xE0 l'account manager. Disponibilit\xE9 de l'API en France \xE0 confirmer (un guide tiers cite US/UK/CA seulement).",
+        verified: "Portail d\xE9veloppeur, endpoints v6 price-and-availability, SDK OpenAPI GitHub, gratuit\xE9 : snippets officiels ; couverture FR non confirm\xE9e.",
+        verificationLevel: "official_docs_snippet",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://developer.ingrammicro.com/reseller/getting-started",
+          "https://developer.ingrammicro.com/reseller/sdks",
+          "https://github.com/ingrammicro-xvantage/xi-sdk-openapispec",
+          "https://help.zomentum.com/support/solutions/articles/44001909124"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "td-synnex-fr",
+        name: "TD SYNNEX France",
+        segment: "D_distributor",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "BE",
+          "NL",
+          "UK"
+        ],
+        website: "https://fr.tdsynnex.com/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte revendeur ; code d'autorisation P&A temps r\xE9el ; login XML/API dans ECExpress + IP whitelist (process NA)",
+        accessModes: [
+          "api",
+          "feed_xml",
+          "pro_portal"
+        ],
+        apiDocsUrl: "https://developer.api.tdsynnex.com/eu",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Service europ\xE9en de prix & disponibilit\xE9 temps r\xE9el (divisions UK, BE, FR, NL) consommable en XML.",
+        howToGetCatalog: "Ouvrir un compte (fr.tdsynnex.com/newCustomerRegistration) ; demander \xE0 l'\xE9quipe e-commerce le code d'autorisation P&A et la spec XML ; portail dev EU indiqu\xE9 dans la doc repo.",
+        verified: "Guide QuoteWerks 'TD SYNNEX Europe Real-Time P&A' (UK/BE/FR/NL, code d'autorisation) + Quoter (ECExpress=XML) via snippets ; portail dev EU = doc repo.",
+        verificationLevel: "third_party_docs+repo_doc",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://support.quotewerks.com/helpfilelatest/tdsynnexeuroperealtimesetup.htm",
+          "https://help.quoter.com/hc/en-us/articles/32086346772251-Integrate-with-TD-Synnex-ECE-Express",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "also-fr",
+        name: "ALSO France / ALSO Deutschland",
+        segment: "D_distributor",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "DE",
+          "EU"
+        ],
+        website: "https://www.also.com/ec/cms5/fr_2000/2000/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Ouverture de compte revendeur",
+        accessModes: [
+          "edi",
+          "feed_xml",
+          "pro_portal"
+        ],
+        apiDocsUrl: "https://www.also.com/ec/cms5/de_1010/1010/services/it-services/edi-und-xml-integration/index.jsp",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur IT broadline (> 35 000 produits FR) avec int\xE9gration EDI/XML document\xE9e c\xF4t\xE9 DE.",
+        howToGetCatalog: "Ouvrir un compte ; demander l'int\xE9gration EDI/XML (prix/stock) ; aucune info trouv\xE9e dans cette session.",
+        verified: "Rien trouv\xE9 via la recherche de cette session ; pages EDI/XML et ouverture de compte issues de la doc repo.",
+        verificationLevel: "repo_doc_only",
+        knownInApp: false,
+        sourcesChecked: [
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "esprinet",
+        name: "Esprinet (espriCATALOG / espriREALTIME)",
+        segment: "D_distributor",
+        country: "IT",
+        deliveryZones: [
+          "IT",
+          "ES",
+          "PT"
+        ],
+        website: "https://esprinet.com",
+        catalogUrl: "https://esprinet.com/en/offer/services/digital-and-e-commerce-services/espricatalog-and-esprirealtime",
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Revendeur Esprinet (IT/ES)",
+        accessModes: [
+          "feed_xml",
+          "api",
+          "edi"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: "Dropshipping sur > 170 000 produits",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "espriCATALOG = base produits avec prix, disponibilit\xE9s, photos, fiches \xE0 importer ; espriREALTIME = commandes automatis\xE9es + tracking ; maison m\xE8re de Sifar (pi\xE8ces).",
+        howToGetCatalog: "Devenir revendeur Esprinet Italia ou Ib\xE9rica, demander l'activation espriCATALOG (format non publi\xE9) ; livraison France \xE0 confirmer.",
+        verified: "Page officielle esprinet.com d\xE9crivant espriCATALOG/espriREALTIME (snippet) ; format technique non trouv\xE9.",
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://esprinet.com/en/offer/services/digital-and-e-commerce-services/espricatalog-and-esprirealtime"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "copaco",
+        name: "Copaco (BE/NL)",
+        segment: "E_specialist",
+        country: "NL",
+        deliveryZones: [
+          "BE",
+          "NL"
+        ],
+        website: "https://www.copaco.com",
+        catalogUrl: "https://www.copaco.com/en-be/customer-service-e-commerce-fulfillment",
+        categories: [
+          "laptops",
+          "tablets",
+          "smartphones",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Identifiants FTP fournis par Copaco aux revendeurs",
+        accessModes: [
+          "feed_csv"
+        ],
+        apiDocsUrl: "https://pypi.org/project/python-copaco-connections/0.1.2",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Liste de prix CSV par FTP avec stock, EAN, prix hors/avec taxes (Recupel, Bebat\u2026), ATP et date de prochaine livraison.",
+        howToGetCatalog: "Devenir revendeur Copaco BE/NL, obtenir les identifiants FTP, importer la productlist CSV.",
+        verified: "Package PyPI tiers 'python-copaco-connections' d\xE9crivant le CSV FTP et ses champs (snippet) ; page Copaco non lue.",
+        verificationLevel: "third_party_docs",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://pypi.org/project/python-copaco-connections/0.1.2"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "exertis-fr",
+        name: "Exertis France (repris par WE.CONNECT)",
+        segment: "D_distributor",
+        country: "FR",
+        deliveryZones: [
+          "FR"
+        ],
+        website: "https://www.exertis.fr/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "laptops",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Ouverture de compte (CGV sign\xE9es, Kbis < 3 mois, RIB, CNI g\xE9rant \u2014 doc repo) ; premi\xE8res commandes pr\xE9pay\xE9es",
+        accessModes: [
+          "feed_csv",
+          "edi",
+          "pro_portal"
+        ],
+        apiDocsUrl: "https://exertis.fr/web-services.php",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur mobilit\xE9/IT FR ; fichiers prix (PriceCAT) et EDI ; changement de nom commercial annonc\xE9 suite au rachat par WE.CONNECT.",
+        howToGetCatalog: "Ouvrir un compte puis demander \xE0 l'account manager l'activation du fichier prix (SFTP CSV selon process Exertis d\xE9crit par Kaseya) ; v\xE9rifier si les services survivent au rebranding WE.CONNECT.",
+        verified: "Rachat WE.CONNECT (BusinessWire/ABC Bourse) ; process SFTP CSV Exertis (Kaseya, contexte UK) ; page web-services = doc repo.",
+        verificationLevel: "third_party_docs+repo_doc",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://help.quotemanager.kaseya.com/help/Content/2-integrate/supplier-integrations/exertis.htm",
+          "https://www.abcbourse.com/marches/weconnect-acquiert-exertis-france-et-exertis-iberia_673386",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "komsa",
+        name: "KOMSA",
+        segment: "D_distributor",
+        country: "DE",
+        deliveryZones: [
+          "DE"
+        ],
+        website: "https://komsa.com/",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "tablets",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "V\xE9rification soci\xE9t\xE9 et solvabilit\xE9, acc\xE8s shop KARLO + account manager (doc repo)",
+        accessModes: [
+          "api",
+          "edi",
+          "feed_xml",
+          "feed_json",
+          "pro_portal"
+        ],
+        apiDocsUrl: "https://komsa.com/fileadmin/komsa.com/Dokumente/EDI/de/KOMSA_Echtzeit-Bestandsabfrage_API_Spezifikation.pdf",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur t\xE9l\xE9com majeur (> 20 000 partenaires retail) avec API REST de disponibilit\xE9 temps r\xE9el + EDI XML/JSON/SFTP.",
+        howToGetCatalog: "Devenir partenaire, demander l'acc\xE8s API dispo + flux easydata ; livraison/facturation France \xE0 confirmer.",
+        verified: "App KARLO et > 20 000 partenaires via ChannelPartner ; spec API PDF et EDI issus de la doc repo (non retrouv\xE9s par la recherche de cette session).",
+        verificationLevel: "search_snippets+repo_doc",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.channelpartner.de/article/3898243/die-karlo-app-ist-da.html",
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "brodos",
+        name: "Brodos AG",
+        segment: "D_distributor",
+        country: "DE",
+        deliveryZones: [
+          "DE"
+        ],
+        website: "https://brodos.com/",
+        catalogUrl: "https://shop.brodos.net/",
+        categories: [
+          "smartphones",
+          "tablets",
+          "accessories"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Inscription B2B (brodos.com/registrierung) ; identifiants de test via account manager",
+        accessModes: [
+          "api",
+          "edi",
+          "pro_portal"
+        ],
+        apiDocsUrl: "https://forms.brodos.com/brodos-developer-area/",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur mobilit\xE9 avec Article Master Data API, Offer API et commandes openTRANS XML.",
+        howToGetCatalog: "S'inscrire, demander l'acc\xE8s Developer Area ; livraison France \xE0 confirmer.",
+        verified: "Non retrouv\xE9 par la recherche de cette session ; repose sur la doc repo.",
+        verificationLevel: "repo_doc_only",
+        knownInApp: false,
+        sourcesChecked: [
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "wortmann",
+        name: "Wortmann AG (TERRA)",
+        segment: "D_distributor",
+        country: "DE",
+        deliveryZones: [
+          "DE"
+        ],
+        website: "https://portal.wortmann.de",
+        catalogUrl: null,
+        categories: [
+          "laptops",
+          "tablets",
+          "accessories"
+        ],
+        brands: [
+          "TERRA"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Enregistrement comme revendeur (+ certification pour TERRA Cloud)",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Constructeur/distributeur allemand 100 % indirect (PC/portables TERRA) ; int\xE9r\xEAt limit\xE9 pour le reconditionn\xE9.",
+        howToGetCatalog: "S'enregistrer sur le portail revendeur ; aucun flux/CSV trouv\xE9.",
+        verified: "portal.wortmann.de cit\xE9 par ChannelPartner ; aucune info flux.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.channelpartner.de/article/3900739/wortmann-ag-laedt-fachhaendler-ein.html",
+          "https://www.itreseller.ch/Artikel/87156/Terra_Cloud_am_Wortmann-Himmel.html"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "kosatec",
+        name: "Kosatec",
+        segment: "E_specialist",
+        country: "DE",
+        deliveryZones: [
+          "DE"
+        ],
+        website: "https://kosatec.de",
+        catalogUrl: null,
+        categories: [
+          "laptops",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "N\xB0 client + cl\xE9 EDI fournis par Kosatec",
+        accessModes: [
+          "feed_csv"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Liste de prix CSV t\xE9l\xE9chargeable par URL construite \xE0 partir du n\xB0 client et de la cl\xE9 EDI (int\xE9gration simple).",
+        howToGetCatalog: "Ouvrir un compte, demander la cl\xE9 EDI et la doc d'int\xE9gration (PDF sur kosatec.de) ; t\xE9l\xE9charger le CSV p\xE9riodiquement.",
+        verified: "Post Salesbuildr d\xE9crivant l'URL CSV (n\xB0 client + cl\xE9 EDI), marqu\xE9 'done' ; PDF officiel non lu.",
+        verificationLevel: "third_party_docs",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://salesbuildr.featurebase.app/p/distributer-kosatec"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "jarltech",
+        name: "Jarltech",
+        segment: "D_distributor",
+        country: "DE",
+        deliveryZones: [],
+        website: "https://www.jarltech.com",
+        catalogUrl: null,
+        categories: [
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: null,
+        accessModes: [],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur sp\xE9cialis\xE9 (POS/AutoID) cit\xE9 dans la demande ; peu pertinent pour smartphones/refurb.",
+        howToGetCatalog: "Non d\xE9termin\xE9.",
+        verified: "Aucun r\xE9sultat pertinent dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "bluechip",
+        name: "bluechip Computer AG",
+        segment: "D_distributor",
+        country: "DE",
+        deliveryZones: [
+          "DE"
+        ],
+        website: "https://www.bluechip.de",
+        catalogUrl: null,
+        categories: [
+          "laptops",
+          "tablets"
+        ],
+        brands: [
+          "bluechip"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Partenaire revendeurs/int\xE9grateurs",
+        accessModes: [],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Fabricant/distributeur IT allemand (Meuselwitz) pour le channel ; aucune info d'acc\xE8s catalogue.",
+        howToGetCatalog: "Non d\xE9termin\xE9.",
+        verified: "Seulement fiche Intel Partner Showcase et get-in-it. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "unverified",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.intel.com/content/www/us/en/partner/showcase/storefront/a5S3b0000016NfNEAU/bluechip-computer-ag.html",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "action-pl",
+        name: "Action S.A.",
+        segment: "D_distributor",
+        country: "PL",
+        deliveryZones: [
+          "PL",
+          "EU"
+        ],
+        website: "https://www.action.pl/en/about-action/e-commerce",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "laptops",
+          "tablets",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Partenaire de la plateforme I-SERWIS",
+        accessModes: [
+          "manual_download",
+          "feed_csv",
+          "feed_xml",
+          "api"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "PLN",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Les partenaires I-SERWIS re\xE7oivent gratuitement des fichiers XLSX/CSV (prix, stock, dimensions, descriptions, photos) + API/XML.",
+        howToGetCatalog: "Devenir partenaire Action (I-SERWIS) ; t\xE9l\xE9charger XLSX/CSV ou demander l'API/XML ; livraison France \xE0 confirmer.",
+        verified: "Page officielle action.pl e-commerce (XLSX/CSV gratuits) + int\xE9grations Base.com/Shoper (snippets).",
+        verificationLevel: "official_page_snippet",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.action.pl/en/about-action/e-commerce",
+          "https://base.com/pl-PL/integracje/action/",
+          "https://www.shoper.pl/katalog-hurtowni/hurtownia/action"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ab-sa-pl",
+        name: "AB S.A.",
+        segment: "D_distributor",
+        country: "PL",
+        deliveryZones: [
+          "PL"
+        ],
+        website: "https://www.ab.pl",
+        catalogUrl: null,
+        categories: [
+          "smartphones",
+          "laptops",
+          "tablets",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Acc\xE8s \xE0 la passerelle XML/API sur demande",
+        accessModes: [
+          "feed_xml",
+          "api"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "PLN",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grand distributeur IT polonais avec passerelle XML (produits, photos, prix, stocks) et commandes dropshipping.",
+        howToGetCatalog: "Ouvrir un compte AB et demander l'acc\xE8s 'bramka XML/API' ; sch\xE9ma \xE0 obtenir aupr\xE8s d'AB.",
+        verified: "Int\xE9grations tierces (Inteshop PDF, Base.com, Useme) via snippets ; doc officielle non trouv\xE9e. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "third_party_docs",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.shoper.pl/wp-content/help/images/SHOPER/control-panel/applications/my-applications/integracja-ab/dokumentacja_aplikacja_ab.pdf",
+          "https://base.com/pl-PL/integracje/ab/",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "ldlc-pro",
+        name: "LDLC.pro",
+        segment: "D_distributor",
+        country: "FR",
+        deliveryZones: [
+          "FR",
+          "BE",
+          "CH",
+          "LU"
+        ],
+        website: "https://www.ldlc.pro",
+        catalogUrl: "https://www.ldlc.pro",
+        categories: [
+          "laptops",
+          "smartphones",
+          "tablets",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte professionnel (entreprises, commer\xE7ants, revendeurs)",
+        accessModes: [
+          "public_catalog",
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "both",
+        currency: "EUR",
+        moq: null,
+        shipping: null,
+        warranty: null,
+        partQuality: null,
+        whyUseful: "> 30 000 r\xE9f\xE9rences, cible aussi les revendeurs ; pas de flux/API trouv\xE9.",
+        howToGetCatalog: "Compte pro ; demander \xE0 un conseiller si un export catalogue existe (SERVER.md : pas de catalogue public lisible).",
+        verified: "Pages ldlc.pro (cibles revendeurs/commer\xE7ants) via snippets ; aucune API trouv\xE9e.",
+        verificationLevel: "search_snippets",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.ldlc.pro/qui-sommes-nous.html",
+          "https://www.ldlc.pro/ld/cibles/point-de-vente.html",
+          "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "bigbuy",
+        name: "BigBuy",
+        segment: "E_specialist",
+        country: "ES",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.bigbuy.eu/fr/",
+        catalogUrl: "https://www.bigbuy.eu/en/csv-xml-files.html",
+        categories: [
+          "accessories",
+          "laptops",
+          "tablets"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Pack payant (Ecommerce Pack : FTP CSV/XML + API ; B2B Pack pour achat en gros)",
+        accessModes: [
+          "api",
+          "feed_csv",
+          "feed_xml"
+        ],
+        apiDocsUrl: "https://api.bigbuy.eu/rest/doc",
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "\xC0 l'unit\xE9 (dropshipping) ; packs wholesale",
+        shipping: "Dropshipping UE",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "API REST JSON document\xE9e (Bearer, sandbox) + fichiers CSV/XML : int\xE9gration la plus simple, mais assortiment smartphones \xE0 v\xE9rifier.",
+        howToGetCatalog: "Souscrire au pack incluant l'API, demander la cl\xE9 API, utiliser api.sandbox.bigbuy.eu puis api.bigbuy.eu (endpoints catalogue/stock).",
+        verified: "FAQ API officielle + guide PDF officiel (base URLs, Bearer, sections stock) via snippets ; tarifs des packs via sources tierces.",
+        verificationLevel: "official_docs_snippet",
+        knownInApp: true,
+        sourcesChecked: [
+          "https://www.bigbuy.eu/public/doc/Guia_API_BigBuy_EN.pdf",
+          "https://www.bigbuy.eu/sv/api_bigbuy.html",
+          "https://www.itechguides.com/best/dropshipping-software/bigbuy/",
+          "https://www.bigbuy.eu/academy/en/how-to-place-large-quantity-orders"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "westcoast",
+        name: "Westcoast",
+        segment: "D_distributor",
+        country: "GB",
+        deliveryZones: [
+          "UK"
+        ],
+        website: "https://www.westcoast.co.uk/",
+        catalogUrl: null,
+        categories: [
+          "laptops",
+          "tablets",
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Ouverture de compte (openaccount.westcoast.co.uk)",
+        accessModes: [
+          "api",
+          "pro_portal"
+        ],
+        apiDocsUrl: "https://www.westcoast.co.uk/what-we-do/Electronic_Trading.html",
+        pricesTax: "HT",
+        currency: "GBP",
+        moq: null,
+        shipping: "UK",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Distributeur IT UK avec trading \xE9lectronique (XML) ; pertinent seulement pour flux UK.",
+        howToGetCatalog: "Compte + demande d'acc\xE8s Electronic Trading.",
+        verified: "Non re-v\xE9rifi\xE9 dans cette session ; doc repo.",
+        verificationLevel: "repo_doc_only",
+        knownInApp: false,
+        sourcesChecked: [
+          "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+        ],
+        checkedAt: "2026-10-10"
+      },
+      {
+        key: "hurtel",
+        name: "Hurtel",
+        segment: "E_specialist",
+        country: "PL",
+        deliveryZones: [
+          "PL",
+          "EU"
+        ],
+        website: "https://hurtel.com",
+        catalogUrl: "https://base.com/pl-PL/integracje/hurtel/",
+        categories: [
+          "accessories"
+        ],
+        brands: [],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte B2B (activit\xE9 enregistr\xE9e attendue) ; lien XML fourni par le grossiste",
+        accessModes: [
+          "feed_xml"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "PLN",
+        moq: null,
+        shipping: "Dropshipping possible",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Grossiste polonais d'accessoires GSM (coques, verres tremp\xE9s, chargeurs, c\xE2bles) avec fichiers XML 'full' et 'light' (code, stock, prix) pour dropshipping.",
+        howToGetCatalog: "Ouvrir un compte B2B Hurtel, r\xE9cup\xE9rer l'URL du fichier XML 'light' (stock/prix) et 'full' (fiches) dans le panneau grossiste.",
+        verified: "FAQ Base.com (fichiers passerelle XML Hurtel, version light) via snippets ; site officiel non lu. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
+        verificationLevel: "third_party_docs",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://base.com/pl-PL/pomoc/faq/integracje/hurtownie/",
+          "https://base.com/pl-PL/integracje/hurtel/",
+          "server:supplier_directory_checks"
+        ],
+        checkedAt: "2026-10-10"
+      }
+    ];
+  }
+});
+
+// src/services/sourcing/supplier-directory.ts
+var supplier_directory_exports = {};
+__export(supplier_directory_exports, {
+  DIRECTORY_RESEARCH_DATE: () => DIRECTORY_RESEARCH_DATE,
+  SUPPLIER_DIRECTORY: () => SUPPLIER_DIRECTORY,
+  accessRequestEmail: () => accessRequestEmail,
+  checkDirectoryWebsite: () => checkDirectoryWebsite,
+  detectPlatform: () => detectPlatform2,
+  directoryForOrg: () => directoryForOrg,
+  directoryKeyForSupplierName: () => directoryKeyForSupplierName,
+  directoryStages: () => directoryStages,
+  integrationOf: () => integrationOf,
+  nameKey: () => nameKey,
+  primaryStage: () => primaryStage,
+  runDirectoryChecks: () => runDirectoryChecks
+});
+function integrationOf(key2) {
+  const lib = LIBRARY_BY_DIRECTORY_KEY[key2];
+  if (lib && getLibrarySource(lib)) return { kind: "library", libraryKey: lib };
+  const connector = CONNECTOR_BY_DIRECTORY_KEY[key2];
+  if (connector) return { kind: "connector", connectorKey: connector };
+  return { kind: "file_import" };
+}
+function directoryStages(entry, check, facts) {
+  const stages = ["identified"];
+  if (check?.reachable) stages.push("verified");
+  if (check && !check.reachable) stages.push("unavailable");
+  const integration = integrationOf(entry.key);
+  if (integration.kind === "library" && facts.libraryOk.has(integration.libraryKey)) stages.push("public_access");
+  if (entry.proAccountRequired === true) stages.push("account_required");
+  if (integration.kind === "connector") stages.push("connector_ready");
+  if (facts.importedKeys.has(entry.key)) stages.push("import_tested");
+  return stages;
+}
+function primaryStage(stages) {
+  return STAGE_RANK.find((s) => stages.includes(s)) ?? "identified";
+}
+function nameKey(s) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(sas|sarl|sa|bv|gmbh|ltd|srl|s\.?a\.?)\b/g, "").replace(/[^a-z0-9]+/g, "");
+}
+function directoryKeyForSupplierName(name) {
+  const k = nameKey(name);
+  if (k.length < 3) return null;
+  const hit = SUPPLIER_DIRECTORY.find((e) => {
+    const ek = nameKey(e.name);
+    return ek === k || ek.length >= 5 && (k.startsWith(ek) || ek.startsWith(k));
+  });
+  return hit?.key ?? null;
+}
+function accessRequestEmail(entry, lang, org) {
+  const cats = entry.categories.join(", ") || (lang === "fr" ? "vos produits" : "your products");
+  if (lang === "fr") {
+    return {
+      subject: `Demande d'ouverture de compte professionnel et d'acc\xE8s catalogue \u2014 ${org.name}`,
+      body: [
+        "Bonjour,",
+        "",
+        `Je repr\xE9sente ${org.name}, revendeur professionnel de produits \xE9lectroniques${org.country ? ` (${org.country})` : ""}. Nous souhaitons travailler avec ${entry.name} pour : ${cats}.`,
+        "",
+        "Pourriez-vous nous indiquer :",
+        "1. Les conditions d'ouverture d'un compte professionnel (documents requis : Kbis / SIRET, num\xE9ro de TVA intracommunautaire).",
+        "2. Votre grille tarifaire revendeur (prix HT), les remises par volume et les quantit\xE9s minimales de commande.",
+        "3. La disponibilit\xE9 du stock et les d\xE9lais / frais de livraison vers la France.",
+        "4. Les conditions de garantie, de retour et, pour les appareils reconditionn\xE9s, la d\xE9finition de vos grades.",
+        "5. S'il existe un fichier catalogue ou un flux automatis\xE9 (CSV, Excel, XML, JSON ou API) comprenant r\xE9f\xE9rences, EAN, prix, stock et MOQ, ainsi que sa fr\xE9quence de mise \xE0 jour et ses conditions d'utilisation.",
+        "",
+        "Nous int\xE9grons les tarifs de nos fournisseurs dans notre logiciel de gestion de stock ; un fichier ou un flux r\xE9gulier nous permettrait de vous consulter en priorit\xE9.",
+        "",
+        "Merci par avance,",
+        "",
+        `${org.name}`
+      ].join("\n")
+    };
+  }
+  return {
+    subject: `Trade account and catalogue access request \u2014 ${org.name}`,
+    body: [
+      "Hello,",
+      "",
+      `I am writing on behalf of ${org.name}, a professional electronics reseller${org.country ? ` based in ${org.country}` : ""}. We would like to source from ${entry.name}: ${cats}.`,
+      "",
+      "Could you please share:",
+      "1. How to open a trade / B2B account (required documents, VAT number).",
+      "2. Your reseller price list (prices excluding VAT), volume discounts and minimum order quantities.",
+      "3. Stock availability, lead times and shipping costs to France.",
+      "4. Warranty and return terms and, for refurbished devices, your grading definitions.",
+      "5. Whether a catalogue file or automated feed is available (CSV, Excel, XML, JSON or API) with SKUs, EAN, prices, stock and MOQ, its update frequency and terms of use.",
+      "",
+      "We load our suppliers' price lists into our inventory software; a regular file or feed would let us check your offers first.",
+      "",
+      "Kind regards,",
+      "",
+      `${org.name}`
+    ].join("\n")
+  };
+}
+function detectPlatform2(html, headers = null) {
+  const h = html.slice(0, 3e5);
+  if (/cdn\.shopify\.com|Shopify\.theme|x-shopify/i.test(h) || headers?.get("x-shopid")) return "shopify";
+  if (/wp-content\/plugins\/woocommerce|woocommerce-/i.test(h)) return "woocommerce";
+  if (/Magento|mage\/cookies|static\/version\d+\/frontend/i.test(h)) return "magento";
+  if (/prestashop|var prestashop\b/i.test(h)) return "prestashop";
+  if (/shopware/i.test(h)) return "shopware";
+  return h.length > 0 ? "other" : null;
+}
+async function checkDirectoryWebsite(entry, fetchImpl, resolver) {
+  const started = Date.now();
+  const base = { key: entry.key, url: entry.website, final_url: null, robots_found: null, robots_disallow_all: null, sitemap_found: null, platform: null };
+  if (!entry.website) return { ...base, reachable: false, http_status: null, message: "Aucun site officiel identifi\xE9 par la recherche.", duration_ms: 0 };
+  const userAgent = serverEnv().SOURCING_USER_AGENT;
+  try {
+    const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8e3);
+    const robotsFound = robots.status === "ok";
+    const disallowAll = robotsFound ? !evaluateRobots(robots.rules, userAgent, "/").allowed : null;
+    const home = await fetchText(entry.website, { userAgent, timeoutMs: 12e3, maxBytes: 6e6, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
+    const reachable = home.status >= 200 && home.status < 400;
+    const platform = reachable ? detectPlatform2(home.text) : null;
+    return {
+      ...base,
+      final_url: home.finalUrl,
+      reachable,
+      http_status: home.status,
+      robots_found: robotsFound,
+      robots_disallow_all: disallowAll,
+      sitemap_found: robotsFound ? robots.rules.sitemaps.length > 0 : null,
+      platform,
+      message: reachable ? `Site joignable${platform && platform !== "other" ? ` (plateforme ${platform})` : ""}${disallowAll ? " ; robots.txt interdit l'acc\xE8s automatis\xE9" : ""}.` : `Le site a r\xE9pondu HTTP ${home.status}${home.status === 403 || home.status === 429 ? " (protection anti-robot : \xE0 consulter manuellement)" : ""}.`,
+      duration_ms: Date.now() - started
+    };
+  } catch (e) {
+    return { ...base, reachable: false, http_status: null, message: `Injoignable : ${e instanceof Error ? e.message.slice(0, 160) : "erreur r\xE9seau"}`, duration_ms: Date.now() - started };
+  }
+}
+async function runDirectoryChecks(options = {}) {
+  const admin = createAdminSupabaseClient();
+  const entries = SUPPLIER_DIRECTORY.filter((e) => !options.keys || options.keys.includes(e.key));
+  const results = [];
+  for (let i = 0; i < entries.length; i += 3) {
+    const batch = await Promise.all(entries.slice(i, i + 3).map((e) => checkDirectoryWebsite(e, options.fetchImpl)));
+    const { error } = await admin.from("supplier_directory_checks").upsert(batch.map((b) => ({ ...b, checked_at: (/* @__PURE__ */ new Date()).toISOString() })));
+    if (error) throw new Error(`Enregistrement des v\xE9rifications impossible : ${error.message}`);
+    results.push(...batch.map((b) => ({ key: b.key, reachable: b.reachable, http: b.http_status, platform: b.platform, message: b.message })));
+  }
+  return { checked: results.length, reachable: results.filter((r) => r.reachable).length, unreachable: results.filter((r) => !r.reachable).length, results };
+}
+async function directoryForOrg(ctx) {
+  const orgId = ctx.organization.id;
+  const [checksRes, libRes, suppliersRes, runsRes, sourcesRes] = await Promise.all([
+    ctx.supabase.from("supplier_directory_checks").select("key, checked_at, reachable, http_status, robots_found, robots_disallow_all, sitemap_found, platform, message"),
+    ctx.supabase.from("sourcing_library_checks").select("key, status"),
+    ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).limit(1e3),
+    ctx.supabase.from("sync_runs").select("source_ref, status").eq("organization_id", orgId).eq("source_kind", "supplier_feed").in("status", ["success", "partial"]).order("started_at", { ascending: false }).limit(500),
+    ctx.supabase.from("supplier_sources").select("supplier_id, status, config").eq("organization_id", orgId).limit(1e3)
+  ]);
+  const checks = new Map((checksRes.data ?? []).map((c) => [c.key, c]));
+  const libraryOk = new Set((libRes.data ?? []).filter((c) => c.status === "ok").map((c) => c.key));
+  const supplierKey = /* @__PURE__ */ new Map();
+  for (const s of suppliersRes.data ?? []) {
+    const k = directoryKeyForSupplierName(s.name);
+    if (k) supplierKey.set(s.id, k);
+  }
+  const importedKeys = /* @__PURE__ */ new Set();
+  if ((runsRes.data ?? []).length) {
+    const feedIds = [...new Set((runsRes.data ?? []).map((r) => r.source_ref).filter((x) => Boolean(x)))];
+    const { data: feeds } = feedIds.length ? await ctx.supabase.from("supplier_feeds").select("id, supplier_id").eq("organization_id", orgId).in("id", feedIds.slice(0, 300)) : { data: [] };
+    for (const f of feeds ?? []) {
+      const k = supplierKey.get(f.supplier_id);
+      if (k) importedKeys.add(k);
+    }
+  }
+  const activeKeys = /* @__PURE__ */ new Set();
+  for (const s of sourcesRes.data ?? []) {
+    const libKey = s.config?.library_key;
+    if (s.status === "active" && libKey) {
+      const dir = Object.entries(LIBRARY_BY_DIRECTORY_KEY).find(([, v2]) => v2 === libKey)?.[0];
+      if (dir) activeKeys.add(dir);
+    }
+  }
+  const facts = { importedKeys, libraryOk, activeKeys };
+  const lastCheckAt = [...checks.values()].map((c) => c.checked_at).sort().at(-1) ?? null;
+  const entries = SUPPLIER_DIRECTORY.map((e) => {
+    const check = checks.get(e.key) ?? null;
+    const stages = directoryStages(e, check, facts);
+    return {
+      key: e.key,
+      name: e.name,
+      segment: e.segment,
+      country: e.country,
+      deliveryZones: e.deliveryZones,
+      website: e.website,
+      catalogUrl: e.catalogUrl,
+      apiDocsUrl: e.apiDocsUrl,
+      categories: e.categories,
+      brands: e.brands,
+      productTypes: e.productTypes,
+      sales: e.sales,
+      proAccountRequired: e.proAccountRequired,
+      accessConditions: e.accessConditions,
+      accessModes: e.accessModes,
+      pricesTax: e.pricesTax,
+      currency: e.currency,
+      moq: e.moq,
+      shipping: e.shipping,
+      warranty: e.warranty,
+      partQuality: e.partQuality,
+      whyUseful: e.whyUseful,
+      howToGetCatalog: e.howToGetCatalog,
+      researchVerified: e.verified,
+      verificationLevel: e.verificationLevel,
+      sources: e.sourcesChecked,
+      researchedAt: e.checkedAt,
+      integration: integrationOf(e.key),
+      activeInOrg: activeKeys.has(e.key),
+      stages,
+      primaryStage: primaryStage(stages),
+      check: check ? { checkedAt: check.checked_at, reachable: check.reachable, httpStatus: check.http_status, robotsFound: check.robots_found, robotsDisallowAll: check.robots_disallow_all, sitemapFound: check.sitemap_found, platform: check.platform, message: check.message } : null,
+      email: { fr: accessRequestEmail(e, "fr", { name: ctx.organization.name, country: ctx.organization.country }), en: accessRequestEmail(e, "en", { name: ctx.organization.name, country: ctx.organization.country }) }
+    };
+  });
+  return { entries, researchDate: DIRECTORY_RESEARCH_DATE, lastCheckAt };
+}
+var SUPPLIER_DIRECTORY, DIRECTORY_RESEARCH_DATE, LIBRARY_BY_DIRECTORY_KEY, CONNECTOR_BY_DIRECTORY_KEY, STAGE_RANK;
+var init_supplier_directory2 = __esm({
+  "src/services/sourcing/supplier-directory.ts"() {
+    "use strict";
+    init_empty();
+    init_supplier_directory();
+    init_admin();
+    init_env();
+    init_http2();
+    init_robots();
+    init_source_library();
+    SUPPLIER_DIRECTORY = supplier_directory_default;
+    DIRECTORY_RESEARCH_DATE = "2026-10-10";
+    LIBRARY_BY_DIRECTORY_KEY = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone" };
+    CONNECTOR_BY_DIRECTORY_KEY = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
+    STAGE_RANK = ["import_tested", "public_access", "connector_ready", "account_required", "verified", "unavailable", "identified"];
+  }
+});
+
 // server/edge/api.ts
 init_errors();
 init_logger();
-import { z as z37 } from "npm:zod@4.6.5";
-
-// src/lib/crypto.ts
-init_empty();
-init_env();
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
-var VERSION = "v1";
-function key() {
-  const raw = serverEnv().TOKEN_ENCRYPTION_KEY;
-  const decoded = Buffer.from(raw, "base64");
-  if (decoded.length === 32) return decoded;
-  return createHash("sha256").update(raw, "utf8").digest();
-}
-function encryptSecret(plain) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key(), iv);
-  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [VERSION, iv.toString("base64"), enc.toString("base64"), tag.toString("base64")].join(":");
-}
-function decryptSecret(payload) {
-  const [version, ivB64, encB64, tagB64] = payload.split(":");
-  if (version !== VERSION || !ivB64 || !encB64 || !tagB64) {
-    throw new Error("Secret chiffr\xE9 illisible (format inattendu).");
-  }
-  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(encB64, "base64")), decipher.final()]).toString("utf8");
-}
-function sha256Hex(input) {
-  return createHash("sha256").update(input).digest("hex");
-}
-function randomToken(bytes = 24) {
-  return randomBytes(bytes).toString("hex");
-}
-
-// server/edge/api.ts
+init_crypto();
 init_admin();
 init_env();
+import { z as z37 } from "npm:zod@4.6.5";
 
 // src/lib/cron-auth.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
@@ -2920,54 +11159,8 @@ init_empty();
 init_errors();
 init_logger();
 init_sanitize();
+init_errors2();
 import { z as z2 } from "npm:zod@4.6.5";
-
-// src/integrations/core/errors.ts
-init_errors();
-var ConnectorError = class extends Error {
-  code;
-  provider;
-  details;
-  httpStatus;
-  retryable;
-  constructor(code, provider, message, options = {}) {
-    super(message, options.cause !== void 0 ? { cause: options.cause } : void 0);
-    this.name = "ConnectorError";
-    this.code = code;
-    this.provider = provider;
-    this.details = options.details ?? {};
-    this.httpStatus = options.httpStatus ?? null;
-    this.retryable = options.retryable ?? (code === "RATE_LIMITED" || code === "API_ERROR");
-  }
-};
-function isConnectorError(e) {
-  return e instanceof ConnectorError;
-}
-var RECONNECT_ACTION = { label: "Reconnecter eBay", href: "/settings/integrations" };
-function connectorErrorToAppError(e) {
-  switch (e.code) {
-    case "AUTH_EXPIRED":
-      return new AppError("CONNECTION_EXPIRED", e.message, { action: RECONNECT_ACTION, details: e.details, cause: e });
-    case "RATE_LIMITED":
-      return new AppError("RATE_LIMITED", e.message, { details: e.details, cause: e });
-    case "NOT_CONFIGURED":
-      return new AppError("NOT_CONFIGURED", e.message, { details: e.details, cause: e });
-    case "NOT_IMPLEMENTED":
-      return new AppError("NOT_IMPLEMENTED", e.message, { details: e.details, cause: e });
-    case "INVALID_RESPONSE":
-    case "API_ERROR":
-    default:
-      return new AppError("EXTERNAL_API", e.message, { details: e.details, cause: e });
-  }
-}
-function describeError(e) {
-  if (isConnectorError(e)) return { code: e.code, message: e.message, details: { ...e.details, httpStatus: e.httpStatus } };
-  if (e instanceof AppError) return { code: e.code, message: e.message, details: e.details ?? {} };
-  if (e instanceof Error) return { code: "INTERNAL", message: e.message, details: {} };
-  return { code: "INTERNAL", message: String(e), details: {} };
-}
-
-// src/features/mobile-api/http.ts
 var log2 = createLogger("MOBILE_API");
 var NO_STORE = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 function jsonOk(data, status = 200) {
@@ -3464,30 +11657,7 @@ function marginContextFromChannels(channels, orgSettings) {
 
 // src/features/stock/queries.ts
 init_empty();
-
-// src/lib/supabase/paginate.ts
-var DB_PAGE_SIZE = 1e3;
-async function fetchRowsUpTo(page2, limit, options = {}) {
-  const size = Math.max(1, options.pageSize ?? DB_PAGE_SIZE);
-  const wanted = limit + 1;
-  const rows = [];
-  for (let from = 0; from < wanted; from += size) {
-    const to = Math.min(from + size, wanted) - 1;
-    const { data, error } = await page2(from, to);
-    if (error) throw error;
-    const batch = data ?? [];
-    rows.push(...batch);
-    if (batch.length < to - from + 1) break;
-  }
-  const truncated = rows.length > limit;
-  return { rows: truncated ? rows.slice(0, limit) : rows, truncated };
-}
-async function fetchAllRows(page2, options = {}) {
-  const { rows } = await fetchRowsUpTo(page2, options.maxRows ?? 2e5, { pageSize: options.pageSize });
-  return rows;
-}
-
-// src/features/stock/queries.ts
+init_paginate();
 init_postgrest();
 async function getMarginContext(ctx) {
   const { data } = await ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost").eq("organization_id", ctx.organization.id).eq("is_active", true);
@@ -3601,6 +11771,7 @@ init_empty();
 // src/features/analytics/stock-analytics.ts
 init_empty();
 init_errors();
+init_paginate();
 
 // src/features/analytics/util.pure.ts
 function daysSince(value, now) {
@@ -3901,1087 +12072,8 @@ function computeDataCompleteness(fields) {
 
 // src/features/integrations/queries.ts
 init_empty();
-
-// src/integrations/ebay/connector.ts
-init_logger();
-init_env();
-
-// src/integrations/ebay/config.ts
-var EBAY_PROVIDER = "ebay";
-var EBAY_TRADING_COMPATIBILITY_LEVEL = "1225";
-var EBAY_SCOPES = [
-  { scope: "https://api.ebay.com/oauth/api_scope", reason: "Scope de base requis par eBay pour tout token OAuth." },
-  { scope: "https://api.ebay.com/oauth/api_scope/sell.fulfillment", reason: "Lecture des commandes (Sell Fulfillment API) : cr\xE9ation, paiement, exp\xE9dition, annulations." },
-  { scope: "https://api.ebay.com/oauth/api_scope/sell.inventory", reason: "Lecture des annonces actives (GetMyeBaySelling) et mise \xE0 jour des quantit\xE9s (ReviseInventoryStatus)." },
-  { scope: "https://api.ebay.com/oauth/api_scope/sell.account.readonly", reason: "Lecture des politiques m\xE9tier (paiement, retour, exp\xE9dition) n\xE9cessaires pour pr\xE9parer une annonce (Account API)." },
-  { scope: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly", reason: "Identifiant et pseudo du compte vendeur (Identity API) pour afficher le compte connect\xE9 et router les notifications." }
-];
-function ebayScopeList() {
-  return EBAY_SCOPES.map((s) => s.scope);
-}
-function createEbayConfig(env) {
-  const sandbox = env.EBAY_ENV === "sandbox";
-  return {
-    environment: env.EBAY_ENV,
-    clientId: env.EBAY_CLIENT_ID,
-    clientSecret: env.EBAY_CLIENT_SECRET,
-    ruName: env.EBAY_RU_NAME,
-    webhookVerificationToken: env.EBAY_WEBHOOK_VERIFICATION_TOKEN ?? null,
-    authorizeUrl: sandbox ? "https://auth.sandbox.ebay.com/oauth2/authorize" : "https://auth.ebay.com/oauth2/authorize",
-    tokenUrl: sandbox ? "https://api.sandbox.ebay.com/identity/v1/oauth2/token" : "https://api.ebay.com/identity/v1/oauth2/token",
-    apiBase: sandbox ? "https://api.sandbox.ebay.com" : "https://api.ebay.com",
-    apizBase: sandbox ? "https://apiz.sandbox.ebay.com" : "https://apiz.ebay.com",
-    tradingUrl: sandbox ? "https://api.sandbox.ebay.com/ws/api.dll" : "https://api.ebay.com/ws/api.dll"
-  };
-}
-
-// src/integrations/ebay/oauth.ts
-import { z as z7 } from "npm:zod@4.6.5";
-
-// src/integrations/core/http.ts
-init_logger();
-var log3 = createLogger("HTTP");
-var DEFAULT_TIMEOUT_MS = 3e4;
-var DEFAULT_RETRIES = 3;
-var MAX_BACKOFF_MS = 8e3;
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-var MAX_RETRY_AFTER_MS = MAX_BACKOFF_MS * 4;
-function parseRetryAfterMs(header, now = Date.now()) {
-  if (!header) return null;
-  const trimmed = header.trim();
-  if (trimmed === "") return null;
-  const seconds = Number(trimmed);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
-  const date = Date.parse(trimmed);
-  if (!Number.isNaN(date)) return Math.max(0, date - now);
-  return null;
-}
-function backoff(attempt) {
-  const base = Math.min(MAX_BACKOFF_MS, 500 * 2 ** attempt);
-  return base + Math.floor(Math.random() * 250);
-}
-async function fetchWithRetry(url, init, options) {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const retries = options.retries ?? DEFAULT_RETRIES;
-  const label = options.label ?? new URL(url).pathname;
-  let lastError = null;
-  let lastStatus = null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    timer.unref?.();
-    try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
-      lastStatus = res.status;
-      if (res.status === 429 || res.status >= 500) {
-        clearTimeout(timer);
-        const requested = parseRetryAfterMs(res.headers.get("retry-after"));
-        await res.body?.cancel().catch(() => void 0);
-        const tooLong = requested !== null && requested > MAX_RETRY_AFTER_MS;
-        if (attempt < retries && !tooLong) {
-          const wait = requested ?? backoff(attempt);
-          log3.warn("r\xE9ponse transitoire, nouvelle tentative", { provider: options.provider, label, status: res.status, attempt: attempt + 1, waitMs: wait });
-          await sleep(wait);
-          continue;
-        }
-        const retryAfterSeconds = requested !== null ? Math.ceil(requested / 1e3) : null;
-        if (res.status === 429) {
-          const when = retryAfterSeconds !== null && retryAfterSeconds > 60 ? `r\xE9essayez dans ${Math.ceil(retryAfterSeconds / 60)} min` : "r\xE9essayez dans quelques minutes";
-          throw new ConnectorError("RATE_LIMITED", options.provider, `Quota API ${options.provider} atteint (HTTP 429) : ${when}.`, {
-            httpStatus: 429,
-            details: { label, retryAfterSeconds, attempts: attempt + 1 }
-          });
-        }
-        throw new ConnectorError("API_ERROR", options.provider, `L'API ${options.provider} est indisponible (HTTP ${res.status}) apr\xE8s ${attempt + 1} tentative(s).`, {
-          httpStatus: res.status,
-          details: { label, attempts: attempt + 1 }
-        });
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (e instanceof ConnectorError) throw e;
-      lastError = e;
-      const aborted2 = e instanceof Error && e.name === "AbortError";
-      if (attempt < retries) {
-        const wait = backoff(attempt);
-        log3.warn(aborted2 ? "d\xE9lai d\xE9pass\xE9, nouvelle tentative" : "erreur r\xE9seau, nouvelle tentative", { provider: options.provider, label, attempt: attempt + 1, waitMs: wait });
-        await sleep(wait);
-        continue;
-      }
-    }
-  }
-  const aborted = lastError instanceof Error && lastError.name === "AbortError";
-  throw new ConnectorError(
-    "API_ERROR",
-    options.provider,
-    aborted ? `L'API ${options.provider} n'a pas r\xE9pondu dans le d\xE9lai imparti (${Math.round(timeoutMs / 1e3)} s).` : `Impossible de joindre l'API ${options.provider} (erreur r\xE9seau).`,
-    { httpStatus: lastStatus, details: { label, attempts: retries + 1, reason: lastError instanceof Error ? lastError.message : String(lastError) }, cause: lastError }
-  );
-}
-async function readBodyText(res, provider = "api", label = "body") {
-  try {
-    return await res.text();
-  } catch (e) {
-    const aborted = e instanceof Error && e.name === "AbortError";
-    throw new ConnectorError(
-      "API_ERROR",
-      provider,
-      aborted ? `L'API ${provider} n'a pas fini d'envoyer sa r\xE9ponse dans le d\xE9lai imparti.` : `R\xE9ponse de l'API ${provider} interrompue pendant la lecture.`,
-      { httpStatus: res.status, details: { label, reason: e instanceof Error ? e.message : String(e) }, cause: e }
-    );
-  }
-}
-async function readJson(res, provider = "api") {
-  const text2 = await readBodyText(res, provider);
-  if (!text2) return null;
-  try {
-    return JSON.parse(text2);
-  } catch {
-    return null;
-  }
-}
-
-// src/integrations/ebay/oauth.ts
-var tokenResponseSchema = z7.object({
-  access_token: z7.string().min(1),
-  expires_in: z7.number().int().positive(),
-  token_type: z7.string().optional(),
-  refresh_token: z7.string().min(1).optional(),
-  refresh_token_expires_in: z7.number().int().positive().optional()
-});
-var tokenErrorSchema = z7.object({
-  error: z7.string(),
-  error_description: z7.string().optional()
-});
-function buildAuthorizeUrl(config, state, scopes = ebayScopeList()) {
-  const url = new URL(config.authorizeUrl);
-  url.searchParams.set("client_id", config.clientId);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("redirect_uri", config.ruName);
-  url.searchParams.set("scope", scopes.join(" "));
-  url.searchParams.set("state", state);
-  url.searchParams.set("prompt", "login");
-  return url.toString();
-}
-function basicAuth(config) {
-  return "Basic " + Buffer.from(`${config.clientId}:${config.clientSecret}`, "utf8").toString("base64");
-}
-async function tokenRequest(config, body, label) {
-  const res = await fetchWithRetry(
-    config.tokenUrl,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basicAuth(config), Accept: "application/json" },
-      body: body.toString()
-    },
-    { provider: EBAY_PROVIDER, label, retries: 2, timeoutMs: 2e4 }
-  );
-  const json2 = await readJson(res, EBAY_PROVIDER);
-  if (!res.ok) {
-    const err = tokenErrorSchema.safeParse(json2);
-    const code = err.success ? err.data.error : `http_${res.status}`;
-    const description = err.success ? err.data.error_description : void 0;
-    if (code === "invalid_client" || code === "unauthorized_client") {
-      throw new ConnectorError("NOT_CONFIGURED", EBAY_PROVIDER, "eBay refuse les identifiants de l'application (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET invalides ou environnement production/sandbox incoh\xE9rent).", {
-        httpStatus: res.status,
-        details: { oauthError: code, description: description ?? null, step: label },
-        retryable: false
-      });
-    }
-    if (code === "invalid_scope" && label === "oauth:refresh_token") {
-      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "eBay refuse les autorisations demand\xE9es : de nouvelles autorisations sont n\xE9cessaires. Reconnectez votre compte eBay pour les accorder.", {
-        httpStatus: res.status,
-        details: { oauthError: code, description: description ?? null, step: label },
-        retryable: false
-      });
-    }
-    if (code === "invalid_grant" || code === "invalid_token" || res.status === 401) {
-      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "L'autorisation eBay n'est plus valide (le token a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9). Reconnectez votre compte eBay.", {
-        httpStatus: res.status,
-        details: { oauthError: code, description: description ?? null, step: label },
-        retryable: false
-      });
-    }
-    throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `eBay a refus\xE9 la demande de token (${code}${description ? ` : ${description}` : ""}).`, {
-      httpStatus: res.status,
-      details: { oauthError: code, description: description ?? null, step: label },
-      retryable: false
-    });
-  }
-  const parsed = tokenResponseSchema.safeParse(json2);
-  if (!parsed.success) {
-    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse de token eBay inattendue (format non reconnu).", { details: { step: label, issues: parsed.error.issues.map((i) => i.path.join(".")) } });
-  }
-  return parsed.data;
-}
-function toTokenSet(data, now, previousRefresh) {
-  return {
-    accessToken: data.access_token,
-    accessTokenExpiresAt: new Date(now.getTime() + data.expires_in * 1e3),
-    refreshToken: data.refresh_token ?? previousRefresh?.token ?? null,
-    refreshTokenExpiresAt: data.refresh_token_expires_in ? new Date(now.getTime() + data.refresh_token_expires_in * 1e3) : previousRefresh?.expiresAt ?? null,
-    tokenType: data.token_type ?? "User Access Token"
-  };
-}
-async function exchangeAuthorizationCode(config, code, now = /* @__PURE__ */ new Date()) {
-  const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: config.ruName });
-  const data = await tokenRequest(config, body, "oauth:exchange_code");
-  return toTokenSet(data, now);
-}
-async function refreshAccessToken(config, refreshToken, scopes = ebayScopeList(), now = /* @__PURE__ */ new Date()) {
-  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, scope: scopes.join(" ") });
-  const data = await tokenRequest(config, body, "oauth:refresh_token");
-  return toTokenSet(data, now, { token: refreshToken, expiresAt: null });
-}
-async function getApplicationAccessToken(config, now = /* @__PURE__ */ new Date()) {
-  const body = new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" });
-  const data = await tokenRequest(config, body, "oauth:client_credentials");
-  return { accessToken: data.access_token, expiresAt: new Date(now.getTime() + data.expires_in * 1e3) };
-}
-
-// src/integrations/ebay/identity.ts
-import { z as z10 } from "npm:zod@4.6.5";
-
-// src/integrations/core/types.ts
-import { z as z8 } from "npm:zod@4.6.5";
-var ORDER_STATUSES3 = ["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"];
-var LISTING_STATUSES = ["active", "ended", "unsold", "unknown"];
-var isoDate2 = z8.string().refine((s) => !Number.isNaN(Date.parse(s)), "Date ISO invalide");
-var nullableNumber = z8.number().finite().nullable();
-var normalizedOrderItemSchema = z8.object({
-  externalLineItemId: z8.string().min(1),
-  externalListingId: z8.string().min(1).nullable(),
-  /** Clé de variation ('' si l'article n'a pas de variation). Voir variationKey(). */
-  externalVariationId: z8.string(),
-  externalSku: z8.string().min(1).nullable(),
-  title: z8.string(),
-  quantity: z8.number().int().positive(),
-  unitPrice: nullableNumber,
-  currency: z8.string().length(3).nullable(),
-  total: nullableNumber
-});
-var normalizedOrderSchema = z8.object({
-  externalOrderId: z8.string().min(1),
-  orderNumber: z8.string().nullable(),
-  status: z8.enum(ORDER_STATUSES3),
-  paymentStatus: z8.string().nullable(),
-  fulfillmentStatus: z8.string().nullable(),
-  cancelStatus: z8.string().nullable(),
-  buyerUsername: z8.string().nullable(),
-  currency: z8.string().length(3),
-  subtotal: nullableNumber,
-  shippingTotal: nullableNumber,
-  taxTotal: nullableNumber,
-  feeTotal: nullableNumber,
-  total: nullableNumber,
-  placedAt: isoDate2,
-  externalModifiedAt: isoDate2.nullable(),
-  payloadHash: z8.string().min(1),
-  items: z8.array(normalizedOrderItemSchema)
-});
-var normalizedListingVariationSchema = z8.object({
-  sku: z8.string().min(1).nullable(),
-  specifics: z8.record(z8.string(), z8.string()),
-  quantityListed: z8.number().int().nullable(),
-  quantitySold: z8.number().int().nullable(),
-  quantityAvailable: z8.number().int().nullable(),
-  price: nullableNumber,
-  currency: z8.string().length(3).nullable()
-});
-var normalizedListingSchema = z8.object({
-  externalListingId: z8.string().min(1),
-  title: z8.string(),
-  sku: z8.string().min(1).nullable(),
-  externalProductId: z8.string().nullable(),
-  quantityListed: z8.number().int().nullable(),
-  quantitySold: z8.number().int().nullable(),
-  quantityAvailable: z8.number().int().nullable(),
-  price: nullableNumber,
-  currency: z8.string().length(3).nullable(),
-  listingUrl: z8.string().nullable(),
-  imageUrl: z8.string().nullable(),
-  status: z8.enum(LISTING_STATUSES),
-  startedAt: isoDate2.nullable(),
-  endsAt: isoDate2.nullable(),
-  variations: z8.array(normalizedListingVariationSchema)
-});
-var accountInfoSchema = z8.object({
-  externalAccountId: z8.string().min(1),
-  username: z8.string().min(1),
-  accountType: z8.string().nullable(),
-  registrationMarketplaceId: z8.string().nullable()
-});
-var tokenSetSchema = z8.object({
-  accessToken: z8.string().min(1),
-  accessTokenExpiresAt: z8.date(),
-  refreshToken: z8.string().min(1).nullable(),
-  refreshTokenExpiresAt: z8.date().nullable(),
-  tokenType: z8.string()
-});
-
-// src/integrations/ebay/rest.ts
-import { z as z9 } from "npm:zod@4.6.5";
-var ebayRestErrorSchema = z9.object({
-  errors: z9.array(
-    z9.object({
-      errorId: z9.number().optional(),
-      domain: z9.string().optional(),
-      category: z9.string().optional(),
-      message: z9.string().optional(),
-      longMessage: z9.string().optional()
-    })
-  )
-});
-function summarizeRestErrors(json2) {
-  const parsed = ebayRestErrorSchema.safeParse(json2);
-  if (!parsed.success || parsed.data.errors.length === 0) return { message: "", errorIds: [] };
-  const first = parsed.data.errors[0];
-  return {
-    message: first?.longMessage ?? first?.message ?? "",
-    errorIds: parsed.data.errors.map((e) => e.errorId).filter((x) => typeof x === "number")
-  };
-}
-async function ebayRestGet(auth, url, label, options = {}) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
-    const res = await fetchWithRetry(
-      url,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Accept-Language": "fr-FR",
-          ...options.marketplaceId ? { "X-EBAY-C-MARKETPLACE-ID": options.marketplaceId } : {}
-        }
-      },
-      { provider: EBAY_PROVIDER, label }
-    );
-    const json2 = await readJson(res, EBAY_PROVIDER);
-    if (res.status === 401) {
-      if (attempt === 0) continue;
-      const { message, errorIds } = summarizeRestErrors(json2);
-      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", {
-        httpStatus: 401,
-        details: { label, ebayMessage: message || null, errorIds },
-        retryable: false
-      });
-    }
-    if (res.status === 403) {
-      const { message, errorIds } = summarizeRestErrors(json2);
-      throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, `eBay refuse l'acc\xE8s (${message || "scope insuffisant"}). Reconnectez votre compte pour accorder les autorisations n\xE9cessaires.`, {
-        httpStatus: 403,
-        details: { label, ebayMessage: message || null, errorIds },
-        retryable: false
-      });
-    }
-    if (!res.ok) {
-      const { message, errorIds } = summarizeRestErrors(json2);
-      throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `Erreur de l'API eBay (HTTP ${res.status})${message ? ` : ${message}` : ""}.`, {
-        httpStatus: res.status,
-        details: { label, errorIds },
-        retryable: res.status >= 500
-      });
-    }
-    return json2;
-  }
-  throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "Appel eBay interrompu.", { details: { label } });
-}
-
-// src/integrations/ebay/identity.ts
-var ebayUserSchema = z10.object({
-  userId: z10.string().min(1),
-  username: z10.string().min(1),
-  accountType: z10.string().optional(),
-  registrationMarketplaceId: z10.string().optional(),
-  status: z10.string().optional()
-});
-function normalizeEbayUser(raw) {
-  const parsed = ebayUserSchema.safeParse(raw);
-  if (!parsed.success) {
-    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse inattendue de l'Identity API eBay (impossible de lire le compte vendeur).", {
-      details: { issues: parsed.error.issues.map((i) => i.path.join(".")) }
-    });
-  }
-  return accountInfoSchema.parse({
-    externalAccountId: parsed.data.userId,
-    username: parsed.data.username,
-    accountType: parsed.data.accountType ?? null,
-    registrationMarketplaceId: parsed.data.registrationMarketplaceId ?? null
-  });
-}
-async function fetchEbayAccountInfo(config, auth) {
-  const json2 = await ebayRestGet(auth, `${config.apizBase}/commerce/identity/v1/user/`, "identity:getUser");
-  return normalizeEbayUser(json2);
-}
-
-// src/integrations/ebay/fulfillment.ts
-import { createHash as createHash3 } from "node:crypto";
-import { z as z11 } from "npm:zod@4.6.5";
-
-// src/integrations/core/variation.ts
-function aspectsKey(aspects) {
-  const pairs = Array.isArray(aspects) ? aspects.map((a) => [a.name, a.value]) : Object.entries(aspects);
-  return pairs.map(([n, v2]) => [n.trim(), v2.trim()]).filter(([n, v2]) => n.length > 0 && v2.length > 0).sort(([a], [b]) => a.localeCompare(b)).map(([n, v2]) => `${n}=${v2}`).join("|");
-}
-function variationKey(input) {
-  const sku = input.sku?.trim();
-  if (sku) return sku;
-  if (input.aspects) {
-    const key2 = aspectsKey(input.aspects);
-    if (key2) return key2;
-  }
-  return input.fallbackId?.trim() ?? "";
-}
-
-// src/integrations/ebay/fulfillment.ts
-var amountSchema = z11.object({
-  value: z11.union([z11.string(), z11.number()]),
-  currency: z11.string().optional(),
-  convertedFromValue: z11.union([z11.string(), z11.number()]).optional(),
-  convertedFromCurrency: z11.string().optional()
-}).transform((a) => {
-  const n = typeof a.value === "number" ? a.value : Number(a.value);
-  return { value: Number.isFinite(n) ? n : null, currency: a.currency ?? null };
-});
-var lineItemSchema = z11.object({
-  lineItemId: z11.string().min(1),
-  legacyItemId: z11.string().optional(),
-  legacyVariationId: z11.string().optional(),
-  sku: z11.string().optional(),
-  title: z11.string().optional(),
-  quantity: z11.number().int().positive(),
-  lineItemCost: amountSchema.optional(),
-  total: amountSchema.optional(),
-  lineItemFulfillmentStatus: z11.string().optional(),
-  variationAspects: z11.array(z11.object({ name: z11.string(), value: z11.string() })).optional()
-});
-var ebayOrderSchema = z11.object({
-  orderId: z11.string().min(1),
-  legacyOrderId: z11.string().optional(),
-  creationDate: z11.string(),
-  lastModifiedDate: z11.string().optional(),
-  orderFulfillmentStatus: z11.string().optional(),
-  orderPaymentStatus: z11.string().optional(),
-  cancelStatus: z11.object({ cancelState: z11.string().optional() }).passthrough().optional(),
-  buyer: z11.object({ username: z11.string().optional() }).passthrough().optional(),
-  pricingSummary: z11.object({
-    priceSubtotal: amountSchema.optional(),
-    deliveryCost: amountSchema.optional(),
-    tax: amountSchema.optional(),
-    total: amountSchema.optional(),
-    fee: amountSchema.optional()
-  }).passthrough().optional(),
-  totalMarketplaceFee: amountSchema.optional(),
-  lineItems: z11.array(lineItemSchema).default([])
-});
-var ebayOrdersPageSchema = z11.object({
-  total: z11.number().int().nonnegative().optional(),
-  limit: z11.number().int().optional(),
-  offset: z11.number().int().optional(),
-  next: z11.string().optional(),
-  orders: z11.array(z11.unknown()).default([])
-});
-function mapEbayOrderStatus(input) {
-  if (input.cancelState === "CANCELED") return "cancelled";
-  if (input.paymentStatus === "FULLY_REFUNDED") return "refunded";
-  if (input.fulfillmentStatus === "FULFILLED") return "shipped";
-  switch (input.paymentStatus) {
-    case "PAID":
-    case "PARTIALLY_REFUNDED":
-      return "paid";
-    case "PENDING":
-    case "FAILED":
-      return "pending";
-    default:
-      return input.fulfillmentStatus === "IN_PROGRESS" || input.fulfillmentStatus === "NOT_STARTED" ? "pending" : "unknown";
-  }
-}
-function stableHash(raw) {
-  return createHash3("sha256").update(JSON.stringify(raw)).digest("hex");
-}
-function normalizeLineItem(li, orderCurrency) {
-  const isVariation = Boolean(li.legacyVariationId) || (li.variationAspects?.length ?? 0) > 0;
-  const unitPrice = li.lineItemCost?.value ?? null;
-  const total = li.total?.value ?? (unitPrice !== null ? Math.round(unitPrice * li.quantity * 100) / 100 : null);
-  return {
-    externalLineItemId: li.lineItemId,
-    externalListingId: li.legacyItemId ?? null,
-    externalVariationId: isVariation ? variationKey({ sku: li.sku, aspects: li.variationAspects ?? null, fallbackId: li.legacyVariationId ?? null }) : "",
-    externalSku: li.sku?.trim() ? li.sku.trim() : null,
-    title: li.title ?? "",
-    quantity: li.quantity,
-    unitPrice,
-    currency: li.lineItemCost?.currency ?? li.total?.currency ?? orderCurrency,
-    total
-  };
-}
-function normalizeEbayOrder(raw) {
-  const parsed = ebayOrderSchema.safeParse(raw);
-  if (!parsed.success) {
-    const id = typeof raw === "object" && raw !== null && "orderId" in raw ? String(raw.orderId) : null;
-    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, `Commande eBay ${id ?? "(id inconnu)"} au format inattendu : ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}.`, {
-      details: { orderId: id, issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) },
-      retryable: false
-    });
-  }
-  const o = parsed.data;
-  const ps = o.pricingSummary;
-  const currency = ps?.total?.currency ?? ps?.priceSubtotal?.currency ?? o.lineItems[0]?.lineItemCost?.currency ?? "EUR";
-  const status = mapEbayOrderStatus({ cancelState: o.cancelStatus?.cancelState ?? null, paymentStatus: o.orderPaymentStatus ?? null, fulfillmentStatus: o.orderFulfillmentStatus ?? null });
-  const order = {
-    externalOrderId: o.orderId,
-    orderNumber: o.legacyOrderId ?? null,
-    status,
-    paymentStatus: o.orderPaymentStatus ?? null,
-    fulfillmentStatus: o.orderFulfillmentStatus ?? null,
-    cancelStatus: o.cancelStatus?.cancelState ?? null,
-    buyerUsername: o.buyer?.username ?? null,
-    currency,
-    subtotal: ps?.priceSubtotal?.value ?? null,
-    shippingTotal: ps?.deliveryCost?.value ?? null,
-    taxTotal: ps?.tax?.value ?? null,
-    feeTotal: o.totalMarketplaceFee?.value ?? ps?.fee?.value ?? null,
-    total: ps?.total?.value ?? null,
-    placedAt: new Date(o.creationDate).toISOString(),
-    externalModifiedAt: o.lastModifiedDate ? new Date(o.lastModifiedDate).toISOString() : null,
-    payloadHash: stableHash(raw),
-    items: o.lineItems.map((li) => normalizeLineItem(li, currency))
-  };
-  return normalizedOrderSchema.parse(order);
-}
-function buildLastModifiedFilter(since2, until) {
-  const from = since2.toISOString();
-  return until ? `lastmodifieddate:[${from}..${until.toISOString()}]` : `lastmodifieddate:[${from}..]`;
-}
-var EBAY_ORDERS_PAGE_SIZE = 100;
-var EBAY_ORDERS_MAX_PAGES = 50;
-async function* iterateEbayOrders(config, auth, params) {
-  let offset = 0;
-  for (let page2 = 0; page2 < EBAY_ORDERS_MAX_PAGES; page2++) {
-    const url = new URL(`${config.apiBase}/sell/fulfillment/v1/order`);
-    url.searchParams.set("filter", buildLastModifiedFilter(params.since, params.until));
-    url.searchParams.set("limit", String(EBAY_ORDERS_PAGE_SIZE));
-    url.searchParams.set("offset", String(offset));
-    const json2 = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders");
-    const parsed = ebayOrdersPageSchema.safeParse(json2);
-    if (!parsed.success) {
-      throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse inattendue de la Fulfillment API eBay (liste de commandes illisible).", {
-        details: { issues: parsed.error.issues.map((i) => i.path.join(".")) }
-      });
-    }
-    const orders = [];
-    const invalid = [];
-    for (const raw of parsed.data.orders) {
-      try {
-        orders.push(normalizeEbayOrder(raw));
-      } catch (e) {
-        const id = typeof raw === "object" && raw !== null && "orderId" in raw ? String(raw.orderId) : null;
-        invalid.push({ orderId: id, message: e instanceof Error ? e.message : String(e) });
-      }
-    }
-    const total = parsed.data.total ?? null;
-    const hasNext = Boolean(parsed.data.next) && parsed.data.orders.length > 0;
-    const truncated = hasNext && page2 === EBAY_ORDERS_MAX_PAGES - 1;
-    yield { orders, invalid, total, truncated, hasMore: hasNext };
-    if (!hasNext) return;
-    offset += parsed.data.orders.length;
-  }
-}
-
-// src/integrations/ebay/trading.ts
-import { XMLParser } from "npm:fast-xml-parser@5.11.2";
-var EBAY_TRADING_NS = "urn:ebay:apis:eBLBaseComponents";
-var TRADING_AUTH_ERROR_CODES = /* @__PURE__ */ new Set(["931", "932", "17470", "21916984", "21917053", "21916017", "21916018"]);
-var TRADING_RATE_LIMIT_ERROR_CODES = /* @__PURE__ */ new Set(["518"]);
-var TRADING_TRANSIENT_ERROR_CODES = /* @__PURE__ */ new Set(["10007"]);
-var EBAY_TRADING_SITE_ID = "0";
-var GET_MY_EBAY_SELLING_PAGE_SIZE = 200;
-var GET_MY_EBAY_SELLING_MAX_PAGES = 50;
-var ARRAY_PATHS = /* @__PURE__ */ new Set([
-  "GetMyeBaySellingResponse.ActiveList.ItemArray.Item",
-  "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.Variations.Variation",
-  "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.Variations.Variation.VariationSpecifics.NameValueList",
-  "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.Variations.Variation.VariationSpecifics.NameValueList.Value",
-  "GetMyeBaySellingResponse.ActiveList.ItemArray.Item.PictureDetails.PictureURL",
-  "GetMyeBaySellingResponse.Errors",
-  "ReviseInventoryStatusResponse.Errors",
-  "ReviseInventoryStatusResponse.InventoryStatus"
-]);
-var parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-  textNodeName: "#text",
-  removeNSPrefix: true,
-  // Les identifiants (ItemID…) restent des chaînes : aucune perte de précision.
-  parseTagValue: false,
-  parseAttributeValue: false,
-  trimValues: true,
-  isArray: (_name, jpath) => ARRAY_PATHS.has(typeof jpath === "string" ? jpath : jpath.toString())
-});
-function node(v2) {
-  return v2 && typeof v2 === "object" && !Array.isArray(v2) ? v2 : null;
-}
-function arr(v2) {
-  if (v2 === void 0 || v2 === null) return [];
-  return Array.isArray(v2) ? v2 : [v2];
-}
-function text(v2) {
-  if (v2 === void 0 || v2 === null) return null;
-  if (typeof v2 === "string") return v2;
-  if (typeof v2 === "number" || typeof v2 === "boolean") return String(v2);
-  const n = node(v2);
-  if (n && typeof n["#text"] === "string") return n["#text"];
-  return null;
-}
-function int(v2) {
-  const t = text(v2);
-  if (t === null || t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? Math.trunc(n) : null;
-}
-function money(v2) {
-  const t = text(v2);
-  const n = t === null || t === "" ? NaN : Number(t);
-  const nd = node(v2);
-  const currency = nd && typeof nd["@_currencyID"] === "string" ? nd["@_currencyID"] : null;
-  return { value: Number.isFinite(n) ? n : null, currency: currency && currency.length === 3 ? currency : null };
-}
-function isoOrNull(v2) {
-  const t = text(v2);
-  if (!t) return null;
-  const d = new Date(t);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-function extractTradingErrors(response) {
-  return arr(response?.Errors).map(node).filter((e) => e !== null).map((e) => ({
-    code: text(e.ErrorCode) ?? "",
-    shortMessage: text(e.ShortMessage) ?? "",
-    longMessage: text(e.LongMessage) ?? "",
-    severity: text(e.SeverityCode) ?? ""
-  }));
-}
-function isTradingAuthError(errors) {
-  return errors.some((e) => TRADING_AUTH_ERROR_CODES.has(e.code) || /(iaf|auth)\s*token.*(expired|invalid|hard expired)|invalid.*token|token.*(expired|invalid)/i.test(`${e.shortMessage} ${e.longMessage}`));
-}
-function assertTradingAck(callName, response) {
-  if (!response) {
-    throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, `R\xE9ponse XML illisible pour l'appel Trading ${callName}.`, { details: { callName } });
-  }
-  const ack = text(response.Ack) ?? "";
-  const errors = extractTradingErrors(response);
-  const failures = errors.filter((e) => e.severity !== "Warning");
-  const warnings = errors.filter((e) => e.severity === "Warning").map((e) => e.longMessage || e.shortMessage);
-  if (ack === "Success" || ack === "Warning") return { warnings };
-  if (isTradingAuthError(errors)) {
-    throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", {
-      details: { callName, errorCodes: failures.map((e) => e.code) },
-      retryable: false
-    });
-  }
-  const first = failures[0] ?? errors[0];
-  const message = first ? first.longMessage || first.shortMessage : `Ack=${ack || "absent"}`;
-  const errorSummary = failures.map((e) => ({ code: e.code, message: e.shortMessage }));
-  if (failures.some((e) => TRADING_RATE_LIMIT_ERROR_CODES.has(e.code) || /usage limit|call limit/i.test(`${e.shortMessage} ${e.longMessage}`))) {
-    throw new ConnectorError("RATE_LIMITED", EBAY_PROVIDER, `Quota d'appels de la Trading API eBay atteint (${callName}) : la synchronisation reprendra au prochain run.`, {
-      details: { callName, ack, errors: errorSummary },
-      retryable: true
-    });
-  }
-  throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `eBay a refus\xE9 l'appel ${callName} : ${message}`, {
-    details: { callName, ack, errors: errorSummary },
-    retryable: failures.some((e) => TRADING_TRANSIENT_ERROR_CODES.has(e.code))
-  });
-}
-function xmlEscape(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-}
-function buildGetMyeBaySellingRequest(pageNumber, entriesPerPage = GET_MY_EBAY_SELLING_PAGE_SIZE) {
-  return `<?xml version="1.0" encoding="utf-8"?>
-<GetMyeBaySellingRequest xmlns="${EBAY_TRADING_NS}">
-  <ErrorLanguage>fr_FR</ErrorLanguage>
-  <WarningLevel>High</WarningLevel>
-  <DetailLevel>ReturnAll</DetailLevel>
-  <ActiveList>
-    <Include>true</Include>
-    <IncludeNotes>false</IncludeNotes>
-    <Sort>TimeLeft</Sort>
-    <Pagination>
-      <EntriesPerPage>${entriesPerPage}</EntriesPerPage>
-      <PageNumber>${pageNumber}</PageNumber>
-    </Pagination>
-  </ActiveList>
-</GetMyeBaySellingRequest>`;
-}
-function buildReviseInventoryStatusRequest(ref, quantity) {
-  const sku = ref.variationSku ? `
-    <SKU>${xmlEscape(ref.variationSku)}</SKU>` : "";
-  return `<?xml version="1.0" encoding="utf-8"?>
-<ReviseInventoryStatusRequest xmlns="${EBAY_TRADING_NS}">
-  <ErrorLanguage>fr_FR</ErrorLanguage>
-  <WarningLevel>High</WarningLevel>
-  <InventoryStatus>
-    <ItemID>${xmlEscape(ref.externalListingId)}</ItemID>${sku}
-    <Quantity>${Math.max(0, Math.trunc(quantity))}</Quantity>
-  </InventoryStatus>
-</ReviseInventoryStatusRequest>`;
-}
-function parseVariation(v2) {
-  const specifics = {};
-  for (const nv of arr(node(v2.VariationSpecifics)?.NameValueList).map(node)) {
-    if (!nv) continue;
-    const name = text(nv.Name);
-    const value = arr(nv.Value).map(text).filter((x) => Boolean(x)).join(", ");
-    if (name && value) specifics[name] = value;
-  }
-  const listed = int(v2.Quantity);
-  const sold = int(node(v2.SellingStatus)?.QuantitySold);
-  const price = money(v2.StartPrice);
-  return {
-    sku: text(v2.SKU)?.trim() || null,
-    specifics,
-    quantityListed: listed,
-    quantitySold: sold,
-    quantityAvailable: listed !== null ? Math.max(0, listed - (sold ?? 0)) : null,
-    price: price.value,
-    currency: price.currency
-  };
-}
-function parseItem(item) {
-  const selling = node(item.SellingStatus);
-  const listed = int(item.Quantity);
-  const sold = int(selling?.QuantitySold);
-  const explicitAvailable = int(item.QuantityAvailable);
-  const current = money(selling?.CurrentPrice);
-  const bin = money(item.BuyItNowPrice);
-  const start = money(item.StartPrice);
-  const price = current.value !== null ? current : bin.value !== null ? bin : start;
-  const details = node(item.ListingDetails);
-  const pictures = node(item.PictureDetails);
-  const firstPicture = arr(pictures?.PictureURL).map(text).find((x) => Boolean(x)) ?? text(pictures?.GalleryURL);
-  const variations = arr(node(item.Variations)?.Variation).map(node).filter((v2) => v2 !== null).map(parseVariation);
-  const listingStatus = text(selling?.ListingStatus);
-  const status = listingStatus === "Active" ? "active" : listingStatus === "Completed" || listingStatus === "Ended" ? "ended" : listingStatus ? "unknown" : "active";
-  const variationAvailable = variations.length > 0 ? variations.reduce((acc, v2) => v2.quantityAvailable === null ? acc : (acc ?? 0) + v2.quantityAvailable, null) : null;
-  return normalizedListingSchema.parse({
-    externalListingId: text(item.ItemID) ?? "",
-    title: text(item.Title) ?? "",
-    sku: text(item.SKU)?.trim() || null,
-    externalProductId: text(node(item.ProductListingDetails)?.ProductReferenceID) ?? null,
-    quantityListed: listed,
-    quantitySold: sold,
-    quantityAvailable: explicitAvailable ?? variationAvailable ?? (listed !== null ? Math.max(0, listed - (sold ?? 0)) : null),
-    price: price.value,
-    currency: price.currency ?? (text(item.Currency)?.length === 3 ? text(item.Currency) : null),
-    listingUrl: text(details?.ViewItemURL) ?? null,
-    imageUrl: firstPicture ?? null,
-    status,
-    startedAt: isoOrNull(details?.StartTime),
-    endsAt: isoOrNull(details?.EndTime),
-    variations
-  });
-}
-function parseGetMyeBaySellingResponse(xml) {
-  const doc = node(parser.parse(xml));
-  const response = node(doc?.GetMyeBaySellingResponse);
-  const { warnings } = assertTradingAck("GetMyeBaySelling", response);
-  const active = node(response?.ActiveList);
-  const pagination = node(active?.PaginationResult);
-  const listings = [];
-  const invalid = [];
-  for (const item of arr(node(active?.ItemArray)?.Item).map(node)) {
-    if (!item) continue;
-    try {
-      listings.push(parseItem(item));
-    } catch (e) {
-      invalid.push({ itemId: text(item.ItemID), message: e instanceof Error ? e.message : String(e) });
-    }
-  }
-  return {
-    listings,
-    invalid,
-    pageNumber: int(node(active?.Pagination)?.PageNumber) ?? 1,
-    totalPages: int(pagination?.TotalNumberOfPages) ?? 1,
-    totalEntries: int(pagination?.TotalNumberOfEntries),
-    warnings
-  };
-}
-function parseReviseInventoryStatusResponse(xml) {
-  const doc = node(parser.parse(xml));
-  const response = node(doc?.ReviseInventoryStatusResponse);
-  return assertTradingAck("ReviseInventoryStatus", response);
-}
-async function tradingCall(config, auth, callName, body) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
-    const res = await fetchWithRetry(
-      config.tradingUrl,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/xml; charset=utf-8",
-          "X-EBAY-API-SITEID": EBAY_TRADING_SITE_ID,
-          "X-EBAY-API-COMPATIBILITY-LEVEL": EBAY_TRADING_COMPATIBILITY_LEVEL,
-          "X-EBAY-API-CALL-NAME": callName,
-          "X-EBAY-API-IAF-TOKEN": token
-        },
-        body
-      },
-      { provider: EBAY_PROVIDER, label: `trading:${callName}`, timeoutMs: 6e4 }
-    );
-    const xml = await readBodyText(res, EBAY_PROVIDER, `trading:${callName}`);
-    if (res.status === 401 && attempt === 0) continue;
-    if (!res.ok) {
-      throw new ConnectorError(res.status === 401 ? "AUTH_EXPIRED" : "API_ERROR", EBAY_PROVIDER, `La Trading API eBay a r\xE9pondu HTTP ${res.status} pour ${callName}.`, { httpStatus: res.status, details: { callName } });
-    }
-    if (attempt === 0) {
-      const probe = node(node(parser.parse(xml))?.[`${callName}Response`]);
-      if (probe && text(probe.Ack) === "Failure" && isTradingAuthError(extractTradingErrors(probe))) continue;
-    }
-    return xml;
-  }
-  throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", { details: { callName } });
-}
-async function* iterateGetMyeBaySelling(config, auth) {
-  for (let page2 = 1; page2 <= GET_MY_EBAY_SELLING_MAX_PAGES; page2++) {
-    const xml = await tradingCall(config, auth, "GetMyeBaySelling", buildGetMyeBaySellingRequest(page2));
-    const parsed = parseGetMyeBaySellingResponse(xml);
-    yield parsed;
-    if (page2 >= parsed.totalPages) return;
-  }
-}
-async function reviseInventoryStatus(config, auth, ref, quantity) {
-  if (!Number.isInteger(quantity) || quantity < 0) {
-    throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "La quantit\xE9 \xE0 envoyer \xE0 eBay doit \xEAtre un entier positif ou nul.", { retryable: false });
-  }
-  const xml = await tradingCall(config, auth, "ReviseInventoryStatus", buildReviseInventoryStatusRequest(ref, quantity));
-  const { warnings } = parseReviseInventoryStatusResponse(xml);
-  return { ok: true, quantity, warnings };
-}
-
-// src/integrations/ebay/connector.ts
-var log4 = createLogger("EBAY");
-var EbayConnector = class {
-  provider = EBAY_PROVIDER;
-  label = "eBay";
-  available = true;
-  scopes = EBAY_SCOPES;
-  configOverride;
-  constructor(config) {
-    this.configOverride = config ?? null;
-  }
-  /** Configuration courante (null si EBAY_* absentes). */
-  config() {
-    if (this.configOverride) return this.configOverride;
-    const env = ebayEnv();
-    return env ? createEbayConfig(env) : null;
-  }
-  isConfigured() {
-    return this.config() !== null;
-  }
-  configurationIssues() {
-    return this.configOverride ? [] : ebayEnvIssues();
-  }
-  requireConfig() {
-    const config = this.config();
-    if (!config) {
-      throw new ConnectorError("NOT_CONFIGURED", EBAY_PROVIDER, "Int\xE9gration eBay non configur\xE9e sur ce serveur : renseignez EBAY_CLIENT_ID, EBAY_CLIENT_SECRET et EBAY_RU_NAME (voir docs/ebay-setup.md).", {
-        details: { missing: ebayEnvIssues() },
-        retryable: false
-      });
-    }
-    return config;
-  }
-  getAuthorizeUrl(state) {
-    return buildAuthorizeUrl(this.requireConfig(), state, ebayScopeList());
-  }
-  exchangeCode(code) {
-    return exchangeAuthorizationCode(this.requireConfig(), code);
-  }
-  refreshToken(refreshToken) {
-    return refreshAccessToken(this.requireConfig(), refreshToken, ebayScopeList());
-  }
-  getAccountInfo(auth) {
-    return fetchEbayAccountInfo(this.requireConfig(), auth);
-  }
-  async *getOrders(auth, params) {
-    const config = this.requireConfig();
-    for await (const page2 of iterateEbayOrders(config, auth, params)) {
-      for (const inv of page2.invalid) log4.warn("commande eBay ignor\xE9e (format inattendu)", { orderId: inv.orderId, reason: inv.message });
-      if (page2.truncated) log4.warn("r\xE9cup\xE9ration des commandes tronqu\xE9e (limite de pages atteinte) : la suite sera reprise au prochain run");
-      yield { orders: page2.orders, invalid: page2.invalid.map((i) => ({ ref: i.orderId, message: i.message })), truncated: page2.truncated, hasMore: page2.hasMore };
-    }
-  }
-  async *getListings(auth) {
-    const config = this.requireConfig();
-    let pageIndex = 0;
-    for await (const page2 of iterateGetMyeBaySelling(config, auth)) {
-      pageIndex++;
-      for (const inv of page2.invalid) log4.warn("annonce eBay ignor\xE9e (format inattendu)", { itemId: inv.itemId, reason: inv.message });
-      const truncated = pageIndex >= GET_MY_EBAY_SELLING_MAX_PAGES && page2.totalPages > pageIndex;
-      if (truncated) log4.warn("liste d'annonces tronqu\xE9e (limite de pages atteinte)", { pages: pageIndex, totalPages: page2.totalPages });
-      yield { listings: page2.listings, invalid: page2.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page2.warnings, truncated };
-    }
-  }
-  /** Les quantités eBay sont celles des annonces : GetMyeBaySelling est la source de vérité. */
-  async *getInventory(auth) {
-    for await (const page2 of this.getListings(auth)) {
-      const levels = [];
-      for (const l of page2.listings) {
-        if (l.variations.length === 0) {
-          levels.push({ ref: { externalListingId: l.externalListingId, variationSku: null }, quantityAvailable: l.quantityAvailable });
-        } else {
-          for (const v2 of l.variations) levels.push({ ref: { externalListingId: l.externalListingId, variationSku: v2.sku }, quantityAvailable: v2.quantityAvailable });
-        }
-      }
-      yield levels;
-    }
-  }
-  /**
-   * ReviseInventoryStatus. Limitation connue : les annonces créées via l'Inventory API (offres)
-   * refusent les révisions Trading ; eBay renvoie alors une erreur explicite qui est remontée telle quelle.
-   */
-  updateListingInventory(auth, ref, quantity) {
-    return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity);
-  }
-  /**
-   * eBay ne publie pas d'endpoint de révocation des tokens utilisateur : les tokens sont
-   * supprimés de notre base, et le vendeur peut retirer l'autorisation côté eBay
-   * (Mon eBay → Compte → Préférences du site → Autorisations tierces).
-   */
-  async revoke(_auth) {
-    return {
-      revoked: false,
-      note: "Les tokens ont \xE9t\xE9 supprim\xE9s de MON STOCK. eBay n'offre pas d'API publique de r\xE9vocation : pour retirer l'autorisation c\xF4t\xE9 eBay, allez dans Mon eBay \u2192 Compte \u2192 Pr\xE9f\xE9rences du site \u2192 Autorisations tierces."
-    };
-  }
-};
-
-// src/integrations/amazon/connector.ts
-var MESSAGE = "L'int\xE9gration Amazon (Selling Partner API) n'est pas encore disponible dans MON STOCK. Aucune donn\xE9e Amazon n'est simul\xE9e.";
-function notImplemented() {
-  throw new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE, { retryable: false });
-}
-var AmazonConnector = class {
-  provider = "amazon";
-  label = "Amazon";
-  available = false;
-  scopes = [];
-  isConfigured() {
-    return false;
-  }
-  configurationIssues() {
-    return [MESSAGE];
-  }
-  getAuthorizeUrl() {
-    return notImplemented();
-  }
-  exchangeCode() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
-  }
-  refreshToken() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
-  }
-  getAccountInfo() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
-  }
-  async *getOrders() {
-    notImplemented();
-  }
-  async *getListings() {
-    notImplemented();
-  }
-  async *getInventory() {
-    notImplemented();
-  }
-  updateListingInventory() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
-  }
-  revoke() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "amazon", MESSAGE));
-  }
-};
-
-// src/integrations/shopify/connector.ts
-var MESSAGE2 = "L'int\xE9gration Shopify (Admin API) n'est pas encore disponible dans MON STOCK. Aucune donn\xE9e Shopify n'est simul\xE9e.";
-function notImplemented2() {
-  throw new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2, { retryable: false });
-}
-var ShopifyConnector = class {
-  provider = "shopify";
-  label = "Shopify";
-  available = false;
-  scopes = [];
-  isConfigured() {
-    return false;
-  }
-  configurationIssues() {
-    return [MESSAGE2];
-  }
-  getAuthorizeUrl() {
-    return notImplemented2();
-  }
-  exchangeCode() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
-  }
-  refreshToken() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
-  }
-  getAccountInfo() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
-  }
-  async *getOrders() {
-    notImplemented2();
-  }
-  async *getListings() {
-    notImplemented2();
-  }
-  async *getInventory() {
-    notImplemented2();
-  }
-  updateListingInventory() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
-  }
-  revoke() {
-    return Promise.reject(new ConnectorError("NOT_IMPLEMENTED", "shopify", MESSAGE2));
-  }
-};
-
-// src/integrations/core/registry.ts
-var CONNECTOR_CATALOG = [
-  { provider: "ebay", label: "eBay", available: true, description: "Annonces, commandes et quantit\xE9s via les API officielles eBay (OAuth 2.0)." },
-  { provider: "amazon", label: "Amazon", available: false, description: "Selling Partner API : pr\xE9vu dans l'architecture, pas encore impl\xE9ment\xE9." },
-  { provider: "shopify", label: "Shopify", available: false, description: "Admin API : pr\xE9vu dans l'architecture, pas encore impl\xE9ment\xE9." },
-  { provider: "woocommerce", label: "WooCommerce", available: false, description: "REST API WooCommerce : pr\xE9vu dans l'architecture, pas encore impl\xE9ment\xE9." }
-];
-var ebay = null;
-var amazon = null;
-var shopify = null;
-function getConnector(provider) {
-  switch (provider) {
-    case "ebay":
-      return ebay ??= new EbayConnector();
-    case "amazon":
-      return amazon ??= new AmazonConnector();
-    case "shopify":
-      return shopify ??= new ShopifyConnector();
-    case "woocommerce":
-      throw new ConnectorError("NOT_IMPLEMENTED", "woocommerce", "L'int\xE9gration WooCommerce n'est pas encore disponible dans MON STOCK. Aucune donn\xE9e n'est simul\xE9e.", { retryable: false });
-    case "manual":
-      throw new ConnectorError("NOT_IMPLEMENTED", "manual", "Le canal \xAB Ventes manuelles \xBB n'a pas de connecteur : les ventes y sont saisies \xE0 la main.", { retryable: false });
-  }
-}
-function getEbayConnector() {
-  return getConnector("ebay");
-}
-function listConnectorCatalog() {
-  return [...CONNECTOR_CATALOG];
-}
-
-// src/features/integrations/queries.ts
+init_registry();
+init_registry();
 init_errors();
 init_postgrest();
 async function getIntegrationsOverview(ctx) {
@@ -5762,2190 +12854,8 @@ function listCatalogSources() {
   return SOURCING_CATALOG;
 }
 
-// src/integrations/sourcing/shared.ts
-init_normalizer();
-init_http();
-var DEFAULT_REQUEST_TIMEOUT_MS = 15e3;
-var defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-function createAdapterHttp(ctx) {
-  const requests = [];
-  const startedAt = Date.now();
-  const budget = ctx.timeoutMs ?? null;
-  const sleep3 = ctx.sleep ?? defaultSleep;
-  let lastRequestAt = null;
-  const remainingMs = () => budget === null ? Number.POSITIVE_INFINITY : Math.max(0, budget - (Date.now() - startedAt));
-  return {
-    requests,
-    remainingMs,
-    exhausted: () => remainingMs() <= 0,
-    countOffers(n) {
-      const last = requests[requests.length - 1];
-      if (last) last.offers = n;
-    },
-    async request(url, options = {}) {
-      const minDelay = ctx.minDelayMs ?? 0;
-      if (lastRequestAt !== null && minDelay > 0) {
-        const wait = minDelay - (Date.now() - lastRequestAt);
-        if (wait > 0) await sleep3(wait);
-      }
-      const remaining = remainingMs();
-      if (remaining <= 0) throw new Error("Budget de temps \xE9puis\xE9 avant la requ\xEAte.");
-      const t0 = Date.now();
-      lastRequestAt = t0;
-      let traced = false;
-      try {
-        const res = await fetchText(url, {
-          userAgent: ctx.userAgent,
-          fetchImpl: ctx.fetchImpl,
-          resolver: ctx.resolver,
-          accept: options.accept,
-          headers: options.headers,
-          method: options.method,
-          body: options.body,
-          maxBytes: options.maxBytes,
-          timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, Number.isFinite(remaining) ? remaining : DEFAULT_REQUEST_TIMEOUT_MS)
-        });
-        requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: res.ok ? null : `HTTP ${res.status}` });
-        traced = true;
-        if (!res.ok) throw new Error(`HTTP ${res.status} (${url})`);
-        return res;
-      } catch (e) {
-        if (!traced) requests.push({ url, status: null, durationMs: Date.now() - t0, offers: 0, error: errorMessage(e) });
-        throw e;
-      }
-    }
-  };
-}
-function errorMessage(e) {
-  return e instanceof Error ? e.message : String(e);
-}
-function failedSearch(method, error, requests = []) {
-  return { offers: [], method, requests, error, truncated: false };
-}
-function applyQueryTemplate(template, rawQuery) {
-  return template.replace(/\{query\}/g, encodeURIComponent(rawQuery.trim()));
-}
-function trimSlash(base) {
-  return base.replace(/\/+$/, "");
-}
-function joinUrl(base, path) {
-  return `${trimSlash(base)}/${path.replace(/^\/+/, "")}`;
-}
-function str(v2) {
-  if (v2 === null || v2 === void 0) return null;
-  const s = String(v2).trim();
-  return s.length > 0 ? s : null;
-}
-function digits(v2) {
-  const s = str(v2)?.replace(/\D/g, "") ?? "";
-  return s.length >= 8 ? s : null;
-}
-function stripHtml(html) {
-  if (!html) return "";
-  return html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
-}
-function inferConditionFromText(text2) {
-  const t = (text2 ?? "").slice(0, 4e3);
-  if (!t.trim()) return { condition: null, grade: null, inferred: [] };
-  const inferred = [];
-  const condition = normalizeCondition(t);
-  const normalizedForGrade = normalizeProduct(t);
-  const grade = normalizedForGrade.grade ?? normalizeGrade(t.match(/\b(?:grade|gr\.?)\s?[abc]\+?\b/i)?.[0] ?? null);
-  if (condition !== "unknown") inferred.push("condition");
-  if (grade) inferred.push("grade");
-  return { condition: condition === "unknown" ? null : condition, grade, inferred };
-}
-function cleanId(s) {
-  return (s ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
-}
-function matchesQuery(parsed, candidate) {
-  if (parsed.kind === "empty") return false;
-  const text2 = normalizeText(`${candidate.title} ${candidate.brand ?? ""} ${candidate.mpn ?? ""} ${candidate.sku ?? ""} ${candidate.extraText ?? ""}`);
-  if (parsed.ean) {
-    const ean = (candidate.ean ?? "").replace(/\D/g, "");
-    return ean.length >= 8 && (ean === parsed.ean || ean.replace(/^0+/, "") === parsed.ean.replace(/^0+/, ""));
-  }
-  if (parsed.kind === "mpn" && parsed.mpn) {
-    const q = cleanId(parsed.mpn);
-    if (cleanId(candidate.mpn) === q || cleanId(candidate.sku) === q) return true;
-    return text2.replace(/[^a-z0-9]/g, "").includes(q.toLowerCase());
-  }
-  const tokensOk = parsed.tokens.length > 0 && parsed.tokens.every((t) => text2.includes(t));
-  if (parsed.kind !== "structured") return tokensOk;
-  const n = normalizeProduct(candidate.title, { brand: candidate.brand ?? null, ean: candidate.ean ?? null, mpn: candidate.mpn ?? null });
-  const c = parsed.criteria;
-  if (c.brand && n.brand && c.brand !== n.brand) return false;
-  if (c.model && n.model && !n.inferred.includes("model") && c.model !== n.model) return false;
-  if (c.model && (!n.model || n.inferred.includes("model"))) return tokensOk;
-  if (c.storage && n.storage && c.storage !== n.storage) return false;
-  if (c.color && n.color && c.color !== n.color) return false;
-  if (c.grade && n.grade && c.grade !== n.grade) return false;
-  return Boolean(c.model || tokensOk);
-}
-function settingString(settings, key2) {
-  return str(settings[key2]);
-}
-function settingInt(settings, key2, fallback, min, max) {
-  const v2 = settings[key2];
-  const n = typeof v2 === "number" ? v2 : typeof v2 === "string" ? Number(v2) : Number.NaN;
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(n)));
-}
-var TtlCache = class {
-  constructor(ttlMs) {
-    this.ttlMs = ttlMs;
-  }
-  ttlMs;
-  store = /* @__PURE__ */ new Map();
-  get(key2, now = Date.now()) {
-    const hit = this.store.get(key2);
-    if (!hit) return null;
-    if (hit.expiresAt <= now) {
-      this.store.delete(key2);
-      return null;
-    }
-    return hit.value;
-  }
-  set(key2, value, now = Date.now(), ttlMs = this.ttlMs) {
-    this.store.set(key2, { value, expiresAt: now + ttlMs });
-  }
-  clear() {
-    this.store.clear();
-  }
-};
-
-// src/integrations/sourcing/jsonld-public/crawler.ts
-import { z as z12 } from "npm:zod@4.6.5";
-var jsonLdSettingsSchema = z12.object({
-  search_url: z12.string().max(2e3).optional(),
-  urls: z12.array(z12.string().max(2e3)).max(50).optional(),
-  max_pages: z12.number().int().min(1).max(50).optional()
-});
-var DEFAULT_MAX_PAGES = 20;
-function parseJsonLdSettings(settings) {
-  const parsed = jsonLdSettingsSchema.safeParse(settings);
-  return parsed.success ? parsed.data : {};
-}
-function sameHost(baseUrl, url) {
-  if (!baseUrl) return true;
-  try {
-    return new URL(url).host.toLowerCase() === new URL(baseUrl).host.toLowerCase();
-  } catch {
-    return false;
-  }
-}
-function searchUrlFor(config, rawQuery) {
-  const settings = parseJsonLdSettings(config.settings);
-  const template = settings.search_url?.trim();
-  if (!template || !template.includes("{query}") || !rawQuery.trim()) return null;
-  const url = applyQueryTemplate(template, rawQuery);
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-  } catch {
-    return null;
-  }
-  return sameHost(config.baseUrl, url) ? url : null;
-}
-function catalogUrls(config) {
-  const settings = parseJsonLdSettings(config.settings);
-  const max = Math.min(settings.max_pages ?? DEFAULT_MAX_PAGES, 50);
-  return (settings.urls ?? []).filter((u) => sameHost(config.baseUrl, u)).slice(0, max);
-}
-
-// src/services/sourcing/crawler/parsers/jsonld-parser.ts
-init_feed_parsers();
-import { z as z14 } from "npm:zod@4.6.5";
-var SCRIPT_RE = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-var offerSchema = z14.object({
-  "@type": z14.union([z14.string(), z14.array(z14.string())]).optional(),
-  price: z14.union([z14.string(), z14.number()]).optional(),
-  lowPrice: z14.union([z14.string(), z14.number()]).optional(),
-  priceCurrency: z14.string().optional(),
-  availability: z14.string().optional(),
-  url: z14.string().optional(),
-  itemCondition: z14.string().optional(),
-  sku: z14.string().optional(),
-  inventoryLevel: z14.union([z14.object({ value: z14.union([z14.string(), z14.number()]).optional() }), z14.string(), z14.number()]).optional(),
-  eligibleQuantity: z14.object({ minValue: z14.union([z14.string(), z14.number()]).optional() }).optional(),
-  priceSpecification: z14.union([
-    z14.object({ price: z14.union([z14.string(), z14.number()]).optional(), priceCurrency: z14.string().optional(), valueAddedTaxIncluded: z14.boolean().optional() }),
-    z14.array(z14.object({ price: z14.union([z14.string(), z14.number()]).optional(), priceCurrency: z14.string().optional(), valueAddedTaxIncluded: z14.boolean().optional() }))
-  ]).optional(),
-  areaServed: z14.unknown().optional()
-}).passthrough();
-var productSchema = z14.object({
-  "@type": z14.union([z14.string(), z14.array(z14.string())]).optional(),
-  name: z14.string().optional(),
-  sku: z14.union([z14.string(), z14.number()]).optional(),
-  productID: z14.union([z14.string(), z14.number()]).optional(),
-  gtin13: z14.union([z14.string(), z14.number()]).optional(),
-  gtin: z14.union([z14.string(), z14.number()]).optional(),
-  gtin12: z14.union([z14.string(), z14.number()]).optional(),
-  gtin14: z14.union([z14.string(), z14.number()]).optional(),
-  gtin8: z14.union([z14.string(), z14.number()]).optional(),
-  mpn: z14.union([z14.string(), z14.number()]).optional(),
-  brand: z14.union([z14.string(), z14.object({ name: z14.string().optional() }).passthrough()]).optional(),
-  color: z14.string().optional(),
-  url: z14.string().optional(),
-  itemCondition: z14.string().optional(),
-  offers: z14.union([offerSchema, z14.array(offerSchema)]).optional()
-}).passthrough();
-function typeIncludes(t, wanted) {
-  if (!t) return false;
-  const list = Array.isArray(t) ? t : [t];
-  return list.some((x) => x.toLowerCase().endsWith(wanted.toLowerCase()));
-}
-function collectNodes(node2, out, depth = 0) {
-  if (depth > 8 || node2 === null || typeof node2 !== "object") return;
-  if (Array.isArray(node2)) {
-    for (const n of node2) collectNodes(n, out, depth + 1);
-    return;
-  }
-  const obj2 = node2;
-  out.push(obj2);
-  for (const key2 of ["@graph", "itemListElement", "mainEntity", "item", "hasVariant", "isVariantOf"]) {
-    if (obj2[key2] !== void 0) collectNodes(obj2[key2], out, depth + 1);
-  }
-}
-function extractJsonLdBlocks(html) {
-  const blocks = [];
-  for (const m of html.matchAll(SCRIPT_RE)) {
-    const raw = (m[1] ?? "").trim();
-    if (!raw) continue;
-    try {
-      blocks.push(JSON.parse(raw));
-    } catch {
-    }
-  }
-  return blocks;
-}
-function conditionFrom(itemCondition) {
-  if (!itemCondition) return null;
-  const c = itemCondition.toLowerCase();
-  if (c.includes("new")) return "new";
-  if (c.includes("refurbished")) return "refurbished";
-  if (c.includes("used")) return "used";
-  return null;
-}
-function resolveUrl(url, base) {
-  if (!url) return null;
-  try {
-    return new URL(url, base).toString();
-  } catch {
-    return null;
-  }
-}
-function offersOf(p) {
-  if (!p.offers) return [];
-  const list = Array.isArray(p.offers) ? p.offers : [p.offers];
-  const out = [];
-  for (const o of list) {
-    const nested = o.offers;
-    if (nested && typeIncludes(o["@type"], "AggregateOffer")) {
-      const inner = Array.isArray(nested) ? nested : [nested];
-      for (const n of inner) {
-        const parsed = offerSchema.safeParse(n);
-        if (parsed.success) out.push(parsed.data);
-      }
-    } else out.push(o);
-  }
-  return out;
-}
-function parseJsonLdProducts(html, pageUrl) {
-  const nodes = [];
-  for (const block of extractJsonLdBlocks(html)) collectNodes(block, nodes);
-  const products = nodes.map((n) => productSchema.safeParse(n)).filter((r) => r.success).map((r) => r.data).filter((p) => typeIncludes(p["@type"], "Product") && p.name);
-  const offers = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const p of products) {
-    const gtin = [p.gtin13, p.gtin, p.gtin14, p.gtin12, p.gtin8].map((g) => g === void 0 ? null : String(g).replace(/\D/g, "")).find((g) => g && g.length >= 8) ?? null;
-    const brand = typeof p.brand === "string" ? p.brand : p.brand?.name ?? null;
-    const productOffers = offersOf(p);
-    const sku = p.sku !== void 0 ? String(p.sku) : p.productID !== void 0 ? String(p.productID) : null;
-    const productUrl = resolveUrl(p.url, pageUrl);
-    if (productOffers.length === 0) continue;
-    productOffers.forEach((o, index) => {
-      const spec = Array.isArray(o.priceSpecification) ? o.priceSpecification[0] : o.priceSpecification;
-      const price = toNumber(o.price ?? o.lowPrice ?? spec?.price);
-      const currency = (o.priceCurrency ?? spec?.priceCurrency ?? null)?.toUpperCase() ?? null;
-      const url = resolveUrl(o.url, pageUrl) ?? productUrl ?? pageUrl;
-      const offerSku = o.sku ?? sku;
-      const id = offerSku ?? gtin ?? url;
-      const externalOfferId = productOffers.length > 1 && !o.sku ? `${id}#${index}` : id;
-      if (seen.has(externalOfferId)) return;
-      seen.add(externalOfferId);
-      const inv = o.inventoryLevel;
-      const qty = inv === void 0 ? null : typeof inv === "object" ? toNumber(inv.value) : toNumber(inv);
-      const stockStatus = o.availability ? toStockStatus(o.availability.replace(/^https?:\/\/schema\.org\//i, "")) : "unknown";
-      const taxType = spec?.valueAddedTaxIncluded === true ? "ttc" : spec?.valueAddedTaxIncluded === false ? "ht" : "unknown";
-      offers.push({
-        externalOfferId,
-        externalProductId: sku,
-        title: p.name,
-        price,
-        currency,
-        taxType,
-        moq: toNumber(o.eligibleQuantity?.minValue) ? Math.round(toNumber(o.eligibleQuantity?.minValue)) : null,
-        availableQuantity: qty !== null && qty >= 0 ? Math.round(qty) : null,
-        stockStatus,
-        url,
-        ean: gtin,
-        mpn: p.mpn !== void 0 ? String(p.mpn) : null,
-        brand,
-        color: p.color ?? null,
-        condition: conditionFrom(o.itemCondition ?? p.itemCondition),
-        supplierSku: offerSku,
-        raw: { product: { name: p.name, sku, gtin, brand }, offer: { price: o.price ?? o.lowPrice, currency, availability: o.availability } }
-      });
-    });
-  }
-  return offers;
-}
-var jsonLdParser = {
-  key: "jsonld",
-  label: "G\xE9n\xE9rique schema.org (JSON-LD)",
-  description: "Lit les blocs JSON-LD Product/Offer d\xE9clar\xE9s par la page (nom, SKU, GTIN, MPN, marque, prix, devise, disponibilit\xE9, \xE9tat, URL). Si la page n'en d\xE9clare pas, aucune offre n'est extraite.",
-  parse: parseJsonLdProducts
-};
-
-// src/integrations/sourcing/jsonld-public/parser.ts
-function parseJsonLdPage(html, pageUrl) {
-  return parseJsonLdProducts(html, pageUrl);
-}
-
-// src/integrations/sourcing/jsonld-public/mapper.ts
-function mapJsonLdOffer(offer, config, pageUrl) {
-  return {
-    ...offer,
-    currency: offer.currency ?? config.defaultCurrency ?? null,
-    taxType: offer.taxType && offer.taxType !== "unknown" ? offer.taxType : config.defaultTaxType,
-    country: offer.country ?? config.defaultCountry ?? null,
-    url: offer.url ?? pageUrl,
-    raw: { page_url: pageUrl, jsonld: offer.raw ?? null }
-  };
-}
-
-// src/integrations/sourcing/jsonld-public/index.ts
-var HTML_ACCEPT = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5";
-async function fetchPage(config, url, ctx) {
-  const http = createAdapterHttp(ctx);
-  const res = await http.request(url, { accept: HTML_ACCEPT });
-  const offers = parseJsonLdPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
-  http.countOffers(offers.length);
-  return { offers, requests: http.requests };
-}
-var jsonLdPublicAdapter = {
-  key: "jsonld-public",
-  label: "Page publique (JSON-LD schema.org)",
-  description: "Lit les blocs JSON-LD Product/Offer d\xE9clar\xE9s par une page publique (nom, SKU, GTIN, MPN, marque, prix, devise, disponibilit\xE9, \xE9tat). Recherche via une URL de recherche du site contenant {query} ; catalogue via une liste d'URLs. Sans JSON-LD, aucune offre n'est extraite. V\xE9rifi\xE9 sur fixtures uniquement.",
-  method: "public_html",
-  access: "public",
-  capabilities: { search: true, catalog: true, stockQuantity: false },
-  credentialFields: [],
-  configFields: [
-    { name: "search_url", label: "URL de recherche du site (avec {query})", required: false, placeholder: "https://boutique.example/recherche?q={query}", help: "Doit \xEAtre sur le m\xEAme h\xF4te que l'URL de base. Sans cette URL, la source n'est pas interrog\xE9e en direct (catalogue uniquement)." },
-    { name: "urls", label: "Pages de catalogue (une par ligne)", required: false, help: "Pages produit ou cat\xE9gorie lues lors des synchronisations (50 maximum)." },
-    { name: "max_pages", label: "Pages maximum par synchronisation", required: false, placeholder: "20" }
-  ],
-  htmlParser: jsonLdParser,
-  verification: "fixtures",
-  urlsForQuery(config, _query, rawQuery) {
-    const url = searchUrlFor(config, rawQuery);
-    return url ? [url] : [];
-  },
-  urlsForCatalog(config) {
-    return catalogUrls(config);
-  },
-  async search(config, _query, rawQuery, ctx) {
-    const url = searchUrlFor(config, rawQuery);
-    if (!url) return failedSearch("public_html", "Aucune URL de recherche configur\xE9e (r\xE9glage search_url avec {query}) : recherche en direct impossible pour cette source.");
-    if (ctx.disallowedUrls?.includes(url)) return failedSearch("public_html", "URL de recherche interdite par robots.txt.");
-    try {
-      const { offers, requests } = await fetchPage(config, url, ctx);
-      return { offers, method: "public_html", requests, error: null, truncated: false };
-    } catch (e) {
-      return failedSearch("public_html", errorMessage(e));
-    }
-  },
-  async fetchCatalog(config, cursor, ctx) {
-    const urls = catalogUrls(config);
-    const index = cursor ? Number(cursor) : 0;
-    const url = Number.isInteger(index) && index >= 0 ? urls[index] : void 0;
-    if (!url) return { offers: [], method: "public_html", requests: [], nextCursor: null };
-    if (ctx.disallowedUrls?.includes(url)) return { offers: [], method: "public_html", requests: [{ url, status: null, durationMs: 0, offers: 0, error: "Interdite par robots.txt" }], nextCursor: index + 1 < urls.length ? String(index + 1) : null };
-    try {
-      const { offers, requests } = await fetchPage(config, url, ctx);
-      return { offers, method: "public_html", requests, nextCursor: index + 1 < urls.length ? String(index + 1) : null };
-    } catch (e) {
-      return { offers: [], method: "public_html", requests: [{ url, status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: index + 1 < urls.length ? String(index + 1) : null };
-    }
-  },
-  async testConnection(config, ctx) {
-    const urls = catalogUrls(config);
-    const probe = urls[0] ?? config.baseUrl;
-    if (!probe) return { ok: false, message: "Aucune URL configur\xE9e (URL de base ou pages de catalogue)." };
-    try {
-      const http = createAdapterHttp(ctx);
-      const res = await http.request(probe, { accept: HTML_ACCEPT, maxBytes: 5 * 1024 * 1024 });
-      const offers = parseJsonLdPage(res.text, res.finalUrl || probe);
-      return { ok: true, message: offers.length > 0 ? `Page lue : ${offers.length} offre(s) JSON-LD d\xE9tect\xE9e(s).` : "Page lue, mais aucun bloc JSON-LD Product n'a \xE9t\xE9 d\xE9tect\xE9 : v\xE9rifiez que le site d\xE9clare ses produits en schema.org." };
-    } catch (e) {
-      return { ok: false, message: errorMessage(e) };
-    }
-  }
-};
-
-// src/integrations/sourcing/shopify-storefront/crawler.ts
-var SHOPIFY_PRODUCTS_PATH = "/products.json";
-var SHOPIFY_SUGGEST_PATH = "/search/suggest.json";
-var SHOPIFY_PRODUCT_DETAIL_PATH = (handle2) => `/products/${encodeURIComponent(handle2)}.json`;
-var SHOPIFY_PAGE_LIMIT = 250;
-var SHOPIFY_SUGGEST_LIMIT = 20;
-var SHOPIFY_MAX_DETAILS_PER_SEARCH = 5;
-var SHOPIFY_MAX_CATALOG_PAGES = 40;
-function productsUrl(baseUrl, page2, limit = SHOPIFY_PAGE_LIMIT) {
-  return `${joinUrl(baseUrl, SHOPIFY_PRODUCTS_PATH)}?limit=${limit}&page=${page2}`;
-}
-function suggestUrl(baseUrl, query, limit = SHOPIFY_SUGGEST_LIMIT) {
-  const params = new URLSearchParams({ q: query.trim() });
-  params.set("resources[type]", "product");
-  params.set("resources[limit]", String(limit));
-  params.set("resources[options][unavailable_products]", "show");
-  return `${joinUrl(baseUrl, SHOPIFY_SUGGEST_PATH)}?${params.toString()}`;
-}
-function productDetailUrl(baseUrl, handle2) {
-  return joinUrl(baseUrl, SHOPIFY_PRODUCT_DETAIL_PATH(handle2));
-}
-
-// src/integrations/sourcing/shopify-storefront/parser.ts
-import { z as z15 } from "npm:zod@4.6.5";
-var numOrStr = z15.union([z15.number(), z15.string()]);
-var shopifyVariantSchema = z15.looseObject({
-  id: numOrStr,
-  title: z15.string().nullish(),
-  option1: z15.string().nullish(),
-  option2: z15.string().nullish(),
-  option3: z15.string().nullish(),
-  sku: z15.string().nullish(),
-  barcode: z15.string().nullish(),
-  price: numOrStr.nullish(),
-  compare_at_price: numOrStr.nullish(),
-  available: z15.boolean().nullish(),
-  inventory_quantity: z15.number().nullish(),
-  taxable: z15.boolean().nullish()
-});
-var shopifyProductSchema = z15.looseObject({
-  id: numOrStr,
-  title: z15.string(),
-  handle: z15.string(),
-  body_html: z15.string().nullish(),
-  vendor: z15.string().nullish(),
-  product_type: z15.string().nullish(),
-  tags: z15.union([z15.array(z15.string()), z15.string()]).nullish(),
-  variants: z15.array(shopifyVariantSchema).default([]),
-  options: z15.array(z15.looseObject({ name: z15.string(), position: z15.number().optional(), values: z15.array(z15.string()).optional() })).default([])
-});
-var shopifyProductsResponseSchema = z15.looseObject({ products: z15.array(shopifyProductSchema) });
-var shopifyProductDetailResponseSchema = z15.looseObject({ product: shopifyProductSchema });
-var shopifySuggestProductSchema = z15.looseObject({
-  id: numOrStr,
-  title: z15.string(),
-  handle: z15.string(),
-  url: z15.string().nullish(),
-  price: numOrStr.nullish(),
-  available: z15.boolean().nullish(),
-  vendor: z15.string().nullish(),
-  type: z15.string().nullish(),
-  body: z15.string().nullish(),
-  variants: z15.array(z15.looseObject({ id: numOrStr, title: z15.string().nullish(), sku: z15.string().nullish(), price: numOrStr.nullish(), available: z15.boolean().nullish(), url: z15.string().nullish() })).optional()
-});
-var shopifySuggestResponseSchema = z15.looseObject({
-  resources: z15.looseObject({ results: z15.looseObject({ products: z15.array(shopifySuggestProductSchema).default([]) }) })
-});
-function parseProductsJson(text2) {
-  const parsed = shopifyProductsResponseSchema.safeParse(JSON.parse(text2));
-  if (!parsed.success) throw new Error(`R\xE9ponse products.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
-  return parsed.data.products;
-}
-function parseProductDetailJson(text2) {
-  const parsed = shopifyProductDetailResponseSchema.safeParse(JSON.parse(text2));
-  if (!parsed.success) throw new Error(`R\xE9ponse products/{handle}.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
-  return parsed.data.product;
-}
-function parseSuggestJson(text2) {
-  const parsed = shopifySuggestResponseSchema.safeParse(JSON.parse(text2));
-  if (!parsed.success) throw new Error(`R\xE9ponse search/suggest.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
-  return parsed.data.resources.results.products;
-}
-
-// src/integrations/sourcing/shopify-storefront/mapper.ts
-init_feed_parsers();
-var STORAGE_OPTION = /^(storage|stockage|capacit[ée]|m[ée]moire|memory|taille de stockage|capacity)$/i;
-var COLOR_OPTION = /^(color|colour|couleur|coloris)$/i;
-var CONDITION_OPTION = /^(condition|[ée]tat|grade|qualit[ée])$/i;
-function optionValue(product, variant, matcher) {
-  const values = [variant.option1, variant.option2, variant.option3];
-  for (const [i, opt] of product.options.entries()) {
-    const position = (opt.position ?? i + 1) - 1;
-    if (matcher.test(opt.name.trim())) return str(values[position]);
-  }
-  return null;
-}
-function mapShopifyProduct(product, config, baseUrl, requestUrl) {
-  const productUrl = joinUrl(baseUrl, `/products/${encodeURIComponent(product.handle)}`);
-  const description = stripHtml(product.body_html);
-  const inferred = inferConditionFromText(`${product.title} ${description}`);
-  const variants = product.variants.length > 0 ? product.variants : [];
-  return variants.map((v2) => {
-    const price = toNumber(v2.price);
-    const quantity = typeof v2.inventory_quantity === "number" ? Math.max(0, Math.round(v2.inventory_quantity)) : null;
-    const stockStatus = v2.available === true ? quantity !== null && quantity === 0 ? "unknown" : "in_stock" : v2.available === false ? "out_of_stock" : "unknown";
-    const variantTitle = str(v2.title) && v2.title !== "Default Title" ? v2.title : null;
-    const conditionOption = optionValue(product, v2, CONDITION_OPTION);
-    const title = variantTitle ? `${product.title} ${variantTitle}` : product.title;
-    const variantId = String(v2.id);
-    return {
-      externalOfferId: `${product.id}:${variantId}`,
-      externalProductId: String(product.id),
-      title,
-      price,
-      currency: config.defaultCurrency ?? null,
-      taxType: config.defaultTaxType,
-      availableQuantity: quantity,
-      stockStatus,
-      url: `${productUrl}?variant=${encodeURIComponent(variantId)}`,
-      ean: str(v2.barcode)?.replace(/\D/g, "") || null,
-      brand: str(product.vendor),
-      storage: optionValue(product, v2, STORAGE_OPTION),
-      color: optionValue(product, v2, COLOR_OPTION),
-      grade: inferred.grade,
-      condition: conditionOption ?? inferred.condition,
-      supplierSku: str(v2.sku),
-      country: config.defaultCountry ?? null,
-      raw: {
-        request_url: requestUrl,
-        handle: product.handle,
-        product_type: product.product_type ?? null,
-        variant: { id: variantId, title: v2.title ?? null, sku: v2.sku ?? null, price: v2.price ?? null, compare_at_price: v2.compare_at_price ?? null, available: v2.available ?? null, inventory_quantity: v2.inventory_quantity ?? null },
-        currency_source: config.defaultCurrency ? "config" : "absent",
-        inferred: conditionOption ? inferred.inferred.filter((f) => f !== "condition") : inferred.inferred,
-        condition_source: conditionOption ? "option" : inferred.condition ? "description" : null
-      }
-    };
-  });
-}
-
-// src/integrations/sourcing/shopify-storefront/index.ts
-var JSON_ACCEPT = "application/json;q=0.9,*/*;q=0.5";
-function baseOf(config) {
-  return config.baseUrl ? trimSlash(config.baseUrl) : null;
-}
-var shopifyStorefrontAdapter = {
-  key: "shopify-storefront",
-  label: "Boutique Shopify (JSON public)",
-  description: "Interroge les endpoints JSON publics d'une boutique Shopify : suggestions de recherche puis fiches produit (titre, marque, SKU, prix, disponibilit\xE9, options stockage/couleur). La devise et le HT/TTC ne sont pas fournis par Shopify : ils proviennent des r\xE9glages de la source. Quantit\xE9 en stock uniquement si la boutique l'expose. V\xE9rifi\xE9 sur fixtures uniquement.",
-  method: "public_json",
-  access: "public",
-  capabilities: { search: true, catalog: true, stockQuantity: false },
-  credentialFields: [],
-  configFields: [
-    { name: "max_details", label: "Fiches produit lues par recherche", required: false, placeholder: String(SHOPIFY_MAX_DETAILS_PER_SEARCH), help: "Chaque fiche est une requ\xEAte suppl\xE9mentaire (d\xE9lai de politesse appliqu\xE9)." },
-    { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(SHOPIFY_MAX_CATALOG_PAGES) }
-  ],
-  verification: "fixtures",
-  urlsForQuery(config, _query, rawQuery) {
-    const base = baseOf(config);
-    if (!base || !rawQuery.trim()) return [];
-    return [suggestUrl(base, rawQuery), productDetailUrl(base, "exemple")];
-  },
-  urlsForCatalog(config) {
-    const base = baseOf(config);
-    return base ? [productsUrl(base, 1)] : [];
-  },
-  async search(config, _query, rawQuery, ctx) {
-    const base = baseOf(config);
-    if (!base) return failedSearch("public_json", "URL de base de la boutique manquante.");
-    const http = createAdapterHttp(ctx);
-    const maxDetails = settingInt(config.settings, "max_details", SHOPIFY_MAX_DETAILS_PER_SEARCH, 1, 20);
-    try {
-      const sUrl = suggestUrl(base, rawQuery);
-      const res = await http.request(sUrl, { accept: JSON_ACCEPT });
-      const suggestions = parseSuggestJson(res.text);
-      http.countOffers(suggestions.length);
-      const offers = [];
-      let truncated = suggestions.length > maxDetails;
-      for (const s of suggestions.slice(0, maxDetails)) {
-        if (http.exhausted()) {
-          truncated = true;
-          break;
-        }
-        const dUrl = productDetailUrl(base, s.handle);
-        if (ctx.disallowedUrls?.includes(dUrl)) continue;
-        try {
-          const d = await http.request(dUrl, { accept: JSON_ACCEPT });
-          const mapped = mapShopifyProduct(parseProductDetailJson(d.text), config, base, dUrl);
-          http.countOffers(mapped.length);
-          offers.push(...mapped);
-        } catch {
-        }
-      }
-      return { offers, method: "public_json", requests: http.requests, error: null, truncated };
-    } catch (e) {
-      return failedSearch("public_json", errorMessage(e), http.requests);
-    }
-  },
-  async fetchCatalog(config, cursor, ctx) {
-    const base = baseOf(config);
-    if (!base) return { offers: [], method: "public_json", requests: [{ url: "", status: null, durationMs: 0, offers: 0, error: "URL de base manquante." }], nextCursor: null };
-    const page2 = Math.max(1, cursor ? Number(cursor) || 1 : 1);
-    const maxPages = settingInt(config.settings, "max_pages", SHOPIFY_MAX_CATALOG_PAGES, 1, 200);
-    const http = createAdapterHttp(ctx);
-    const url = productsUrl(base, page2);
-    try {
-      const res = await http.request(url, { accept: JSON_ACCEPT });
-      const products = parseProductsJson(res.text);
-      const offers = products.flatMap((p) => mapShopifyProduct(p, config, base, url));
-      http.countOffers(offers.length);
-      const hasMore = products.length >= SHOPIFY_PAGE_LIMIT && page2 < maxPages;
-      return { offers, method: "public_json", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
-    } catch (e) {
-      return { offers: [], method: "public_json", requests: http.requests.length > 0 ? http.requests : [{ url, status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
-    }
-  },
-  async testConnection(config, ctx) {
-    const base = baseOf(config);
-    if (!base) return { ok: false, message: "URL de base de la boutique manquante." };
-    try {
-      const http = createAdapterHttp(ctx);
-      const res = await http.request(productsUrl(base, 1, 1), { accept: JSON_ACCEPT, maxBytes: 2 * 1024 * 1024 });
-      const products = parseProductsJson(res.text);
-      return { ok: true, message: products.length > 0 ? `Boutique Shopify accessible : products.json r\xE9pond (${products.length} produit lu).` : "products.json r\xE9pond mais ne liste aucun produit publi\xE9." };
-    } catch (e) {
-      return { ok: false, message: `products.json inaccessible : ${errorMessage(e)}` };
-    }
-  }
-};
-
-// src/integrations/sourcing/woocommerce-store/crawler.ts
-var WC_STORE_PRODUCTS_PATH = "/wp-json/wc/store/v1/products";
-var WC_PAGE_SIZE = 100;
-var WC_MAX_CATALOG_PAGES = 50;
-var WC_MAX_SEARCH_PAGES = 2;
-function productsSearchUrl(baseUrl, query, page2, perPage = WC_PAGE_SIZE) {
-  const params = new URLSearchParams({ search: query.trim(), per_page: String(perPage), page: String(page2) });
-  return `${joinUrl(baseUrl, WC_STORE_PRODUCTS_PATH)}?${params.toString()}`;
-}
-function productsCatalogUrl(baseUrl, page2, perPage = WC_PAGE_SIZE) {
-  const params = new URLSearchParams({ per_page: String(perPage), page: String(page2) });
-  return `${joinUrl(baseUrl, WC_STORE_PRODUCTS_PATH)}?${params.toString()}`;
-}
-
-// src/integrations/sourcing/woocommerce-store/parser.ts
-import { z as z16 } from "npm:zod@4.6.5";
-var numOrStr2 = z16.union([z16.number(), z16.string()]);
-var wcPricesSchema = z16.looseObject({
-  price: numOrStr2.nullish(),
-  regular_price: numOrStr2.nullish(),
-  sale_price: numOrStr2.nullish(),
-  currency_code: z16.string().nullish(),
-  currency_minor_unit: z16.number().int().min(0).max(6).nullish()
-});
-var wcProductSchema = z16.looseObject({
-  id: numOrStr2,
-  name: z16.string(),
-  slug: z16.string().nullish(),
-  type: z16.string().nullish(),
-  permalink: z16.string().nullish(),
-  sku: z16.string().nullish(),
-  short_description: z16.string().nullish(),
-  description: z16.string().nullish(),
-  prices: wcPricesSchema.nullish(),
-  is_in_stock: z16.boolean().nullish(),
-  is_purchasable: z16.boolean().nullish(),
-  is_on_backorder: z16.boolean().nullish(),
-  low_stock_remaining: z16.number().nullish(),
-  categories: z16.array(z16.looseObject({ id: numOrStr2.optional(), name: z16.string().optional(), slug: z16.string().optional() })).nullish(),
-  attributes: z16.array(z16.looseObject({ id: numOrStr2.optional(), name: z16.string(), taxonomy: z16.string().nullish(), terms: z16.array(z16.looseObject({ name: z16.string().optional(), slug: z16.string().optional() })).optional() })).nullish(),
-  add_to_cart: z16.looseObject({ minimum: z16.number().nullish(), maximum: z16.number().nullish(), multiple: z16.number().nullish() }).nullish()
-});
-function parseWcProducts(text2) {
-  const parsed = z16.array(wcProductSchema).safeParse(JSON.parse(text2));
-  if (!parsed.success) throw new Error(`R\xE9ponse Store API inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
-  return parsed.data;
-}
-function minorToAmount(value, minorUnit) {
-  if (value === null || value === void 0 || value === "") return null;
-  const n = typeof value === "number" ? value : Number(String(value).trim());
-  if (!Number.isFinite(n)) return null;
-  const unit = minorUnit ?? 2;
-  return Math.round(n) / 10 ** unit;
-}
-
-// src/integrations/sourcing/woocommerce-store/mapper.ts
-var STORAGE_ATTR = /^(pa_)?(storage|stockage|capacit[ée]|m[ée]moire|memory|capacity)$/i;
-var COLOR_ATTR = /^(pa_)?(color|colour|couleur|coloris)$/i;
-var BRAND_ATTR = /^(pa_)?(brand|marque|manufacturer|fabricant)$/i;
-var CONDITION_ATTR = /^(pa_)?(condition|[ée]tat|grade)$/i;
-function attr(product, matcher) {
-  for (const a of product.attributes ?? []) {
-    const key2 = (a.taxonomy ?? a.name).trim();
-    if (!matcher.test(key2) && !matcher.test(a.name.trim())) continue;
-    const terms = (a.terms ?? []).map((t) => str(t.name)).filter((x) => Boolean(x));
-    if (terms.length === 1) return terms[0];
-  }
-  return null;
-}
-function mapWcProduct(product, config, requestUrl) {
-  const prices = product.prices ?? null;
-  const price = minorToAmount(prices?.price ?? prices?.sale_price ?? prices?.regular_price, prices?.currency_minor_unit);
-  const currency = str(prices?.currency_code)?.toUpperCase() ?? config.defaultCurrency ?? null;
-  const lowStock = typeof product.low_stock_remaining === "number" ? Math.max(0, Math.round(product.low_stock_remaining)) : null;
-  const stockStatus = product.is_in_stock === true ? lowStock !== null ? "low" : "in_stock" : product.is_in_stock === false ? product.is_on_backorder ? "unknown" : "out_of_stock" : "unknown";
-  const description = stripHtml(`${product.short_description ?? ""} ${product.description ?? ""}`);
-  const inferred = inferConditionFromText(`${product.name} ${description}`);
-  const conditionAttr = attr(product, CONDITION_ATTR);
-  const moq = product.add_to_cart?.minimum && product.add_to_cart.minimum > 1 ? Math.round(product.add_to_cart.minimum) : null;
-  return {
-    externalOfferId: String(product.id),
-    externalProductId: String(product.id),
-    title: product.name,
-    price,
-    currency,
-    taxType: config.defaultTaxType,
-    moq,
-    availableQuantity: lowStock,
-    stockStatus,
-    url: str(product.permalink),
-    brand: attr(product, BRAND_ATTR),
-    storage: attr(product, STORAGE_ATTR),
-    color: attr(product, COLOR_ATTR),
-    grade: inferred.grade,
-    condition: conditionAttr ?? inferred.condition,
-    supplierSku: str(product.sku),
-    country: config.defaultCountry ?? null,
-    raw: {
-      request_url: requestUrl,
-      type: product.type ?? null,
-      prices: prices ? { price: prices.price ?? null, regular_price: prices.regular_price ?? null, sale_price: prices.sale_price ?? null, currency_code: prices.currency_code ?? null, currency_minor_unit: prices.currency_minor_unit ?? null } : null,
-      is_in_stock: product.is_in_stock ?? null,
-      is_on_backorder: product.is_on_backorder ?? null,
-      low_stock_remaining: product.low_stock_remaining ?? null,
-      categories: (product.categories ?? []).map((c) => c.name ?? null).filter(Boolean).slice(0, 10),
-      currency_source: str(prices?.currency_code) ? "payload" : config.defaultCurrency ? "config" : "absent",
-      inferred: conditionAttr ? inferred.inferred.filter((f) => f !== "condition") : inferred.inferred,
-      condition_source: conditionAttr ? "attribute" : inferred.condition ? "description" : null
-    }
-  };
-}
-
-// src/integrations/sourcing/woocommerce-store/index.ts
-var JSON_ACCEPT2 = "application/json;q=0.9,*/*;q=0.5";
-function baseOf2(config) {
-  return config.baseUrl ? trimSlash(config.baseUrl) : null;
-}
-var wooCommerceStoreAdapter = {
-  key: "woocommerce-store",
-  label: "Boutique WooCommerce (Store API publique)",
-  description: "Interroge l'API Store publique de WooCommerce (recherche texte pagin\xE9e) : nom, SKU, prix et devise, promotion, disponibilit\xE9, quantit\xE9 restante si faible, minimum de commande, attributs (marque, stockage, couleur). HT/TTC non pr\xE9cis\xE9 par l'API : r\xE9glage de la source. V\xE9rifi\xE9 sur fixtures uniquement.",
-  method: "public_json",
-  access: "public",
-  capabilities: { search: true, catalog: true, stockQuantity: false },
-  credentialFields: [],
-  configFields: [
-    { name: "max_search_pages", label: "Pages lues par recherche", required: false, placeholder: String(WC_MAX_SEARCH_PAGES) },
-    { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(WC_MAX_CATALOG_PAGES) }
-  ],
-  verification: "fixtures",
-  urlsForQuery(config, _query, rawQuery) {
-    const base = baseOf2(config);
-    return base && rawQuery.trim() ? [productsSearchUrl(base, rawQuery, 1)] : [];
-  },
-  urlsForCatalog(config) {
-    const base = baseOf2(config);
-    return base ? [productsCatalogUrl(base, 1)] : [];
-  },
-  async search(config, _query, rawQuery, ctx) {
-    const base = baseOf2(config);
-    if (!base) return failedSearch("public_json", "URL de base de la boutique manquante.");
-    const http = createAdapterHttp(ctx);
-    const maxPages = settingInt(config.settings, "max_search_pages", WC_MAX_SEARCH_PAGES, 1, 10);
-    const offers = [];
-    let truncated = false;
-    try {
-      for (let page2 = 1; page2 <= maxPages; page2++) {
-        const url = productsSearchUrl(base, rawQuery, page2);
-        if (page2 > 1 && http.exhausted()) {
-          truncated = true;
-          break;
-        }
-        const res = await http.request(url, { accept: JSON_ACCEPT2 });
-        const products = parseWcProducts(res.text);
-        const mapped = products.map((p) => mapWcProduct(p, config, url)).filter((o) => o !== null);
-        http.countOffers(mapped.length);
-        offers.push(...mapped);
-        if (products.length < WC_PAGE_SIZE) break;
-        if (page2 === maxPages) truncated = true;
-      }
-      return { offers, method: "public_json", requests: http.requests, error: null, truncated };
-    } catch (e) {
-      if (offers.length > 0) return { offers, method: "public_json", requests: http.requests, error: null, truncated: true };
-      return failedSearch("public_json", errorMessage(e), http.requests);
-    }
-  },
-  async fetchCatalog(config, cursor, ctx) {
-    const base = baseOf2(config);
-    if (!base) return { offers: [], method: "public_json", requests: [{ url: "", status: null, durationMs: 0, offers: 0, error: "URL de base manquante." }], nextCursor: null };
-    const page2 = Math.max(1, cursor ? Number(cursor) || 1 : 1);
-    const maxPages = settingInt(config.settings, "max_pages", WC_MAX_CATALOG_PAGES, 1, 200);
-    const http = createAdapterHttp(ctx);
-    const url = productsCatalogUrl(base, page2);
-    try {
-      const res = await http.request(url, { accept: JSON_ACCEPT2 });
-      const products = parseWcProducts(res.text);
-      const offers = products.map((p) => mapWcProduct(p, config, url)).filter((o) => o !== null);
-      http.countOffers(offers.length);
-      const hasMore = products.length >= WC_PAGE_SIZE && page2 < maxPages;
-      return { offers, method: "public_json", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
-    } catch (e) {
-      return { offers: [], method: "public_json", requests: http.requests.length > 0 ? http.requests : [{ url, status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
-    }
-  },
-  async testConnection(config, ctx) {
-    const base = baseOf2(config);
-    if (!base) return { ok: false, message: "URL de base de la boutique manquante." };
-    try {
-      const http = createAdapterHttp(ctx);
-      const res = await http.request(productsCatalogUrl(base, 1, 1), { accept: JSON_ACCEPT2, maxBytes: 2 * 1024 * 1024 });
-      const products = parseWcProducts(res.text);
-      return { ok: true, message: products.length > 0 ? "API Store WooCommerce accessible (produit lu)." : "API Store accessible mais aucun produit publi\xE9." };
-    } catch (e) {
-      return { ok: false, message: `API Store inaccessible : ${errorMessage(e)}` };
-    }
-  }
-};
-
-// src/integrations/sourcing/google-merchant-feed/crawler.ts
-var GMC_FEED_ACCEPT = "application/xml,text/xml,application/rss+xml,application/atom+xml,text/csv,text/tab-separated-values,text/plain;q=0.9,*/*;q=0.5";
-var GMC_CACHE_TTL_MS = 10 * 6e4;
-var GMC_CATALOG_PAGE_SIZE = 1e3;
-var GMC_MAX_BYTES = 50 * 1024 * 1024;
-function feedUrlOf(config) {
-  const explicit = settingString(config.settings, "feed_url");
-  if (explicit) return explicit;
-  const base = config.baseUrl?.trim();
-  if (!base) return null;
-  return /\.(xml|rss|atom|tsv|csv|txt)(\?.*)?$/i.test(base) ? base : null;
-}
-function detectFeedFormat(text2, contentType) {
-  const head = text2.slice(0, 2e3).trimStart();
-  if (head.startsWith("<")) return "xml";
-  if (contentType && /xml/i.test(contentType) && !/csv|tab-separated/i.test(contentType)) return "xml";
-  return "tsv";
-}
-
-// src/integrations/sourcing/google-merchant-feed/parser.ts
-import { parse as parseCsv2 } from "npm:csv-parse@7.0.3/sync";
-import { XMLParser as XMLParser3 } from "npm:fast-xml-parser@5.11.2";
-import { z as z17 } from "npm:zod@4.6.5";
-var MAX_FEED_ITEMS = 5e4;
-var scalar = z17.union([z17.string(), z17.number(), z17.boolean()]);
-var textNode = z17.union([scalar, z17.looseObject({ "#text": scalar.optional() })]);
-var anyField = z17.union([textNode, z17.array(textNode)]);
-var gmcItemSchema = z17.record(z17.string(), z17.unknown());
-function textOf(v2) {
-  const parsed = anyField.safeParse(v2);
-  if (!parsed.success) return null;
-  const first = Array.isArray(parsed.data) ? parsed.data[0] : parsed.data;
-  if (first === void 0 || first === null) return null;
-  if (typeof first === "object") {
-    const t = first["#text"];
-    return t === void 0 ? null : String(t).trim() || null;
-  }
-  const s = String(first).trim();
-  return s.length > 0 ? s : null;
-}
-function field(item, name) {
-  if (item[`g:${name}`] !== void 0) return item[`g:${name}`];
-  if (item[name] !== void 0) return item[name];
-  const lower = name.toLowerCase();
-  for (const [k, v2] of Object.entries(item)) {
-    const key2 = k.toLowerCase().replace(/^g:/, "");
-    if (key2 === lower) return v2;
-  }
-  return void 0;
-}
-function parseGmcPrice(raw) {
-  if (!raw) return null;
-  const m = raw.trim().match(/^([\d\s.,]+)\s*([A-Za-z]{3})?$/);
-  if (!m || !m[1]) return null;
-  const numeric = m[1].replace(/\s/g, "");
-  const normalized = /,\d{1,2}$/.test(numeric) && numeric.includes(".") ? numeric.replace(/\./g, "").replace(",", ".") : /\.\d{1,2}$/.test(numeric) && numeric.includes(",") ? numeric.replace(/,/g, "") : numeric.replace(",", ".");
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount)) return null;
-  return { amount, currency: m[2] ? m[2].toUpperCase() : null };
-}
-function linkOf(item) {
-  const g = textOf(field(item, "link"));
-  if (g && /^https?:\/\//i.test(g)) return g;
-  const raw = item.link;
-  const list = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
-  for (const l of list) {
-    if (l && typeof l === "object") {
-      const href = l["@_href"];
-      if (typeof href === "string" && /^https?:\/\//i.test(href)) return href;
-    }
-  }
-  return g;
-}
-function shippingOf(item) {
-  const raw = field(item, "shipping");
-  const list = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
-  const out = [];
-  for (const s of list) {
-    if (!s || typeof s !== "object") continue;
-    const rec = s;
-    out.push({ country: textOf(field(rec, "country"))?.toUpperCase().slice(0, 2) ?? null, price: parseGmcPrice(textOf(field(rec, "price"))) });
-  }
-  return out;
-}
-function toItem(record) {
-  const id = textOf(field(record, "id"));
-  const title = textOf(field(record, "title"));
-  if (!id || !title) return null;
-  const quantityRaw = textOf(field(record, "quantity"));
-  const quantity = quantityRaw !== null && /^\d+$/.test(quantityRaw) ? Number(quantityRaw) : null;
-  const raw = {};
-  for (const key2 of ["id", "title", "price", "sale_price", "availability", "gtin", "mpn", "brand", "condition", "item_group_id", "link"]) {
-    const v2 = textOf(field(record, key2));
-    if (v2 !== null) raw[key2] = v2;
-  }
-  return {
-    id,
-    title,
-    description: textOf(field(record, "description")),
-    link: linkOf(record),
-    price: parseGmcPrice(textOf(field(record, "price"))),
-    salePrice: parseGmcPrice(textOf(field(record, "sale_price"))),
-    availability: textOf(field(record, "availability"))?.toLowerCase() ?? null,
-    gtin: textOf(field(record, "gtin"))?.replace(/\D/g, "") || null,
-    mpn: textOf(field(record, "mpn")),
-    brand: textOf(field(record, "brand")),
-    condition: textOf(field(record, "condition"))?.toLowerCase() ?? null,
-    itemGroupId: textOf(field(record, "item_group_id")),
-    color: textOf(field(record, "color")),
-    size: textOf(field(record, "size")),
-    shipping: shippingOf(record),
-    quantity,
-    raw
-  };
-}
-function parseGmcXml(text2) {
-  const parser3 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
-  const doc = parser3.parse(text2.replace(/^\uFEFF/, ""));
-  const rss = doc.rss;
-  const channel = rss?.channel;
-  const feed = doc.feed;
-  const rawItems = channel?.item ?? feed?.entry ?? null;
-  if (rawItems === null || rawItems === void 0) throw new Error("Flux non reconnu : ni <rss><channel><item>, ni <feed><entry>.");
-  const list = Array.isArray(rawItems) ? rawItems : [rawItems];
-  const items = [];
-  for (const entry of list.slice(0, MAX_FEED_ITEMS)) {
-    const parsed = gmcItemSchema.safeParse(entry);
-    if (!parsed.success) continue;
-    const item = toItem(parsed.data);
-    if (item) items.push(item);
-  }
-  return items;
-}
-function parseGmcTsv(text2) {
-  const clean = text2.replace(/^\uFEFF/, "");
-  const firstLine = clean.split(/\r?\n/)[0] ?? "";
-  const delimiter = firstLine.includes("	") ? "	" : firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
-  const rows = parseCsv2(clean, { columns: (header) => header.map((h) => h.trim().toLowerCase().replace(/^g:/, "")), delimiter, bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true, to: MAX_FEED_ITEMS + 1 });
-  const items = [];
-  for (const row of rows) {
-    const parsed = gmcItemSchema.safeParse(row);
-    if (!parsed.success) continue;
-    const record = { ...parsed.data };
-    const shippingCol = Object.keys(record).find((k) => k.startsWith("shipping"));
-    if (shippingCol && typeof record[shippingCol] === "string") {
-      const [country, ...rest] = record[shippingCol].split(":");
-      record.shipping = rest.length > 0 ? { country: country?.trim() ?? null, price: rest.join(":").trim() } : { price: record[shippingCol] };
-    }
-    const item = toItem(record);
-    if (item) items.push(item);
-  }
-  return items;
-}
-function parseGmcFeed(text2, format) {
-  return format === "xml" ? parseGmcXml(text2) : parseGmcTsv(text2);
-}
-
-// src/integrations/sourcing/google-merchant-feed/mapper.ts
-function gmcAvailability(value) {
-  switch (value) {
-    case "in_stock":
-    case "in stock":
-      return "in_stock";
-    case "limited_availability":
-    case "limited availability":
-      return "low";
-    case "out_of_stock":
-    case "out of stock":
-      return "out_of_stock";
-    case "preorder":
-    case "backorder":
-      return "unknown";
-    default:
-      return "unknown";
-  }
-}
-function gmcCondition(value) {
-  if (value === "new" || value === "refurbished" || value === "used") return value;
-  return null;
-}
-function mapGmcItem(item, config, feedUrl) {
-  const sale = item.salePrice && item.price && item.salePrice.amount > 0 && item.salePrice.amount < item.price.amount ? item.salePrice : null;
-  const effective = sale ?? item.price;
-  const currency = effective?.currency ?? item.price?.currency ?? config.defaultCurrency ?? null;
-  const shipping = item.shipping.find((s) => !config.defaultCountry || !s.country || s.country === config.defaultCountry) ?? item.shipping[0] ?? null;
-  return {
-    externalOfferId: item.id,
-    externalProductId: item.itemGroupId ?? item.id,
-    title: item.title,
-    price: effective?.amount ?? null,
-    currency,
-    taxType: config.defaultTaxType,
-    availableQuantity: item.quantity,
-    stockStatus: gmcAvailability(item.availability),
-    shippingCost: shipping?.price?.amount ?? null,
-    shippingCurrency: shipping?.price?.currency ?? currency,
-    url: item.link,
-    ean: item.gtin,
-    mpn: item.mpn,
-    brand: item.brand,
-    color: item.color,
-    condition: gmcCondition(item.condition),
-    supplierSku: item.id,
-    country: shipping?.country ?? config.defaultCountry ?? null,
-    raw: { feed_url: feedUrl, item: item.raw, availability: item.availability, sale_price_applied: sale !== null, currency_source: effective?.currency ? "feed" : config.defaultCurrency ? "config" : "absent" }
-  };
-}
-
-// src/integrations/sourcing/google-merchant-feed/index.ts
-var feedCache = new TtlCache(GMC_CACHE_TTL_MS);
-async function loadFeed(config, ctx, options) {
-  const url = feedUrlOf(config);
-  if (!url) throw new Error("URL du flux manquante (r\xE9glage feed_url ou URL de base pointant vers un fichier).");
-  const now = ctx.now ? ctx.now().getTime() : Date.now();
-  const cached2 = options.useCache ? feedCache.get(url, now) : null;
-  if (cached2) return { url, feed: cached2, requests: [], fromCache: true };
-  const http = createAdapterHttp(ctx);
-  const res = await http.request(url, { accept: GMC_FEED_ACCEPT, maxBytes: GMC_MAX_BYTES });
-  const format = detectFeedFormat(res.text, res.contentType);
-  const items = parseGmcFeed(res.text, format);
-  const offers = items.map((i) => mapGmcItem(i, config, res.finalUrl || url));
-  http.countOffers(offers.length);
-  const feed = { offers, fetchedAt: new Date(now).toISOString(), format };
-  feedCache.set(url, feed, now);
-  return { url, feed, requests: http.requests, fromCache: false };
-}
-var googleMerchantFeedAdapter = {
-  key: "google-merchant-feed",
-  label: "Flux Google Merchant (RSS / Atom / TSV)",
-  description: "Lit un flux produit public au format Google Merchant Center (g:id, g:title, g:price \xAB 229.00 EUR \xBB, g:sale_price, g:availability, g:gtin, g:mpn, g:brand, g:condition, g:link, g:shipping, g:item_group_id). La recherche filtre le flux lu (mis en cache 10 min) : aucune requ\xEAte suppl\xE9mentaire par recherche. V\xE9rifi\xE9 sur fixtures uniquement.",
-  method: "public_feed",
-  access: "public",
-  capabilities: { search: true, catalog: true, stockQuantity: false },
-  credentialFields: [],
-  configFields: [{ name: "feed_url", label: "URL du flux Google Merchant", required: true, placeholder: "https://boutique.example/feeds/google.xml" }],
-  verification: "fixtures",
-  urlsForQuery(config) {
-    const url = feedUrlOf(config);
-    return url ? [url] : [];
-  },
-  urlsForCatalog(config) {
-    const url = feedUrlOf(config);
-    return url ? [url] : [];
-  },
-  async search(config, query, _rawQuery, ctx) {
-    const feedUrl = feedUrlOf(config);
-    if (feedUrl && ctx.disallowedUrls?.includes(feedUrl)) return failedSearch("public_feed", "URL du flux interdite par robots.txt.");
-    try {
-      const { url, feed, requests, fromCache } = await loadFeed(config, ctx, { useCache: true });
-      const offers = feed.offers.filter((o) => matchesQuery(query, { title: o.title, brand: o.brand, ean: o.ean, mpn: o.mpn, sku: o.supplierSku }));
-      return { offers, method: "public_feed", requests: fromCache ? [{ url, status: null, durationMs: 0, offers: offers.length, error: null }] : requests, error: null, truncated: false };
-    } catch (e) {
-      return failedSearch("public_feed", errorMessage(e));
-    }
-  },
-  async fetchCatalog(config, cursor, ctx) {
-    const offset = Math.max(0, cursor ? Number(cursor) || 0 : 0);
-    try {
-      const { feed, requests } = await loadFeed(config, ctx, { useCache: offset > 0 });
-      const page2 = feed.offers.slice(offset, offset + GMC_CATALOG_PAGE_SIZE);
-      const next = offset + GMC_CATALOG_PAGE_SIZE < feed.offers.length ? String(offset + GMC_CATALOG_PAGE_SIZE) : null;
-      return { offers: page2, method: "public_feed", requests, nextCursor: next };
-    } catch (e) {
-      return { offers: [], method: "public_feed", requests: [{ url: feedUrlOf(config) ?? "", status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
-    }
-  },
-  async testConnection(config, ctx) {
-    try {
-      const { feed } = await loadFeed(config, ctx, { useCache: false });
-      return { ok: true, message: `Flux lu (${feed.format.toUpperCase()}) : ${feed.offers.length} article(s).` };
-    } catch (e) {
-      return { ok: false, message: errorMessage(e) };
-    }
-  }
-};
-
-// src/integrations/sourcing/bigbuy/index.ts
-import { createHash as createHash4 } from "node:crypto";
-
-// src/integrations/sourcing/bigbuy/crawler.ts
-var BIGBUY_API_BASE = "https://api.bigbuy.eu";
-var BIGBUY_SANDBOX_BASE = "https://api.sandbox.bigbuy.eu";
-var BIGBUY_PRODUCTS_PATH = "/rest/catalog/products.json";
-var BIGBUY_PRODUCTS_INFORMATION_PATH = "/rest/catalog/productsinformation.json";
-var BIGBUY_PRODUCTS_STOCK_AVAILABLE_PATH = "/rest/catalog/productsstockavailable.json";
-var BIGBUY_MANUFACTURERS_PATH = "/rest/catalog/manufacturers.json";
-var BIGBUY_TEST_PATH = "/rest/user/purchase.json";
-var BIGBUY_PAGE_SIZE = 1e3;
-var BIGBUY_MAX_CATALOG_PAGES = 20;
-var BIGBUY_SEARCH_INDEX_PAGES = 3;
-var BIGBUY_CACHE_TTL_MS = 10 * 6e4;
-var BIGBUY_DEFAULT_ISO = "fr";
-var BIGBUY_MAX_BYTES = 60 * 1024 * 1024;
-function bigbuyBase(sandbox, override) {
-  return override ?? (sandbox ? BIGBUY_SANDBOX_BASE : BIGBUY_API_BASE);
-}
-function productsUrl2(base, isoCode, page2, pageSize = BIGBUY_PAGE_SIZE) {
-  return `${joinUrl(base, BIGBUY_PRODUCTS_PATH)}?isoCode=${encodeURIComponent(isoCode)}&page=${page2}&pageSize=${pageSize}`;
-}
-function productsInformationUrl(base, isoCode, page2, pageSize = BIGBUY_PAGE_SIZE) {
-  return `${joinUrl(base, BIGBUY_PRODUCTS_INFORMATION_PATH)}?isoCode=${encodeURIComponent(isoCode)}&page=${page2}&pageSize=${pageSize}`;
-}
-function productsStockAvailableUrl(base) {
-  return joinUrl(base, BIGBUY_PRODUCTS_STOCK_AVAILABLE_PATH);
-}
-function manufacturersUrl(base) {
-  return joinUrl(base, BIGBUY_MANUFACTURERS_PATH);
-}
-function testUrl(base) {
-  return joinUrl(base, BIGBUY_TEST_PATH);
-}
-function authHeaders(apiKey) {
-  return { Authorization: `Bearer ${apiKey}`, Accept: "application/json" };
-}
-
-// src/integrations/sourcing/bigbuy/parser.ts
-import { z as z18 } from "npm:zod@4.6.5";
-var numOrStr3 = z18.union([z18.number(), z18.string()]);
-var bigbuyProductSchema = z18.looseObject({
-  id: numOrStr3,
-  sku: z18.string().nullish(),
-  ean13: numOrStr3.nullish(),
-  manufacturer: numOrStr3.nullish(),
-  wholesalePrice: numOrStr3.nullish(),
-  retailPrice: numOrStr3.nullish(),
-  taxRate: numOrStr3.nullish(),
-  active: z18.union([z18.boolean(), z18.number()]).nullish(),
-  condition: z18.string().nullish()
-});
-var bigbuyProductInformationSchema = z18.looseObject({
-  id: numOrStr3,
-  sku: z18.string().nullish(),
-  name: z18.string().nullish(),
-  description: z18.string().nullish(),
-  url: z18.string().nullish(),
-  isoCode: z18.string().nullish()
-});
-var bigbuyStockSchema = z18.looseObject({
-  id: numOrStr3,
-  sku: z18.string().nullish(),
-  stocks: z18.array(z18.looseObject({ quantity: numOrStr3.nullish(), minHandlingDays: numOrStr3.nullish(), maxHandlingDays: numOrStr3.nullish(), warehouse: numOrStr3.nullish() })).default([])
-});
-var bigbuyManufacturerSchema = z18.looseObject({ id: numOrStr3, name: z18.string().nullish() });
-function parseList(text2, schema, label) {
-  const json2 = JSON.parse(text2);
-  const parsed = z18.array(schema).safeParse(json2);
-  if (!parsed.success) throw new Error(`R\xE9ponse ${label} inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
-  return parsed.data;
-}
-var parseBigbuyProducts = (text2) => parseList(text2, bigbuyProductSchema, "products.json");
-var parseBigbuyProductsInformation = (text2) => parseList(text2, bigbuyProductInformationSchema, "productsinformation.json");
-var parseBigbuyStock = (text2) => parseList(text2, bigbuyStockSchema, "productsstockavailable.json");
-var parseBigbuyManufacturers = (text2) => parseList(text2, bigbuyManufacturerSchema, "manufacturers.json");
-
-// src/integrations/sourcing/bigbuy/mapper.ts
-init_normalizer();
-init_feed_parsers();
-var BIGBUY_CURRENCY = "EUR";
-function mapBigbuyProduct(product, info, stock, brandName, requestUrl) {
-  const title = str(info?.name);
-  if (!title) return null;
-  const quantities = (stock?.stocks ?? []).map((s) => toNumber(s.quantity)).filter((n) => n !== null && n >= 0);
-  const availableQuantity = stock ? Math.round(quantities.reduce((a, b) => a + b, 0)) : null;
-  const minDays = (stock?.stocks ?? []).map((s) => toNumber(s.minHandlingDays)).filter((n) => n !== null);
-  const maxDays = (stock?.stocks ?? []).map((s) => toNumber(s.maxHandlingDays)).filter((n) => n !== null);
-  const condition = normalizeCondition(product.condition ?? null);
-  const taxRate = toNumber(product.taxRate);
-  return {
-    externalOfferId: String(product.id),
-    externalProductId: String(product.id),
-    title,
-    price: toNumber(product.wholesalePrice),
-    currency: BIGBUY_CURRENCY,
-    taxType: "ht",
-    vatRate: taxRate !== null && taxRate >= 0 && taxRate <= 100 ? taxRate : null,
-    availableQuantity,
-    stockStatus: availableQuantity === null ? "unknown" : availableQuantity > 0 ? "in_stock" : "out_of_stock",
-    deliveryMinDays: minDays.length > 0 ? Math.round(Math.min(...minDays)) : null,
-    deliveryMaxDays: maxDays.length > 0 ? Math.round(Math.max(...maxDays)) : null,
-    url: str(info?.url),
-    ean: str(product.ean13)?.replace(/\D/g, "") || null,
-    brand: brandName,
-    condition: condition === "unknown" ? null : condition,
-    supplierSku: str(product.sku),
-    raw: {
-      request_url: requestUrl,
-      product: { id: product.id, sku: product.sku ?? null, ean13: product.ean13 ?? null, manufacturer: product.manufacturer ?? null, wholesalePrice: product.wholesalePrice ?? null, retailPrice: product.retailPrice ?? null, taxRate: product.taxRate ?? null, condition: product.condition ?? null },
-      description_excerpt: stripHtml(info?.description).slice(0, 300) || null,
-      stock: stock ? stock.stocks.map((s) => ({ quantity: s.quantity ?? null, minHandlingDays: s.minHandlingDays ?? null, maxHandlingDays: s.maxHandlingDays ?? null, warehouse: s.warehouse ?? null })) : null,
-      price_basis: "wholesalePrice (hors TVA, EUR, documentation BigBuy)"
-    }
-  };
-}
-
-// src/integrations/sourcing/bigbuy/index.ts
-var stockCache = new TtlCache(BIGBUY_CACHE_TTL_MS);
-var manufacturerCache = new TtlCache(BIGBUY_CACHE_TTL_MS);
-var indexCache = new TtlCache(BIGBUY_CACHE_TTL_MS);
-function session(config, ctx) {
-  const apiKey = ctx.credentials?.api_key?.trim();
-  if (!apiKey) return null;
-  const sandbox = config.settings.sandbox === true || config.settings.sandbox === "true";
-  const base = bigbuyBase(sandbox, settingString(config.settings, "api_base"));
-  const isoCode = (settingString(config.settings, "iso_code") ?? BIGBUY_DEFAULT_ISO).toLowerCase();
-  const cacheKey2 = `${createHash4("sha256").update(apiKey).digest("hex").slice(0, 16)}|${base}|${isoCode}`;
-  return { base, apiKey, isoCode, headers: authHeaders(apiKey), cacheKey: cacheKey2 };
-}
-function nowOf(ctx) {
-  return ctx.now ? ctx.now().getTime() : Date.now();
-}
-async function loadManufacturers(s, http, ctx) {
-  const cached2 = manufacturerCache.get(s.cacheKey, nowOf(ctx));
-  if (cached2) return cached2;
-  const map = /* @__PURE__ */ new Map();
-  try {
-    const res = await http.request(manufacturersUrl(s.base), { headers: s.headers, accept: "application/json" });
-    for (const m of parseBigbuyManufacturers(res.text)) if (m.name) map.set(String(m.id), m.name);
-    manufacturerCache.set(s.cacheKey, map, nowOf(ctx));
-  } catch {
-  }
-  return map;
-}
-async function loadStock(s, http, ctx) {
-  const cached2 = stockCache.get(s.cacheKey, nowOf(ctx));
-  if (cached2) return cached2;
-  try {
-    const res = await http.request(productsStockAvailableUrl(s.base), { headers: s.headers, accept: "application/json", maxBytes: BIGBUY_MAX_BYTES });
-    const map = /* @__PURE__ */ new Map();
-    for (const st of parseBigbuyStock(res.text)) map.set(String(st.id), st);
-    http.countOffers(map.size);
-    stockCache.set(s.cacheKey, map, nowOf(ctx));
-    return map;
-  } catch {
-    return null;
-  }
-}
-async function loadCatalogPage(s, http, ctx, page2, pageSize) {
-  const pUrl = productsUrl2(s.base, s.isoCode, page2, pageSize);
-  const products = parseBigbuyProducts((await http.request(pUrl, { headers: s.headers, accept: "application/json", maxBytes: BIGBUY_MAX_BYTES })).text);
-  http.countOffers(products.length);
-  if (products.length === 0) return { offers: [], productCount: 0 };
-  const iUrl = productsInformationUrl(s.base, s.isoCode, page2, pageSize);
-  const infos = parseBigbuyProductsInformation((await http.request(iUrl, { headers: s.headers, accept: "application/json", maxBytes: BIGBUY_MAX_BYTES })).text);
-  const infoById = new Map(infos.map((i) => [String(i.id), i]));
-  const [brands, stock] = [await loadManufacturers(s, http, ctx), await loadStock(s, http, ctx)];
-  const offers = [];
-  for (const p of products) {
-    if (p.active === false || p.active === 0) continue;
-    const id = String(p.id);
-    const mapped = mapBigbuyProduct(p, infoById.get(id) ?? null, stock?.get(id) ?? null, p.manufacturer !== null && p.manufacturer !== void 0 ? brands.get(String(p.manufacturer)) ?? null : null, pUrl);
-    if (mapped) offers.push(mapped);
-  }
-  return { offers, productCount: products.length };
-}
-async function buildSearchIndex(s, config, http, ctx) {
-  const cached2 = indexCache.get(s.cacheKey, nowOf(ctx));
-  if (cached2) return cached2;
-  const pages = settingInt(config.settings, "search_pages", BIGBUY_SEARCH_INDEX_PAGES, 1, 20);
-  const pageSize = settingInt(config.settings, "page_size", BIGBUY_PAGE_SIZE, 50, BIGBUY_PAGE_SIZE);
-  const offers = [];
-  let truncated = false;
-  for (let page2 = 0; page2 < pages; page2++) {
-    if (page2 > 0 && http.exhausted()) {
-      truncated = true;
-      break;
-    }
-    const { offers: pageOffers, productCount } = await loadCatalogPage(s, http, ctx, page2, pageSize);
-    offers.push(...pageOffers);
-    if (productCount < pageSize) break;
-    if (page2 === pages - 1) truncated = true;
-  }
-  const index = { offers, truncated };
-  if (offers.length > 0) indexCache.set(s.cacheKey, index, nowOf(ctx));
-  return index;
-}
-var bigbuyAdapter = {
-  key: "bigbuy",
-  label: "BigBuy (API officielle, cl\xE9 API)",
-  description: "Catalogue grossiste BigBuy via l'API REST officielle avec votre cl\xE9 API : nom, SKU, EAN, marque, prix de gros HT (EUR), taux de TVA, stock par entrep\xF4t, d\xE9lais de pr\xE9paration. Pas de recherche texte c\xF4t\xE9 BigBuy : la recherche en direct filtre les premi\xE8res pages du catalogue (index en cache 10 min) et est signal\xE9e comme partielle. Impl\xE9ment\xE9 d'apr\xE8s la documentation publique, non exerc\xE9 en conditions r\xE9elles depuis cet environnement.",
-  method: "official_api",
-  access: "account",
-  capabilities: { search: true, catalog: true, stockQuantity: true },
-  credentialFields: [{ name: "api_key", label: "Cl\xE9 API BigBuy", secret: true, placeholder: "Cl\xE9 g\xE9n\xE9r\xE9e dans votre espace BigBuy (API)" }],
-  configFields: [
-    { name: "iso_code", label: "Langue du catalogue (isoCode)", required: false, placeholder: BIGBUY_DEFAULT_ISO },
-    { name: "sandbox", label: "Environnement bac \xE0 sable (true/false)", required: false, placeholder: "false" },
-    { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(BIGBUY_MAX_CATALOG_PAGES) },
-    { name: "search_pages", label: "Pages index\xE9es pour la recherche en direct", required: false, placeholder: String(BIGBUY_SEARCH_INDEX_PAGES) }
-  ],
-  verification: "fixtures",
-  async search(config, query, _rawQuery, ctx) {
-    const s = session(config, ctx);
-    if (!s) return failedSearch("official_api", "Cl\xE9 API BigBuy absente : connectez votre compte fournisseur.");
-    const http = createAdapterHttp(ctx);
-    try {
-      const index = await buildSearchIndex(s, config, http, ctx);
-      const offers = index.offers.filter((o) => matchesQuery(query, { title: o.title, brand: o.brand, ean: o.ean, sku: o.supplierSku }));
-      return { offers, method: "official_api", requests: http.requests, error: null, truncated: index.truncated };
-    } catch (e) {
-      return failedSearch("official_api", errorMessage(e), http.requests);
-    }
-  },
-  async fetchCatalog(config, cursor, ctx) {
-    const s = session(config, ctx);
-    if (!s) return { offers: [], method: "official_api", requests: [], nextCursor: null };
-    const page2 = Math.max(0, cursor ? Number(cursor) || 0 : 0);
-    const maxPages = settingInt(config.settings, "max_pages", BIGBUY_MAX_CATALOG_PAGES, 1, 500);
-    const pageSize = settingInt(config.settings, "page_size", BIGBUY_PAGE_SIZE, 50, BIGBUY_PAGE_SIZE);
-    const http = createAdapterHttp(ctx);
-    try {
-      const { offers, productCount } = await loadCatalogPage(s, http, ctx, page2, pageSize);
-      const hasMore = productCount >= pageSize && page2 + 1 < maxPages;
-      return { offers, method: "official_api", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
-    } catch (e) {
-      return { offers: [], method: "official_api", requests: http.requests.length > 0 ? http.requests : [{ url: productsUrl2(s.base, s.isoCode, page2, pageSize), status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
-    }
-  },
-  async testConnection(config, ctx) {
-    const s = session(config, ctx);
-    if (!s) return { ok: false, message: "Cl\xE9 API BigBuy absente." };
-    try {
-      const http = createAdapterHttp(ctx);
-      const res = await http.request(testUrl(s.base), { headers: s.headers, accept: "application/json", maxBytes: 2 * 1024 * 1024 });
-      JSON.parse(res.text);
-      return { ok: true, message: "Cl\xE9 API BigBuy accept\xE9e (r\xE9ponse authentifi\xE9e re\xE7ue)." };
-    } catch (e) {
-      const msg = errorMessage(e);
-      return { ok: false, message: /HTTP 401|HTTP 403/.test(msg) ? "Cl\xE9 API BigBuy refus\xE9e (401/403) : v\xE9rifiez la cl\xE9 et l'environnement (production / bac \xE0 sable)." : `BigBuy injoignable : ${msg}` };
-    }
-  }
-};
-
-// src/integrations/sourcing/ingram-micro/index.ts
-import { createHash as createHash5, randomUUID } from "node:crypto";
-
-// src/integrations/sourcing/ingram-micro/crawler.ts
-var INGRAM_API_BASE = "https://api.ingrammicro.com";
-var INGRAM_SANDBOX_BASE = "https://api.ingrammicro.com/sandbox";
-var INGRAM_TOKEN_PATH = "/oauth/oauth20/token";
-var INGRAM_CATALOG_PATH = "/resellers/v6/catalog";
-var INGRAM_PRICE_AVAILABILITY_PATH = "/resellers/v6/catalog/priceandavailability";
-var INGRAM_PA_QUERY = "includeAvailability=true&includePricing=true&includeProductAttributes=false";
-var INGRAM_PA_BATCH = 50;
-var INGRAM_SEARCH_PAGE_SIZE = 25;
-var INGRAM_CATALOG_PAGE_SIZE = 50;
-var INGRAM_MAX_CATALOG_PAGES = 20;
-var INGRAM_DEFAULT_SENDER_ID = "MON STOCK";
-var INGRAM_DEFAULT_LANGUAGE = "fr-FR";
-var INGRAM_TOKEN_SAFETY_S = 60;
-function ingramBase(sandbox, override) {
-  return override ?? (sandbox ? INGRAM_SANDBOX_BASE : INGRAM_API_BASE);
-}
-function tokenUrl(base) {
-  const origin = new URL(base).origin;
-  return joinUrl(base.endsWith("/sandbox") ? base : origin, INGRAM_TOKEN_PATH);
-}
-function catalogUrl(base, params) {
-  const q = new URLSearchParams({ pageNumber: String(params.pageNumber), pageSize: String(params.pageSize) });
-  if (params.keyword?.trim()) q.set("keyword", params.keyword.trim());
-  return `${joinUrl(base, INGRAM_CATALOG_PATH)}?${q.toString()}`;
-}
-function priceAvailabilityUrl(base) {
-  return `${joinUrl(base, INGRAM_PRICE_AVAILABILITY_PATH)}?${INGRAM_PA_QUERY}`;
-}
-function tokenRequestBody(clientId, clientSecret) {
-  return new URLSearchParams({ grant_type: "client_credentials", client_id: clientId, client_secret: clientSecret }).toString();
-}
-function ingramHeaders(input) {
-  return {
-    Authorization: `Bearer ${input.accessToken}`,
-    "IM-CustomerNumber": input.customerNumber,
-    "IM-CountryCode": input.countryCode.toUpperCase(),
-    "IM-CorrelationID": input.correlationId,
-    "IM-SenderID": input.senderId,
-    "Accept-Language": input.language,
-    Accept: "application/json",
-    "Content-Type": "application/json"
-  };
-}
-
-// src/integrations/sourcing/ingram-micro/parser.ts
-import { z as z19 } from "npm:zod@4.6.5";
-var numOrStr4 = z19.union([z19.number(), z19.string()]);
-var ingramTokenSchema = z19.looseObject({
-  access_token: z19.string().min(1),
-  token_type: z19.string().nullish(),
-  expires_in: numOrStr4.nullish()
-});
-var ingramCatalogItemSchema = z19.looseObject({
-  ingramPartNumber: z19.string().nullish(),
-  vendorPartNumber: z19.string().nullish(),
-  upcCode: z19.string().nullish(),
-  vendorName: z19.string().nullish(),
-  description: z19.string().nullish(),
-  extraDescription: z19.string().nullish(),
-  category: z19.string().nullish(),
-  subCategory: z19.string().nullish(),
-  productType: z19.string().nullish(),
-  discontinued: z19.union([z19.boolean(), z19.string()]).nullish(),
-  authorizedToPurchase: z19.union([z19.boolean(), z19.string()]).nullish(),
-  links: z19.array(z19.looseObject({ topic: z19.string().nullish(), href: z19.string().nullish(), type: z19.string().nullish() })).nullish()
-});
-var ingramCatalogResponseSchema = z19.looseObject({
-  recordsFound: numOrStr4.nullish(),
-  pageSize: numOrStr4.nullish(),
-  pageNumber: numOrStr4.nullish(),
-  catalog: z19.array(ingramCatalogItemSchema).nullish()
-});
-var ingramAvailabilityByWarehouseSchema = z19.looseObject({
-  location: z19.string().nullish(),
-  warehouseId: numOrStr4.nullish(),
-  quantityAvailable: numOrStr4.nullish(),
-  quantityBackordered: numOrStr4.nullish()
-});
-var ingramPriceAvailabilityItemSchema = z19.looseObject({
-  productStatusCode: z19.string().nullish(),
-  productStatusMessage: z19.string().nullish(),
-  ingramPartNumber: z19.string().nullish(),
-  vendorPartNumber: z19.string().nullish(),
-  upc: z19.string().nullish(),
-  vendorName: z19.string().nullish(),
-  description: z19.string().nullish(),
-  uom: z19.string().nullish(),
-  productAuthorized: z19.union([z19.boolean(), z19.string()]).nullish(),
-  availability: z19.looseObject({
-    available: z19.union([z19.boolean(), z19.string()]).nullish(),
-    totalAvailability: numOrStr4.nullish(),
-    availabilityByWarehouse: z19.array(ingramAvailabilityByWarehouseSchema).nullish()
-  }).nullish(),
-  pricing: z19.looseObject({
-    currencyCode: z19.string().nullish(),
-    retailPrice: numOrStr4.nullish(),
-    customerPrice: numOrStr4.nullish()
-  }).nullish()
-});
-function parseIngramToken(text2) {
-  const parsed = ingramTokenSchema.safeParse(JSON.parse(text2));
-  if (!parsed.success) throw new Error("R\xE9ponse du serveur de jetons inattendue (access_token absent).");
-  const exp = parsed.data.expires_in === null || parsed.data.expires_in === void 0 ? Number.NaN : Number(parsed.data.expires_in);
-  return { accessToken: parsed.data.access_token, expiresInS: Number.isFinite(exp) && exp > 0 ? exp : null };
-}
-function parseIngramCatalog(text2) {
-  const parsed = ingramCatalogResponseSchema.safeParse(JSON.parse(text2));
-  if (!parsed.success) throw new Error(`R\xE9ponse catalogue inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
-  const rf = Number(parsed.data.recordsFound ?? Number.NaN);
-  return { items: parsed.data.catalog ?? [], recordsFound: Number.isFinite(rf) ? rf : null };
-}
-function parseIngramPriceAvailability(text2) {
-  const json2 = JSON.parse(text2);
-  const parsed = z19.array(ingramPriceAvailabilityItemSchema).safeParse(json2);
-  if (!parsed.success) throw new Error(`R\xE9ponse prix & disponibilit\xE9 inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
-  return parsed.data;
-}
-
-// src/integrations/sourcing/ingram-micro/mapper.ts
-init_feed_parsers();
-function truthy(v2) {
-  if (v2 === null || v2 === void 0) return null;
-  if (typeof v2 === "boolean") return v2;
-  return /^(true|yes|y|1)$/i.test(v2) ? true : /^(false|no|n|0)$/i.test(v2) ? false : null;
-}
-function mapIngramOffer(pa, catalog, config, requestUrl) {
-  const partNumber = str(pa.ingramPartNumber) ?? str(catalog?.ingramPartNumber);
-  if (!partNumber) return null;
-  if (pa.productStatusCode && /^e$/i.test(pa.productStatusCode)) return null;
-  const price = toNumber(pa.pricing?.customerPrice);
-  const currency = str(pa.pricing?.currencyCode)?.toUpperCase() ?? config.defaultCurrency ?? null;
-  if (price === null) return null;
-  const title = str(pa.description) ?? str(catalog?.description);
-  if (!title) return null;
-  const total = toNumber(pa.availability?.totalAvailability);
-  const available = truthy(pa.availability?.available);
-  const availableQuantity = total !== null && total >= 0 ? Math.round(total) : null;
-  const stockStatus = availableQuantity !== null ? availableQuantity > 0 ? "in_stock" : "out_of_stock" : available === true ? "in_stock" : available === false ? "out_of_stock" : "unknown";
-  const vendorPart = str(pa.vendorPartNumber) ?? str(catalog?.vendorPartNumber);
-  const upc = digits(pa.upc ?? catalog?.upcCode);
-  const link = catalog?.links?.find((l) => l.href && /^https?:\/\//i.test(l.href))?.href ?? null;
-  return {
-    externalOfferId: partNumber,
-    externalProductId: partNumber,
-    title: catalog?.extraDescription ? `${title} ${catalog.extraDescription}`.trim() : title,
-    price,
-    currency,
-    taxType: config.defaultTaxType,
-    availableQuantity,
-    stockStatus,
-    url: link,
-    ean: upc,
-    mpn: vendorPart,
-    brand: str(pa.vendorName) ?? str(catalog?.vendorName),
-    supplierSku: partNumber,
-    country: config.defaultCountry ?? null,
-    raw: {
-      request_url: requestUrl,
-      ingramPartNumber: partNumber,
-      vendorPartNumber: vendorPart,
-      upc: pa.upc ?? catalog?.upcCode ?? null,
-      pricing: pa.pricing ? { currencyCode: pa.pricing.currencyCode ?? null, customerPrice: pa.pricing.customerPrice ?? null, retailPrice: pa.pricing.retailPrice ?? null } : null,
-      availability: pa.availability ? { available: pa.availability.available ?? null, totalAvailability: pa.availability.totalAvailability ?? null, warehouses: (pa.availability.availabilityByWarehouse ?? []).map((w2) => ({ location: w2.location ?? null, quantityAvailable: w2.quantityAvailable ?? null })).slice(0, 20) } : null,
-      productStatusCode: pa.productStatusCode ?? null,
-      category: catalog?.category ?? null,
-      discontinued: catalog?.discontinued ?? null,
-      price_basis: "pricing.customerPrice (prix revendeur du compte, API Reseller v6)"
-    }
-  };
-}
-
-// src/integrations/sourcing/ingram-micro/index.ts
-var tokenCache = new TtlCache(60 * 6e4);
-function session2(config, ctx) {
-  const c = ctx.credentials ?? {};
-  const clientId = c.client_id?.trim();
-  const clientSecret = c.client_secret?.trim();
-  const customerNumber = c.customer_number?.trim();
-  const countryCode = (c.country_code?.trim() || config.defaultCountry || "").toUpperCase();
-  if (!clientId || !clientSecret || !customerNumber || !countryCode) return null;
-  const sandbox = config.settings.sandbox === true || config.settings.sandbox === "true";
-  const base = ingramBase(sandbox, settingString(config.settings, "api_base"));
-  return {
-    base,
-    clientId,
-    clientSecret,
-    customerNumber,
-    countryCode,
-    senderId: settingString(config.settings, "sender_id") ?? INGRAM_DEFAULT_SENDER_ID,
-    language: settingString(config.settings, "language") ?? INGRAM_DEFAULT_LANGUAGE,
-    cacheKey: `${createHash5("sha256").update(`${clientId}:${clientSecret}`).digest("hex").slice(0, 16)}|${base}`
-  };
-}
-function nowOf2(ctx) {
-  return ctx.now ? ctx.now().getTime() : Date.now();
-}
-async function accessToken(s, http, ctx) {
-  const cached2 = tokenCache.get(s.cacheKey, nowOf2(ctx));
-  if (cached2) return cached2;
-  const res = await http.request(tokenUrl(s.base), { method: "POST", body: tokenRequestBody(s.clientId, s.clientSecret), headers: { "Content-Type": "application/x-www-form-urlencoded" }, accept: "application/json" });
-  const token = parseIngramToken(res.text);
-  const ttlS = Math.max(60, (token.expiresInS ?? 3600) - INGRAM_TOKEN_SAFETY_S);
-  tokenCache.set(s.cacheKey, token.accessToken, nowOf2(ctx), ttlS * 1e3);
-  return token.accessToken;
-}
-function headersFor(s, token) {
-  return ingramHeaders({ accessToken: token, customerNumber: s.customerNumber, countryCode: s.countryCode, senderId: s.senderId, correlationId: randomUUID().replace(/-/g, "").slice(0, 32), language: s.language });
-}
-async function priceAndAvailability(s, token, http, items, config) {
-  const offers = [];
-  const byPart = new Map(items.filter((i) => i.ingramPartNumber).map((i) => [i.ingramPartNumber.trim().toUpperCase(), i]));
-  const parts = Array.from(byPart.keys());
-  for (let i = 0; i < parts.length; i += INGRAM_PA_BATCH) {
-    const batch = parts.slice(i, i + INGRAM_PA_BATCH);
-    const url = priceAvailabilityUrl(s.base);
-    const res = await http.request(url, { method: "POST", body: JSON.stringify({ products: batch.map((p) => ({ ingramPartNumber: p })) }), headers: headersFor(s, token), accept: "application/json" });
-    const rows = parseIngramPriceAvailability(res.text);
-    let count = 0;
-    for (const row of rows) {
-      const key2 = (row.ingramPartNumber ?? "").trim().toUpperCase();
-      const mapped = mapIngramOffer(row, byPart.get(key2) ?? null, config, url);
-      if (mapped) {
-        offers.push(mapped);
-        count++;
-      }
-    }
-    http.countOffers(count);
-    if (http.exhausted()) break;
-  }
-  return offers;
-}
-var ingramMicroAdapter = {
-  key: "ingram-micro",
-  label: "Ingram Micro (Reseller API v6, OAuth2)",
-  description: "Catalogue, prix revendeur et disponibilit\xE9 Ingram Micro via l'API Reseller v6 avec les identifiants OAuth2 de votre compte (num\xE9ro client et pays requis). Recherche par mot-cl\xE9 puis prix & disponibilit\xE9 par lot de 50 r\xE9f\xE9rences ; quantit\xE9 totale disponible, r\xE9f\xE9rence fabricant, UPC, marque. HT/TTC non pr\xE9cis\xE9 par l'API : r\xE9glage de la source. Impl\xE9ment\xE9 d'apr\xE8s la documentation publique, non exerc\xE9 en conditions r\xE9elles depuis cet environnement.",
-  method: "official_api",
-  access: "account",
-  capabilities: { search: true, catalog: true, stockQuantity: true },
-  credentialFields: [
-    { name: "client_id", label: "Client ID (application Ingram Micro)", secret: false },
-    { name: "client_secret", label: "Client Secret", secret: true },
-    { name: "customer_number", label: "Num\xE9ro client Ingram (IM-CustomerNumber)", secret: false, placeholder: "20-222222" },
-    { name: "country_code", label: "Code pays du compte (IM-CountryCode)", secret: false, placeholder: "FR" }
-  ],
-  configFields: [
-    { name: "sandbox", label: "Environnement bac \xE0 sable (true/false)", required: false, placeholder: "false" },
-    { name: "sender_id", label: "Identifiant d'exp\xE9diteur (IM-SenderID)", required: false, placeholder: INGRAM_DEFAULT_SENDER_ID },
-    { name: "language", label: "Langue des libell\xE9s (Accept-Language)", required: false, placeholder: INGRAM_DEFAULT_LANGUAGE },
-    { name: "max_pages", label: "Pages de catalogue par synchronisation", required: false, placeholder: String(INGRAM_MAX_CATALOG_PAGES) }
-  ],
-  verification: "fixtures",
-  async search(config, _query, rawQuery, ctx) {
-    const s = session2(config, ctx);
-    if (!s) return failedSearch("official_api", "Identifiants Ingram Micro incomplets (client_id, client_secret, num\xE9ro client, pays).");
-    const http = createAdapterHttp(ctx);
-    try {
-      const token = await accessToken(s, http, ctx);
-      const pageSize = settingInt(config.settings, "search_page_size", INGRAM_SEARCH_PAGE_SIZE, 1, INGRAM_PA_BATCH);
-      const url = catalogUrl(s.base, { pageNumber: 1, pageSize, keyword: rawQuery });
-      const res = await http.request(url, { headers: headersFor(s, token), accept: "application/json" });
-      const { items, recordsFound } = parseIngramCatalog(res.text);
-      http.countOffers(items.length);
-      const offers = items.length > 0 ? await priceAndAvailability(s, token, http, items, config) : [];
-      return { offers, method: "official_api", requests: http.requests, error: null, truncated: recordsFound !== null && recordsFound > items.length };
-    } catch (e) {
-      return failedSearch("official_api", errorMessage(e), http.requests);
-    }
-  },
-  async fetchCatalog(config, cursor, ctx) {
-    const s = session2(config, ctx);
-    if (!s) return { offers: [], method: "official_api", requests: [], nextCursor: null };
-    const page2 = Math.max(1, cursor ? Number(cursor) || 1 : 1);
-    const maxPages = settingInt(config.settings, "max_pages", INGRAM_MAX_CATALOG_PAGES, 1, 500);
-    const http = createAdapterHttp(ctx);
-    try {
-      const token = await accessToken(s, http, ctx);
-      const keyword = settingString(config.settings, "catalog_keyword");
-      const url = catalogUrl(s.base, { pageNumber: page2, pageSize: INGRAM_CATALOG_PAGE_SIZE, keyword });
-      const res = await http.request(url, { headers: headersFor(s, token), accept: "application/json" });
-      const { items, recordsFound } = parseIngramCatalog(res.text);
-      http.countOffers(items.length);
-      const offers = items.length > 0 ? await priceAndAvailability(s, token, http, items, config) : [];
-      const hasMore = items.length >= INGRAM_CATALOG_PAGE_SIZE && page2 < maxPages && (recordsFound === null || page2 * INGRAM_CATALOG_PAGE_SIZE < recordsFound);
-      return { offers, method: "official_api", requests: http.requests, nextCursor: hasMore ? String(page2 + 1) : null };
-    } catch (e) {
-      return { offers: [], method: "official_api", requests: http.requests.length > 0 ? http.requests : [{ url: catalogUrl(s.base, { pageNumber: page2, pageSize: INGRAM_CATALOG_PAGE_SIZE }), status: null, durationMs: 0, offers: 0, error: errorMessage(e) }], nextCursor: null };
-    }
-  },
-  async testConnection(config, ctx) {
-    const s = session2(config, ctx);
-    if (!s) return { ok: false, message: "Identifiants Ingram Micro incomplets (client_id, client_secret, num\xE9ro client, pays)." };
-    try {
-      const http = createAdapterHttp(ctx);
-      const token = await accessToken(s, http, ctx);
-      const res = await http.request(catalogUrl(s.base, { pageNumber: 1, pageSize: 1 }), { headers: headersFor(s, token), accept: "application/json", maxBytes: 2 * 1024 * 1024 });
-      const { recordsFound } = parseIngramCatalog(res.text);
-      return { ok: true, message: `Jeton OAuth2 obtenu et catalogue accessible${recordsFound !== null ? ` (${recordsFound} r\xE9f\xE9rence(s) annonc\xE9e(s))` : ""}.` };
-    } catch (e) {
-      const msg = errorMessage(e);
-      return { ok: false, message: /HTTP 401|HTTP 403/.test(msg) ? "Identifiants refus\xE9s (401/403) : v\xE9rifiez client_id / client_secret, le num\xE9ro client et le pays." : `Ingram Micro injoignable : ${msg}` };
-    }
-  }
-};
-
-// src/integrations/sourcing/ebay-browse/index.ts
-import { z as z20 } from "npm:zod@4.6.5";
-init_env();
-
-// src/domain/sourcing/query-parser.ts
-init_normalizer();
-init_dictionaries();
-function parseQuery2(input) {
-  const raw = (input ?? "").trim();
-  const normalized = normalizeProduct(raw);
-  const structuredModel = normalized.model && !normalized.inferred.includes("model") ? normalized.model : null;
-  const criteria = {
-    brand: normalized.brand,
-    model: structuredModel,
-    storage: normalized.storage,
-    color: normalized.color,
-    grade: normalized.grade,
-    condition: normalized.inferred.includes("condition") ? "unknown" : normalized.condition
-  };
-  const tokens = normalizeText(raw).split(" ").filter((t) => t.length >= 2 && !NOISE_TOKENS.has(t));
-  let kind = "text";
-  if (!raw) kind = "empty";
-  else if (normalized.ean) kind = "ean";
-  else if (normalized.mpn && !structuredModel) kind = "mpn";
-  else if (structuredModel || normalized.brand && (normalized.storage || normalized.color || normalized.grade)) kind = "structured";
-  return {
-    raw,
-    kind,
-    ean: normalized.ean,
-    mpn: normalized.mpn,
-    criteria,
-    tokens,
-    freeText: normalized.remainingText,
-    normalized
-  };
-}
-
-// src/integrations/sourcing/ebay-browse/index.ts
-var EBAY_BROWSE_DEFAULT_MARKETPLACE = "EBAY_FR";
-var EBAY_BROWSE_DEFAULT_LIMIT = 30;
-var tokenSchema = z20.object({ access_token: z20.string().min(1), expires_in: z20.number().int().positive() });
-var amountSchema2 = z20.object({ value: z20.string(), currency: z20.string() }).partial();
-var itemSummarySchema = z20.object({
-  itemId: z20.string(),
-  title: z20.string(),
-  price: amountSchema2.optional(),
-  condition: z20.string().optional(),
-  conditionId: z20.string().optional(),
-  itemWebUrl: z20.string().optional(),
-  itemLocation: z20.object({ country: z20.string().optional(), postalCode: z20.string().optional() }).partial().optional(),
-  seller: z20.object({ username: z20.string().optional(), feedbackPercentage: z20.string().optional(), feedbackScore: z20.number().optional() }).partial().optional(),
-  shippingOptions: z20.array(z20.object({ shippingCost: amountSchema2.optional(), shippingCostType: z20.string().optional() }).partial()).optional(),
-  buyingOptions: z20.array(z20.string()).optional(),
-  epid: z20.string().optional(),
-  itemGroupType: z20.string().optional()
-});
-var searchResponseSchema = z20.object({ total: z20.number().optional(), itemSummaries: z20.array(z20.unknown()).optional() });
-var appToken = null;
-function apiBase(env) {
-  return env.EBAY_ENV === "sandbox" ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
-}
-function base64(s) {
-  return typeof btoa === "function" ? btoa(s) : Buffer.from(s, "utf8").toString("base64");
-}
-async function getAppToken(ctx) {
-  const env = ebayEnv();
-  if (!env) throw new Error("Cl\xE9s de l'application eBay absentes du serveur (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_RU_NAME).");
-  const key2 = `${env.EBAY_ENV}:${env.EBAY_CLIENT_ID}`;
-  const now = (ctx.now ?? (() => /* @__PURE__ */ new Date()))().getTime();
-  if (appToken && appToken.key === key2 && appToken.expiresAt - 5 * 6e4 > now) return appToken.token;
-  const fetchImpl = ctx.fetchImpl ?? fetch;
-  const res = await fetchImpl(`${apiBase(env)}/identity/v1/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${base64(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`)}` },
-    body: new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" }).toString()
-  });
-  const json2 = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(res.status === 401 ? "eBay refuse les cl\xE9s de l'application (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET)." : `Jeton d'application eBay refus\xE9 (HTTP ${res.status}).`);
-  const t = tokenSchema.parse(json2);
-  appToken = { token: t.access_token, expiresAt: now + t.expires_in * 1e3, key: key2 };
-  return t.access_token;
-}
-function money2(a) {
-  const v2 = a?.value !== void 0 ? Number(a.value) : NaN;
-  return { value: Number.isFinite(v2) ? v2 : null, currency: a?.currency && /^[A-Z]{3}$/.test(a.currency) ? a.currency : null };
-}
-function ebayCondition(item) {
-  const id = item.conditionId ?? "";
-  const fromTitle = inferConditionFromText(item.title);
-  if (id === "1000") return { condition: "new", grade: null };
-  if (["2000", "2010", "2020", "2030", "2500"].includes(id)) return { condition: "refurbished", grade: fromTitle.grade };
-  if (["3000", "4000", "5000", "6000", "7000"].includes(id)) return { condition: "used", grade: fromTitle.grade };
-  const inferred = inferConditionFromText(`${item.condition ?? ""} ${item.title}`);
-  return { condition: inferred.condition, grade: inferred.grade };
-}
-function mapEbayItem(item, requestUrl) {
-  const price = money2(item.price);
-  if (price.value === null || price.value <= 0) return null;
-  const shipping = item.shippingOptions?.[0];
-  const ship = money2(shipping?.shippingCost);
-  const cond = ebayCondition(item);
-  const lot = /\blots?\b|\bx\s?\d{2,}\b|\d{2,}\s?(pcs|pi[eè]ces|unit[ée]s)\b/i.test(item.title);
-  return {
-    externalOfferId: item.itemId,
-    externalProductId: item.epid ?? null,
-    title: item.title,
-    price: price.value,
-    currency: price.currency,
-    // eBay affiche des prix TTC pour les acheteurs particuliers en France (TVA incluse « where applicable »).
-    taxType: "unknown",
-    shippingCost: ship.value,
-    shippingCurrency: ship.currency,
-    country: item.itemLocation?.country && /^[A-Z]{2}$/.test(item.itemLocation.country) ? item.itemLocation.country : null,
-    url: item.itemWebUrl ?? null,
-    condition: cond.condition,
-    grade: cond.grade,
-    stockStatus: "unknown",
-    availableQuantity: null,
-    raw: {
-      request_url: requestUrl,
-      seller: item.seller ?? null,
-      condition_label: item.condition ?? null,
-      condition_id: item.conditionId ?? null,
-      buying_options: item.buyingOptions ?? null,
-      shipping_cost_type: shipping?.shippingCostType ?? null,
-      is_lot: lot,
-      price_basis: "prix affich\xE9 sur eBay (marketplace et livraison France) \u2014 offre publi\xE9e, quantit\xE9 non fournie par la recherche"
-    }
-  };
-}
-function ebaySearchUrl(env, rawQuery, settings) {
-  const url = new URL(`${apiBase(env)}/buy/browse/v1/item_summary/search`);
-  url.searchParams.set("q", rawQuery.trim().slice(0, 100));
-  url.searchParams.set("limit", String(settingInt(settings, "limit", EBAY_BROWSE_DEFAULT_LIMIT, 1, 100)));
-  const delivery = settingString(settings, "delivery_country") ?? "FR";
-  const filters = [`deliveryCountry:${delivery}`, "buyingOptions:{FIXED_PRICE|BEST_OFFER}"];
-  const categories = settingString(settings, "category_ids");
-  if (categories) url.searchParams.set("category_ids", categories);
-  url.searchParams.set("filter", filters.join(","));
-  return url.toString();
-}
-var ebayBrowseAdapter = {
-  key: "ebay-browse",
-  label: "eBay \u2014 annonces publi\xE9es (API Browse officielle)",
-  description: "Recherche les annonces eBay (marketplace FR, livraison en France) via l'API officielle Buy Browse avec les cl\xE9s de l'application du serveur : titre, prix, \xE9tat/grade (programme reconditionn\xE9 eBay), frais de port affich\xE9s, vendeur, lien. La quantit\xE9 disponible n'est pas fournie par la recherche (inconnue).",
-  method: "official_api",
-  access: "public",
-  capabilities: { search: true, catalog: false, stockQuantity: false },
-  credentialFields: [],
-  configFields: [
-    { name: "marketplace", label: "Marketplace eBay", required: false, placeholder: EBAY_BROWSE_DEFAULT_MARKETPLACE },
-    { name: "category_ids", label: "Cat\xE9gories eBay (identifiants, facultatif)", required: false }
-  ],
-  verification: "fixtures",
-  async search(config, _query, rawQuery, ctx) {
-    const env = ebayEnv();
-    if (!env) return failedSearch("official_api", "Cl\xE9s de l'application eBay non configur\xE9es sur le serveur : recherche eBay indisponible.");
-    if (!rawQuery.trim()) return failedSearch("official_api", "Requ\xEAte vide.");
-    const http = createAdapterHttp(ctx);
-    const url = ebaySearchUrl(env, rawQuery, config.settings);
-    try {
-      const token = await getAppToken(ctx);
-      const marketplace = settingString(config.settings, "marketplace") ?? EBAY_BROWSE_DEFAULT_MARKETPLACE;
-      const res = await http.request(url, { accept: "application/json", headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": marketplace, "Accept-Language": "fr-FR" } });
-      const body = searchResponseSchema.parse(JSON.parse(res.text));
-      const offers = [];
-      for (const raw of body.itemSummaries ?? []) {
-        const parsed = itemSummarySchema.safeParse(raw);
-        if (!parsed.success) continue;
-        const offer = mapEbayItem(parsed.data, url);
-        if (offer) offers.push(offer);
-      }
-      http.countOffers(offers.length);
-      return { offers, method: "official_api", requests: http.requests, error: null, truncated: (body.total ?? 0) > offers.length };
-    } catch (e) {
-      return failedSearch("official_api", `eBay : ${errorMessage(e)}`, http.requests);
-    }
-  },
-  async testConnection(config, ctx) {
-    const r = await ebayBrowseAdapter.search(config, parseQuery2("iphone"), "iphone", ctx);
-    return r.error ? { ok: false, message: r.error } : { ok: true, message: `API eBay joignable : ${r.offers.length} annonce(s) pour \xAB iphone \xBB.` };
-  }
-};
-
-// src/integrations/sourcing/sitemap-jsonld/index.ts
-init_normalizer();
-
-// src/services/sourcing/crawler/robots.ts
-function parseRobotsTxt(text2) {
-  const groups = [];
-  const sitemaps = [];
-  let current = null;
-  let lastWasAgent = false;
-  for (const rawLine of text2.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, "").trim();
-    if (!line) continue;
-    const idx = line.indexOf(":");
-    if (idx < 0) continue;
-    const key2 = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-    if (key2 === "user-agent") {
-      if (!current || !lastWasAgent) {
-        current = { agents: [], allow: [], disallow: [], crawlDelay: null };
-        groups.push(current);
-      }
-      current.agents.push(value.toLowerCase());
-      lastWasAgent = true;
-      continue;
-    }
-    lastWasAgent = false;
-    if (key2 === "sitemap") {
-      sitemaps.push(value);
-      continue;
-    }
-    if (!current) continue;
-    if (key2 === "allow") current.allow.push(value);
-    else if (key2 === "disallow") current.disallow.push(value);
-    else if (key2 === "crawl-delay") {
-      const n = Number(value.replace(",", "."));
-      if (Number.isFinite(n) && n >= 0) current.crawlDelay = n;
-    }
-  }
-  return { groups, sitemaps };
-}
-function patternToRegex(pattern) {
-  const anchored = pattern.endsWith("$");
-  const body = (anchored ? pattern.slice(0, -1) : pattern).split("*").map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
-  return new RegExp(`^${body}${anchored ? "$" : ""}`);
-}
-function userAgentToken(userAgent) {
-  return (userAgent.split(/[\s/]/)[0] ?? userAgent).toLowerCase();
-}
-function selectGroup(rules, userAgent) {
-  const token = userAgentToken(userAgent);
-  let best = null;
-  let bestLen = -1;
-  for (const g of rules.groups) {
-    for (const a of g.agents) {
-      if (a !== "*" && token.startsWith(a) && a.length > bestLen) {
-        best = g;
-        bestLen = a.length;
-      }
-    }
-  }
-  if (best) return best;
-  return rules.groups.find((g) => g.agents.includes("*")) ?? null;
-}
-function evaluateRobots(rules, userAgent, path) {
-  const group = selectGroup(rules, userAgent);
-  if (!group) return { allowed: true, crawlDelay: null, matchedAgent: null, rule: null };
-  const p = path.startsWith("/") ? path : `/${path}`;
-  let bestLen = -1;
-  let allowed = true;
-  let rule = null;
-  const consider = (patterns, isAllow) => {
-    for (const pat of patterns) {
-      if (pat === "") continue;
-      if (!patternToRegex(pat).test(p)) continue;
-      const len = pat.length;
-      if (len > bestLen || len === bestLen && isAllow) {
-        bestLen = len;
-        allowed = isAllow;
-        rule = `${isAllow ? "Allow" : "Disallow"}: ${pat}`;
-      }
-    }
-  };
-  consider(group.disallow, false);
-  consider(group.allow, true);
-  return { allowed, crawlDelay: group.crawlDelay, matchedAgent: group.agents[0] ?? null, rule };
-}
-async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e4) {
-  const empty = { groups: [], sitemaps: [] };
-  let origin;
-  try {
-    origin = new URL(baseUrl).origin;
-  } catch {
-    return { status: "error", rules: empty, httpStatus: null, error: "URL de base invalide." };
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetchImpl(`${origin}/robots.txt`, { headers: { "User-Agent": userAgent, Accept: "text/plain" }, redirect: "follow", signal: controller.signal });
-    if (res.status === 404 || res.status === 410) return { status: "missing", rules: empty, httpStatus: res.status, error: null };
-    if (!res.ok) return { status: "error", rules: empty, httpStatus: res.status, error: `robots.txt inaccessible (HTTP ${res.status}).` };
-    const text2 = await res.text();
-    return { status: "ok", rules: parseRobotsTxt(text2.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
-  } catch (e) {
-    return { status: "error", rules: empty, httpStatus: null, error: e instanceof Error ? e.message : "Erreur r\xE9seau." };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch) {
-  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl);
-  if (fetched.status === "error") {
-    return { allowed: false, robotsStatus: "error", crawlDelay: null, disallowedUrls: urls, details: fetched.error ?? "robots.txt inaccessible." };
-  }
-  if (fetched.status === "missing") {
-    return { allowed: true, robotsStatus: "missing", crawlDelay: null, disallowedUrls: [], details: "Aucun robots.txt : aucune restriction d\xE9clar\xE9e (les CGU du site restent \xE0 v\xE9rifier)." };
-  }
-  const disallowed = [];
-  let crawlDelay = null;
-  for (const u of urls) {
-    let path = "/";
-    try {
-      const parsed = new URL(u);
-      path = parsed.pathname + parsed.search;
-    } catch {
-      disallowed.push(u);
-      continue;
-    }
-    const d = evaluateRobots(fetched.rules, userAgent, path);
-    if (d.crawlDelay !== null) crawlDelay = d.crawlDelay;
-    if (!d.allowed) disallowed.push(u);
-  }
-  const group = selectGroup(fetched.rules, userAgent);
-  const agent = group?.agents[0] ?? "*";
-  return {
-    allowed: disallowed.length === 0,
-    robotsStatus: "ok",
-    crawlDelay,
-    disallowedUrls: disallowed,
-    details: disallowed.length === 0 ? `robots.txt lu (groupe \xAB ${agent} \xBB) : toutes les URLs sont autoris\xE9es${crawlDelay !== null ? `, d\xE9lai demand\xE9 ${crawlDelay} s` : ""}.` : `robots.txt (groupe \xAB ${agent} \xBB) interdit ${disallowed.length} URL(s) : le crawl est refus\xE9.`
-  };
-}
-
-// src/integrations/sourcing/sitemap-jsonld/index.ts
-var SITEMAP_MAX_CHILDREN = 6;
-var SITEMAP_MAX_URLS = 4e4;
-var SITEMAP_DEFAULT_PAGES = 3;
-var SITEMAP_CACHE_TTL_MS = 6 * 36e5;
-var cache2 = /* @__PURE__ */ new Map();
-function parseSitemapXml(xml) {
-  const kind = /<sitemapindex[\s>]/i.test(xml) ? "index" : /<urlset[\s>]/i.test(xml) ? "urlset" : "unknown";
-  const locs = [];
-  const re = /<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi;
-  let m;
-  while ((m = re.exec(xml)) && locs.length < SITEMAP_MAX_URLS) locs.push(m[1].replace(/&amp;/g, "&"));
-  return { kind, locs };
-}
-function rankChildSitemaps(locs) {
-  const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer/i;
-  const score = (u) => /product|produit|(^|[^a-z])items?([^a-z]|$)/i.test(u) ? 0 : 1;
-  return locs.filter((u) => !skip.test(u) && !/\.gz($|\?)/i.test(u)).sort((a, b) => score(a) - score(b));
-}
-var STOP = /* @__PURE__ */ new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
-function queryTokens(rawQuery) {
-  return [...new Set(normalizeText(rawQuery).split(/[^a-z0-9]+/).filter((t) => t.length >= 2 && !STOP.has(t)))].slice(0, 8);
-}
-function matchProductUrls(urls, rawQuery, max) {
-  const tokens = queryTokens(rawQuery);
-  if (tokens.length === 0) return [];
-  const need = Math.min(2, tokens.length);
-  const scored = [];
-  for (const url of urls) {
-    let path;
-    try {
-      path = normalizeText(decodeURIComponent(new URL(url).pathname));
-    } catch {
-      continue;
-    }
-    const parts = new Set(path.split(/[^a-z0-9]+/));
-    let matched = 0;
-    let score = 0;
-    for (const t of tokens) {
-      if (!parts.has(t)) continue;
-      matched += 1;
-      score += /^\d+$/.test(t) ? 1.5 : 1;
-    }
-    if (matched >= need) scored.push({ url, score, len: path.length });
-  }
-  scored.sort((a, b) => b.score - a.score || a.len - b.len);
-  return scored.slice(0, max).map((s) => s.url);
-}
-async function loadIndex(base, ctx, http, settings) {
-  const now = (ctx.now ?? (() => /* @__PURE__ */ new Date()))().getTime();
-  const hit = cache2.get(base);
-  if (hit && now - hit.at < SITEMAP_CACHE_TTL_MS) return hit;
-  let robots = null;
-  try {
-    const r = await http.request(`${base}/robots.txt`, { accept: "text/plain" });
-    robots = parseRobotsTxt(r.text.slice(0, 512 * 1024));
-  } catch {
-    robots = null;
-  }
-  const configured = settingString(settings, "sitemap_url");
-  const roots = configured ? [configured] : robots?.sitemaps.length ? robots.sitemaps.slice(0, 3) : [`${base}/sitemap.xml`];
-  const urls = [];
-  const read = [];
-  const queue = [...roots];
-  while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
-    const sm = queue.shift();
-    if (new URL(sm).host !== new URL(base).host) continue;
-    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 6e6 });
-    read.push(sm);
-    const parsed = parseSitemapXml(res.text);
-    if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
-    else for (const u of parsed.locs) if (urls.length < SITEMAP_MAX_URLS) urls.push(u);
-  }
-  const index = { at: now, urls, robots, sitemaps: read };
-  if (urls.length > 0) cache2.set(base, index);
-  return index;
-}
-function allowedByRobots(robots, userAgent, url) {
-  if (!robots) return true;
-  const u = new URL(url);
-  return evaluateRobots(robots, userAgent, u.pathname + u.search).allowed;
-}
-var sitemapJsonLdAdapter = {
-  key: "sitemap-jsonld",
-  label: "Boutique publique (sitemap + donn\xE9es structur\xE9es)",
-  description: "Trouve les fiches produit correspondant \xE0 la recherche dans le plan du site (sitemap publi\xE9 pour les robots), puis lit leurs donn\xE9es structur\xE9es schema.org (prix, devise, disponibilit\xE9, \xE9tat, marque, SKU/GTIN). Chaque URL est v\xE9rifi\xE9e contre robots.txt ; 3 fiches par recherche, une requ\xEAte \xE0 la fois.",
-  method: "public_html",
-  access: "public",
-  capabilities: { search: true, catalog: false, stockQuantity: false },
-  credentialFields: [],
-  configFields: [
-    { name: "sitemap_url", label: "URL du sitemap (facultatif)", required: false, help: "Par d\xE9faut : sitemaps d\xE9clar\xE9s dans robots.txt, sinon /sitemap.xml." },
-    { name: "max_pages", label: "Fiches lues par recherche", required: false, placeholder: String(SITEMAP_DEFAULT_PAGES) }
-  ],
-  searchBudgetMs: 25e3,
-  verification: "fixtures",
-  urlsForQuery(config) {
-    if (!config.baseUrl) return [];
-    const base = trimSlash(config.baseUrl);
-    return [settingString(config.settings, "sitemap_url") ?? `${base}/sitemap.xml`];
-  },
-  async search(config, _query, rawQuery, ctx) {
-    if (!config.baseUrl) return failedSearch("public_html", "URL de base de la boutique manquante.");
-    const base = trimSlash(config.baseUrl);
-    const http = createAdapterHttp(ctx);
-    try {
-      const index = await loadIndex(base, ctx, http, config.settings);
-      if (index.urls.length === 0) return failedSearch("public_html", "Plan du site (sitemap) introuvable ou vide : la boutique n'est pas interrogeable de cette fa\xE7on.", http.requests);
-      const max = settingInt(config.settings, "max_pages", SITEMAP_DEFAULT_PAGES, 1, 6);
-      const candidates = matchProductUrls(index.urls, rawQuery, max * 2).filter((u) => new URL(u).host === new URL(base).host && allowedByRobots(index.robots, ctx.userAgent, u));
-      if (candidates.length === 0) return { offers: [], method: "public_html", requests: http.requests, error: null, truncated: false };
-      const offers = [];
-      let pages = 0;
-      for (const url of candidates) {
-        if (pages >= max || http.exhausted()) break;
-        try {
-          const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
-          pages += 1;
-          const found = parseJsonLdPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
-          http.countOffers(found.length);
-          offers.push(...found);
-        } catch {
-          pages += 1;
-        }
-      }
-      return { offers, method: "public_html", requests: http.requests, error: null, truncated: candidates.length > pages };
-    } catch (e) {
-      return failedSearch("public_html", errorMessage(e), http.requests);
-    }
-  },
-  async testConnection(config, ctx) {
-    const r = await sitemapJsonLdAdapter.search(config, parseQuery2("iphone"), "iphone", ctx);
-    return r.error ? { ok: false, message: r.error } : { ok: true, message: `${r.offers.length} offre(s) structur\xE9e(s) lue(s) pour \xAB iphone \xBB.` };
-  }
-};
-
-// src/integrations/sourcing/registry.ts
-var SOURCE_ADAPTERS = [jsonLdPublicAdapter, shopifyStorefrontAdapter, wooCommerceStoreAdapter, googleMerchantFeedAdapter, bigbuyAdapter, ingramMicroAdapter, ebayBrowseAdapter, sitemapJsonLdAdapter];
-function listSourceAdapters() {
-  return SOURCE_ADAPTERS;
-}
-function getSourceAdapter(key2) {
-  if (!key2) return null;
-  return SOURCE_ADAPTERS.find((a) => a.key === key2) ?? null;
-}
-function listAccountAdapters() {
-  return SOURCE_ADAPTERS.filter((a) => a.access === "account");
-}
-function listAdapterHtmlParsers() {
-  const out = [];
-  for (const a of SOURCE_ADAPTERS) {
-    if (a.htmlParser && !out.some((p) => p.key === a.htmlParser.key)) out.push(a.htmlParser);
-  }
-  return out;
-}
+// src/features/sourcing/status-queries.ts
+init_registry2();
 
 // src/services/sourcing/adapter-runtime.ts
 function configObject(config) {
@@ -8237,6 +13147,7 @@ var offerStatusSchema = z21.object({ offer_id: z21.string().uuid(), status: z21.
 // src/services/sourcing/search.ts
 init_empty();
 init_offer_query();
+init_query_parser();
 init_normalizer();
 
 // src/domain/sourcing/pricing.ts
@@ -8343,17 +13254,23 @@ init_empty();
 init_admin();
 init_env();
 init_logger();
+init_query_parser();
 init_normalizer();
+init_registry2();
+init_robots();
 init_offer_storage();
 
 // src/services/sourcing/supplier-connectors.ts
 init_empty();
 init_admin();
+init_crypto();
 init_env();
 init_errors();
 init_logger();
 
 // src/integrations/suppliers/core.ts
+init_query_parser();
+init_registry2();
 var DEFAULT_CONFIG = { baseUrl: null, settings: {}, defaultCurrency: null, defaultTaxType: "unknown", defaultCountry: null };
 function accessConditionsOf(adapter) {
   return `Acc\xE8s r\xE9serv\xE9 aux titulaires d'un compte ${adapter.label.replace(/\s*\(.*\)$/, "")} : identifiants fournis par le vendeur, chiffr\xE9s c\xF4t\xE9 serveur, utilis\xE9s uniquement pour l'API officielle (${adapter.method === "official_api" ? "API officielle" : "compte fournisseur"}). ${adapter.verification === "fixtures" ? "Connecteur impl\xE9ment\xE9 d'apr\xE8s la documentation publique et v\xE9rifi\xE9 sur fixtures uniquement : non exerc\xE9 en conditions r\xE9elles depuis cet environnement." : ""}`.trim();
@@ -9730,7 +14647,9 @@ init_admin();
 init_env();
 
 // src/services/sourcing/discovery/candidate-analyzer.ts
-init_http();
+init_http2();
+init_robots();
+init_jsonld_parser();
 var SUPPLIER_TYPE_LABEL = {
   wholesaler: "Grossiste",
   distributor: "Distributeur",
@@ -10162,7 +15081,7 @@ async function probeCandidate(candidate, deps) {
 }
 
 // src/services/sourcing/discovery/web-search-providers.ts
-init_http();
+init_http2();
 import { z as z23 } from "npm:zod@4.6.5";
 var DISCOVERY_DISABLED_MESSAGE = "D\xE9couverte d\xE9sactiv\xE9e : aucune API de recherche configur\xE9e";
 var MAX_DISCOVERY_QUERIES = 6;
@@ -10965,6 +15884,8 @@ init_empty();
 init_admin();
 init_errors();
 init_logger();
+init_errors2();
+init_registry();
 
 // src/integrations/ebay/cursor.ts
 var ORDERS_OVERLAP_HOURS = 3;
@@ -11010,310 +15931,16 @@ function resolveOrdersCursor(window, progress, previousCursor) {
   return candidate;
 }
 
-// src/services/channels/connection-store.ts
-init_empty();
-init_admin();
-init_errors();
-init_logger();
-
-// src/services/sync/alerts.ts
-init_empty();
-init_logger();
-var log13 = createLogger("ALERTS");
-async function upsertAlert(admin, input) {
-  const { data: existing } = await admin.from("alerts").select("id").eq("organization_id", input.organizationId).eq("dedupe_key", input.dedupeKey).neq("status", "resolved").maybeSingle();
-  if (existing) {
-    const { error: error2 } = await admin.from("alerts").update({ title: input.title, message: input.message, severity: input.severity, action_href: input.actionHref ?? null }).eq("id", existing.id);
-    if (error2) log13.warn("mise \xE0 jour d'alerte impossible", { dedupeKey: input.dedupeKey, error: error2.message });
-    return;
-  }
-  const { error } = await admin.from("alerts").insert({
-    organization_id: input.organizationId,
-    type: input.type,
-    severity: input.severity,
-    title: input.title,
-    message: input.message,
-    dedupe_key: input.dedupeKey,
-    entity_type: input.entityType ?? null,
-    entity_id: input.entityId ?? null,
-    action_href: input.actionHref ?? null,
-    status: "open"
-  });
-  if (error && error.code !== "23505") log13.warn("cr\xE9ation d'alerte impossible", { dedupeKey: input.dedupeKey, error: error.message });
-}
-async function resolveAlerts(admin, organizationId, dedupeKeys) {
-  if (dedupeKeys.length === 0) return;
-  const { error } = await admin.from("alerts").update({ status: "resolved", resolved_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", organizationId).in("dedupe_key", dedupeKeys).neq("status", "resolved");
-  if (error) log13.warn("r\xE9solution d'alertes impossible", { dedupeKeys, error: error.message });
-}
-var connectionExpiredKey = (connectionId) => `connection_expired:${connectionId}`;
-var syncFailedKey = (connectionId) => `sync_failed:${connectionId}`;
-
-// src/services/sync/context.ts
-init_empty();
-init_sanitize();
-function sanitizeDetails(details) {
-  if (!details) return {};
-  const cleaned = scrubDeep(details);
-  const json2 = JSON.stringify(cleaned);
-  if (json2.length <= 4e3) return cleaned;
-  return { truncated: true, preview: json2.slice(0, 3900) };
-}
-function sanitizeMessage(message, max = 2e3) {
-  return scrubSecrets(message).slice(0, max);
-}
-function chunk2(items, size) {
-  const out = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-
-// src/services/channels/connection-store.ts
-var log14 = createLogger("CONNECTIONS");
-var PROVIDER_LABEL = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "Ventes manuelles" };
-async function loadConnection(connectionId) {
-  const admin = createAdminSupabaseClient();
-  const { data, error } = await admin.from("channel_connections").select("*").eq("id", connectionId).maybeSingle();
-  if (error) throw fromPostgrestError(error);
-  return data ?? null;
-}
-async function loadConnectionForOrg(connectionId, organizationId) {
-  const admin = createAdminSupabaseClient();
-  const { data, error } = await admin.from("channel_connections").select("*").eq("id", connectionId).eq("organization_id", organizationId).maybeSingle();
-  if (error) throw fromPostgrestError(error);
-  return data ?? null;
-}
-async function listDueConnections(now = /* @__PURE__ */ new Date()) {
-  const admin = createAdminSupabaseClient();
-  const { data, error } = await admin.from("channel_connections").select("*").in("status", ["connected", "error"]).eq("auto_sync", true).order("last_sync_at", { ascending: true, nullsFirst: true }).limit(200);
-  if (error) throw fromPostgrestError(error);
-  return (data ?? []).filter((c) => {
-    if (!c.last_sync_at) return true;
-    const due = new Date(c.last_sync_at).getTime() + c.sync_interval_minutes * 6e4;
-    return due <= now.getTime();
-  });
-}
-async function findConnectionsByExternalAccount(provider, account) {
-  const admin = createAdminSupabaseClient();
-  const found = /* @__PURE__ */ new Map();
-  if (account.userId) {
-    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_account_id", account.userId);
-    if (error) throw fromPostgrestError(error);
-    for (const c of data ?? []) found.set(c.id, c);
-  }
-  if (account.username) {
-    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_username", account.username);
-    if (error) throw fromPostgrestError(error);
-    for (const c of data ?? []) found.set(c.id, c);
-  }
-  return Array.from(found.values());
-}
-async function saveConnectionTokens(connectionId, tokens) {
-  const admin = createAdminSupabaseClient();
-  const { error: secretsError } = await admin.from("channel_connection_secrets").upsert(
-    {
-      connection_id: connectionId,
-      access_token_enc: encryptSecret(tokens.accessToken),
-      ...tokens.refreshToken ? { refresh_token_enc: encryptSecret(tokens.refreshToken) } : {},
-      key_version: 1,
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
-    },
-    { onConflict: "connection_id" }
-  );
-  if (secretsError) throw fromPostgrestError(secretsError);
-  const { error } = await admin.from("channel_connections").update({
-    token_expires_at: tokens.accessTokenExpiresAt.toISOString(),
-    ...tokens.refreshTokenExpiresAt ? { refresh_token_expires_at: tokens.refreshTokenExpiresAt.toISOString() } : {}
-  }).eq("id", connectionId);
-  if (error) throw fromPostgrestError(error);
-}
-async function upsertOAuthConnection(input) {
-  const admin = createAdminSupabaseClient();
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  const label = PROVIDER_LABEL[input.provider];
-  const { data: existingList, error: listError } = await admin.from("channel_connections").select("*").eq("organization_id", input.organizationId).eq("provider", input.provider).order("created_at", { ascending: true });
-  if (listError) throw fromPostgrestError(listError);
-  const existing = (existingList ?? []).find((c) => c.external_account_id === input.account.externalAccountId) ?? (existingList ?? []).find((c) => !c.external_account_id && c.status === "pending") ?? null;
-  const patch = {
-    status: "connected",
-    environment: input.environment,
-    external_account_id: input.account.externalAccountId,
-    external_username: input.account.username,
-    scopes: input.scopes,
-    connected_at: nowIso,
-    disconnected_at: null,
-    last_error: null,
-    token_expires_at: input.tokens.accessTokenExpiresAt.toISOString(),
-    refresh_token_expires_at: input.tokens.refreshTokenExpiresAt?.toISOString() ?? null
-  };
-  let connection;
-  let isNew = false;
-  if (existing) {
-    const { data, error } = await admin.from("channel_connections").update(patch).eq("id", existing.id).select("*").single();
-    if (error) throw fromPostgrestError(error);
-    connection = data;
-    await admin.from("sales_channels").update({ name: `${label} \xB7 ${input.account.username}`, is_active: true }).eq("id", existing.sales_channel_id);
-  } else {
-    const { data: org } = await admin.from("organizations").select("default_currency").eq("id", input.organizationId).maybeSingle();
-    const { data: channel, error: channelError } = await admin.from("sales_channels").insert({ organization_id: input.organizationId, provider: input.provider, name: `${label} \xB7 ${input.account.username}`, currency: org?.default_currency ?? "EUR" }).select("*").single();
-    if (channelError) throw fromPostgrestError(channelError);
-    const { data, error } = await admin.from("channel_connections").insert({ organization_id: input.organizationId, sales_channel_id: channel.id, provider: input.provider, ...patch }).select("*").single();
-    if (error) throw fromPostgrestError(error);
-    connection = data;
-    isNew = true;
-  }
-  await saveConnectionTokens(connection.id, input.tokens);
-  await resolveAlerts(admin, input.organizationId, [connectionExpiredKey(connection.id), syncFailedKey(connection.id)]);
-  log14.info("connexion enregistr\xE9e", { provider: input.provider, connectionId: connection.id, orgId: input.organizationId, isNew, username: input.account.username });
-  return { connection, isNew };
-}
-async function markConnectionExpired(connectionId, reason) {
-  const admin = createAdminSupabaseClient();
-  const cleanReason = sanitizeMessage(reason, 500);
-  const { data } = await admin.from("channel_connections").update({ status: "expired", last_error: cleanReason }).eq("id", connectionId).neq("status", "disconnected").select("organization_id, provider, external_username").maybeSingle();
-  if (data) {
-    await upsertAlert(admin, {
-      organizationId: data.organization_id,
-      type: "connection_expired",
-      severity: "critical",
-      title: `Connexion ${PROVIDER_LABEL[data.provider]} expir\xE9e`,
-      message: `${cleanReason} Reconnectez votre compte ${PROVIDER_LABEL[data.provider]}${data.external_username ? ` (${data.external_username})` : ""} pour reprendre la synchronisation.`,
-      dedupeKey: connectionExpiredKey(connectionId),
-      entityType: "channel_connection",
-      entityId: connectionId,
-      actionHref: "/settings/integrations"
-    });
-    log14.warn("connexion marqu\xE9e expir\xE9e", { connectionId, reason: cleanReason });
-  }
-}
-function expired(connectionId, message, details = {}) {
-  return new ConnectorError("AUTH_EXPIRED", "ebay", message, { details: { connectionId, ...details }, retryable: false });
-}
-var ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 6e4;
-var inflightRefresh = /* @__PURE__ */ new Map();
-async function loadTokenState(connectionId) {
-  const admin = createAdminSupabaseClient();
-  const connection = await loadConnection(connectionId);
-  if (!connection) throw new AppError("NOT_FOUND", "Connexion introuvable.");
-  const { data: secrets, error } = await admin.from("channel_connection_secrets").select("access_token_enc, refresh_token_enc").eq("connection_id", connectionId).maybeSingle();
-  if (error) throw fromPostgrestError(error);
-  return { connection, secrets: secrets ?? null };
-}
-function accessTokenIsFresh(state, now) {
-  const expiresAt = state.connection.token_expires_at ? new Date(state.connection.token_expires_at).getTime() : 0;
-  return Boolean(state.secrets?.access_token_enc) && expiresAt - now > ACCESS_TOKEN_REFRESH_MARGIN_MS;
-}
-async function getValidAccessToken(connectionId, options = {}) {
-  const state = await loadTokenState(connectionId);
-  const { connection, secrets } = state;
-  if (connection.status === "disconnected") {
-    throw expired(connectionId, "Cette connexion a \xE9t\xE9 d\xE9connect\xE9e : reconnectez votre compte pour reprendre la synchronisation.");
-  }
-  if (!secrets || !secrets.access_token_enc && !secrets.refresh_token_enc) {
-    await markConnectionExpired(connectionId, "Aucun token enregistr\xE9 pour cette connexion.");
-    throw expired(connectionId, "Impossible de synchroniser : aucun token d'autorisation enregistr\xE9. Reconnectez votre compte.");
-  }
-  const now = Date.now();
-  if (!options.forceRefresh && accessTokenIsFresh(state, now) && secrets.access_token_enc) {
-    return safeDecrypt(connectionId, secrets.access_token_enc);
-  }
-  if (!secrets.refresh_token_enc) {
-    await markConnectionExpired(connectionId, "Le token d'acc\xE8s a expir\xE9 et aucun refresh token n'est disponible.");
-    throw expired(connectionId, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9.");
-  }
-  if (connection.refresh_token_expires_at && new Date(connection.refresh_token_expires_at).getTime() <= now) {
-    await markConnectionExpired(connectionId, "L'autorisation eBay (refresh token, validit\xE9 ~18 mois) a expir\xE9.");
-    throw expired(connectionId, "Impossible de synchroniser eBay : l'autorisation accord\xE9e a expir\xE9 (refresh token de 18 mois). Reconnectez votre compte.");
-  }
-  const pending = inflightRefresh.get(connectionId);
-  if (pending) return pending;
-  const refreshEnc = secrets.refresh_token_enc;
-  const promise = refreshAndStore(connection, refreshEnc).finally(() => inflightRefresh.delete(connectionId));
-  inflightRefresh.set(connectionId, promise);
-  return promise;
-}
-async function refreshAndStore(connection, refreshEnc) {
-  const admin = createAdminSupabaseClient();
-  const connectionId = connection.id;
-  const connector = getConnector(connection.provider);
-  const refreshToken = await safeDecrypt(connectionId, refreshEnc);
-  let tokens;
-  try {
-    tokens = await connector.refreshToken(refreshToken);
-  } catch (e) {
-    if (isConnectorError(e) && e.code === "AUTH_EXPIRED") {
-      const latest = await loadTokenState(connectionId).catch(() => null);
-      if (latest?.secrets?.refresh_token_enc && latest.secrets.refresh_token_enc !== refreshEnc && latest.connection.status !== "disconnected") {
-        log14.info("refresh token remplac\xE9 pendant le rafra\xEEchissement (reconnexion) : la connexion n'est pas marqu\xE9e expir\xE9e", { connectionId });
-        if (latest.secrets.access_token_enc && accessTokenIsFresh(latest, Date.now())) return safeDecrypt(connectionId, latest.secrets.access_token_enc);
-        throw e;
-      }
-      await markConnectionExpired(connectionId, e.message);
-    }
-    throw e;
-  }
-  const { data: outcome, error } = await admin.rpc("store_refreshed_access_token", {
-    p_connection_id: connectionId,
-    p_access_token_enc: encryptSecret(tokens.accessToken),
-    p_expires_at: tokens.accessTokenExpiresAt.toISOString(),
-    p_refresh_token_enc_used: refreshEnc
-  });
-  if (error) {
-    log14.error("token rafra\xEEchi mais non enregistr\xE9", { connectionId, error: error.message });
-    return tokens.accessToken;
-  }
-  if (outcome === "disconnected") {
-    throw expired(connectionId, "La connexion a \xE9t\xE9 d\xE9connect\xE9e pendant la synchronisation : aucun token n'a \xE9t\xE9 conserv\xE9.");
-  }
-  if (outcome === "stale") {
-    const latest = await loadTokenState(connectionId);
-    if (latest.secrets?.access_token_enc && accessTokenIsFresh(latest, Date.now())) {
-      log14.info("token plus r\xE9cent d\xE9j\xE0 enregistr\xE9 par un autre processus", { connectionId });
-      return safeDecrypt(connectionId, latest.secrets.access_token_enc);
-    }
-    return tokens.accessToken;
-  }
-  log14.info("access token rafra\xEEchi", { connectionId, provider: connection.provider, expiresAt: tokens.accessTokenExpiresAt.toISOString() });
-  return tokens.accessToken;
-}
-async function safeDecrypt(connectionId, payload) {
-  try {
-    return decryptSecret(payload);
-  } catch {
-    const message = "Les tokens eBay enregistr\xE9s ne peuvent pas \xEAtre d\xE9chiffr\xE9s (la cl\xE9 TOKEN_ENCRYPTION_KEY du serveur a probablement chang\xE9). Reconnectez votre compte eBay.";
-    await markConnectionExpired(connectionId, message);
-    throw new ConnectorError("AUTH_EXPIRED", "ebay", message, { details: { connectionId, reason: "decrypt_failed" }, retryable: false });
-  }
-}
-function connectorAuthFor(connectionId) {
-  return { getAccessToken: (options) => getValidAccessToken(connectionId, options) };
-}
-async function disconnectConnection(connectionId, organizationId) {
-  const admin = createAdminSupabaseClient();
-  const connection = await loadConnectionForOrg(connectionId, organizationId);
-  if (!connection) throw new AppError("NOT_FOUND", "Connexion introuvable dans votre organisation.");
-  const connector = getConnector(connection.provider);
-  let revoked = false;
-  let note = "";
-  try {
-    const result = await connector.revoke(connectorAuthFor(connectionId));
-    revoked = result.revoked;
-    note = result.note;
-  } catch (e) {
-    note = `R\xE9vocation distante impossible (${e instanceof Error ? e.message : String(e)}). Les tokens ont \xE9t\xE9 supprim\xE9s de MON STOCK.`;
-  }
-  const { error: delError } = await admin.from("channel_connection_secrets").delete().eq("connection_id", connectionId);
-  if (delError) throw fromPostgrestError(delError);
-  const { error } = await admin.from("channel_connections").update({ status: "disconnected", disconnected_at: (/* @__PURE__ */ new Date()).toISOString(), token_expires_at: null, refresh_token_expires_at: null, last_error: null }).eq("id", connectionId).eq("organization_id", organizationId);
-  if (error) throw fromPostgrestError(error);
-  await resolveAlerts(admin, organizationId, [connectionExpiredKey(connectionId), syncFailedKey(connectionId)]);
-  log14.info("connexion d\xE9connect\xE9e", { connectionId, orgId: organizationId, revoked });
-  return { revoked, note };
-}
+// src/services/sync/engine.ts
+init_connection_store();
+init_alerts();
+init_context();
 
 // src/services/sync/listings.ts
 init_empty();
 init_errors();
+init_variation();
+init_context();
 
 // src/services/sync/matching.ts
 var STOPWORDS = /* @__PURE__ */ new Set(["de", "la", "le", "les", "et", "en", "pour", "avec", "du", "des", "un", "une", "the", "and", "with", "for", "of", "a", "an", "neuf", "new", "lot"]);
@@ -11838,6 +16465,8 @@ async function ingestOrdersPage(ctx, page2, result, seen) {
 init_empty();
 init_errors();
 init_logger();
+init_errors2();
+init_context();
 var log15 = createLogger("SYNC");
 var MAX_PUSH_PER_RUN = 200;
 function listingRefOf(row) {
@@ -12185,7 +16814,10 @@ function oauthErrorCodeFor(e) {
 var OAUTH_STATE_TTL_SECONDS = 15 * 60;
 
 // server/edge/api.ts
+init_registry();
+init_config();
 init_sanitize();
+init_connection_store();
 
 // src/integrations/ebay/webhook-verify.ts
 import { createHash as createHash6, createVerify } from "node:crypto";
@@ -12265,6 +16897,10 @@ function notificationEventId(notification, payloadHash) {
 }
 
 // src/integrations/ebay/notification-keys.ts
+init_errors2();
+init_http();
+init_config();
+init_oauth();
 var PublicKeyNotFoundError = class extends Error {
   constructor(kid) {
     super(`Cl\xE9 de signature eBay inconnue (kid=${kid.slice(0, 64)}).`);
@@ -12335,8 +16971,11 @@ var EbayNotificationKeyStore = class {
 
 // src/services/sync/ebay-webhook.ts
 init_empty();
+init_crypto();
 init_errors();
 init_logger();
+init_alerts();
+init_context();
 var log17 = createLogger("EBAY_WEBHOOK");
 var WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 var WEBHOOK_STALE_RECEIVED_MS = 5 * 6e4;
@@ -12609,8 +17248,12 @@ init_empty();
 init_admin();
 init_env();
 init_logger();
+init_registry2();
+init_robots();
 
 // src/services/sourcing/crawler/parsers/registry.ts
+init_jsonld_parser();
+init_registry2();
 var DEFAULT_PARSER_KEY = jsonLdParser.key;
 function listParsers() {
   const out = [jsonLdParser];
@@ -12623,7 +17266,7 @@ function getParser(key2) {
 }
 
 // src/services/sourcing/crawler/source-crawler.ts
-init_http();
+init_http2();
 import { z as z26 } from "npm:zod@4.6.5";
 var crawlConfigSchema = z26.object({
   urls: z26.array(z26.string().url()).max(50).default([]),
@@ -12828,6 +17471,7 @@ async function runDueCrawls(now = /* @__PURE__ */ new Date(), admin = createAdmi
 init_empty();
 init_admin();
 init_logger();
+init_query_parser();
 import { z as z27 } from "npm:zod@4.6.5";
 
 // src/domain/sourcing/opportunities.ts
@@ -13027,315 +17671,16 @@ async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
   return summary;
 }
 
-// src/services/sourcing/source-library.ts
-init_empty();
-init_errors();
-init_env();
-init_logger();
-init_admin();
-init_env();
-var log22 = createLogger("SOURCE_LIBRARY");
-var shopifyTerms = (base) => `${base}/policies/terms-of-service`;
-var SOURCE_LIBRARY = [
-  {
-    key: "ebay-fr",
-    name: "eBay France \u2014 annonces (lots, reconditionn\xE9s, pi\xE8ces)",
-    website: "https://www.ebay.fr",
-    baseUrl: "https://api.ebay.com",
-    adapter: "ebay-browse",
-    segment: "marketplace",
-    country: "FR",
-    currency: "EUR",
-    taxType: "unknown",
-    termsUrl: "https://developer.ebay.com/join/api-license-agreement",
-    access: "official_api",
-    notes: "API officielle Buy Browse (cl\xE9s de l'application eBay du serveur). Offres publi\xE9es par des vendeurs pros et particuliers ; quantit\xE9 non fournie par la recherche.",
-    probeQuery: "iphone 13 128"
-  },
-  {
-    key: "foneday",
-    name: "Foneday (NL) \u2014 pi\xE8ces d\xE9tach\xE9es, B2B",
-    website: "https://www.foneday.shop",
-    baseUrl: "https://www.foneday.shop",
-    adapter: "shopify-storefront",
-    segment: "parts",
-    country: "NL",
-    currency: "EUR",
-    taxType: "unknown",
-    termsUrl: shopifyTerms("https://www.foneday.shop"),
-    access: "public_json",
-    notes: "Grossiste n\xE9erlandais de pi\xE8ces et accessoires pour r\xE9parateurs (client\xE8le principalement professionnelle, selon la recherche web).",
-    probeQuery: "iphone 13 screen"
-  },
-  {
-    key: "mobileparts-shop",
-    name: "MobileParts.shop (2Service, NL) \u2014 pi\xE8ces",
-    website: "https://www.mobileparts.shop",
-    baseUrl: "https://www.mobileparts.shop",
-    adapter: "shopify-storefront",
-    segment: "parts",
-    country: "NL",
-    currency: "EUR",
-    taxType: "unknown",
-    termsUrl: shopifyTerms("https://www.mobileparts.shop"),
-    access: "public_json",
-    notes: "Pi\xE8ces d'origine, compatibles et de r\xE9cup\xE9ration pour r\xE9parateurs, reconditionneurs et grossistes (selon la recherche web).",
-    probeQuery: "iphone 13 display"
-  },
-  {
-    key: "mobilesentrix-eu",
-    name: "MobileSentrix Europe (NL) \u2014 pi\xE8ces",
-    website: "https://www.mobilesentrix.eu",
-    baseUrl: "https://www.mobilesentrix.eu",
-    adapter: "shopify-storefront",
-    segment: "parts",
-    country: "NL",
-    currency: "EUR",
-    taxType: "unknown",
-    termsUrl: shopifyTerms("https://www.mobilesentrix.eu"),
-    access: "public_json",
-    notes: "Distributeur de pi\xE8ces (centre logistique aux Pays-Bas) ; plateforme \xE0 confirmer par la v\xE9rification.",
-    probeQuery: "iphone 13 screen"
-  },
-  {
-    key: "replacebase",
-    name: "ReplaceBase (UK) \u2014 \xE9crans et batteries",
-    website: "https://www.replacebase.co.uk",
-    baseUrl: "https://www.replacebase.co.uk",
-    adapter: "shopify-storefront",
-    segment: "parts",
-    country: "GB",
-    currency: "GBP",
-    taxType: "unknown",
-    termsUrl: shopifyTerms("https://www.replacebase.co.uk"),
-    access: "public_json",
-    notes: "\xC9crans reconditionn\xE9s et batteries, exp\xE9dition depuis le Royaume-Uni (selon la recherche web) ; frais de douane possibles vers la France.",
-    probeQuery: "iphone 13 screen"
-  },
-  {
-    key: "rewa-eu",
-    name: "REWA Europe \u2014 outils, \xE9crans, batteries",
-    website: "https://rewa.tech",
-    baseUrl: "https://rewa.tech",
-    adapter: "shopify-storefront",
-    segment: "parts",
-    country: "EU",
-    currency: "EUR",
-    taxType: "unknown",
-    termsUrl: shopifyTerms("https://rewa.tech"),
-    access: "public_json",
-    notes: "Outillage et pi\xE8ces de r\xE9paration (pays d'exp\xE9dition \xE0 confirmer).",
-    probeQuery: "iphone screen"
-  },
-  {
-    key: "ifixit-eu-pro",
-    name: "iFixit Pro Store EU \u2014 pi\xE8ces et outils",
-    website: "https://eu-pro-store.ifixit.com",
-    baseUrl: "https://eu-pro-store.ifixit.com",
-    adapter: "shopify-storefront",
-    segment: "parts",
-    country: "EU",
-    currency: "EUR",
-    taxType: "unknown",
-    termsUrl: shopifyTerms("https://eu-pro-store.ifixit.com"),
-    access: "public_json",
-    notes: "Boutique professionnelle iFixit pour l'Europe (plateforme Shopify suppos\xE9e d'apr\xE8s ses URL, confirm\xE9e seulement par la v\xE9rification).",
-    probeQuery: "iphone 13 battery"
-  },
-  {
-    key: "jobalots",
-    name: "Jobalots (UK/EU) \u2014 lots de retours",
-    website: "https://jobalots.com",
-    baseUrl: "https://jobalots.com",
-    adapter: "shopify-storefront",
-    segment: "lots",
-    country: "GB",
-    currency: "GBP",
-    taxType: "unknown",
-    termsUrl: shopifyTerms("https://jobalots.com"),
-    access: "public_json",
-    notes: "Lots de retours clients et de surplus (\xE9lectronique, t\xE9l\xE9phonie) ; prix par lot.",
-    probeQuery: "phone"
-  },
-  {
-    key: "brico-phone",
-    name: "Brico-phone (FR) \u2014 pi\xE8ces d\xE9tach\xE9es",
-    website: "https://www.brico-phone.com",
-    baseUrl: "https://www.brico-phone.com",
-    adapter: "sitemap-jsonld",
-    segment: "parts",
-    country: "FR",
-    currency: "EUR",
-    taxType: "ttc",
-    termsUrl: "https://www.brico-phone.com",
-    access: "public_html",
-    notes: "Pi\xE8ces d\xE9tach\xE9es (\xE9crans, batteries, connecteurs) vendues en France. Lu via le plan du site publi\xE9 et les donn\xE9es structur\xE9es des fiches (prix TTC affich\xE9s au public).",
-    probeQuery: "ecran iphone 13"
-  },
-  {
-    key: "utopya",
-    name: "Utopya (FR) \u2014 distributeur B2B de pi\xE8ces",
-    website: "https://www.utopya.fr",
-    baseUrl: "https://www.utopya.fr",
-    adapter: "woocommerce-store",
-    segment: "parts",
-    country: "FR",
-    currency: "EUR",
-    taxType: "ht",
-    termsUrl: "https://www.utopya.fr",
-    access: "public_json",
-    notes: "Distributeur B2B de pi\xE8ces et accessoires (Paris). Prix pros potentiellement r\xE9serv\xE9s aux comptes : v\xE9rification requise.",
-    probeQuery: "iphone 13"
-  }
-];
-function getLibrarySource(key2) {
-  return SOURCE_LIBRARY.find((s) => s.key === key2) ?? null;
-}
-function adapterConfig(s) {
-  return { baseUrl: s.baseUrl, settings: { adapter: s.adapter, library_key: s.key }, defaultCurrency: s.currency, defaultTaxType: s.taxType, defaultCountry: s.country.length === 2 && s.country !== "EU" ? s.country : null };
-}
-async function checkLibrarySource(s, runtime = {}) {
-  const t0 = Date.now();
-  const adapter = getSourceAdapter(s.adapter);
-  const base = { key: s.key, adapter: s.adapter, robotsAllowed: null, httpStatus: null, productCount: 0, sample: [] };
-  if (!adapter) return { ...base, status: "not_configured", message: `Adaptateur ${s.adapter} absent.`, durationMs: Date.now() - t0 };
-  if (s.adapter === "ebay-browse" && !ebayEnv()) return { ...base, status: "not_configured", message: "Cl\xE9s de l'application eBay non configur\xE9es sur le serveur.", durationMs: Date.now() - t0 };
-  const config = adapterConfig(s);
-  const parsed = parseQuery2(s.probeQuery);
-  const userAgent = serverEnv().SOURCING_USER_AGENT;
-  if (adapter.urlsForQuery) {
-    const urls = adapter.urlsForQuery(config, parsed, s.probeQuery);
-    const robots = await checkRobotsForUrls(s.baseUrl, urls, userAgent, runtime.fetchImpl ?? fetch).catch((e) => ({ allowed: false, details: e instanceof Error ? e.message : String(e), crawlDelay: null }));
-    base.robotsAllowed = robots.allowed;
-    if (!robots.allowed) return { ...base, status: "robots_disallowed", message: robots.details, durationMs: Date.now() - t0 };
-  }
-  const r = await adapter.search(config, parsed, s.probeQuery, { userAgent, timeoutMs: 2e4, minDelayMs: 1500, ...runtime });
-  const last = r.requests[r.requests.length - 1];
-  base.httpStatus = last?.status ?? null;
-  const priced = r.offers.filter((o) => o.price !== null && o.price > 0);
-  base.productCount = priced.length;
-  base.sample = priced.slice(0, 3).map((o) => ({ title: o.title.slice(0, 160), price: o.price, currency: o.currency ?? s.currency, url: o.url ?? null }));
-  if (r.error) {
-    const unreachable = !last || last.status === null;
-    return { ...base, status: unreachable ? "unreachable" : "http_error", message: r.error.slice(0, 500), durationMs: Date.now() - t0 };
-  }
-  if (priced.length === 0) return { ...base, status: "no_products", message: `Aucun produit avec prix pour \xAB ${s.probeQuery} \xBB.`, durationMs: Date.now() - t0 };
-  return { ...base, status: "ok", message: `${priced.length} produit(s) avec prix pour \xAB ${s.probeQuery} \xBB.`, durationMs: Date.now() - t0 };
-}
-async function checkLibrarySourceDetect(s, runtime = {}) {
-  const first = await checkLibrarySource(s, runtime);
-  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access === "official_api") return first;
-  const messages = [first.message];
-  const order = ["shopify-storefront", "woocommerce-store", "sitemap-jsonld"];
-  for (const other of order.filter((a) => a !== s.adapter)) {
-    const next = await checkLibrarySource({ ...s, adapter: other }, runtime);
-    if (next.status === "ok") return next;
-    messages.push(`${other} : ${next.message}`);
-  }
-  return { ...first, message: messages.join(" | ").slice(0, 500) };
-}
-async function runLibraryChecks(keys) {
-  const admin = createAdminSupabaseClient();
-  const out = [];
-  for (const s of SOURCE_LIBRARY) {
-    if (keys && !keys.includes(s.key)) continue;
-    let r;
-    try {
-      r = await checkLibrarySourceDetect(s);
-    } catch (e) {
-      r = { key: s.key, status: "unreachable", adapter: s.adapter, robotsAllowed: null, httpStatus: null, productCount: 0, sample: [], message: e instanceof Error ? e.message.slice(0, 500) : String(e), durationMs: 0 };
-    }
-    out.push(r);
-    const { error } = await admin.from("sourcing_library_checks").upsert({
-      key: r.key,
-      checked_at: (/* @__PURE__ */ new Date()).toISOString(),
-      status: r.status,
-      adapter: r.adapter,
-      robots_allowed: r.robotsAllowed,
-      http_status: r.httpStatus,
-      product_count: r.productCount,
-      sample: r.sample,
-      message: r.message,
-      duration_ms: r.durationMs
-    });
-    if (error) log22.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
-  }
-  return out;
-}
-async function sourceLibrary(ctx) {
-  const [checks, sources] = await Promise.all([
-    ctx.supabase.from("sourcing_library_checks").select("*"),
-    ctx.supabase.from("supplier_sources").select("id, config").eq("organization_id", ctx.organization.id)
-  ]);
-  if (checks.error) throw checks.error;
-  if (sources.error) throw sources.error;
-  const byKey = new Map((checks.data ?? []).map((c) => [c.key, c]));
-  const activated = /* @__PURE__ */ new Map();
-  for (const src of sources.data ?? []) {
-    const k = src.config?.library_key;
-    if (typeof k === "string") activated.set(k, src.id);
-  }
-  return {
-    entries: SOURCE_LIBRARY.map((s) => {
-      const c = byKey.get(s.key);
-      return {
-        key: s.key,
-        name: s.name,
-        website: s.website,
-        segment: s.segment,
-        country: s.country,
-        currency: s.currency,
-        access: s.access,
-        termsUrl: s.termsUrl,
-        notes: s.notes,
-        check: c ? { status: c.status, checkedAt: c.checked_at, productCount: c.product_count, message: c.message, sample: c.sample } : null,
-        activatable: c?.status === "ok",
-        sourceId: activated.get(s.key) ?? null
-      };
-    })
-  };
-}
-async function activateLibrarySource(ctx, key2) {
-  const s = getLibrarySource(key2);
-  if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
-  const { data: check } = await ctx.supabase.from("sourcing_library_checks").select("status, checked_at, adapter").eq("key", key2).maybeSingle();
-  if (check?.status !== "ok") throw new AppError("VALIDATION", "Cette source n'a pas pass\xE9 la v\xE9rification en direct (robots.txt + produits avec prix) : elle ne peut pas \xEAtre activ\xE9e.");
-  const { data: existing } = await ctx.supabase.from("supplier_sources").select("id, supplier_id, config").eq("organization_id", ctx.organization.id);
-  const found = (existing ?? []).find((r) => r.config?.library_key === key2);
-  if (found) return { sourceId: found.id, supplierId: found.supplier_id, alreadyActive: true };
-  const country = s.country.length === 2 && s.country !== "EU" ? s.country : null;
-  const { data: supplier, error: supErr } = await ctx.supabase.from("suppliers").insert({ organization_id: ctx.organization.id, name: s.name.slice(0, 200), website: s.website, country, currency: s.currency, notes: `Ajout\xE9 depuis la biblioth\xE8que de sources MON STOCK (${s.key}). ${s.notes}` }).select("id").single();
-  if (supErr || !supplier) throw supErr ?? new AppError("INTERNAL", "Fournisseur non cr\xE9\xE9.");
-  const attestation = `Conditions d'utilisation (${s.termsUrl}) d\xE9clar\xE9es lues et acc\xE8s automatis\xE9 attest\xE9 par l'utilisateur ${ctx.user.email ?? ctx.user.id} le ${(/* @__PURE__ */ new Date()).toISOString()} (application mobile).`;
-  const { data: source, error: srcErr } = await ctx.supabase.from("supplier_sources").insert({
-    organization_id: ctx.organization.id,
-    supplier_id: supplier.id,
-    name: s.name.slice(0, 200),
-    source_type: s.access === "official_api" ? "API" : "PUBLIC_WEB",
-    base_url: s.baseUrl,
-    country,
-    default_currency: s.currency,
-    default_tax_type: s.taxType,
-    access_conditions: attestation,
-    automated_access_confirmed: true,
-    robots_checked_at: check.checked_at,
-    robots_allowed: s.access === "official_api" ? null : true,
-    sync_frequency: "manual",
-    status: "active",
-    // Adaptateur ayant réellement répondu lors de la vérification (détection de plateforme).
-    config: { adapter: check.adapter ?? s.adapter, library_key: s.key }
-  }).select("id").single();
-  if (srcErr || !source) {
-    await ctx.supabase.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", ctx.organization.id);
-    throw srcErr ?? new AppError("INTERNAL", "Source non cr\xE9\xE9e.");
-  }
-  log22.info("source de biblioth\xE8que activ\xE9e", { orgId: ctx.organization.id, key: key2 });
-  return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
-}
+// server/edge/api.ts
+init_source_library();
 
 // src/services/sourcing/source-scout.ts
 init_empty();
-init_http();
+init_http2();
+init_robots();
+init_parser();
+init_sitemap_jsonld();
+init_query_parser();
 var UA = () => process.env.SOURCING_USER_AGENT || "MonStockBot/0.1";
 function detectPlatform(html) {
   if (/cdn\.shopify\.com|Shopify\.theme|shopify-section/i.test(html)) return "shopify";
@@ -13414,6 +17759,7 @@ async function scoutHosts(hosts, query) {
 // src/services/sourcing/e2e-check.ts
 init_empty();
 init_admin();
+init_source_library();
 async function runSearchSelfTest(query, libraryKey) {
   const admin = createAdminSupabaseClient();
   const entry = getLibrarySource(libraryKey);
@@ -13491,3850 +17837,11 @@ async function runImportSelfTest() {
   }
 }
 
-// src/services/channels/ebay-listing-service.ts
-init_empty();
-init_errors();
-init_env();
-import { z as z30 } from "npm:zod@4.6.5";
-
-// src/integrations/ebay/listing.ts
-import { z as z29 } from "npm:zod@4.6.5";
-var EBAY_CONDITIONS = [
-  "NEW",
-  "LIKE_NEW",
-  "NEW_OTHER",
-  "NEW_WITH_DEFECTS",
-  "CERTIFIED_REFURBISHED",
-  "EXCELLENT_REFURBISHED",
-  "VERY_GOOD_REFURBISHED",
-  "GOOD_REFURBISHED",
-  "SELLER_REFURBISHED",
-  "USED_EXCELLENT",
-  "USED_VERY_GOOD",
-  "USED_GOOD",
-  "USED_ACCEPTABLE",
-  "FOR_PARTS_OR_NOT_WORKING"
-];
-var SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
-var listingDraftSchema = z29.object({
-  sku: z29.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
-  marketplaceId: z29.literal("EBAY_FR").default("EBAY_FR"),
-  title: z29.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
-  description: z29.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
-  categoryId: z29.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
-  condition: z29.enum(EBAY_CONDITIONS),
-  conditionDescription: z29.string().trim().max(1e3).optional(),
-  price: z29.number().finite().positive("Prix positif requis.").max(1e6),
-  currency: z29.literal("EUR").default("EUR"),
-  quantity: z29.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
-  imageUrls: z29.array(z29.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
-  aspects: z29.record(z29.string().min(1).max(65), z29.array(z29.string().min(1).max(65)).min(1)).default({}),
-  brand: z29.string().trim().max(65).optional(),
-  mpn: z29.string().trim().max(65).optional(),
-  ean: z29.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
-  policies: z29.object({ fulfillmentPolicyId: z29.string().min(1), paymentPolicyId: z29.string().min(1), returnPolicyId: z29.string().min(1) }).optional(),
-  merchantLocationKey: z29.string().trim().min(1).max(36).optional()
-});
-function checkListingDraft(input) {
-  const parsed = listingDraftSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "annonce"} : ${i.message}`), warnings: [], draft: null };
-  const d = parsed.data;
-  const errors = [];
-  const warnings = [];
-  if (!d.policies) errors.push("Politiques m\xE9tier eBay (paiement, retour, exp\xE9dition) non choisies.");
-  if (!d.merchantLocationKey) errors.push("Emplacement d'inventaire eBay (merchantLocationKey) non choisi.");
-  const aspectNames = Object.keys(d.aspects).map((a) => a.toLowerCase());
-  if (!d.brand && !aspectNames.includes("marque") && !aspectNames.includes("brand")) warnings.push("Marque non renseign\xE9e : souvent obligatoire.");
-  if (!aspectNames.includes("mod\xE8le") && !aspectNames.includes("model")) warnings.push("Caract\xE9ristique \xAB Mod\xE8le \xBB absente : souvent obligatoire pour les t\xE9l\xE9phones.");
-  if (/[<>]/.test(d.title)) errors.push("Le titre ne doit pas contenir de balises.");
-  if (d.title === d.title.toUpperCase() && /[A-Z]{6,}/.test(d.title)) warnings.push("Titre enti\xE8rement en majuscules : d\xE9conseill\xE9 par eBay.");
-  if (d.condition.endsWith("_REFURBISHED") && d.condition !== "SELLER_REFURBISHED") warnings.push("\xC9tat \xAB reconditionn\xE9 \xBB du programme eBay : v\xE9rifiez votre agr\xE9ment pour cette cat\xE9gorie.");
-  warnings.push("Caract\xE9ristiques obligatoires et \xE9tats autoris\xE9s de la cat\xE9gorie v\xE9rifi\xE9s par eBay au moment de la publication.");
-  return { ok: errors.length === 0, errors, warnings, draft: d };
-}
-function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function descriptionHtml(text2) {
-  return text2.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
-}
-function buildInventoryItem(d) {
-  const aspects = { ...d.aspects };
-  if (d.brand && !aspects.Marque) aspects.Marque = [d.brand];
-  return {
-    availability: { shipToLocationAvailability: { quantity: d.quantity } },
-    condition: d.condition,
-    ...d.conditionDescription ? { conditionDescription: d.conditionDescription } : {},
-    product: {
-      title: d.title,
-      description: descriptionHtml(d.description),
-      aspects,
-      imageUrls: d.imageUrls,
-      ...d.brand ? { brand: d.brand } : {},
-      ...d.mpn ? { mpn: d.mpn } : {},
-      ...d.ean ? { ean: [d.ean] } : {}
-    }
-  };
-}
-function buildOffer(d) {
-  return {
-    sku: d.sku,
-    marketplaceId: d.marketplaceId,
-    format: "FIXED_PRICE",
-    availableQuantity: d.quantity,
-    categoryId: d.categoryId,
-    listingDescription: descriptionHtml(d.description),
-    ...d.policies ? { listingPolicies: d.policies } : {},
-    ...d.merchantLocationKey ? { merchantLocationKey: d.merchantLocationKey } : {},
-    pricingSummary: { price: { value: d.price.toFixed(2), currency: d.currency } }
-  };
-}
-async function ebayRestSend(auth, method, url, label, body) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
-    const res = await fetchWithRetry(
-      url,
-      {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Accept-Language": "fr-FR",
-          "Content-Language": "fr-FR",
-          ...body !== void 0 ? { "Content-Type": "application/json" } : {}
-        },
-        body: body === void 0 ? void 0 : JSON.stringify(body)
-      },
-      // POST non idempotent (création d'offre, publication) : jamais rejoué automatiquement (anti-doublon).
-      { provider: EBAY_PROVIDER, label, retries: method === "POST" ? 0 : void 0 }
-    );
-    const json2 = res.status === 204 ? null : await readJson(res, EBAY_PROVIDER);
-    if (res.status === 401 && attempt === 0) continue;
-    return { status: res.status, json: json2 };
-  }
-  throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Autorisation eBay expir\xE9e : reconnectez votre compte.", { retryable: false });
-}
-function fail(step, status, json2) {
-  const { message, errorIds } = summarizeRestErrors(json2);
-  const auth = status === 401 || status === 403;
-  throw new ConnectorError(auth ? "AUTH_EXPIRED" : "API_ERROR", EBAY_PROVIDER, `${step} refus\xE9 par eBay (HTTP ${status})${message ? ` : ${message}` : ""}.`, {
-    httpStatus: status,
-    details: { step, errorIds },
-    retryable: status >= 500
-  });
-}
-async function publishListing(auth, apiBase2, d) {
-  const base = `${apiBase2.replace(/\/+$/, "")}/sell/inventory/v1`;
-  const sku = encodeURIComponent(d.sku);
-  const item = await ebayRestSend(auth, "PUT", `${base}/inventory_item/${sku}`, "createOrReplaceInventoryItem", buildInventoryItem(d));
-  if (item.status >= 300) fail("Enregistrement de l'article", item.status, item.json);
-  const existing = await ebayRestSend(auth, "GET", `${base}/offer?sku=${sku}&marketplace_id=${d.marketplaceId}`, "getOffers");
-  let offerId = null;
-  if (existing.status === 200) {
-    const offers = existing.json?.offers ?? [];
-    offerId = offers.find((o) => o.marketplaceId === d.marketplaceId && (o.format ?? "FIXED_PRICE") === "FIXED_PRICE")?.offerId ?? null;
-  } else if (existing.status !== 404) fail("Lecture des offres existantes", existing.status, existing.json);
-  let created = false;
-  if (offerId) {
-    const upd = await ebayRestSend(auth, "PUT", `${base}/offer/${encodeURIComponent(offerId)}`, "updateOffer", buildOffer(d));
-    if (upd.status >= 300) fail("Mise \xE0 jour de l'offre", upd.status, upd.json);
-  } else {
-    const cre = await ebayRestSend(auth, "POST", `${base}/offer`, "createOffer", buildOffer(d));
-    if (cre.status >= 300) fail("Cr\xE9ation de l'offre", cre.status, cre.json);
-    offerId = cre.json?.offerId ?? null;
-    if (!offerId) throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "eBay n'a pas renvoy\xE9 d'identifiant d'offre.", { retryable: false });
-    created = true;
-  }
-  const pub = await ebayRestSend(auth, "POST", `${base}/offer/${encodeURIComponent(offerId)}/publish`, "publishOffer");
-  if (pub.status >= 300) fail("Publication", pub.status, pub.json);
-  return { sku: d.sku, offerId, listingId: pub.json?.listingId ?? null, createdOffer: created };
-}
-function publicationGate(input) {
-  const reasons = [];
-  if (input.enabledFlag !== "true") reasons.push("Publication eBay d\xE9sactiv\xE9e sur le serveur (EBAY_LISTING_ENABLED \u2260 true).");
-  if (!input.isAdmin) reasons.push("Seul un administrateur peut publier une annonce.");
-  if (!input.confirm) reasons.push("Confirmation explicite requise.");
-  if (!input.connected) reasons.push("Aucun compte eBay connect\xE9.");
-  return { allowed: reasons.length === 0, reasons };
-}
-
-// src/services/channels/ebay-listing-service.ts
-async function connectedEbay(ctx) {
-  const { data, error } = await ctx.supabase.from("channel_connections").select("id, status").eq("organization_id", ctx.organization.id).eq("provider", "ebay").eq("status", "connected").limit(1).maybeSingle();
-  if (error) throw fromPostgrestError(error);
-  return data ? { id: data.id } : null;
-}
-async function prefillListing(ctx, skuId) {
-  const { data: sku, error } = await ctx.supabase.from("skus").select("id, code, barcode, sale_price, currency, product:products(name, brand, attributes, description), variant:product_variants(name, condition, grade, attributes)").eq("organization_id", ctx.organization.id).eq("id", skuId).maybeSingle();
-  if (error) throw fromPostgrestError(error);
-  if (!sku) throw new AppError("NOT_FOUND", "SKU introuvable.");
-  const { data: inv } = await ctx.supabase.from("v_stock_overview").select("quantity_available").eq("organization_id", ctx.organization.id).eq("sku_id", skuId).maybeSingle();
-  const product = Array.isArray(sku.product) ? sku.product[0] : sku.product;
-  const variant = Array.isArray(sku.variant) ? sku.variant[0] : sku.variant;
-  const attrs = { ...product?.attributes ?? {}, ...variant?.attributes ?? {} };
-  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : null;
-  const model = str3(attrs.model);
-  const storage = str3(attrs.storage);
-  const color = str3(attrs.color);
-  const aspects = {};
-  if (product?.brand) aspects.Marque = [product.brand];
-  if (model) aspects["Mod\xE8le"] = [model];
-  if (storage) aspects["Capacit\xE9 de stockage"] = [storage];
-  if (color) aspects.Couleur = [color];
-  const title = [product?.name, variant?.name && variant.name !== "Standard" ? variant.name : null].filter(Boolean).join(" ").replace(/\s+/g, " ").slice(0, 80);
-  return {
-    draft: {
-      sku: sku.code,
-      marketplaceId: "EBAY_FR",
-      title,
-      description: product?.description ?? "",
-      categoryId: "",
-      condition: null,
-      price: sku.sale_price,
-      currency: "EUR",
-      quantity: Math.max(0, inv?.quantity_available ?? 0),
-      imageUrls: [],
-      aspects,
-      brand: product?.brand ?? void 0,
-      ean: sku.barcode && /^\d{8,14}$/.test(sku.barcode) ? sku.barcode : void 0
-    },
-    notes: [
-      "Choisissez la cat\xE9gorie eBay et l'\xE9tat : MON STOCK ne convertit pas les grades A/B/C en \xE9tats eBay (aucune \xE9quivalence officielle).",
-      "Ajoutez au moins une photo (URL HTTPS).",
-      ...variant?.grade ? [`Grade MON STOCK : ${variant.grade} \u2014 \xE0 d\xE9crire dans la description de l'\xE9tat.`] : []
-    ]
-  };
-}
-async function ebayAccountSetup(ctx) {
-  const env = ebayEnv();
-  if (!env) return { configured: false, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Cl\xE9s eBay non configur\xE9es sur le serveur."] };
-  const conn = await connectedEbay(ctx);
-  if (!conn) return { configured: true, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Aucun compte eBay connect\xE9."] };
-  const cfg = createEbayConfig(env);
-  const auth = connectorAuthFor(conn.id);
-  const errors = [];
-  const read = async (path, key2, map) => {
-    try {
-      const json2 = await ebayRestGet(auth, `${cfg.apiBase}${path}`, key2, { marketplaceId: "EBAY_FR" });
-      return (json2[key2] ?? []).map(map);
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e));
-      return [];
-    }
-  };
-  const policy = (idKey) => (x) => ({ id: String(x[idKey] ?? ""), name: String(x.name ?? "") });
-  const [fulfillment, payment, ret, locations] = await Promise.all([
-    read("/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_FR", "fulfillmentPolicies", policy("fulfillmentPolicyId")),
-    read("/sell/account/v1/payment_policy?marketplace_id=EBAY_FR", "paymentPolicies", policy("paymentPolicyId")),
-    read("/sell/account/v1/return_policy?marketplace_id=EBAY_FR", "returnPolicies", policy("returnPolicyId")),
-    read("/sell/inventory/v1/location?limit=100", "locations", (x) => ({ id: String(x.merchantLocationKey ?? ""), name: String(x.name ?? x.merchantLocationKey ?? "") }))
-  ]);
-  return { configured: true, connected: true, fulfillment, payment, return: ret, locations, errors: [...new Set(errors)] };
-}
-var listingRequestSchema = z30.object({ draft: z30.unknown(), confirm: z30.boolean().default(false) });
-async function checkListing(ctx, input) {
-  const check = checkListingDraft(input.draft);
-  const conn = ebayEnv() ? await connectedEbay(ctx) : null;
-  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: true, connected: Boolean(conn) });
-  return {
-    ok: check.ok,
-    errors: check.errors,
-    warnings: check.warnings,
-    payload: check.draft ? { inventoryItem: buildInventoryItem(check.draft), offer: buildOffer(check.draft) } : null,
-    publication: { allowed: check.ok && gate.allowed, blockers: gate.reasons }
-  };
-}
-async function publishListingForOrg(ctx, input) {
-  const check = checkListingDraft(input.draft);
-  if (!check.ok || !check.draft) throw new AppError("VALIDATION", check.errors[0] ?? "Annonce invalide.");
-  const env = ebayEnv();
-  const conn = env ? await connectedEbay(ctx) : null;
-  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: input.confirm, connected: Boolean(conn) });
-  if (!gate.allowed || !env || !conn) throw new AppError("FORBIDDEN", gate.reasons.join(" "));
-  return publishListing(connectorAuthFor(conn.id), createEbayConfig(env).apiBase, check.draft);
-}
-var disconnectSchema = z30.object({ connectionId: z30.string().uuid() });
-async function disconnectEbay(ctx, connectionId) {
-  const { data } = await ctx.supabase.from("channel_connections").select("id").eq("organization_id", ctx.organization.id).eq("id", connectionId).maybeSingle();
-  if (!data) throw new AppError("NOT_FOUND", "Connexion introuvable dans cette organisation.");
-  return disconnectConnection(connectionId, ctx.organization.id);
-}
-
-// src/services/sourcing/offer-linking.ts
-init_empty();
-init_errors();
-init_matching_service();
-import { z as z31 } from "npm:zod@4.6.5";
-async function confirmOfferLink(orgId, supabase, userId, offerId, skuId, sourcingProductId) {
-  const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", orgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  if (existing) await supabase.from("product_matches").update({ status: "confirmed", decided_by: userId, decided_at: now }).eq("id", existing.id);
-  else await supabase.from("product_matches").insert({ organization_id: orgId, offer_id: offerId, sourcing_product_id: sourcingProductId, sku_id: skuId, confidence: 1, method: "supplier_sku", reasons: ["Association confirm\xE9e manuellement"], status: "confirmed", created_by: userId, decided_by: userId, decided_at: now });
-  await supabase.from("product_matches").update({ status: "rejected", decided_by: userId, decided_at: now }).eq("organization_id", orgId).eq("offer_id", offerId).neq("sku_id", skuId).eq("status", "suggested");
-  await applyConfirmedMatch(supabase, orgId, { offerId, skuId, sourcingProductId });
-}
-async function listMatchSuggestions(ctx, limit = 100) {
-  const { data, error } = await ctx.supabase.from("product_matches").select("id, confidence, method, reasons, offer:sourcing_offers(id, title_original, normalized_price, normalized_currency, supplier:suppliers(name)), sku:skus(id, code, product:products(name), variant:product_variants(name))").eq("organization_id", ctx.organization.id).eq("status", "suggested").not("offer_id", "is", null).order("confidence", { ascending: false }).limit(limit);
-  if (error) throw fromPostgrestError(error);
-  const one2 = (v2) => Array.isArray(v2) ? v2[0] ?? null : v2 ?? null;
-  return (data ?? []).flatMap((m) => {
-    const offer = one2(m.offer);
-    const sku = one2(m.sku);
-    if (!offer || !sku) return [];
-    return [
-      {
-        matchId: m.id,
-        confidence: m.confidence,
-        method: m.method,
-        reasons: Array.isArray(m.reasons) ? m.reasons : [],
-        offer: { id: offer.id, title: offer.title_original, price: offer.normalized_price, currency: offer.normalized_currency, supplierName: one2(offer.supplier)?.name ?? "Fournisseur" },
-        sku: { id: sku.id, code: sku.code, name: [one2(sku.product)?.name, one2(sku.variant)?.name].filter(Boolean).join(" \xB7 ") }
-      }
-    ];
-  });
-}
-var matchDecisionSchema2 = z31.object({ matchId: z31.string().uuid(), decision: z31.enum(["confirm", "reject"]) });
-async function decideMatch(ctx, input) {
-  const orgId = ctx.organization.id;
-  const { data: match } = await ctx.supabase.from("product_matches").select("id, offer_id, sku_id, sourcing_product_id, status").eq("organization_id", orgId).eq("id", input.matchId).maybeSingle();
-  if (!match) throw new AppError("NOT_FOUND", "Correspondance introuvable.");
-  if (match.status !== "suggested") throw new AppError("CONFLICT", "Cette correspondance a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
-  if (input.decision === "reject") {
-    const { error } = await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", orgId).eq("id", match.id);
-    if (error) throw fromPostgrestError(error);
-    return { status: "rejected" };
-  }
-  if (!match.offer_id) throw new AppError("VALIDATION", "Correspondance sans offre.");
-  await confirmOfferLink(orgId, ctx.supabase, ctx.user.id, match.offer_id, match.sku_id, match.sourcing_product_id);
-  return { status: "confirmed" };
-}
-
-// src/services/radar/radar.ts
-init_empty();
-init_errors();
-import { z as z32 } from "npm:zod@4.6.5";
-
-// src/domain/sourcing/radar.ts
-var EMPTY_COST_SETTINGS = {
-  vatRegime: null,
-  vatRate: null,
-  vatRecoverable: null,
-  marketplaceFeePercent: null,
-  paymentFeePercent: null,
-  paymentFeeFixed: null,
-  shippingToCustomer: null,
-  packagingCost: null,
-  returnProvisionPercent: null,
-  importDutyPercent: null
-};
-var PRICE_ORIGIN_LABEL = {
-  verified_live: "Prix v\xE9rifi\xE9 \xE0 la derni\xE8re interrogation",
-  observed_public: "Prix observ\xE9 sur le site du fournisseur",
-  catalog_import: "Prix import\xE9 d'un catalogue fournisseur",
-  supplier_communicated: "Prix communiqu\xE9 par le fournisseur",
-  manual_entry: "Prix saisi manuellement",
-  unknown: "Origine du prix inconnue"
-};
-var EU = /* @__PURE__ */ new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
-var FRESH_DAYS = 2;
-var STALE_DAYS = 7;
-var r2 = (n) => Math.round(n * 100) / 100;
-function freshnessOf(lastSeenAt, now) {
-  if (!lastSeenAt) return { freshness: "unknown", ageDays: null };
-  const t = new Date(lastSeenAt).getTime();
-  if (Number.isNaN(t)) return { freshness: "unknown", ageDays: null };
-  const ageDays = Math.max(0, (now.getTime() - t) / 864e5);
-  return { freshness: ageDays <= FRESH_DAYS ? "fresh" : ageDays <= STALE_DAYS ? "recent" : "stale", ageDays: Math.floor(ageDays) };
-}
-function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
-  const missing = [];
-  const cautions = [];
-  const reasons = [];
-  const breakdown = [];
-  const { freshness: freshness2, ageDays } = freshnessOf(offer.lastSeenAt, now);
-  const revenueBasis = sku.avgSalePrice30d !== null ? "avg_sale_30d" : sku.salePrice !== null ? "sku_sale_price" : null;
-  const revenue = sku.avgSalePrice30d ?? sku.salePrice ?? null;
-  if (revenue === null) missing.push("prix de vente (aucune vente sur 30 jours et aucun prix de vente sur le SKU)");
-  if (revenueBasis === "sku_sale_price") cautions.push("Prix de vente issu de la fiche SKU (pas de vente constat\xE9e sur 30 jours).");
-  if (offer.price === null) missing.push("prix fournisseur");
-  if (offer.currency && sku.currency && offer.currency.toUpperCase() !== sku.currency.toUpperCase()) {
-    missing.push(`devise diff\xE9rente (${offer.currency} vs ${sku.currency}) : aucune conversion suppos\xE9e`);
-  }
-  if (missing.length > 0) {
-    return { status: "insufficient_data", revenue, revenueBasis, revenueExVat: null, purchaseCost: null, landedCost: null, grossMargin: null, estimatedProfit: null, marginPercent: null, breakdown, missing, cautions, reasons, freshness: freshness2, ageDays, score: 0 };
-  }
-  const price = offer.price;
-  const sale = revenue;
-  const vatRate = s.vatRate;
-  let purchaseCost;
-  if (offer.taxType === "ht") {
-    if (s.vatRecoverable === true) purchaseCost = price;
-    else if (s.vatRecoverable === false && vatRate !== null) {
-      purchaseCost = r2(price * (1 + vatRate / 100));
-      cautions.push("TVA non r\xE9cup\xE9rable : TVA ajout\xE9e au prix d'achat HT.");
-    } else {
-      purchaseCost = price;
-      missing.push("r\xE9cup\xE9ration de la TVA sur achats (param\xE8tres de co\xFBts)");
-    }
-  } else if (offer.taxType === "ttc") {
-    if (s.vatRecoverable === true && vatRate !== null) purchaseCost = r2(price / (1 + vatRate / 100));
-    else {
-      purchaseCost = price;
-      if (s.vatRecoverable === null) missing.push("r\xE9cup\xE9ration de la TVA sur achats (param\xE8tres de co\xFBts)");
-    }
-  } else {
-    purchaseCost = price;
-    missing.push("type de prix fournisseur (HT ou TTC)");
-  }
-  breakdown.push({ label: "Prix d'achat retenu", amount: purchaseCost });
-  let landed = purchaseCost;
-  if (offer.shippingCost !== null) {
-    const perUnit = r2(offer.shippingCost / Math.max(1, offer.moq ?? 1));
-    landed = r2(landed + perUnit);
-    breakdown.push({ label: `Transport fournisseur (\xF7 ${Math.max(1, offer.moq ?? 1)})`, amount: perUnit });
-  } else missing.push("transport fournisseur");
-  const country = offer.supplierCountry?.toUpperCase() ?? null;
-  if (country && !EU.has(country)) {
-    if (s.importDutyPercent !== null) {
-      const duty = r2(price * s.importDutyPercent / 100);
-      landed = r2(landed + duty);
-      breakdown.push({ label: `Douane / import (${s.importDutyPercent} %)`, amount: duty });
-    } else missing.push(`droits de douane (fournisseur hors UE : ${country})`);
-  } else if (!country) cautions.push("Pays du fournisseur inconnu : frais d'import \xE9ventuels non \xE9valu\xE9s.");
-  breakdown.push({ label: "Co\xFBt d'achat rendu", amount: landed });
-  let revenueExVat = null;
-  let marginVat = 0;
-  if (s.vatRegime === "normal") {
-    if (vatRate !== null) revenueExVat = r2(sale / (1 + vatRate / 100));
-    else missing.push("taux de TVA");
-  } else if (s.vatRegime === "margin") {
-    revenueExVat = sale;
-    if (vatRate !== null) {
-      const m = sale - landed;
-      marginVat = m > 0 ? r2(m * vatRate / (100 + vatRate)) : 0;
-    } else missing.push("taux de TVA");
-  } else if (s.vatRegime === "franchise") revenueExVat = sale;
-  else missing.push("r\xE9gime de TVA (normal, marge ou franchise)");
-  const base = revenueExVat ?? sale;
-  breakdown.unshift({ label: revenueBasis === "avg_sale_30d" ? "Prix de vente moyen constat\xE9 (30 j)" : "Prix de vente du SKU", amount: sale });
-  if (revenueExVat !== null && revenueExVat !== sale) breakdown.splice(1, 0, { label: "CA hors TVA", amount: revenueExVat });
-  const grossMargin = r2(base - landed - marginVat);
-  if (marginVat > 0) breakdown.push({ label: "TVA sur marge", amount: marginVat });
-  breakdown.push({ label: "Marge brute", amount: grossMargin });
-  let fees = 0;
-  const fee = (label, value, missingLabel) => {
-    if (value === null) missing.push(missingLabel);
-    else {
-      fees += value;
-      breakdown.push({ label, amount: r2(value) });
-    }
-  };
-  fee("Commission marketplace", s.marketplaceFeePercent === null ? null : sale * s.marketplaceFeePercent / 100, "commission marketplace");
-  fee(
-    "Frais de paiement",
-    s.paymentFeePercent === null && s.paymentFeeFixed === null ? null : sale * (s.paymentFeePercent ?? 0) / 100 + (s.paymentFeeFixed ?? 0),
-    "frais de paiement"
-  );
-  fee("Exp\xE9dition au client", s.shippingToCustomer, "exp\xE9dition au client");
-  fee("Emballage", s.packagingCost, "emballage");
-  fee("Provision retours / garantie", s.returnProvisionPercent === null ? null : sale * s.returnProvisionPercent / 100, "provision retours / garantie");
-  const estimatedProfit = r2(grossMargin - fees);
-  const marginPercent = sale > 0 ? r2(estimatedProfit / sale * 100) : null;
-  breakdown.push({ label: missing.length ? "B\xE9n\xE9fice estim\xE9 (co\xFBts connus seulement)" : "B\xE9n\xE9fice estim\xE9", amount: estimatedProfit });
-  if (freshness2 === "stale") cautions.push(`Prix vu il y a ${ageDays} jours : \xE0 rev\xE9rifier avant de commander.`);
-  if (freshness2 === "unknown") cautions.push("Date de relev\xE9 du prix inconnue.");
-  if (offer.priceOrigin !== "verified_live") cautions.push(PRICE_ORIGIN_LABEL[offer.priceOrigin] + ".");
-  if (offer.stockStatus === "unknown" && offer.availableQuantity === null) cautions.push("Disponibilit\xE9 non communiqu\xE9e.");
-  if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) cautions.push("Rupture chez le fournisseur.");
-  if (sku.currentCost !== null && sku.currentCost > 0 && purchaseCost < sku.currentCost) {
-    const pct2 = Math.round((sku.currentCost - purchaseCost) / sku.currentCost * 100);
-    if (pct2 >= 3) reasons.push(`Prix ${pct2} % sous votre co\xFBt d'achat actuel (${sku.currentCost.toFixed(2)}).`);
-  }
-  if (offer.previousPrice !== null && offer.previousPrice > price) {
-    const pct2 = Math.round((offer.previousPrice - price) / offer.previousPrice * 100);
-    if (pct2 >= 5) reasons.push(`Prix en baisse de ${pct2} % chez ce fournisseur.`);
-  }
-  const lowStock = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 1);
-  if (sku.units30d > 0 && lowStock) reasons.push(`Stock bas (${sku.quantityAvailable}) pour un produit vendu ${sku.units30d} fois en 30 jours.`);
-  else if (sku.units30d > 0) reasons.push(`Vous en vendez ${sku.units30d} par mois.`);
-  if (estimatedProfit > 0 && marginPercent !== null) reasons.push(`B\xE9n\xE9fice estim\xE9 ${estimatedProfit.toFixed(2)} par unit\xE9 (${marginPercent} %).`);
-  const status = estimatedProfit <= 0 ? "unprofitable" : missing.length === 0 && freshness2 !== "stale" ? "profitable" : "estimated";
-  let score = 0;
-  if (estimatedProfit > 0) {
-    score += Math.min(40, estimatedProfit / 2);
-    score += Math.min(20, Math.max(0, marginPercent ?? 0) / 2);
-  }
-  score += Math.min(15, sku.units30d * 2);
-  if (offer.stockStatus === "in_stock" || (offer.availableQuantity ?? 0) > 0) score += 10;
-  score += freshness2 === "fresh" ? 10 : freshness2 === "recent" ? 6 : 0;
-  score += missing.length === 0 ? 5 : Math.max(0, 5 - missing.length);
-  return { status, revenue: sale, revenueBasis, revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, breakdown, missing, cautions, reasons, freshness: freshness2, ageDays, score: Math.round(Math.min(100, score)) };
-}
-var STATUS_ORDER = { profitable: 0, estimated: 1, unprofitable: 2, insufficient_data: 3 };
-function compareRadar(sort) {
-  return (a, b) => {
-    const st = STATUS_ORDER[a.evaluation.status] - STATUS_ORDER[b.evaluation.status];
-    const n = (v2) => v2 ?? Number.NEGATIVE_INFINITY;
-    switch (sort) {
-      case "profit":
-        return n(b.evaluation.estimatedProfit) - n(a.evaluation.estimatedProfit) || st;
-      case "margin":
-        return n(b.evaluation.marginPercent) - n(a.evaluation.marginPercent) || st;
-      case "availability":
-        return n(b.offer.availableQuantity) - n(a.offer.availableQuantity) || st;
-      case "freshness":
-        return (a.evaluation.ageDays ?? Number.POSITIVE_INFINITY) - (b.evaluation.ageDays ?? Number.POSITIVE_INFINITY) || st;
-      default:
-        return st || b.evaluation.score - a.evaluation.score;
-    }
-  };
-}
-function missingSettings(s) {
-  const out = [];
-  if (s.vatRegime === null) out.push("r\xE9gime de TVA");
-  if (s.vatRate === null) out.push("taux de TVA");
-  if (s.vatRecoverable === null) out.push("TVA r\xE9cup\xE9rable sur achats");
-  if (s.marketplaceFeePercent === null) out.push("commission marketplace");
-  if (s.paymentFeePercent === null && s.paymentFeeFixed === null) out.push("frais de paiement");
-  if (s.shippingToCustomer === null) out.push("exp\xE9dition au client");
-  if (s.packagingCost === null) out.push("emballage");
-  if (s.returnProvisionPercent === null) out.push("provision retours / garantie");
-  return out;
-}
-
-// src/services/radar/radar.ts
-var nullableNumber2 = (min, max) => z32.number().finite().min(min).max(max).nullable();
-var radarSettingsSchema = z32.object({
-  vatRegime: z32.enum(["normal", "margin", "franchise"]).nullable(),
-  vatRate: nullableNumber2(0, 30),
-  vatRecoverable: z32.boolean().nullable(),
-  marketplaceFeePercent: nullableNumber2(0, 50),
-  paymentFeePercent: nullableNumber2(0, 20),
-  paymentFeeFixed: nullableNumber2(0, 50),
-  shippingToCustomer: nullableNumber2(0, 500),
-  packagingCost: nullableNumber2(0, 100),
-  returnProvisionPercent: nullableNumber2(0, 50),
-  importDutyPercent: nullableNumber2(0, 100)
-});
-function readCostSettings(orgSettings, channel) {
-  const raw = orgSettings?.radar ?? {};
-  const s = { ...EMPTY_COST_SETTINGS };
-  for (const [key2, schema] of Object.entries(radarSettingsSchema.shape)) {
-    if (!(key2 in raw)) continue;
-    const parsed = schema.safeParse(raw[key2]);
-    if (parsed.success) s[key2] = parsed.data;
-  }
-  const fromChannel = [];
-  if (channel) {
-    if (s.marketplaceFeePercent === null && channel.fee_percent !== null) {
-      s.marketplaceFeePercent = channel.fee_percent;
-      fromChannel.push("commission marketplace");
-    }
-    if (s.paymentFeePercent === null && s.paymentFeeFixed === null && (channel.payment_fee_percent !== null || channel.payment_fee_fixed !== null)) {
-      s.paymentFeePercent = channel.payment_fee_percent;
-      s.paymentFeeFixed = channel.payment_fee_fixed;
-      fromChannel.push("frais de paiement");
-    }
-    if (s.shippingToCustomer === null && channel.default_shipping_cost !== null) {
-      s.shippingToCustomer = channel.default_shipping_cost;
-      fromChannel.push("exp\xE9dition au client");
-    }
-  }
-  return { settings: s, fromChannel };
-}
-function priceOriginOf(sourceType, sourceConfig) {
-  const kind = sourceConfig?.kind;
-  if (sourceType === "API") return "verified_live";
-  if (sourceType === "PUBLIC_WEB") return "observed_public";
-  if (sourceType === "MANUAL") return "manual_entry";
-  if (kind === "catalog_file_import") return "catalog_import";
-  if (["CSV", "XML", "JSON", "PARTNER_FEED", "SUPPLIER_ACCOUNT"].includes(sourceType)) return "supplier_communicated";
-  return "unknown";
-}
-var OFFER_SELECT2 = "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, tax_type, shipping_cost, moq, available_quantity, stock_status, last_seen_at, country, supplier:suppliers(name, country), source:supplier_sources(source_type, config)";
-function one(v2) {
-  if (v2 === null || v2 === void 0) return null;
-  return Array.isArray(v2) ? v2[0] ?? null : v2;
-}
-async function buildRadar(ctx, options = {}) {
-  const orgId = ctx.organization.id;
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  const [stockRes, offersRes, savedRes, channelsRes, unlinkedRes] = await Promise.all([
-    ctx.supabase.from("v_stock_overview").select("sku_id, code, product_name, variant_name, currency, avg_sale_price_30d, sale_price, cost_price, units_30d, quantity_available, reorder_point").eq("organization_id", orgId).eq("product_archived", false).limit(5e3),
-    ctx.supabase.from("sourcing_offers").select(OFFER_SELECT2).eq("organization_id", orgId).eq("status", "active").not("sku_id", "is", null).limit(3e3),
-    ctx.supabase.from("sourcing_saved_offers").select("offer_id, price_at_save, note, created_at").eq("organization_id", orgId).limit(1e3),
-    ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost, is_active").eq("organization_id", orgId),
-    ctx.supabase.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("status", "active").is("sku_id", null)
-  ]);
-  for (const r of [stockRes, offersRes, savedRes, channelsRes]) if (r.error) throw fromPostgrestError(r.error);
-  const channels = channelsRes.data ?? [];
-  const channel = channels.find((c) => c.provider === "ebay") ?? channels.find((c) => c.provider !== "manual") ?? channels[0] ?? null;
-  const { settings, fromChannel } = readCostSettings(ctx.organization.settings, channel);
-  const skus = /* @__PURE__ */ new Map();
-  for (const r of stockRes.data ?? []) {
-    if (!r.sku_id) continue;
-    skus.set(r.sku_id, {
-      skuId: r.sku_id,
-      code: r.code ?? "",
-      name: [r.product_name, r.variant_name && r.variant_name !== "Standard" ? r.variant_name : null].filter(Boolean).join(" \xB7 "),
-      currency: r.currency ?? ctx.organization.default_currency,
-      avgSalePrice30d: r.avg_sale_price_30d,
-      salePrice: r.sale_price,
-      currentCost: r.cost_price,
-      units30d: r.units_30d ?? 0,
-      quantityAvailable: r.quantity_available ?? 0,
-      reorderPoint: r.reorder_point
-    });
-  }
-  const saved = new Map((savedRes.data ?? []).map((s) => [s.offer_id, s]));
-  const offers = (offersRes.data ?? []).filter((o) => o.sku_id && skus.has(o.sku_id));
-  const previous = /* @__PURE__ */ new Map();
-  const ids = offers.map((o) => o.id).slice(0, 1e3);
-  if (ids.length) {
-    const { data: hist } = await ctx.supabase.from("supplier_price_history").select("offer_id, normalized_price, recorded_at").eq("organization_id", orgId).in("offer_id", ids).order("recorded_at", { ascending: false }).limit(5e3);
-    const byOffer = /* @__PURE__ */ new Map();
-    for (const h of hist ?? []) if (h.normalized_price !== null) byOffer.set(h.offer_id, [...byOffer.get(h.offer_id) ?? [], h.normalized_price]);
-    for (const o of offers) {
-      const prices = byOffer.get(o.id) ?? [];
-      const prev = prices.find((p) => p !== o.normalized_price);
-      if (prev !== void 0) previous.set(o.id, prev);
-    }
-  }
-  const perSku = /* @__PURE__ */ new Map();
-  for (const o of offers) if (o.normalized_price !== null) perSku.set(o.sku_id, [...perSku.get(o.sku_id) ?? [], o.normalized_price]);
-  const items = offers.map((o) => {
-    const sku = skus.get(o.sku_id);
-    const supplier = one(o.supplier);
-    const source = one(o.source);
-    const input = {
-      offerId: o.id,
-      supplierName: supplier?.name ?? "Fournisseur",
-      supplierCountry: supplier?.country ?? o.country ?? null,
-      title: o.title_original,
-      sourceUrl: o.source_url,
-      price: o.normalized_price,
-      currency: o.normalized_currency,
-      taxType: o.tax_type,
-      shippingCost: o.shipping_cost,
-      moq: o.moq,
-      availableQuantity: o.available_quantity,
-      stockStatus: o.stock_status,
-      lastSeenAt: o.last_seen_at,
-      priceOrigin: priceOriginOf(source?.source_type ?? "", source?.config ?? null),
-      previousPrice: previous.get(o.id) ?? null,
-      saved: saved.has(o.id)
-    };
-    const evaluation = evaluateRadarOffer(input, sku, settings, now);
-    const competing = perSku.get(sku.skuId) ?? [];
-    if (competing.length > 1 && o.normalized_price !== null) {
-      const min = Math.min(...competing);
-      const max = Math.max(...competing);
-      if (o.normalized_price === min && max > min) evaluation.reasons.unshift(`Meilleur prix parmi ${competing.length} offres (\xE9cart ${(max - min).toFixed(2)}).`);
-    }
-    const s = saved.get(o.id);
-    return { supplierId: o.supplier_id, sku: { id: sku.skuId, code: sku.code, name: sku.name, currency: sku.currency, units30d: sku.units30d, quantityAvailable: sku.quantityAvailable }, offer: input, savedAt: s?.created_at ?? null, priceAtSave: s?.price_at_save ?? null, evaluation, offersForSku: competing.length };
-  });
-  items.sort(compareRadar(options.sort ?? "score"));
-  const restock = [];
-  for (const sku of skus.values()) {
-    if (sku.units30d <= 0) continue;
-    const daily = sku.units30d / 30;
-    const daysOfCover = daily > 0 ? Math.floor(sku.quantityAvailable / daily) : null;
-    const low = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 0) || daysOfCover !== null && daysOfCover < 14;
-    if (!low) continue;
-    const best = items.filter((i) => i.sku.id === sku.skuId && i.offer.price !== null).sort((a, b) => (a.offer.price ?? 0) - (b.offer.price ?? 0))[0];
-    restock.push({ skuId: sku.skuId, code: sku.code, name: sku.name, quantityAvailable: sku.quantityAvailable, units30d: sku.units30d, daysOfCover, bestOfferId: best?.offer.offerId ?? null, bestPrice: best?.offer.price ?? null, bestSupplier: best?.offer.supplierName ?? null });
-  }
-  restock.sort((a, b) => (a.daysOfCover ?? 0) - (b.daysOfCover ?? 0));
-  return {
-    items: items.slice(0, 300),
-    restock: restock.slice(0, 100),
-    settings,
-    settingsFromChannel: fromChannel,
-    missingSettings: missingSettings(settings),
-    counts: {
-      profitable: items.filter((i) => i.evaluation.status === "profitable").length,
-      estimated: items.filter((i) => i.evaluation.status === "estimated").length,
-      unprofitable: items.filter((i) => i.evaluation.status === "unprofitable").length,
-      insufficient: items.filter((i) => i.evaluation.status === "insufficient_data").length,
-      unlinkedOffers: unlinkedRes.count ?? 0,
-      skus: skus.size
-    },
-    computedAt: now.toISOString()
-  };
-}
-async function saveCostSettings(ctx, input) {
-  const parsed = radarSettingsSchema.parse(input);
-  const { data: org, error } = await ctx.supabase.from("organizations").select("settings").eq("id", ctx.organization.id).single();
-  if (error || !org) throw fromPostgrestError(error ?? { message: "Organisation introuvable" });
-  const current = org.settings ?? {};
-  const { error: upErr } = await ctx.supabase.from("organizations").update({ settings: { ...current, radar: parsed } }).eq("id", ctx.organization.id);
-  if (upErr) {
-    if (/row-level security|permission/i.test(upErr.message)) throw new AppError("FORBIDDEN", "Seul un administrateur peut modifier les param\xE8tres de co\xFBts.");
-    throw fromPostgrestError(upErr);
-  }
-  return parsed;
-}
-
-// src/services/sourcing/supplier-directory.ts
-init_empty();
-
-// src/services/sourcing/data/supplier-directory.json
-var supplier_directory_default = [
-  {
-    key: "foxway",
-    name: "Foxway (Reseller Portal / Wholesale)",
-    segment: "A_refurb",
-    country: "EE",
-    deliveryZones: [
-      "EU",
-      "Nordics",
-      "UK"
-    ],
-    website: "https://www.foxway.com/en/buy-devices/",
-    catalogUrl: "https://resellers.foxway.com/",
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories",
-      "lots"
-    ],
-    brands: [
-      "Apple",
-      "Samsung",
-      "Lenovo",
-      "HP",
-      "Microsoft"
-    ],
-    productTypes: [
-      "new",
-      "used",
-      "refurbished",
-      "lots"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte revendeur sur le Reseller Portal (validation) ; Wholesale s\xE9par\xE9 (wholesale.foxway.com, deals ex-works UK selon doc repo)",
-    accessModes: [
-      "pro_portal",
-      "manual_download"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: "Deals wholesale 'take-all' (lot complet) selon doc repo ; Reseller Portal \xE0 l'unit\xE9 : \xE0 v\xE9rifier",
-    shipping: "Wholesale : prix ex-works UK, hors transport/droits (doc repo)",
-    warranty: "90 jours (doc repo, \xE0 confirmer)",
-    partQuality: null,
-    whyUseful: "Un des plus gros fournisseurs B2B europ\xE9ens de smartphones/PC reconditionn\xE9s et used, avec stock en temps r\xE9el et ench\xE8res pour revendeurs.",
-    howToGetCatalog: "Cr\xE9er un compte sur resellers.foxway.com ; le portail affiche une 'live stocklist' et un checkout en ligne ; demander \xE0 l'account manager un export CSV/XLSX ou une API partenaire (non document\xE9e publiquement).",
-    verified: "Portail revendeur avec live stocklist, checkout et ench\xE8res confirm\xE9 par un article tiers (substack) ; marque Teqcycle (~1 000 partenaires) confirm\xE9e par communiqu\xE9s Cision ; URLs portails issues de la doc repo ; aucune API publique trouv\xE9e.",
-    verificationLevel: "search_snippets+repo_doc",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://platformprofessional.substack.com/p/the-rise-of-foxway-and-circular-it",
-      "https://news.cision.com/foxway/r/foxway-brings-new-device-confidence-to-renewed-tech-across-the-nordics,c4293276",
-      "https://csr.dk/foxway",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "back-market-pro",
-    name: "Back Market Pro",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "BE",
-      "UK",
-      "US"
-    ],
-    website: "https://pro.backmarket.fr/",
-    catalogUrl: "https://pro.backmarket.fr/",
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte entreprise ; paiement CB/virement, paiement \xE0 30 jours pour certains profils",
-    accessModes: [
-      "pro_portal",
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Acc\xE8s B2B en volume \xE0 l'offre reconditionn\xE9e Back Market avec conseillers d\xE9di\xE9s (achat pour revente : conditions \xE0 v\xE9rifier).",
-    howToGetCatalog: "Ouvrir un compte sur pro.backmarket.fr et demander un devis volume au conseiller ; l'API Back Market document\xE9e est c\xF4t\xE9 vendeur uniquement, pas d'API acheteur trouv\xE9e.",
-    verified: "Existence de Back Market Pro (FR/BE/UK/US), paiements, conseillers : snippets Back Market help + Sacra ; API = c\xF4t\xE9 vendeur uniquement (Sellercloud, Nango).",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://help.backmarket.com/hc/en-us/articles/15855626593948-What-B2B-services-does-Back-Market-offer",
-      "https://sacra.com/c/back-market/",
-      "https://nango.dev/docs/api-integrations/back-market.md",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "refurbed-business",
-    name: "refurbed Business",
-    segment: "A_refurb",
-    country: "AT",
-    deliveryZones: [
-      "DE",
-      "AT",
-      "IE",
-      "CH"
-    ],
-    website: "https://business.refurbed.de/",
-    catalogUrl: "https://business.refurbed.de/angebot",
-    categories: [
-      "smartphones",
-      "laptops",
-      "tablets"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Demande de devis ; refurbed est contractant direct en B2B",
-    accessModes: [
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: "10 articles minimum (offre B2B Irlande) ; FR/DE : \xE0 v\xE9rifier",
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Offre B2B devis par refurbed lui-m\xEAme (et non par les marchands de la marketplace) ; utile pour volumes moyens.",
-    howToGetCatalog: "Demande d'offre sur business.refurbed.de (devis individuel) ; aucun flux/API trouv\xE9 ; livraison France non confirm\xE9e.",
-    verified: "Mod\xE8le B2B (contractant direct, devis) via WEKA ; MOQ 10 articles via Irish Tech News (IE uniquement) ; lancement CH avril 2026 via IT Reseller.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.weka.de/einkauf-logistik/refurbed-bereitet-handys-jetzt-auch-fuer-b2b-auf/",
-      "https://irishtechnews.ie/?p=151794",
-      "https://www.itreseller.ch/Artikel/105297/Neuer_Refurbished-Anbieter_fuer_die_Schweiz.html",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "largo-business",
-    name: "Largo (Largo Business / distributeurs)",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "BE",
-      "CH",
-      "PT"
-    ],
-    website: "https://www.largo.fr/",
-    catalogUrl: "https://www.largo.fr/content/devenir-distributeur.html",
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: true,
-    accessConditions: "Programme distributeurs / Largo Business sur demande (extranet selon doc repo)",
-    accessModes: [
-      "pro_portal",
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: "Garantie contractuelle revendeurs (page sav.largo.fr cit\xE9e dans doc repo)",
-    partQuality: null,
-    whyUseful: "Reconditionneur industriel fran\xE7ais cot\xE9 (Nantes) avec canal revendeurs et distribution B2B (Bouygues Telecom Entreprises, grossiste portugais).",
-    howToGetCatalog: "Candidater via la page 'devenir distributeur' ; demander l'acc\xE8s extranet et un export stock (non document\xE9 publiquement).",
-    verified: "Activit\xE9 B2B Largo Business, partenariats distribution (Bluetooth PT 2021, Bouygues 2024) via communiqu\xE9s AMF/BusinessWire ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur (SERVER.md).",
-    verificationLevel: "search_snippets+repo_doc",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.businesswire.com/news/home/20241211518258/fr",
-      "https://echanges.dila.gouv.fr/OPENDATA/AMF/BWR/2021/07/FCBWR135156_20210712.pdf",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "recommerce",
-    name: "Recommerce Group",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.recommerce-group.com/",
-    catalogUrl: null,
-    categories: [
-      "smartphones"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Partenariat distributeur/op\xE9rateur (pas de portail revendeur public trouv\xE9)",
-    accessModes: [
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: "24 mois (annuaire tiers, consumer)",
-    partQuality: null,
-    whyUseful: "Reconditionneur fran\xE7ais majeur (label RecQ) distribuant via op\xE9rateurs, distributeurs et marketplaces en Europe.",
-    howToGetCatalog: "Contact commercial B2B via recommerce-group.com ; pas de flux public ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur.",
-    verified: "Distribution via r\xE9seau de distributeurs/op\xE9rateurs/marketplaces (profil motherbase) ; aucune info revendeur PME.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://my.motherbase.ai/company/6466-recommerce-group",
-      "https://www.maddyness.com/2022/02/07/recommerce-united-b-levee-reconditionne/",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "smaaart",
-    name: "Smaaart (groupe Econocom)",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "FR"
-    ],
-    website: "https://smaaart.fr/",
-    catalogUrl: "https://smaaart.fr/content/21-solutions-pour-entreprises",
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Offre entreprises/distributeurs sur contact",
-    accessModes: [
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Reconditionneur fran\xE7ais (atelier dans l'H\xE9rault) vendant aux entreprises et distributeurs.",
-    howToGetCatalog: "Contacter via la page 'solutions pour entreprises' ; aucun flux public (SERVER.md : pas de catalogue lisible).",
-    verified: "B2B + B2C et distributeurs : fiches startup/FrenchWeb ; rachat Econocom via FrenchWeb.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://lespepitestech.com/node/16921",
-      "https://www.frenchweb.fr/smaaart-startup-specialiste-des-smartphones-reconditionnes-reunit-4-millions-deuros/380447",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "ioutlet-business",
-    name: "iOutlet Business (The iOutlet, trade)",
-    segment: "A_refurb",
-    country: "GB",
-    deliveryZones: [
-      "UK",
-      "EU"
-    ],
-    website: "https://business.theioutlet.com/",
-    catalogUrl: "https://business.theioutlet.com/",
-    categories: [
-      "smartphones",
-      "tablets",
-      "lots"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "used",
-      "refurbished",
-      "lots"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Demande de compte trade (revue sous 1-2 jours ouvr\xE9s)",
-    accessModes: [
-      "pro_portal",
-      "manual_download",
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "GBP",
-    moq: null,
-    shipping: "UK + EU (post-Brexit : droits/TVA import \xE0 pr\xE9voir vers FR)",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Envoie une stock list + price sheet quotidienne aux comptes trade (grades A+ \xE0 C, D = grade r\xE9paration), base id\xE9ale d'un import tableur automatis\xE9.",
-    howToGetCatalog: "Demander un compte trade sur business.theioutlet.com ; recevoir la price sheet quotidienne (format exact non confirm\xE9, probablement tableur) et l'importer.",
-    verified: "Grades A+/A/B/C/D, price sheets quotidiennes ou \xE0 la demande, vente UK+EU : snippets de business.theioutlet.com.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://business.theioutlet.com/"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "callisto-alchemy",
-    name: "Callisto (Alchemy) \u2014 marketplace B2B secondaire",
-    segment: "A_refurb",
-    country: "US",
-    deliveryZones: [
-      "Global"
-    ],
-    website: "https://callisto.tech",
-    catalogUrl: "https://callisto.tech/wholesale-used-smartphones-on-callisto",
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories",
-      "lots"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "used",
-      "refurbished",
-      "lots"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Inscription acheteur avec KYC ; paiement en escrow",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "USD",
-    moq: "Lots/bulk ; certaines r\xE9f\xE9rences uniquement en ench\xE8res hebdomadaires",
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Marketplace B2B mondiale de smartphones used/refurb/endommag\xE9s (sources OEM, op\xE9rateurs, retailers) avec grading Alchemy et ench\xE8res.",
-    howToGetCatalog: "S'inscrire comme acheteur (KYC) ; catalogue \xE0 prix fixe, offres bulk, ench\xE8res live/silencieuses ; aucune API trouv\xE9e.",
-    verified: "Mod\xE8le (catalogue, offres, ench\xE8res, escrow, KYC) : pages callisto.tech ; chiffres GMV : RecyclingToday/OHS (auto-d\xE9clar\xE9s).",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://callisto.tech/wholesale-used-smartphones-on-callisto",
-      "https://callisto.tech/wholesale-secondary-tablets-callisto",
-      "https://recyclingtoday.com/news/alchemys-callisto-platform-connects-wholesalers-of-secondary-and-used-technology"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "mobile-express-hde",
-    name: "Mobile Express (HDE Global Mobile Tech B.V.)",
-    segment: "A_refurb",
-    country: "NL",
-    deliveryZones: [
-      "EU"
-    ],
-    website: null,
-    catalogUrl: "https://www.refurbed.ie/m/1962",
-    categories: [
-      "smartphones"
-    ],
-    brands: [],
-    productTypes: [
-      "used"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Division B2B pour retailers/revendeurs : contact direct (site propre non trouv\xE9)",
-    accessModes: [
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Grossiste n\xE9erlandais de smartphones d'occasion grad\xE9s avec division B2B.",
-    howToGetCatalog: "Identifier le site/contact B2B (KvK 94898014, Beverwijk) puis demander la stock list ; non v\xE9rifi\xE9.",
-    verified: "Fiche vendeur refurbed uniquement (entit\xE9, adresse, TVA NL866929149B01, KvK 94898014) ; site propre NON trouv\xE9.",
-    verificationLevel: "unverified",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.refurbed.ie/m/1962"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "gsmexchange",
-    name: "gsmExchange",
-    segment: "A_refurb",
-    country: "IE",
-    deliveryZones: [
-      "Global"
-    ],
-    website: "https://www.gsmexchange.com/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "new",
-      "used",
-      "refurbished"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Adh\xE9sion v\xE9rifi\xE9e : historique commercial + 2 r\xE9f\xE9rences de membres (articles 2008-2012)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: null,
-    moq: "~100 unit\xE9s indicatif ; phoneLot pour plus petits volumes (sources anciennes)",
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Bourse B2B historique du n\xE9goce de t\xE9l\xE9phones (prix guides visibles des membres).",
-    howToGetCatalog: "Adh\xE9sion payante/v\xE9rifi\xE9e ; consultation manuelle ; la doc repo indique que l'acc\xE8s automatis\xE9 est interdit par les CGU.",
-    verified: "Uniquement articles de presse 2008-2012 et annuaire ; statut actuel non confirm\xE9 dans cette session.",
-    verificationLevel: "search_snippets+repo_doc",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://mobilenewscwp.co.uk/features/article/grey-matters-work-for-gsmexchange/",
-      "https://www.serchen.com/company/gsmexchange-com",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "handelot",
-    name: "Handelot",
-    segment: "A_refurb",
-    country: "PL",
-    deliveryZones: [
-      "Global"
-    ],
-    website: "https://www.handelot.com/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new",
-      "used",
-      "refurbished"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Membres VIP/VIP Gold/Junior ; 2 r\xE9f\xE9rences commerciales, > 1 an d'activit\xE9 (doc repo)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: null,
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Plateforme de trading B2B d'\xE9lectronique de marque (Wroc\u0142aw), alternative europ\xE9enne \xE0 gsmExchange.",
-    howToGetCatalog: "Adh\xE9sion puis consultation manuelle des offres ; aucun flux trouv\xE9.",
-    verified: "Non re-v\xE9rifi\xE9 dans cette session ; donn\xE9es issues de la doc repo (partielle).",
-    verificationLevel: "repo_doc_only",
-    knownInApp: false,
-    sourcesChecked: [
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "swappie-business",
-    name: "Swappie for Business",
-    segment: "A_refurb",
-    country: "FI",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://business.swappie.com/services/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "laptops"
-    ],
-    brands: [
-      "Apple"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Services pour marketplaces, leasing, op\xE9rateurs (pas un portail grossiste revendeurs)",
-    accessModes: [
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: "12 mois (offre Swappie Business IT, date inconnue)",
-    partQuality: null,
-    whyUseful: "Gros reconditionneur iPhone europ\xE9en ; partenariats B2B possibles mais pas d'offre revendeur standard identifi\xE9e.",
-    howToGetCatalog: "Contact via business.swappie.com ; pas de catalogue revendeur public.",
-    verified: "Page business.swappie.com/services (marketplaces, leasing, telcos, ITAD) via snippet ; offre 'Swappie Business' via 01net.it.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://business.swappie.com/services/",
-      "https://www.01net.it/iphone-ricondizionati-aziende-professionisti-offerta-swappie/"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "afb-france",
-    name: "AfB social & green IT (France)",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "EU"
-    ],
-    website: null,
-    catalogUrl: null,
-    categories: [
-      "laptops",
-      "smartphones",
-      "tablets"
-    ],
-    brands: [
-      "Lenovo",
-      "HP",
-      "Dell",
-      "Apple"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Boutique AfB + ventes aux PME/\xE9coles/associations",
-    accessModes: [
-      "public_catalog",
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: "12 mois, extensible \xE0 24 (fiche Combak)",
-    partQuality: null,
-    whyUseful: "ITAD/reconditionneur social (si\xE8ge FR \xE0 Annecy) issu de parcs d'entreprises : source de PC portables business reconditionn\xE9s.",
-    howToGetCatalog: "Identifier la boutique AfB France et demander une offre revendeur ; achat pour revente non confirm\xE9.",
-    verified: "Activit\xE9 FR (Annecy, 2012) et garantie via Combak ; domaine de la boutique FR non confirm\xE9 dans cette session.",
-    verificationLevel: "unverified",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.combak.co/marchands/afb",
-      "https://good-search.org/about/en/making-the-world-a-greener-and-more-socially-responsible-place-with-used-it-equipment/"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "certideal",
-    name: "Certideal",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "EU"
-    ],
-    website: "https://eu.certideal.com",
-    catalogUrl: null,
-    categories: [
-      "smartphones"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: "B2C",
-    proAccountRequired: false,
-    accessConditions: "Site grand public ; aucune offre volume/pro trouv\xE9e",
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "TTC",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: "24 \xE0 30 mois selon sources",
-    partQuality: null,
-    whyUseful: "R\xE9f\xE9rence de prix public reconditionn\xE9 (benchmark), pas un fournisseur B2B.",
-    howToGetCatalog: "Pas d'acc\xE8s automatis\xE9 (robots.txt/403 constat\xE9 c\xF4t\xE9 serveur) ; utiliser seulement comme veille prix manuelle.",
-    verified: "B2C confirm\xE9 (siecledigital, reepeat) ; aucune offre B2B trouv\xE9e.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://eu.certideal.com/en/certideal-concept",
-      "https://www.reepeat.fr/boutiques/comparison/certideal-vs-easycash",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "easycash",
-    name: "Easycash",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "FR"
-    ],
-    website: "https://www.easycash.fr",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops"
-    ],
-    brands: [],
-    productTypes: [
-      "used",
-      "refurbished"
-    ],
-    sales: "B2C",
-    proAccountRequired: false,
-    accessConditions: "R\xE9seau de magasins + e-commerce grand public ; aucune offre pro trouv\xE9e",
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "TTC",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Benchmark prix occasion grand public ; pas une source B2B.",
-    howToGetCatalog: "Veille manuelle uniquement (SERVER.md : pas de catalogue public lisible).",
-    verified: "B2C confirm\xE9 par comparatifs ; aucune offre pro trouv\xE9e. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.reepeat.fr/boutiques/comparison/certideal-vs-easycash",
-      "https://www.combak.co/blog/easycash-avis",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "yes-yes",
-    name: "YesYes",
-    segment: "A_refurb",
-    country: "FR",
-    deliveryZones: [
-      "FR"
-    ],
-    website: null,
-    catalogUrl: null,
-    categories: [
-      "smartphones"
-    ],
-    brands: [],
-    productTypes: [
-      "refurbished"
-    ],
-    sales: null,
-    proAccountRequired: null,
-    accessConditions: null,
-    accessModes: [],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Start-up fran\xE7aise du reconditionn\xE9 (lev\xE9e de 2,7 M\u20AC) ; mod\xE8le B2B non confirm\xE9.",
-    howToGetCatalog: "Non d\xE9termin\xE9 : aucune offre B2B trouv\xE9e ; SERVER.md : pas de donn\xE9e structur\xE9e publique.",
-    verified: "Seulement un titre LSA (lev\xE9e de fonds) ; rien sur l'acc\xE8s revendeur.",
-    verificationLevel: "unverified",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.lsa-conso.fr/la-start-up-de-produits-reconditionnes-yes-yes-leve-2-7-millions-d-euros,385973",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "foneday",
-    name: "Foneday",
-    segment: "B_parts",
-    country: "NL",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.foneday.shop",
-    catalogUrl: "https://www.foneday.shop",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung",
-      "Xiaomi",
-      "Google"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte professionnel (client\xE8le principalement B2B, > 14 pays)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "Grossiste NL 'one-stop-shop' pi\xE8ces/outils smartphone-tablette pour r\xE9parateurs europ\xE9ens.",
-    howToGetCatalog: "Ouvrir un compte pro ; demander \xE0 Foneday s'il existe un export CSV/API (aucune API publique trouv\xE9e ; SERVER.md : pas de catalogue public lisible).",
-    verified: "Activit\xE9, si\xE8ge Gilze, fond\xE9 2015, > 14 pays : jobicy/werkzoeken ; aucune doc API trouv\xE9e ; WebFetch bloqu\xE9.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://jobicy.com/company/foneday",
-      "https://www.werkzoeken.nl/bedrijf/8729-foneday",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "mobileparts-shop",
-    name: "Mobileparts.shop (2Service B.V.)",
-    segment: "B_parts",
-    country: "NL",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.mobileparts.shop",
-    catalogUrl: "https://www.mobileparts.shop/fr",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte professionnel (r\xE9parateurs, refurbishers, grossistes)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "Partenaire officiel Samsung/Apple annonc\xE9 : pi\xE8ces genuine + compatibles + r\xE9cup\xE9r\xE9es, > 5 000 r\xE9f\xE9rences, vitrine FR.",
-    howToGetCatalog: "Ouvrir un compte pro ; demander un export ; soci\xE9t\xE9s s\u0153urs SamsungParts.eu / SamsungSelfRepair.shop pour pi\xE8ces Samsung d'origine.",
-    verified: "Profil IFA Berlin (2Service, Arnhem, 84 marques, genuine/compatible/harvested) et Trusted Shops (vitrine FR) ; SERVER.md : pas de catalogue public lisible.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://ifa-berlin.com/exhibitors/2service-bv",
-      "https://www.trustedshops.de/company/2service_b_v_/",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "mobilesentrix-eu",
-    name: "MobileSentrix Europe",
-    segment: "B_parts",
-    country: "NL",
-    deliveryZones: [
-      "EU",
-      "UK"
-    ],
-    website: "https://www.mobilesentrix.eu",
-    catalogUrl: "https://genuineparts.mobilesentrix.eu/about",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung",
-      "Google"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte grossiste",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: "Cut-off tardif, livraison J+1 annonc\xE9e (UK 21h GMT)",
-    warranty: "Lifetime warranty annonc\xE9e (site UK)",
-    partQuality: "mixed",
-    whyUseful: "Grand grossiste nord-am\xE9ricain implant\xE9 aux Pays-Bas (rachat TouchFix) avec section pi\xE8ces d'origine.",
-    howToGetCatalog: "Compte grossiste ; l'int\xE9gration catalogue document\xE9e (RepairDesk) ne couvre que les vitrines US/CA ; demander un export pour l'UE.",
-    verified: "Pr\xE9sence NL/UK (IFA 2025, rachat TouchFix) ; int\xE9gration RepairDesk (t\xE9l\xE9chargement catalogue US/CA, stock temps r\xE9el) ; pas d'API publique.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.ifa-berlin.com/exhibitors/mobilesentrix",
-      "https://www.repairdesk.co/mobilesentrix-integration",
-      "https://www.trysignalbase.com/news/acquisitions/touchfix-acquired-by-mobilesentrix-acquisition",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "replacebase",
-    name: "ReplaceBase",
-    segment: "B_parts",
-    country: "GB",
-    deliveryZones: [
-      "UK",
-      "EU"
-    ],
-    website: "https://www.replacebase.co.uk",
-    catalogUrl: null,
-    categories: [
-      "spare_parts"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Compte trade",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "GBP",
-    moq: null,
-    shipping: "Depuis le UK (droits/TVA import vers FR)",
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "> 14 000 SKU t\xE9l\xE9phone/tablette/MacBook, 4 000-6 000 composants exp\xE9di\xE9s/jour.",
-    howToGetCatalog: "Compte trade ; l'\xE9tude de cas mentionne une int\xE9gration POS, pas d'API client publique ; demander un export.",
-    verified: "\xC9tude de cas EvinceDev + page about (miroir) ; pas d'API trouv\xE9e ; SERVER.md : pas de catalogue public lisible.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://evincedev.com/online-replacement-parts-case-study-replacebase",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "rewa-eu",
-    name: "REWA EU (avec GSM Parts Center)",
-    segment: "B_parts",
-    country: "NL",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://rewa.tech",
-    catalogUrl: "https://rewaeu.com",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: null,
-    accessConditions: "Site EU d\xE9di\xE9 ; conditions de compte non confirm\xE9es",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "Fabricant/grossiste de Shenzhen (35 000+ produits, outils de refurbishing) avec entit\xE9 EU lanc\xE9e en sept. 2025 avec GPC.",
-    howToGetCatalog: "Consulter rewaeu.com et ouvrir un compte ; aucun flux public trouv\xE9.",
-    verified: "Lancement REWA EU sept. 2025 en partenariat avec GPC et domaine rewaeu.com : pages rewa.tech (snippets).",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://rewa.tech/?p=30933",
-      "https://rewa.tech/products/",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "ifixit-pro-eu",
-    name: "iFixit Pro (EU)",
-    segment: "B_parts",
-    country: "DE",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.ifixit.com/en-eu/pro",
-    catalogUrl: "https://eu-store.ifixit.com/pages/business-customers",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung",
-      "Google"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: true,
-    accessConditions: "Inscription Pro gratuite ; formulaire de demande de tarifs (r\xE9ponse 2 jours ouvr\xE9s)",
-    accessModes: [
-      "public_catalog",
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: "Livraison standard offerte au-del\xE0 d'un seuil (montants affich\xE9s en $ sur certaines pages)",
-    warranty: "Garantie \xE0 vie sur les pi\xE8ces (hors consommables comme batteries)",
-    partQuality: "mixed",
-    whyUseful: "Pi\xE8ces OEM (dont Google Pixel) et aftermarket avec remises pro 10-60 % affich\xE9es sur fiche produit.",
-    howToGetCatalog: "S'inscrire au programme Pro ; prix remis\xE9s visibles connect\xE9 ; pas d'API/flux trouv\xE9.",
-    verified: "Pages ifixit.com/en-eu/pro et eu-store business-customers (snippets) ; formulaire pro.ifixit.com.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.ifixit.com/en-eu/pro",
-      "https://eu-store.ifixit.com/pages/business-customers",
-      "https://pro.ifixit.com/repair-pricing-request"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "brico-phone",
-    name: "Brico-phone",
-    segment: "B_parts",
-    country: "FR",
-    deliveryZones: [
-      "FR"
-    ],
-    website: "https://www.brico-phone.com",
-    catalogUrl: "https://www.brico-phone.com",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung",
-      "Huawei",
-      "Xiaomi"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2C",
-    proAccountRequired: false,
-    accessConditions: "Catalogue public (prix TTC)",
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "TTC",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "Seule source pi\xE8ces avec catalogue public structur\xE9 d\xE9j\xE0 lu par MON STOCK (sitemap + JSON-LD) ; qualit\xE9s vari\xE9es (OLED compatible, reconditionn\xE9 d'origine, batterie originale).",
-    howToGetCatalog: "Connecteur existant sitemap + JSON-LD ; aucun tarif pro trouv\xE9.",
-    verified: "Fiches produits (qualit\xE9s de pi\xE8ces) via snippets ; extraction prix valid\xE9e c\xF4t\xE9 serveur le 2026-10-10 (SERVER.md).",
-    verificationLevel: "server_verified",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.brico-phone.com/pieces-detachees-pour-huawei-p30-pro-4457",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "utopya",
-    name: "Utopya",
-    segment: "B_parts",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "EU"
-    ],
-    website: "https://www.utopya.fr",
-    catalogUrl: null,
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte professionnel (conditions exactes non trouv\xE9es)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur B2B europ\xE9en bas\xE9 \xE0 Nice (CA 78 M\u20AC 2023) : pi\xE8ces/accessoires smartphones, tablettes, montres pour r\xE9parateurs et reconditionneurs.",
-    howToGetCatalog: "Ouvrir un compte pro ; robots.txt interdit les chemins n\xE9cessaires (SERVER.md) \u2192 demander un flux fournisseur.",
-    verified: "Profil IFA et fiche Xerfi (snippets) ; robots.txt constat\xE9 c\xF4t\xE9 serveur.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.ifa-berlin.com/exhibitors/utopya-2",
-      "https://www.xerfi.com/etudes-par-entreprise/utopya_791460660",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "mobilax",
-    name: "Mobilax (ND Distribution)",
-    segment: "B_parts",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "EU"
-    ],
-    website: "https://www.mobilax.fr",
-    catalogUrl: null,
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Xiaomi",
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "R\xE9serv\xE9 exclusivement aux professionnels (application mobile B2B disponible)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: "Livraison Europe annonc\xE9e",
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "Grossiste lyonnais (2010) de pi\xE8ces et accessoires r\xE9serv\xE9 aux r\xE9parateurs, avec app B2B.",
-    howToGetCatalog: "Compte pro ; aucune API publique trouv\xE9e ; SERVER.md : prix apr\xE8s connexion \u2192 demander un flux.",
-    verified: "Fiche app (publisher ND Distribution) et fiche French Tech ; domaine non confirm\xE9 dans cette session (WebFetch bloqu\xE9). \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://mwm.ai/apps/mobilax/1599510586",
-      "https://lespepitestech.com/node/18571",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "injured-gadgets",
-    name: "Injured Gadgets",
-    segment: "B_parts",
-    country: "US",
-    deliveryZones: [
-      "US",
-      "Global"
-    ],
-    website: "https://www.injuredgadgets.com",
-    catalogUrl: null,
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: "Compte grossiste ; certains articles non exp\xE9diables hors USA",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "USD",
-    moq: null,
-    shipping: "Restrictions export selon article ; droits/TVA import vers FR",
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "Grossiste US (Norcross, GA) int\xE9gr\xE9 \xE0 RepairDesk (stock temps r\xE9el) ; pertinent surtout pour r\xE9f\xE9rences introuvables en UE.",
-    howToGetCatalog: "Pas d'API publique ; int\xE9gration RepairDesk r\xE9serv\xE9e aux utilisateurs RepairDesk ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur.",
-    verified: "Int\xE9gration RepairDesk et restriction d'exp\xE9dition sur une fiche produit (snippets).",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://blog.repairdesk.co/?p=798",
-      "https://www.injuredgadgets.com/tools-equipment/soldering/diagnostics",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "fixez",
-    name: "Fixez",
-    segment: "B_parts",
-    country: "US",
-    deliveryZones: [],
-    website: "https://www.fixez.com",
-    catalogUrl: null,
-    categories: [
-      "spare_parts"
-    ],
-    brands: [],
-    productTypes: [
-      "parts"
-    ],
-    sales: null,
-    proAccountRequired: null,
-    accessConditions: null,
-    accessModes: [],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "USD",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "D\xE9j\xE0 pr\xE9sent dans l'app ; aucune information nouvelle trouv\xE9e.",
-    howToGetCatalog: "Non d\xE9termin\xE9 (robots.txt/403 constat\xE9 c\xF4t\xE9 serveur).",
-    verified: "Aucun r\xE9sultat de recherche pertinent dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "unverified",
-    knownInApp: true,
-    sourcesChecked: [
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "4phones",
-    name: "4Phones",
-    segment: "B_parts",
-    country: "NL",
-    deliveryZones: [
-      "BE",
-      "NL",
-      "LU",
-      "DE",
-      "ES",
-      "PT",
-      "TR"
-    ],
-    website: "https://4phones.eu",
-    catalogUrl: "https://acc.4phones.eu",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Webshop ferm\xE9 : demande de compte sans engagement, stock et prix visibles apr\xE8s approbation",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: "Exp\xE9dition le jour m\xEAme (cut-off 18h00/19h30 CET selon fiches)",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Importateur/distributeur de pi\xE8ces t\xE9l\xE9phone/tablette/laptop (Valkenswaard) actif Benelux, DE, ES, PT.",
-    howToGetCatalog: "Demander un compte sur acc.4phones.eu ; FR non list\xE9 dans les zones \u2192 confirmer la livraison France ; demander un export.",
-    verified: "Pages produit acc.4phones.eu (compte requis, cut-offs) et LinkedIn (zones) via snippets.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://acc.4phones.eu/products/a00004569",
-      "https://4phones.eu/pages/our-mission",
-      "https://linkedin.com/company/4phones"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "gsm-parts-center",
-    name: "GSM Parts Center (GPC Group Global B.V.)",
-    segment: "B_parts",
-    country: "NL",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.gsmpartscenter.com",
-    catalogUrl: null,
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Mod\xE8le 'registered dealers' (support 7j/7)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur B2B pi\xE8ces/accessoires/outils, partenaire de REWA EU et certifi\xE9 Phonecheck.",
-    howToGetCatalog: "Trouver le site officiel GPC et s'enregistrer comme dealer ; URL non confirm\xE9e.",
-    verified: "Uniquement fiche partenaire Phonecheck + mention REWA EU ; site propre non trouv\xE9. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "unverified",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.phonecheck.com/fr/partners/gsm-parts-center",
-      "https://rewa.tech/?p=30933",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "mobiparts-gsmnet",
-    name: "Mobiparts / GSMnet",
-    segment: "B_parts",
-    country: "RO",
-    deliveryZones: [
-      "RO",
-      "EU"
-    ],
-    website: "https://www.mobiparts.ro",
-    catalogUrl: "https://www.mobiparts.ro",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung",
-      "Xiaomi"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: true,
-    accessConditions: "Plateforme B2B en ligne (> 5 000 soci\xE9t\xE9s clientes)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur roumain (CA ~31 M\u20AC 2022, > 25 000 produits) avec stock temps r\xE9el affich\xE9 et account managers B2B.",
-    howToGetCatalog: "Ouvrir un compte B2B sur mobiparts.ro ; demander un export XML/CSV (non document\xE9).",
-    verified: "Plateforme B2B mobiparts.ro, 5 000 soci\xE9t\xE9s, stock temps r\xE9el : Revista Biz, IFA, Economica (snippets).",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.revistabiz.ro/afacerile-gsmnet-ro-in-crestere-pana-la-31-de-milioane-de-euro/",
-      "https://www.ifa-berlin.com/archived-exhibitor/mobiparts"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "sifar",
-    name: "Sifar Group (groupe Esprinet)",
-    segment: "B_parts",
-    country: "IT",
-    deliveryZones: [
-      "IT",
-      "EU"
-    ],
-    website: "https://www.sifar.it",
-    catalogUrl: null,
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [
-      "Samsung",
-      "Realme",
-      "Huawei",
-      "Oppo",
-      "Asus",
-      "OnePlus",
-      "Apple",
-      "Xiaomi"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Plateforme web B2B (inscription revendeur)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: "Livraison 24/48 h (Italie)",
-    warranty: null,
-    partQuality: "mixed",
-    whyUseful: "Distributeur autoris\xE9 de pi\xE8ces Samsung, Realme, Huawei, Oppo, Asus, OnePlus (originales + compatibles), > 20 000 r\xE9f\xE9rences.",
-    howToGetCatalog: "Inscription sur sifar.it ; demander si le flux espriCATALOG d'Esprinet couvre les pi\xE8ces Sifar.",
-    verified: "Rachat par Esprinet (ao\xFBt 2023) et statut distributeur autoris\xE9 : MilanoFinanza, Soldionline, IFA (snippets).",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.ifa-berlin.com/exhibitors/sifar-group-srl",
-      "https://www.milanofinanza.it/news/esprinet-acquisisce-sifar-group-per-16-milioni-di-euro-e-prende-in-contropiede-gli-shortisti-la-tabella-202307191530379702",
-      "https://atoka.io/public/it/azienda/sifar-group-srl/851f5c5be92a"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "life365",
-    name: "Life365",
-    segment: "E_specialist",
-    country: "IT",
-    deliveryZones: [
-      "IT",
-      "EU"
-    ],
-    website: "https://www.life365.eu",
-    catalogUrl: "https://info.life365.eu/en/settori/telephony-and-repairs",
-    categories: [
-      "spare_parts",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "parts",
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte B2B ; 'pas de minimum' annonc\xE9",
-    accessModes: [
-      "api",
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: "Aucun minimum annonc\xE9",
-    shipping: "48 h Italie, < 4 jours reste de l'Europe (annonc\xE9)",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Plateforme B2B italienne (Forl\xEC) t\xE9l\xE9phonie/r\xE9paration qui annonce un 'API Access to Inventory' \u2014 candidat rare \xE0 une int\xE9gration API c\xF4t\xE9 pi\xE8ces.",
-    howToGetCatalog: "Contacter Life365 pour ouvrir un compte et obtenir la documentation API (non publique).",
-    verified: "'API Access to Inventory' et 'check availability through our APIs' sur pages Life365 (snippets) ; aucune doc technique trouv\xE9e.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://info.life365.eu/en/settori/telephony-and-repairs",
-      "https://info.life365.eu/en/settori/electrical-components",
-      "https://www.life365.eu/en/contatti"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "smartgrade",
-    name: "SmartGrade (Samsung Service Pack)",
-    segment: "B_parts",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "EU"
-    ],
-    website: "https://smartgrade.fr",
-    catalogUrl: "https://www.destockplus.com/boutique-grossiste-samsungservicepack.html",
-    categories: [
-      "spare_parts"
-    ],
-    brands: [
-      "Samsung"
-    ],
-    productTypes: [
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: null,
-    accessConditions: "Demande par e-mail (mod\xE8les, couleurs, volumes hebdo/mensuels, prix cibles)",
-    accessModes: [
-      "email_quote"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: "original",
-    whyUseful: "Grossiste ni\xE7ois d'\xE9crans Samsung Service Pack (pi\xE8ces d'origine) \u2014 se dit fournisseur certifi\xE9 Samsung Enterprise (non v\xE9rifi\xE9).",
-    howToGetCatalog: "Envoyer la liste des mod\xE8les et volumes \xE0 l'adresse commerciale indiqu\xE9e sur ses annonces Destockplus ; devis manuel.",
-    verified: "Annonces Destockplus (contact, site smartgrade.fr) et forum Samsung 2017 (snippets) ; statut Samsung non v\xE9rifi\xE9.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.destockplus.com/acheter/c-904670-ecran-original-samsung-service.html",
-      "https://eu.community.samsung.com/t5/autres-smartphones/samsung-service-pack/m-p/323819/highlight/true"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "smartpart4u",
-    name: "smartpart4u (JH Internet GmbH)",
-    segment: "B_parts",
-    country: "DE",
-    deliveryZones: [
-      "DE"
-    ],
-    website: "https://smartpart4u.de",
-    catalogUrl: null,
-    categories: [
-      "spare_parts"
-    ],
-    brands: [],
-    productTypes: [
-      "parts"
-    ],
-    sales: null,
-    proAccountRequired: null,
-    accessConditions: null,
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: "Livraison J+1 annonc\xE9e",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Se pr\xE9sente comme grossiste de pi\xE8ces smartphone (DE) ; \xE0 qualifier.",
-    howToGetCatalog: "V\xE9rifier l'existence d'un acc\xE8s revendeur ; non v\xE9rifi\xE9.",
-    verified: "Uniquement profil Trusted Shops (en partie g\xE9n\xE9r\xE9 par IA selon la page).",
-    verificationLevel: "unverified",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.trustedshops.de/company/jh_internet_gmbh/"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "bstock-europe",
-    name: "B-Stock Europe (Amazon EU, Supply Europe\u2026)",
-    segment: "C_liquidation",
-    country: "US",
-    deliveryZones: [
-      "EU",
-      "UK"
-    ],
-    website: "https://bstock.com/europe/",
-    catalogUrl: "https://bstock.com/auctions/europe/",
-    categories: [
-      "lots",
-      "smartphones",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "lots",
-      "used"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Inscription gratuite par marketplace ; licence commerciale + n\xB0 TVA (UE) ; adresse de livraison europ\xE9enne",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: "Palettes / camions",
-    shipping: "Acheteur responsable du transport, douane et droits",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Canal officiel des ench\xE8res de retours/surstocks Amazon EU et d'autres retailers europ\xE9ens, dont \xE9lectronique (neuf \xE0 salvage).",
-    howToGetCatalog: "S'inscrire sur chaque marketplace (Amazon EU, Supply Europe) ; manifestes par lot ; doc repo : acc\xE8s automatis\xE9 interdit par les CGU \u2192 mode manuel/alertes.",
-    verified: "Pages bstock.com (Amazon EU, Supply Europe, FAQ acheteurs : TVA, documents) via snippets.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://bstock.com/auctions/amazon-eu/",
-      "https://bstock.com/supplystoreeurope/faq/",
-      "https://bstock.com/supplystoreeurope/consumer-electronics/",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "merkandi",
-    name: "Merkandi",
-    segment: "C_liquidation",
-    country: "PL",
-    deliveryZones: [
-      "EU",
-      "Global"
-    ],
-    website: "https://merkandi.fr/",
-    catalogUrl: "https://merkandi.fr/",
-    categories: [
-      "lots",
-      "smartphones",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new",
-      "used",
-      "refurbished",
-      "lots"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Inscription ; contact vendeurs selon abonnement",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: "Variable selon vendeur",
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Grande place de march\xE9 B2B europ\xE9enne de surstocks, liquidations et retours (fiabilit\xE9 vendeurs in\xE9gale selon avis).",
-    howToGetCatalog: "Inscription acheteur ; le flux XML document\xE9 (AdTribes) sert aux VENDEURS pour publier, pas aux acheteurs ; aucune API acheteur trouv\xE9e.",
-    verified: "Flux XML vendeur via AdTribes ; avis Trustpilot ; robots.txt/403 c\xF4t\xE9 serveur.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://adtribes.io/?p=46813",
-      "https://ie.trustpilot.com/review/merkandi.com?page=2",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "stocklear",
-    name: "Stocklear",
-    segment: "C_liquidation",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "BE",
-      "DE",
-      "NL",
-      "ES",
-      "EU"
-    ],
-    website: "https://stocklear.fr/",
-    catalogUrl: "https://stocklear.fr/lots/cat/telephone-16",
-    categories: [
-      "lots",
-      "smartphones"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "lots",
-      "new",
-      "used"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte professionnel valid\xE9 (soldeurs, grossistes, reconditionneurs\u2026)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: "Lots aux ench\xE8res",
-    shipping: "Transport propos\xE9 sur chaque commande",
-    warranty: "SAV garanti sur chaque commande (annonc\xE9)",
-    partQuality: null,
-    whyUseful: "Ench\xE8res B2B de retours clients/invendus de grandes marques (Apple, Samsung\u2026), 9 niveaux de qualit\xE9 du neuf au non test\xE9.",
-    howToGetCatalog: "Cr\xE9er un compte pro ; consulter les lots t\xE9l\xE9phonie ; pas d'API acheteur trouv\xE9e (un connecteur Contentserv existe c\xF4t\xE9 vendeurs).",
-    verified: "Mod\xE8le, qualit\xE9s, acheteurs cibles : La Libre, CB Insights, Destockplus (snippets).",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.lalibre.be/economie/entreprises-startup/2020/06/08/stocklear-la-crise-a-eu-un-double-effet-daubaine-LT7OOAKQKVGM7P5SWU27BLSACM/",
-      "https://marketplace.contentserv.com/connectors/stocklear-connector",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "jobalots",
-    name: "Jobalots",
-    segment: "C_liquidation",
-    country: "GB",
-    deliveryZones: [
-      "UK",
-      "EU"
-    ],
-    website: "https://jobalots.com",
-    catalogUrl: "https://jobalots.com",
-    categories: [
-      "lots"
-    ],
-    brands: [],
-    productTypes: [
-      "lots",
-      "used"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: false,
-    accessConditions: "Inscription ; ench\xE8res de lots",
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "GBP",
-    moq: "Lots/palettes",
-    shipping: null,
-    warranty: "Aucune garantie sur les retours clients (non test\xE9s, non tri\xE9s, \xB110 % sur le manifeste)",
-    partQuality: null,
-    whyUseful: "Lots de retours clients avec manifeste ; utile pour sourcing opportuniste, risque \xE9lev\xE9.",
-    howToGetCatalog: "Consultation manuelle ; robots.txt interdit l'acc\xE8s automatis\xE9 (SERVER.md).",
-    verified: "Politique (pas de garantie, \xB110 %) via r\xE9ponses Jobalots sur reviews.io ; robots.txt constat\xE9 c\xF4t\xE9 serveur.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.reviews.io/company-reviews/store/jobalots.com-1gJ4Xrr/R1K",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "eurolots",
-    name: "EuroLots",
-    segment: "C_liquidation",
-    country: "BG",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.eurolots.com/en",
-    catalogUrl: "https://www.eurolots.com/en/fixed-price-lots",
-    categories: [
-      "lots"
-    ],
-    brands: [],
-    productTypes: [
-      "lots"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Inscription (remise premi\xE8re commande annonc\xE9e)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: "Lots/palettes",
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Plateforme de liquidation (Plovdiv) avec photos r\xE9elles et manifestes d\xE9taill\xE9s, dont \xE9lectronique.",
-    howToGetCatalog: "Inscription ; consultation manuelle ; aucune API trouv\xE9e.",
-    verified: "Uniquement fiche annuaire tiers (bestfoodimporters) ; URLs de la doc repo.",
-    verificationLevel: "unverified",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://bestfoodimporters.com/company/eurolots/",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "wholesale-clearance-uk",
-    name: "Wholesale Clearance UK",
-    segment: "C_liquidation",
-    country: "GB",
-    deliveryZones: [
-      "UK"
-    ],
-    website: "https://www.wholesaleclearance.co.uk/",
-    catalogUrl: "https://www.wholesaleclearance.co.uk/electrical__5.htm",
-    categories: [
-      "lots",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "lots",
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: null,
-    accessConditions: null,
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "GBP",
-    moq: null,
-    shipping: "UK (droits/TVA vers FR)",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "D\xE9stockage UK (rayon \xE9lectrique) ; faible pertinence smartphones.",
-    howToGetCatalog: "Consultation manuelle ; doc repo : acc\xE8s automatis\xE9 interdit par les CGU.",
-    verified: "Aucun r\xE9sultat de recherche dans cette session ; URLs issues de la doc repo.",
-    verificationLevel: "repo_doc_only",
-    knownInApp: true,
-    sourcesChecked: [
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "destockplus",
-    name: "Destockplus",
-    segment: "C_liquidation",
-    country: "FR",
-    deliveryZones: [
-      "FR"
-    ],
-    website: "https://www.destockplus.com/",
-    catalogUrl: "https://www.destockplus.com/acheter/recherche-fournisseur-0-telephonie.html",
-    categories: [
-      "lots",
-      "smartphones",
-      "spare_parts",
-      "laptops"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "new",
-      "refurbished",
-      "lots",
-      "parts"
-    ],
-    sales: "B2B",
-    proAccountRequired: false,
-    accessConditions: "Annonces publiques ; contact vendeur apr\xE8s inscription",
-    accessModes: [
-      "public_catalog",
-      "feed_xml"
-    ],
-    apiDocsUrl: "https://www.destockplus.com/modules/annonces/rss.php",
-    pricesTax: null,
-    currency: "EUR",
-    moq: "Selon annonceur",
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Petites annonces B2B de grossistes FR/\xE9trangers (iPhone/Android reconditionn\xE9s, Service Pack, PC en lots) ; flux RSS/XML public des annonces.",
-    howToGetCatalog: "Le flux RSS/XML public (rss.php) permet de surveiller les nouvelles annonces ; prix souvent 'sur demande' \u2192 contact manuel ; prudence sur la qualit\xE9 des annonces.",
-    verified: "Page flux RSS (gratuit, imm\xE9diat) et service 'flux d'annonces' vendeurs via snippets ; annonces t\xE9l\xE9phonie dat\xE9es juillet-ao\xFBt 2026.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.destockplus.com/modules/annonces/rss.php",
-      "https://www.destockplus.com/lire/nos-services-1.html",
-      "https://www.destockplus.com/acheter/recherche-fournisseur-0-telephonie.html"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "troostwijk",
-    name: "Troostwijk Auctions",
-    segment: "C_liquidation",
-    country: "NL",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.troostwijkauctions.com",
-    catalogUrl: null,
-    categories: [
-      "lots"
-    ],
-    brands: [],
-    productTypes: [
-      "lots",
-      "used"
-    ],
-    sales: "B2B",
-    proAccountRequired: null,
-    accessConditions: "Inscription ench\xE9risseur",
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Grande maison d'ench\xE8res B2B europ\xE9enne vendant chaque semaine des retours e-commerce (via Blue Banana Logistics).",
-    howToGetCatalog: "Consultation manuelle des ventes hebdomadaires de retours ; aucune vente smartphone sp\xE9cifique confirm\xE9e.",
-    verified: "Page partenaire bol.com (retours webshops, ventes hebdo) et page histoire Troostwijk (snippets).",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://partnerplatform.bol.com/en/cpdp/troostwijk-auctions",
-      "https://www.troostwijkauctions.com/fr/the-story-of-troostwijk-auctions"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "vavato",
-    name: "Vavato",
-    segment: "C_liquidation",
-    country: "BE",
-    deliveryZones: [
-      "BE",
-      "EU"
-    ],
-    website: "https://vavato.com",
-    catalogUrl: null,
-    categories: [
-      "lots"
-    ],
-    brands: [],
-    productTypes: [
-      "lots"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: null,
-    accessConditions: null,
-    accessModes: [
-      "public_catalog"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Plateforme d'ench\xE8res belge (overstock, insolvabilit\xE9s) ayant \xE9coul\xE9 39 % des retours Kr\xEBfel (2021).",
-    howToGetCatalog: "Consultation manuelle ; statut actuel (rachet\xE9/fusionn\xE9 selon PitchBook) \xE0 v\xE9rifier.",
-    verified: "RetailDetail/DH 2021 et PitchBook ; site non confirm\xE9 dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "unverified",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://retaildetail.be/nl/news/elektro/krefel-vend-ses-retours-aux-encheres-sur-internet",
-      "https://pitchbook.com/profiles/company/343218-52",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "restposten-de",
-    name: "Restposten.de",
-    segment: "C_liquidation",
-    country: "DE",
-    deliveryZones: [
-      "DE",
-      "EU"
-    ],
-    website: "https://restposten.de",
-    catalogUrl: null,
-    categories: [
-      "lots"
-    ],
-    brands: [],
-    productTypes: [
-      "lots",
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "R\xE9serv\xE9 aux entreprises",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Marketplace B2B germanophone de restes de stock, surplus et retours (Solingen) ; \xE9lectronique list\xE9e parmi les cat\xE9gories.",
-    howToGetCatalog: "Inscription entreprise ; consultation manuelle ; ne pas confondre avec Restposten24.",
-    verified: "Description via annuaire tiers uniquement.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.monsterdealz.de/magazin/restposten-kaufen",
-      "https://erfahrungenscout.de/online-einkaufen/restposten-bewertungen?page=2"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "ebay-browse",
-    name: "eBay (Buy Browse API)",
-    segment: "C_liquidation",
-    country: "US",
-    deliveryZones: [
-      "FR",
-      "EU",
-      "Global"
-    ],
-    website: "https://www.ebay.fr",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "spare_parts",
-      "lots"
-    ],
-    brands: [],
-    productTypes: [
-      "new",
-      "used",
-      "refurbished",
-      "parts",
-      "lots"
-    ],
-    sales: "B2B+B2C",
-    proAccountRequired: false,
-    accessConditions: "Cl\xE9s d'application eBay ; sandbox ouvert, production des Buy APIs soumise \xE0 \xE9ligibilit\xE9/approbation/contrat",
-    accessModes: [
-      "api"
-    ],
-    apiDocsUrl: "https://developer.ebay.com/api-docs/buy/browse/overview.html",
-    pricesTax: "TTC",
-    currency: "EUR",
-    moq: null,
-    shipping: "Selon vendeur",
-    warranty: "Selon vendeur",
-    partQuality: null,
-    whyUseful: "Seule API officielle de recherche multi-vendeurs (lots, reconditionn\xE9s, pi\xE8ces) avec filtres GTIN/cat\xE9gorie.",
-    howToGetCatalog: "GET /buy/browse/v1/item_summary/search avec token d'application (client credentials) ; max 10 000 r\xE9sultats/requ\xEAte ; v\xE9rifier la nouvelle licence API (restrictions IA).",
-    verified: "Docs officielles developer.ebay.com (m\xE9thodes, overview, OAS3) via snippets.",
-    verificationLevel: "official_docs_snippet",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://developer.ebay.com/api-docs/buy/browse/overview.html",
-      "https://developer.ebay.com/api-docs/buy/browse/resources/methods",
-      "https://www.developer.ebay.com/api-docs/master/buy/browse/openapi/3/buy_browse_v1_oas3.yaml"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "ingram-micro-fr",
-    name: "Ingram Micro (France / Xvantage)",
-    segment: "D_distributor",
-    country: "FR",
-    deliveryZones: [
-      "FR"
-    ],
-    website: "https://fr.ingrammicro.eu/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung",
-      "Lenovo",
-      "HP"
-    ],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte revendeur (n\xB0 client) puis compte d\xE9veloppeur ; app \xE0 faire approuver",
-    accessModes: [
-      "api",
-      "pro_portal",
-      "manual_download"
-    ],
-    apiDocsUrl: "https://developer.ingrammicro.com/reseller/getting-started",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "API Reseller gratuite (OAuth) : recherche catalogue, d\xE9tail produit, prix et disponibilit\xE9 temps r\xE9el par entrep\xF4t ; fichier prix SFTP en secours.",
-    howToGetCatalog: "Ouvrir un compte Ingram FR ; cr\xE9er une app sur developer.ingrammicro.com avec le n\xB0 client, activer 'Product Catalog' ; sinon demander le fichier prix SFTP \xE0 l'account manager. Disponibilit\xE9 de l'API en France \xE0 confirmer (un guide tiers cite US/UK/CA seulement).",
-    verified: "Portail d\xE9veloppeur, endpoints v6 price-and-availability, SDK OpenAPI GitHub, gratuit\xE9 : snippets officiels ; couverture FR non confirm\xE9e.",
-    verificationLevel: "official_docs_snippet",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://developer.ingrammicro.com/reseller/getting-started",
-      "https://developer.ingrammicro.com/reseller/sdks",
-      "https://github.com/ingrammicro-xvantage/xi-sdk-openapispec",
-      "https://help.zomentum.com/support/solutions/articles/44001909124"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "td-synnex-fr",
-    name: "TD SYNNEX France",
-    segment: "D_distributor",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "BE",
-      "NL",
-      "UK"
-    ],
-    website: "https://fr.tdsynnex.com/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte revendeur ; code d'autorisation P&A temps r\xE9el ; login XML/API dans ECExpress + IP whitelist (process NA)",
-    accessModes: [
-      "api",
-      "feed_xml",
-      "pro_portal"
-    ],
-    apiDocsUrl: "https://developer.api.tdsynnex.com/eu",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Service europ\xE9en de prix & disponibilit\xE9 temps r\xE9el (divisions UK, BE, FR, NL) consommable en XML.",
-    howToGetCatalog: "Ouvrir un compte (fr.tdsynnex.com/newCustomerRegistration) ; demander \xE0 l'\xE9quipe e-commerce le code d'autorisation P&A et la spec XML ; portail dev EU indiqu\xE9 dans la doc repo.",
-    verified: "Guide QuoteWerks 'TD SYNNEX Europe Real-Time P&A' (UK/BE/FR/NL, code d'autorisation) + Quoter (ECExpress=XML) via snippets ; portail dev EU = doc repo.",
-    verificationLevel: "third_party_docs+repo_doc",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://support.quotewerks.com/helpfilelatest/tdsynnexeuroperealtimesetup.htm",
-      "https://help.quoter.com/hc/en-us/articles/32086346772251-Integrate-with-TD-Synnex-ECE-Express",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "also-fr",
-    name: "ALSO France / ALSO Deutschland",
-    segment: "D_distributor",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "DE",
-      "EU"
-    ],
-    website: "https://www.also.com/ec/cms5/fr_2000/2000/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Ouverture de compte revendeur",
-    accessModes: [
-      "edi",
-      "feed_xml",
-      "pro_portal"
-    ],
-    apiDocsUrl: "https://www.also.com/ec/cms5/de_1010/1010/services/it-services/edi-und-xml-integration/index.jsp",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur IT broadline (> 35 000 produits FR) avec int\xE9gration EDI/XML document\xE9e c\xF4t\xE9 DE.",
-    howToGetCatalog: "Ouvrir un compte ; demander l'int\xE9gration EDI/XML (prix/stock) ; aucune info trouv\xE9e dans cette session.",
-    verified: "Rien trouv\xE9 via la recherche de cette session ; pages EDI/XML et ouverture de compte issues de la doc repo.",
-    verificationLevel: "repo_doc_only",
-    knownInApp: false,
-    sourcesChecked: [
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "esprinet",
-    name: "Esprinet (espriCATALOG / espriREALTIME)",
-    segment: "D_distributor",
-    country: "IT",
-    deliveryZones: [
-      "IT",
-      "ES",
-      "PT"
-    ],
-    website: "https://esprinet.com",
-    catalogUrl: "https://esprinet.com/en/offer/services/digital-and-e-commerce-services/espricatalog-and-esprirealtime",
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Revendeur Esprinet (IT/ES)",
-    accessModes: [
-      "feed_xml",
-      "api",
-      "edi"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: "Dropshipping sur > 170 000 produits",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "espriCATALOG = base produits avec prix, disponibilit\xE9s, photos, fiches \xE0 importer ; espriREALTIME = commandes automatis\xE9es + tracking ; maison m\xE8re de Sifar (pi\xE8ces).",
-    howToGetCatalog: "Devenir revendeur Esprinet Italia ou Ib\xE9rica, demander l'activation espriCATALOG (format non publi\xE9) ; livraison France \xE0 confirmer.",
-    verified: "Page officielle esprinet.com d\xE9crivant espriCATALOG/espriREALTIME (snippet) ; format technique non trouv\xE9.",
-    verificationLevel: "official_page_snippet",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://esprinet.com/en/offer/services/digital-and-e-commerce-services/espricatalog-and-esprirealtime"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "copaco",
-    name: "Copaco (BE/NL)",
-    segment: "E_specialist",
-    country: "NL",
-    deliveryZones: [
-      "BE",
-      "NL"
-    ],
-    website: "https://www.copaco.com",
-    catalogUrl: "https://www.copaco.com/en-be/customer-service-e-commerce-fulfillment",
-    categories: [
-      "laptops",
-      "tablets",
-      "smartphones",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Identifiants FTP fournis par Copaco aux revendeurs",
-    accessModes: [
-      "feed_csv"
-    ],
-    apiDocsUrl: "https://pypi.org/project/python-copaco-connections/0.1.2",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Liste de prix CSV par FTP avec stock, EAN, prix hors/avec taxes (Recupel, Bebat\u2026), ATP et date de prochaine livraison.",
-    howToGetCatalog: "Devenir revendeur Copaco BE/NL, obtenir les identifiants FTP, importer la productlist CSV.",
-    verified: "Package PyPI tiers 'python-copaco-connections' d\xE9crivant le CSV FTP et ses champs (snippet) ; page Copaco non lue.",
-    verificationLevel: "third_party_docs",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://pypi.org/project/python-copaco-connections/0.1.2"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "exertis-fr",
-    name: "Exertis France (repris par WE.CONNECT)",
-    segment: "D_distributor",
-    country: "FR",
-    deliveryZones: [
-      "FR"
-    ],
-    website: "https://www.exertis.fr/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "laptops",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Ouverture de compte (CGV sign\xE9es, Kbis < 3 mois, RIB, CNI g\xE9rant \u2014 doc repo) ; premi\xE8res commandes pr\xE9pay\xE9es",
-    accessModes: [
-      "feed_csv",
-      "edi",
-      "pro_portal"
-    ],
-    apiDocsUrl: "https://exertis.fr/web-services.php",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur mobilit\xE9/IT FR ; fichiers prix (PriceCAT) et EDI ; changement de nom commercial annonc\xE9 suite au rachat par WE.CONNECT.",
-    howToGetCatalog: "Ouvrir un compte puis demander \xE0 l'account manager l'activation du fichier prix (SFTP CSV selon process Exertis d\xE9crit par Kaseya) ; v\xE9rifier si les services survivent au rebranding WE.CONNECT.",
-    verified: "Rachat WE.CONNECT (BusinessWire/ABC Bourse) ; process SFTP CSV Exertis (Kaseya, contexte UK) ; page web-services = doc repo.",
-    verificationLevel: "third_party_docs+repo_doc",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://help.quotemanager.kaseya.com/help/Content/2-integrate/supplier-integrations/exertis.htm",
-      "https://www.abcbourse.com/marches/weconnect-acquiert-exertis-france-et-exertis-iberia_673386",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "komsa",
-    name: "KOMSA",
-    segment: "D_distributor",
-    country: "DE",
-    deliveryZones: [
-      "DE"
-    ],
-    website: "https://komsa.com/",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "tablets",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "V\xE9rification soci\xE9t\xE9 et solvabilit\xE9, acc\xE8s shop KARLO + account manager (doc repo)",
-    accessModes: [
-      "api",
-      "edi",
-      "feed_xml",
-      "feed_json",
-      "pro_portal"
-    ],
-    apiDocsUrl: "https://komsa.com/fileadmin/komsa.com/Dokumente/EDI/de/KOMSA_Echtzeit-Bestandsabfrage_API_Spezifikation.pdf",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur t\xE9l\xE9com majeur (> 20 000 partenaires retail) avec API REST de disponibilit\xE9 temps r\xE9el + EDI XML/JSON/SFTP.",
-    howToGetCatalog: "Devenir partenaire, demander l'acc\xE8s API dispo + flux easydata ; livraison/facturation France \xE0 confirmer.",
-    verified: "App KARLO et > 20 000 partenaires via ChannelPartner ; spec API PDF et EDI issus de la doc repo (non retrouv\xE9s par la recherche de cette session).",
-    verificationLevel: "search_snippets+repo_doc",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.channelpartner.de/article/3898243/die-karlo-app-ist-da.html",
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "brodos",
-    name: "Brodos AG",
-    segment: "D_distributor",
-    country: "DE",
-    deliveryZones: [
-      "DE"
-    ],
-    website: "https://brodos.com/",
-    catalogUrl: "https://shop.brodos.net/",
-    categories: [
-      "smartphones",
-      "tablets",
-      "accessories"
-    ],
-    brands: [
-      "Apple",
-      "Samsung"
-    ],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Inscription B2B (brodos.com/registrierung) ; identifiants de test via account manager",
-    accessModes: [
-      "api",
-      "edi",
-      "pro_portal"
-    ],
-    apiDocsUrl: "https://forms.brodos.com/brodos-developer-area/",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur mobilit\xE9 avec Article Master Data API, Offer API et commandes openTRANS XML.",
-    howToGetCatalog: "S'inscrire, demander l'acc\xE8s Developer Area ; livraison France \xE0 confirmer.",
-    verified: "Non retrouv\xE9 par la recherche de cette session ; repose sur la doc repo.",
-    verificationLevel: "repo_doc_only",
-    knownInApp: false,
-    sourcesChecked: [
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "wortmann",
-    name: "Wortmann AG (TERRA)",
-    segment: "D_distributor",
-    country: "DE",
-    deliveryZones: [
-      "DE"
-    ],
-    website: "https://portal.wortmann.de",
-    catalogUrl: null,
-    categories: [
-      "laptops",
-      "tablets",
-      "accessories"
-    ],
-    brands: [
-      "TERRA"
-    ],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Enregistrement comme revendeur (+ certification pour TERRA Cloud)",
-    accessModes: [
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Constructeur/distributeur allemand 100 % indirect (PC/portables TERRA) ; int\xE9r\xEAt limit\xE9 pour le reconditionn\xE9.",
-    howToGetCatalog: "S'enregistrer sur le portail revendeur ; aucun flux/CSV trouv\xE9.",
-    verified: "portal.wortmann.de cit\xE9 par ChannelPartner ; aucune info flux.",
-    verificationLevel: "search_snippets",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.channelpartner.de/article/3900739/wortmann-ag-laedt-fachhaendler-ein.html",
-      "https://www.itreseller.ch/Artikel/87156/Terra_Cloud_am_Wortmann-Himmel.html"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "kosatec",
-    name: "Kosatec",
-    segment: "E_specialist",
-    country: "DE",
-    deliveryZones: [
-      "DE"
-    ],
-    website: "https://kosatec.de",
-    catalogUrl: null,
-    categories: [
-      "laptops",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "N\xB0 client + cl\xE9 EDI fournis par Kosatec",
-    accessModes: [
-      "feed_csv"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Liste de prix CSV t\xE9l\xE9chargeable par URL construite \xE0 partir du n\xB0 client et de la cl\xE9 EDI (int\xE9gration simple).",
-    howToGetCatalog: "Ouvrir un compte, demander la cl\xE9 EDI et la doc d'int\xE9gration (PDF sur kosatec.de) ; t\xE9l\xE9charger le CSV p\xE9riodiquement.",
-    verified: "Post Salesbuildr d\xE9crivant l'URL CSV (n\xB0 client + cl\xE9 EDI), marqu\xE9 'done' ; PDF officiel non lu.",
-    verificationLevel: "third_party_docs",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://salesbuildr.featurebase.app/p/distributer-kosatec"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "jarltech",
-    name: "Jarltech",
-    segment: "D_distributor",
-    country: "DE",
-    deliveryZones: [],
-    website: "https://www.jarltech.com",
-    catalogUrl: null,
-    categories: [
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: null,
-    accessModes: [],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur sp\xE9cialis\xE9 (POS/AutoID) cit\xE9 dans la demande ; peu pertinent pour smartphones/refurb.",
-    howToGetCatalog: "Non d\xE9termin\xE9.",
-    verified: "Aucun r\xE9sultat pertinent dans cette session. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "unverified",
-    knownInApp: false,
-    sourcesChecked: [
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "bluechip",
-    name: "bluechip Computer AG",
-    segment: "D_distributor",
-    country: "DE",
-    deliveryZones: [
-      "DE"
-    ],
-    website: "https://www.bluechip.de",
-    catalogUrl: null,
-    categories: [
-      "laptops",
-      "tablets"
-    ],
-    brands: [
-      "bluechip"
-    ],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Partenaire revendeurs/int\xE9grateurs",
-    accessModes: [],
-    apiDocsUrl: null,
-    pricesTax: null,
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Fabricant/distributeur IT allemand (Meuselwitz) pour le channel ; aucune info d'acc\xE8s catalogue.",
-    howToGetCatalog: "Non d\xE9termin\xE9.",
-    verified: "Seulement fiche Intel Partner Showcase et get-in-it. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "unverified",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.intel.com/content/www/us/en/partner/showcase/storefront/a5S3b0000016NfNEAU/bluechip-computer-ag.html",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "action-pl",
-    name: "Action S.A.",
-    segment: "D_distributor",
-    country: "PL",
-    deliveryZones: [
-      "PL",
-      "EU"
-    ],
-    website: "https://www.action.pl/en/about-action/e-commerce",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "laptops",
-      "tablets",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Partenaire de la plateforme I-SERWIS",
-    accessModes: [
-      "manual_download",
-      "feed_csv",
-      "feed_xml",
-      "api"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "PLN",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Les partenaires I-SERWIS re\xE7oivent gratuitement des fichiers XLSX/CSV (prix, stock, dimensions, descriptions, photos) + API/XML.",
-    howToGetCatalog: "Devenir partenaire Action (I-SERWIS) ; t\xE9l\xE9charger XLSX/CSV ou demander l'API/XML ; livraison France \xE0 confirmer.",
-    verified: "Page officielle action.pl e-commerce (XLSX/CSV gratuits) + int\xE9grations Base.com/Shoper (snippets).",
-    verificationLevel: "official_page_snippet",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.action.pl/en/about-action/e-commerce",
-      "https://base.com/pl-PL/integracje/action/",
-      "https://www.shoper.pl/katalog-hurtowni/hurtownia/action"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "ab-sa-pl",
-    name: "AB S.A.",
-    segment: "D_distributor",
-    country: "PL",
-    deliveryZones: [
-      "PL"
-    ],
-    website: "https://www.ab.pl",
-    catalogUrl: null,
-    categories: [
-      "smartphones",
-      "laptops",
-      "tablets",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Acc\xE8s \xE0 la passerelle XML/API sur demande",
-    accessModes: [
-      "feed_xml",
-      "api"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "PLN",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Grand distributeur IT polonais avec passerelle XML (produits, photos, prix, stocks) et commandes dropshipping.",
-    howToGetCatalog: "Ouvrir un compte AB et demander l'acc\xE8s 'bramka XML/API' ; sch\xE9ma \xE0 obtenir aupr\xE8s d'AB.",
-    verified: "Int\xE9grations tierces (Inteshop PDF, Base.com, Useme) via snippets ; doc officielle non trouv\xE9e. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "third_party_docs",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://www.shoper.pl/wp-content/help/images/SHOPER/control-panel/applications/my-applications/integracja-ab/dokumentacja_aplikacja_ab.pdf",
-      "https://base.com/pl-PL/integracje/ab/",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "ldlc-pro",
-    name: "LDLC.pro",
-    segment: "D_distributor",
-    country: "FR",
-    deliveryZones: [
-      "FR",
-      "BE",
-      "CH",
-      "LU"
-    ],
-    website: "https://www.ldlc.pro",
-    catalogUrl: "https://www.ldlc.pro",
-    categories: [
-      "laptops",
-      "smartphones",
-      "tablets",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte professionnel (entreprises, commer\xE7ants, revendeurs)",
-    accessModes: [
-      "public_catalog",
-      "pro_portal"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "both",
-    currency: "EUR",
-    moq: null,
-    shipping: null,
-    warranty: null,
-    partQuality: null,
-    whyUseful: "> 30 000 r\xE9f\xE9rences, cible aussi les revendeurs ; pas de flux/API trouv\xE9.",
-    howToGetCatalog: "Compte pro ; demander \xE0 un conseiller si un export catalogue existe (SERVER.md : pas de catalogue public lisible).",
-    verified: "Pages ldlc.pro (cibles revendeurs/commer\xE7ants) via snippets ; aucune API trouv\xE9e.",
-    verificationLevel: "search_snippets",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.ldlc.pro/qui-sommes-nous.html",
-      "https://www.ldlc.pro/ld/cibles/point-de-vente.html",
-      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "bigbuy",
-    name: "BigBuy",
-    segment: "E_specialist",
-    country: "ES",
-    deliveryZones: [
-      "EU"
-    ],
-    website: "https://www.bigbuy.eu/fr/",
-    catalogUrl: "https://www.bigbuy.eu/en/csv-xml-files.html",
-    categories: [
-      "accessories",
-      "laptops",
-      "tablets"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Pack payant (Ecommerce Pack : FTP CSV/XML + API ; B2B Pack pour achat en gros)",
-    accessModes: [
-      "api",
-      "feed_csv",
-      "feed_xml"
-    ],
-    apiDocsUrl: "https://api.bigbuy.eu/rest/doc",
-    pricesTax: "HT",
-    currency: "EUR",
-    moq: "\xC0 l'unit\xE9 (dropshipping) ; packs wholesale",
-    shipping: "Dropshipping UE",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "API REST JSON document\xE9e (Bearer, sandbox) + fichiers CSV/XML : int\xE9gration la plus simple, mais assortiment smartphones \xE0 v\xE9rifier.",
-    howToGetCatalog: "Souscrire au pack incluant l'API, demander la cl\xE9 API, utiliser api.sandbox.bigbuy.eu puis api.bigbuy.eu (endpoints catalogue/stock).",
-    verified: "FAQ API officielle + guide PDF officiel (base URLs, Bearer, sections stock) via snippets ; tarifs des packs via sources tierces.",
-    verificationLevel: "official_docs_snippet",
-    knownInApp: true,
-    sourcesChecked: [
-      "https://www.bigbuy.eu/public/doc/Guia_API_BigBuy_EN.pdf",
-      "https://www.bigbuy.eu/sv/api_bigbuy.html",
-      "https://www.itechguides.com/best/dropshipping-software/bigbuy/",
-      "https://www.bigbuy.eu/academy/en/how-to-place-large-quantity-orders"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "westcoast",
-    name: "Westcoast",
-    segment: "D_distributor",
-    country: "GB",
-    deliveryZones: [
-      "UK"
-    ],
-    website: "https://www.westcoast.co.uk/",
-    catalogUrl: null,
-    categories: [
-      "laptops",
-      "tablets",
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Ouverture de compte (openaccount.westcoast.co.uk)",
-    accessModes: [
-      "api",
-      "pro_portal"
-    ],
-    apiDocsUrl: "https://www.westcoast.co.uk/what-we-do/Electronic_Trading.html",
-    pricesTax: "HT",
-    currency: "GBP",
-    moq: null,
-    shipping: "UK",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Distributeur IT UK avec trading \xE9lectronique (XML) ; pertinent seulement pour flux UK.",
-    howToGetCatalog: "Compte + demande d'acc\xE8s Electronic Trading.",
-    verified: "Non re-v\xE9rifi\xE9 dans cette session ; doc repo.",
-    verificationLevel: "repo_doc_only",
-    knownInApp: false,
-    sourcesChecked: [
-      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
-    ],
-    checkedAt: "2026-10-10"
-  },
-  {
-    key: "hurtel",
-    name: "Hurtel",
-    segment: "E_specialist",
-    country: "PL",
-    deliveryZones: [
-      "PL",
-      "EU"
-    ],
-    website: "https://hurtel.com",
-    catalogUrl: "https://base.com/pl-PL/integracje/hurtel/",
-    categories: [
-      "accessories"
-    ],
-    brands: [],
-    productTypes: [
-      "new"
-    ],
-    sales: "B2B",
-    proAccountRequired: true,
-    accessConditions: "Compte B2B (activit\xE9 enregistr\xE9e attendue) ; lien XML fourni par le grossiste",
-    accessModes: [
-      "feed_xml"
-    ],
-    apiDocsUrl: null,
-    pricesTax: "HT",
-    currency: "PLN",
-    moq: null,
-    shipping: "Dropshipping possible",
-    warranty: null,
-    partQuality: null,
-    whyUseful: "Grossiste polonais d'accessoires GSM (coques, verres tremp\xE9s, chargeurs, c\xE2bles) avec fichiers XML 'full' et 'light' (code, stock, prix) pour dropshipping.",
-    howToGetCatalog: "Ouvrir un compte B2B Hurtel, r\xE9cup\xE9rer l'URL du fichier XML 'light' (stock/prix) et 'full' (fiches) dans le panneau grossiste.",
-    verified: "FAQ Base.com (fichiers passerelle XML Hurtel, version light) via snippets ; site officiel non lu. \u2014 Domaine officiel renseign\xE9 le 10/10/2026 ; sa joignabilit\xE9 est v\xE9rifi\xE9e par le serveur MON STOCK (voir statut).",
-    verificationLevel: "third_party_docs",
-    knownInApp: false,
-    sourcesChecked: [
-      "https://base.com/pl-PL/pomoc/faq/integracje/hurtownie/",
-      "https://base.com/pl-PL/integracje/hurtel/",
-      "server:supplier_directory_checks"
-    ],
-    checkedAt: "2026-10-10"
-  }
-];
-
-// src/services/sourcing/supplier-directory.ts
-init_admin();
-init_env();
-init_http();
-var SUPPLIER_DIRECTORY = supplier_directory_default;
-var DIRECTORY_RESEARCH_DATE = "2026-10-10";
-var LIBRARY_BY_DIRECTORY_KEY = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone" };
-var CONNECTOR_BY_DIRECTORY_KEY = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
-function integrationOf(key2) {
-  const lib = LIBRARY_BY_DIRECTORY_KEY[key2];
-  if (lib && getLibrarySource(lib)) return { kind: "library", libraryKey: lib };
-  const connector = CONNECTOR_BY_DIRECTORY_KEY[key2];
-  if (connector) return { kind: "connector", connectorKey: connector };
-  return { kind: "file_import" };
-}
-function directoryStages(entry, check, facts) {
-  const stages = ["identified"];
-  if (check?.reachable) stages.push("verified");
-  if (check && !check.reachable) stages.push("unavailable");
-  const integration = integrationOf(entry.key);
-  if (integration.kind === "library" && facts.libraryOk.has(integration.libraryKey)) stages.push("public_access");
-  if (entry.proAccountRequired === true) stages.push("account_required");
-  if (integration.kind === "connector") stages.push("connector_ready");
-  if (facts.importedKeys.has(entry.key)) stages.push("import_tested");
-  return stages;
-}
-var STAGE_RANK = ["import_tested", "public_access", "connector_ready", "account_required", "verified", "unavailable", "identified"];
-function primaryStage(stages) {
-  return STAGE_RANK.find((s) => stages.includes(s)) ?? "identified";
-}
-function nameKey(s) {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(sas|sarl|sa|bv|gmbh|ltd|srl|s\.?a\.?)\b/g, "").replace(/[^a-z0-9]+/g, "");
-}
-function directoryKeyForSupplierName(name) {
-  const k = nameKey(name);
-  if (k.length < 3) return null;
-  const hit = SUPPLIER_DIRECTORY.find((e) => {
-    const ek = nameKey(e.name);
-    return ek === k || ek.length >= 5 && (k.startsWith(ek) || ek.startsWith(k));
-  });
-  return hit?.key ?? null;
-}
-function accessRequestEmail(entry, lang, org) {
-  const cats = entry.categories.join(", ") || (lang === "fr" ? "vos produits" : "your products");
-  if (lang === "fr") {
-    return {
-      subject: `Demande d'ouverture de compte professionnel et d'acc\xE8s catalogue \u2014 ${org.name}`,
-      body: [
-        "Bonjour,",
-        "",
-        `Je repr\xE9sente ${org.name}, revendeur professionnel de produits \xE9lectroniques${org.country ? ` (${org.country})` : ""}. Nous souhaitons travailler avec ${entry.name} pour : ${cats}.`,
-        "",
-        "Pourriez-vous nous indiquer :",
-        "1. Les conditions d'ouverture d'un compte professionnel (documents requis : Kbis / SIRET, num\xE9ro de TVA intracommunautaire).",
-        "2. Votre grille tarifaire revendeur (prix HT), les remises par volume et les quantit\xE9s minimales de commande.",
-        "3. La disponibilit\xE9 du stock et les d\xE9lais / frais de livraison vers la France.",
-        "4. Les conditions de garantie, de retour et, pour les appareils reconditionn\xE9s, la d\xE9finition de vos grades.",
-        "5. S'il existe un fichier catalogue ou un flux automatis\xE9 (CSV, Excel, XML, JSON ou API) comprenant r\xE9f\xE9rences, EAN, prix, stock et MOQ, ainsi que sa fr\xE9quence de mise \xE0 jour et ses conditions d'utilisation.",
-        "",
-        "Nous int\xE9grons les tarifs de nos fournisseurs dans notre logiciel de gestion de stock ; un fichier ou un flux r\xE9gulier nous permettrait de vous consulter en priorit\xE9.",
-        "",
-        "Merci par avance,",
-        "",
-        `${org.name}`
-      ].join("\n")
-    };
-  }
-  return {
-    subject: `Trade account and catalogue access request \u2014 ${org.name}`,
-    body: [
-      "Hello,",
-      "",
-      `I am writing on behalf of ${org.name}, a professional electronics reseller${org.country ? ` based in ${org.country}` : ""}. We would like to source from ${entry.name}: ${cats}.`,
-      "",
-      "Could you please share:",
-      "1. How to open a trade / B2B account (required documents, VAT number).",
-      "2. Your reseller price list (prices excluding VAT), volume discounts and minimum order quantities.",
-      "3. Stock availability, lead times and shipping costs to France.",
-      "4. Warranty and return terms and, for refurbished devices, your grading definitions.",
-      "5. Whether a catalogue file or automated feed is available (CSV, Excel, XML, JSON or API) with SKUs, EAN, prices, stock and MOQ, its update frequency and terms of use.",
-      "",
-      "We load our suppliers' price lists into our inventory software; a regular file or feed would let us check your offers first.",
-      "",
-      "Kind regards,",
-      "",
-      `${org.name}`
-    ].join("\n")
-  };
-}
-function detectPlatform2(html, headers = null) {
-  const h = html.slice(0, 3e5);
-  if (/cdn\.shopify\.com|Shopify\.theme|x-shopify/i.test(h) || headers?.get("x-shopid")) return "shopify";
-  if (/wp-content\/plugins\/woocommerce|woocommerce-/i.test(h)) return "woocommerce";
-  if (/Magento|mage\/cookies|static\/version\d+\/frontend/i.test(h)) return "magento";
-  if (/prestashop|var prestashop\b/i.test(h)) return "prestashop";
-  if (/shopware/i.test(h)) return "shopware";
-  return h.length > 0 ? "other" : null;
-}
-async function checkDirectoryWebsite(entry, fetchImpl, resolver) {
-  const started = Date.now();
-  const base = { key: entry.key, url: entry.website, final_url: null, robots_found: null, robots_disallow_all: null, sitemap_found: null, platform: null };
-  if (!entry.website) return { ...base, reachable: false, http_status: null, message: "Aucun site officiel identifi\xE9 par la recherche.", duration_ms: 0 };
-  const userAgent = serverEnv().SOURCING_USER_AGENT;
-  try {
-    const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8e3);
-    const robotsFound = robots.status === "ok";
-    const disallowAll = robotsFound ? !evaluateRobots(robots.rules, userAgent, "/").allowed : null;
-    const home = await fetchText(entry.website, { userAgent, timeoutMs: 12e3, maxBytes: 6e6, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
-    const reachable = home.status >= 200 && home.status < 400;
-    const platform = reachable ? detectPlatform2(home.text) : null;
-    return {
-      ...base,
-      final_url: home.finalUrl,
-      reachable,
-      http_status: home.status,
-      robots_found: robotsFound,
-      robots_disallow_all: disallowAll,
-      sitemap_found: robotsFound ? robots.rules.sitemaps.length > 0 : null,
-      platform,
-      message: reachable ? `Site joignable${platform && platform !== "other" ? ` (plateforme ${platform})` : ""}${disallowAll ? " ; robots.txt interdit l'acc\xE8s automatis\xE9" : ""}.` : `Le site a r\xE9pondu HTTP ${home.status}${home.status === 403 || home.status === 429 ? " (protection anti-robot : \xE0 consulter manuellement)" : ""}.`,
-      duration_ms: Date.now() - started
-    };
-  } catch (e) {
-    return { ...base, reachable: false, http_status: null, message: `Injoignable : ${e instanceof Error ? e.message.slice(0, 160) : "erreur r\xE9seau"}`, duration_ms: Date.now() - started };
-  }
-}
-async function runDirectoryChecks(options = {}) {
-  const admin = createAdminSupabaseClient();
-  const entries = SUPPLIER_DIRECTORY.filter((e) => !options.keys || options.keys.includes(e.key));
-  const results = [];
-  for (let i = 0; i < entries.length; i += 3) {
-    const batch = await Promise.all(entries.slice(i, i + 3).map((e) => checkDirectoryWebsite(e, options.fetchImpl)));
-    const { error } = await admin.from("supplier_directory_checks").upsert(batch.map((b) => ({ ...b, checked_at: (/* @__PURE__ */ new Date()).toISOString() })));
-    if (error) throw new Error(`Enregistrement des v\xE9rifications impossible : ${error.message}`);
-    results.push(...batch.map((b) => ({ key: b.key, reachable: b.reachable, http: b.http_status, platform: b.platform, message: b.message })));
-  }
-  return { checked: results.length, reachable: results.filter((r) => r.reachable).length, unreachable: results.filter((r) => !r.reachable).length, results };
-}
-async function directoryForOrg(ctx) {
-  const orgId = ctx.organization.id;
-  const [checksRes, libRes, suppliersRes, runsRes, sourcesRes] = await Promise.all([
-    ctx.supabase.from("supplier_directory_checks").select("key, checked_at, reachable, http_status, robots_found, robots_disallow_all, sitemap_found, platform, message"),
-    ctx.supabase.from("sourcing_library_checks").select("key, status"),
-    ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).limit(1e3),
-    ctx.supabase.from("sync_runs").select("source_ref, status").eq("organization_id", orgId).eq("source_kind", "supplier_feed").in("status", ["success", "partial"]).order("started_at", { ascending: false }).limit(500),
-    ctx.supabase.from("supplier_sources").select("supplier_id, status, config").eq("organization_id", orgId).limit(1e3)
-  ]);
-  const checks = new Map((checksRes.data ?? []).map((c) => [c.key, c]));
-  const libraryOk = new Set((libRes.data ?? []).filter((c) => c.status === "ok").map((c) => c.key));
-  const supplierKey = /* @__PURE__ */ new Map();
-  for (const s of suppliersRes.data ?? []) {
-    const k = directoryKeyForSupplierName(s.name);
-    if (k) supplierKey.set(s.id, k);
-  }
-  const importedKeys = /* @__PURE__ */ new Set();
-  if ((runsRes.data ?? []).length) {
-    const feedIds = [...new Set((runsRes.data ?? []).map((r) => r.source_ref).filter((x) => Boolean(x)))];
-    const { data: feeds } = feedIds.length ? await ctx.supabase.from("supplier_feeds").select("id, supplier_id").eq("organization_id", orgId).in("id", feedIds.slice(0, 300)) : { data: [] };
-    for (const f of feeds ?? []) {
-      const k = supplierKey.get(f.supplier_id);
-      if (k) importedKeys.add(k);
-    }
-  }
-  const activeKeys = /* @__PURE__ */ new Set();
-  for (const s of sourcesRes.data ?? []) {
-    const libKey = s.config?.library_key;
-    if (s.status === "active" && libKey) {
-      const dir = Object.entries(LIBRARY_BY_DIRECTORY_KEY).find(([, v2]) => v2 === libKey)?.[0];
-      if (dir) activeKeys.add(dir);
-    }
-  }
-  const facts = { importedKeys, libraryOk, activeKeys };
-  const lastCheckAt = [...checks.values()].map((c) => c.checked_at).sort().at(-1) ?? null;
-  const entries = SUPPLIER_DIRECTORY.map((e) => {
-    const check = checks.get(e.key) ?? null;
-    const stages = directoryStages(e, check, facts);
-    return {
-      key: e.key,
-      name: e.name,
-      segment: e.segment,
-      country: e.country,
-      deliveryZones: e.deliveryZones,
-      website: e.website,
-      catalogUrl: e.catalogUrl,
-      apiDocsUrl: e.apiDocsUrl,
-      categories: e.categories,
-      brands: e.brands,
-      productTypes: e.productTypes,
-      sales: e.sales,
-      proAccountRequired: e.proAccountRequired,
-      accessConditions: e.accessConditions,
-      accessModes: e.accessModes,
-      pricesTax: e.pricesTax,
-      currency: e.currency,
-      moq: e.moq,
-      shipping: e.shipping,
-      warranty: e.warranty,
-      partQuality: e.partQuality,
-      whyUseful: e.whyUseful,
-      howToGetCatalog: e.howToGetCatalog,
-      researchVerified: e.verified,
-      verificationLevel: e.verificationLevel,
-      sources: e.sourcesChecked,
-      researchedAt: e.checkedAt,
-      integration: integrationOf(e.key),
-      activeInOrg: activeKeys.has(e.key),
-      stages,
-      primaryStage: primaryStage(stages),
-      check: check ? { checkedAt: check.checked_at, reachable: check.reachable, httpStatus: check.http_status, robotsFound: check.robots_found, robotsDisallowAll: check.robots_disallow_all, sitemapFound: check.sitemap_found, platform: check.platform, message: check.message } : null,
-      email: { fr: accessRequestEmail(e, "fr", { name: ctx.organization.name, country: ctx.organization.country }), en: accessRequestEmail(e, "en", { name: ctx.organization.name, country: ctx.organization.country }) }
-    };
-  });
-  return { entries, researchDate: DIRECTORY_RESEARCH_DATE, lastCheckAt };
-}
-
 // server/edge/api.ts
+init_ebay_listing_service();
+init_offer_linking();
+init_radar2();
+init_supplier_directory2();
 init_catalog_import();
 
 // src/services/ai/claude.ts
@@ -17974,6 +18481,42 @@ async function checkAssistantTools(organizationId) {
   }
   return { organization: orgId, tools };
 }
+async function checkReadOnlyRoutes(organizationId) {
+  const admin = createAdminSupabaseClient();
+  const { data: org } = organizationId ? await admin.from("organizations").select("*").eq("id", organizationId).maybeSingle() : await admin.from("organizations").select("*").order("created_at").limit(1).maybeSingle();
+  if (!org) return { organization: null, checks: [] };
+  const ctx = { supabase: admin, organization: org, user: { id: "00000000-0000-0000-0000-000000000000" }, role: "viewer", profile: null, memberships: [] };
+  const checks = [];
+  const run = async (name, fn) => {
+    try {
+      checks.push({ name, ok: true, error: null, summary: await fn() });
+    } catch (e) {
+      checks.push({ name, ok: false, error: e instanceof Error ? e.message.slice(0, 300) : String(e), summary: {} });
+    }
+  };
+  const { buildRadar: buildRadar2 } = await Promise.resolve().then(() => (init_radar2(), radar_exports));
+  const { directoryForOrg: directoryForOrg2 } = await Promise.resolve().then(() => (init_supplier_directory2(), supplier_directory_exports));
+  const { listMatchSuggestions: listMatchSuggestions2 } = await Promise.resolve().then(() => (init_offer_linking(), offer_linking_exports));
+  const { prefillListing: prefillListing2, checkListing: checkListing2 } = await Promise.resolve().then(() => (init_ebay_listing_service(), ebay_listing_service_exports));
+  await run("radar", async () => {
+    const r = await buildRadar2(ctx);
+    return { items: r.items.length, restock: r.restock.length, skus: r.counts.skus, unlinkedOffers: r.counts.unlinkedOffers, missingSettings: r.missingSettings.length };
+  });
+  await run("directory", async () => {
+    const d = await directoryForOrg2(ctx);
+    return { entries: d.entries.length, verified: d.entries.filter((e) => e.stages.includes("verified")).length, publicAccess: d.entries.filter((e) => e.stages.includes("public_access")).length, importTested: d.entries.filter((e) => e.stages.includes("import_tested")).length };
+  });
+  await run("match-suggestions", async () => ({ suggestions: (await listMatchSuggestions2(ctx)).length }));
+  const { data: sku } = await admin.from("skus").select("id").eq("organization_id", org.id).limit(1).maybeSingle();
+  if (sku) {
+    await run("ebay-prefill", async () => {
+      const p = await prefillListing2(ctx, sku.id);
+      const c = await checkListing2(ctx, { draft: p.draft, confirm: false });
+      return { titleLength: p.draft.title.length, aspects: Object.keys(p.draft.aspects).length, checkOk: c.ok, errors: c.errors.length, publicationAllowed: c.publication.allowed };
+    });
+  }
+  return { organization: org.id, checks };
+}
 
 // server/edge/ebay-callback.ts
 var EBAY_APP_CALLBACK = "monstock://ebay/callback";
@@ -18209,6 +18752,9 @@ async function route(request) {
         });
       }
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
+      if (m === "POST" && path === "/cron/readonly-check") {
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z37.object({ organizationId: uuidParam.optional() }))).organizationId));
+      }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
           const body = await parseBody(request, z37.object({ organizationId: uuidParam.optional() }));

@@ -71,7 +71,7 @@ import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCa
 import { aiConfigured } from "@/services/ai/claude";
 import { draftProductFromText } from "@/services/ai/product-draft";
 import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
-import { checkAssistantTools } from "@/services/ai/tools-check";
+import { checkAssistantTools, checkReadOnlyRoutes } from "@/services/ai/tools-check";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
 import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
 
@@ -262,6 +262,9 @@ export async function route(request: Request): Promise<Response> {
         });
       }
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
+      if (m === "POST" && path === "/cron/readonly-check") {
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z.object({ organizationId: uuidParam.optional() }))).organizationId));
+      }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
           const body = await parseBody(request, z.object({ organizationId: uuidParam.optional() }));
