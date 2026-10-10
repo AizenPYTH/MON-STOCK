@@ -3,9 +3,10 @@ import { z } from "zod";
 import type { Json } from "@/db/database.types";
 import type { OrgContext } from "@/features/auth/dal";
 import { AppError, fromPostgrestError } from "@/lib/errors";
+import type { CatalogFileFormat, CatalogImportDTO, CatalogPreviewDTO } from "@/features/mobile-api/contract";
 import { RAW_OFFER_FIELDS } from "@/domain/sourcing/types";
 import { fieldMappingSchema, looseHeader, previewFeed, suggestMapping, type FeedFormat, type FeedOptions, type FieldMapping } from "@/services/sourcing/feed-parsers";
-import { ingestFeed, type IngestResult } from "@/services/sourcing/feed-ingestion";
+import { ingestFeed } from "@/services/sourcing/feed-ingestion";
 import { readXlsx, sheetToCsv, XlsxError } from "@/services/sourcing/xlsx";
 
 /**
@@ -22,7 +23,7 @@ import { readXlsx, sheetToCsv, XlsxError } from "@/services/sourcing/xlsx";
  * présentés comme vérifiés en direct.
  */
 
-export type CatalogFileFormat = "csv" | "xlsx" | "xml" | "json";
+export type { CatalogFileFormat, CatalogImportDTO, CatalogPreviewDTO };
 export const MAX_CATALOG_BYTES = 15 * 1024 * 1024;
 export const CATALOG_IMPORT_KIND = "catalog_file_import";
 
@@ -154,29 +155,6 @@ export function suggestCatalogMapping(columns: string[]): FieldMapping {
   return mapping;
 }
 
-export interface CatalogPreviewDTO {
-  format: CatalogFileFormat;
-  columns: string[];
-  suggestedMapping: FieldMapping;
-  mapping: FieldMapping;
-  total: number;
-  validCount: number;
-  invalidCount: number;
-  warnings: string[];
-  sample: {
-    line: number;
-    title: string | null;
-    reference: string | null;
-    price: number | null;
-    currency: string | null;
-    taxType: string | null;
-    quantity: number | null;
-    ean: string | null;
-    errors: string[];
-  }[];
-  fields: readonly string[];
-}
-
 export function previewCatalogFile(input: z.infer<typeof catalogPreviewSchema>, organizationCurrency: string): CatalogPreviewDTO {
   const loaded = loadCatalogFile(input.file);
   const first = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1);
@@ -206,13 +184,6 @@ export function previewCatalogFile(input: z.infer<typeof catalogPreviewSchema>, 
     })),
     fields: RAW_OFFER_FIELDS,
   };
-}
-
-export interface CatalogImportDTO {
-  supplierId: string;
-  sourceId: string;
-  feedId: string;
-  result: Omit<IngestResult, "feedId">;
 }
 
 /** Import réel (rôle rédacteur requis par l'appelant ; écritures sous RLS pour fournisseur, source, flux). */

@@ -1057,7 +1057,13 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"supplier_feeds": {
+                },"supplier_directory_checks": {
+  Row: { checked_at: string; duration_ms: number | null; final_url: string | null; http_status: number | null; key: string; message: string | null; platform: string | null; reachable: boolean; robots_disallow_all: boolean | null; robots_found: boolean | null; sitemap_found: boolean | null; url: string | null };
+  Insert: { checked_at?: string; duration_ms?: number | null; final_url?: string | null; http_status?: number | null; key: string; message?: string | null; platform?: string | null; reachable: boolean; robots_disallow_all?: boolean | null; robots_found?: boolean | null; sitemap_found?: boolean | null; url?: string | null };
+  Update: { checked_at?: string; duration_ms?: number | null; final_url?: string | null; http_status?: number | null; key?: string; message?: string | null; platform?: string | null; reachable?: boolean; robots_disallow_all?: boolean | null; robots_found?: boolean | null; sitemap_found?: boolean | null; url?: string | null };
+  Relationships: [];
+},
+"supplier_feeds": {
                   Row: {
                     "created_at": string,"field_mapping": NonNullable<Json>,"format": Database["public"]['Enums']["feed_format"],"id": string,"last_error": string | null,"last_record_count": number | null,"last_successful_sync_at": string | null,"last_sync_at": string | null,"options": NonNullable<Json>,"organization_id": string,"source_id": string,"status": Database["public"]['Enums']["source_status"],"supplier_id": string,"sync_frequency": Database["public"]['Enums']["sync_frequency"],"type": string,"updated_at": string,"url": string | null
                   }

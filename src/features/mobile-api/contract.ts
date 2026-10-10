@@ -556,3 +556,97 @@ export interface AssistantReplyDTO {
   sources: { tool: string; label: string }[];
   model: string;
 }
+
+// ---------------------------------------------------------------------------
+// Import de catalogue fournisseur (fichier transmis par le fournisseur)
+// ---------------------------------------------------------------------------
+
+export type CatalogFileFormat = "csv" | "xlsx" | "xml" | "json";
+
+/** Valeur d'un champ du mapping : nom de colonne ou constante. */
+export type CatalogMappingValue = string | { const: string };
+export type CatalogMapping = Partial<Record<string, CatalogMappingValue>>;
+
+export interface CatalogPreviewDTO {
+  format: CatalogFileFormat;
+  columns: string[];
+  suggestedMapping: CatalogMapping;
+  mapping: CatalogMapping;
+  total: number;
+  validCount: number;
+  invalidCount: number;
+  warnings: string[];
+  sample: {
+    line: number;
+    title: string | null;
+    reference: string | null;
+    price: number | null;
+    currency: string | null;
+    taxType: string | null;
+    quantity: number | null;
+    ean: string | null;
+    errors: string[];
+  }[];
+  fields: readonly string[];
+}
+
+export interface CatalogImportDTO {
+  supplierId: string;
+  sourceId: string;
+  feedId: string;
+  result: {
+    runId: string | null;
+    status: "success" | "partial" | "failed";
+    processed: number;
+    stored: number;
+    rejected: number;
+    invalidRows: number;
+    expired: number;
+    fxUnavailable: number;
+    message: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Annuaire de fournisseurs qualifiés
+// ---------------------------------------------------------------------------
+
+export type DirectoryStage = "identified" | "verified" | "public_access" | "account_required" | "connector_ready" | "import_tested" | "unavailable";
+
+export interface DirectoryEntryDTO {
+  key: string;
+  name: string;
+  segment: "A_refurb" | "B_parts" | "C_liquidation" | "D_distributor" | "E_specialist";
+  country: string | null;
+  deliveryZones: string[];
+  website: string | null;
+  catalogUrl: string | null;
+  apiDocsUrl: string | null;
+  categories: string[];
+  brands: string[];
+  productTypes: string[];
+  sales: string | null;
+  proAccountRequired: boolean | null;
+  accessConditions: string | null;
+  accessModes: string[];
+  pricesTax: string | null;
+  currency: string | null;
+  moq: string | null;
+  shipping: string | null;
+  warranty: string | null;
+  partQuality: string | null;
+  whyUseful: string | null;
+  howToGetCatalog: string | null;
+  /** ce que la recherche documentaire a réellement vérifié */
+  researchVerified: string | null;
+  verificationLevel: string;
+  sources: string[];
+  researchedAt: string;
+  integration: { kind: "library"; libraryKey: string } | { kind: "connector"; connectorKey: string } | { kind: "file_import" };
+  activeInOrg: boolean;
+  stages: DirectoryStage[];
+  primaryStage: DirectoryStage;
+  /** dernière vérification du site depuis le serveur */
+  check: { checkedAt: string; reachable: boolean; httpStatus: number | null; robotsFound: boolean | null; robotsDisallowAll: boolean | null; sitemapFound: boolean | null; platform: string | null; message: string | null } | null;
+  email: { fr: { subject: string; body: string }; en: { subject: string; body: string } };
+}

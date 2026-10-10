@@ -12,6 +12,7 @@
  *   GET  /api/sourcing/status             état des sources de l'organisation
  *   GET  /api/sourcing/library            bibliothèque de sources (catalogue + état d'activation)
  *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (attestation de l'utilisateur)
+ *   GET  /api/sourcing/directory          annuaire de fournisseurs qualifiés (statuts prouvés, e-mails de demande d'accès)
  *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
  *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
@@ -56,6 +57,7 @@ import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
 import { runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
+import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
 import { aiConfigured } from "@/services/ai/claude";
 import { draftProductFromText } from "@/services/ai/product-draft";
@@ -244,6 +246,12 @@ export async function route(request: Request): Promise<Response> {
           return runSearchSelfTest(body.query, body.source);
         });
       }
+      if (m === "POST" && path === "/cron/directory-checks") {
+        return handle(async () => {
+          const body = await parseBody(request, z.object({ keys: z.array(z.string().min(1).max(80)).max(100).optional() }));
+          return runDirectoryChecks({ keys: body.keys });
+        });
+      }
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
@@ -268,6 +276,7 @@ export async function route(request: Request): Promise<Response> {
         return activateLibrarySource(ctx, body.key);
       });
     }
+    if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request)));
     if (m === "POST" && path === "/sourcing/import/preview") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });

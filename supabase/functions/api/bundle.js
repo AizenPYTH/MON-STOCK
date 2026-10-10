@@ -13462,6 +13462,3154 @@ async function runImportSelfTest() {
   }
 }
 
+// src/services/sourcing/supplier-directory.ts
+init_empty();
+
+// src/services/sourcing/data/supplier-directory.json
+var supplier_directory_default = [
+  {
+    key: "foxway",
+    name: "Foxway (Reseller Portal / Wholesale)",
+    segment: "A_refurb",
+    country: "EE",
+    deliveryZones: [
+      "EU",
+      "Nordics",
+      "UK"
+    ],
+    website: "https://www.foxway.com/en/buy-devices/",
+    catalogUrl: "https://resellers.foxway.com/",
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories",
+      "lots"
+    ],
+    brands: [
+      "Apple",
+      "Samsung",
+      "Lenovo",
+      "HP",
+      "Microsoft"
+    ],
+    productTypes: [
+      "new",
+      "used",
+      "refurbished",
+      "lots"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte revendeur sur le Reseller Portal (validation) ; Wholesale s\xE9par\xE9 (wholesale.foxway.com, deals ex-works UK selon doc repo)",
+    accessModes: [
+      "pro_portal",
+      "manual_download"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: "Deals wholesale 'take-all' (lot complet) selon doc repo ; Reseller Portal \xE0 l'unit\xE9 : \xE0 v\xE9rifier",
+    shipping: "Wholesale : prix ex-works UK, hors transport/droits (doc repo)",
+    warranty: "90 jours (doc repo, \xE0 confirmer)",
+    partQuality: null,
+    whyUseful: "Un des plus gros fournisseurs B2B europ\xE9ens de smartphones/PC reconditionn\xE9s et used, avec stock en temps r\xE9el et ench\xE8res pour revendeurs.",
+    howToGetCatalog: "Cr\xE9er un compte sur resellers.foxway.com ; le portail affiche une 'live stocklist' et un checkout en ligne ; demander \xE0 l'account manager un export CSV/XLSX ou une API partenaire (non document\xE9e publiquement).",
+    verified: "Portail revendeur avec live stocklist, checkout et ench\xE8res confirm\xE9 par un article tiers (substack) ; marque Teqcycle (~1 000 partenaires) confirm\xE9e par communiqu\xE9s Cision ; URLs portails issues de la doc repo ; aucune API publique trouv\xE9e.",
+    verificationLevel: "search_snippets+repo_doc",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://platformprofessional.substack.com/p/the-rise-of-foxway-and-circular-it",
+      "https://news.cision.com/foxway/r/foxway-brings-new-device-confidence-to-renewed-tech-across-the-nordics,c4293276",
+      "https://csr.dk/foxway",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "back-market-pro",
+    name: "Back Market Pro",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "BE",
+      "UK",
+      "US"
+    ],
+    website: "https://pro.backmarket.fr/",
+    catalogUrl: "https://pro.backmarket.fr/",
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte entreprise ; paiement CB/virement, paiement \xE0 30 jours pour certains profils",
+    accessModes: [
+      "pro_portal",
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Acc\xE8s B2B en volume \xE0 l'offre reconditionn\xE9e Back Market avec conseillers d\xE9di\xE9s (achat pour revente : conditions \xE0 v\xE9rifier).",
+    howToGetCatalog: "Ouvrir un compte sur pro.backmarket.fr et demander un devis volume au conseiller ; l'API Back Market document\xE9e est c\xF4t\xE9 vendeur uniquement, pas d'API acheteur trouv\xE9e.",
+    verified: "Existence de Back Market Pro (FR/BE/UK/US), paiements, conseillers : snippets Back Market help + Sacra ; API = c\xF4t\xE9 vendeur uniquement (Sellercloud, Nango).",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://help.backmarket.com/hc/en-us/articles/15855626593948-What-B2B-services-does-Back-Market-offer",
+      "https://sacra.com/c/back-market/",
+      "https://nango.dev/docs/api-integrations/back-market.md",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "refurbed-business",
+    name: "refurbed Business",
+    segment: "A_refurb",
+    country: "AT",
+    deliveryZones: [
+      "DE",
+      "AT",
+      "IE",
+      "CH"
+    ],
+    website: "https://business.refurbed.de/",
+    catalogUrl: "https://business.refurbed.de/angebot",
+    categories: [
+      "smartphones",
+      "laptops",
+      "tablets"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Demande de devis ; refurbed est contractant direct en B2B",
+    accessModes: [
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: "10 articles minimum (offre B2B Irlande) ; FR/DE : \xE0 v\xE9rifier",
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Offre B2B devis par refurbed lui-m\xEAme (et non par les marchands de la marketplace) ; utile pour volumes moyens.",
+    howToGetCatalog: "Demande d'offre sur business.refurbed.de (devis individuel) ; aucun flux/API trouv\xE9 ; livraison France non confirm\xE9e.",
+    verified: "Mod\xE8le B2B (contractant direct, devis) via WEKA ; MOQ 10 articles via Irish Tech News (IE uniquement) ; lancement CH avril 2026 via IT Reseller.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.weka.de/einkauf-logistik/refurbed-bereitet-handys-jetzt-auch-fuer-b2b-auf/",
+      "https://irishtechnews.ie/?p=151794",
+      "https://www.itreseller.ch/Artikel/105297/Neuer_Refurbished-Anbieter_fuer_die_Schweiz.html",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "largo-business",
+    name: "Largo (Largo Business / distributeurs)",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "BE",
+      "CH",
+      "PT"
+    ],
+    website: "https://www.largo.fr/",
+    catalogUrl: "https://www.largo.fr/content/devenir-distributeur.html",
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: true,
+    accessConditions: "Programme distributeurs / Largo Business sur demande (extranet selon doc repo)",
+    accessModes: [
+      "pro_portal",
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: "Garantie contractuelle revendeurs (page sav.largo.fr cit\xE9e dans doc repo)",
+    partQuality: null,
+    whyUseful: "Reconditionneur industriel fran\xE7ais cot\xE9 (Nantes) avec canal revendeurs et distribution B2B (Bouygues Telecom Entreprises, grossiste portugais).",
+    howToGetCatalog: "Candidater via la page 'devenir distributeur' ; demander l'acc\xE8s extranet et un export stock (non document\xE9 publiquement).",
+    verified: "Activit\xE9 B2B Largo Business, partenariats distribution (Bluetooth PT 2021, Bouygues 2024) via communiqu\xE9s AMF/BusinessWire ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur (SERVER.md).",
+    verificationLevel: "search_snippets+repo_doc",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.businesswire.com/news/home/20241211518258/fr",
+      "https://echanges.dila.gouv.fr/OPENDATA/AMF/BWR/2021/07/FCBWR135156_20210712.pdf",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "recommerce",
+    name: "Recommerce Group",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://www.recommerce-group.com/",
+    catalogUrl: null,
+    categories: [
+      "smartphones"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Partenariat distributeur/op\xE9rateur (pas de portail revendeur public trouv\xE9)",
+    accessModes: [
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: "24 mois (annuaire tiers, consumer)",
+    partQuality: null,
+    whyUseful: "Reconditionneur fran\xE7ais majeur (label RecQ) distribuant via op\xE9rateurs, distributeurs et marketplaces en Europe.",
+    howToGetCatalog: "Contact commercial B2B via recommerce-group.com ; pas de flux public ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur.",
+    verified: "Distribution via r\xE9seau de distributeurs/op\xE9rateurs/marketplaces (profil motherbase) ; aucune info revendeur PME.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://my.motherbase.ai/company/6466-recommerce-group",
+      "https://www.maddyness.com/2022/02/07/recommerce-united-b-levee-reconditionne/",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "smaaart",
+    name: "Smaaart (groupe Econocom)",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "FR"
+    ],
+    website: "https://smaaart.fr/",
+    catalogUrl: "https://smaaart.fr/content/21-solutions-pour-entreprises",
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Offre entreprises/distributeurs sur contact",
+    accessModes: [
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Reconditionneur fran\xE7ais (atelier dans l'H\xE9rault) vendant aux entreprises et distributeurs.",
+    howToGetCatalog: "Contacter via la page 'solutions pour entreprises' ; aucun flux public (SERVER.md : pas de catalogue lisible).",
+    verified: "B2B + B2C et distributeurs : fiches startup/FrenchWeb ; rachat Econocom via FrenchWeb.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://lespepitestech.com/node/16921",
+      "https://www.frenchweb.fr/smaaart-startup-specialiste-des-smartphones-reconditionnes-reunit-4-millions-deuros/380447",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "ioutlet-business",
+    name: "iOutlet Business (The iOutlet, trade)",
+    segment: "A_refurb",
+    country: "GB",
+    deliveryZones: [
+      "UK",
+      "EU"
+    ],
+    website: "https://business.theioutlet.com/",
+    catalogUrl: "https://business.theioutlet.com/",
+    categories: [
+      "smartphones",
+      "tablets",
+      "lots"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "used",
+      "refurbished",
+      "lots"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Demande de compte trade (revue sous 1-2 jours ouvr\xE9s)",
+    accessModes: [
+      "pro_portal",
+      "manual_download",
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "GBP",
+    moq: null,
+    shipping: "UK + EU (post-Brexit : droits/TVA import \xE0 pr\xE9voir vers FR)",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Envoie une stock list + price sheet quotidienne aux comptes trade (grades A+ \xE0 C, D = grade r\xE9paration), base id\xE9ale d'un import tableur automatis\xE9.",
+    howToGetCatalog: "Demander un compte trade sur business.theioutlet.com ; recevoir la price sheet quotidienne (format exact non confirm\xE9, probablement tableur) et l'importer.",
+    verified: "Grades A+/A/B/C/D, price sheets quotidiennes ou \xE0 la demande, vente UK+EU : snippets de business.theioutlet.com.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://business.theioutlet.com/"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "callisto-alchemy",
+    name: "Callisto (Alchemy) \u2014 marketplace B2B secondaire",
+    segment: "A_refurb",
+    country: "US",
+    deliveryZones: [
+      "Global"
+    ],
+    website: "https://callisto.tech",
+    catalogUrl: "https://callisto.tech/wholesale-used-smartphones-on-callisto",
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories",
+      "lots"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "used",
+      "refurbished",
+      "lots"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Inscription acheteur avec KYC ; paiement en escrow",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "USD",
+    moq: "Lots/bulk ; certaines r\xE9f\xE9rences uniquement en ench\xE8res hebdomadaires",
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Marketplace B2B mondiale de smartphones used/refurb/endommag\xE9s (sources OEM, op\xE9rateurs, retailers) avec grading Alchemy et ench\xE8res.",
+    howToGetCatalog: "S'inscrire comme acheteur (KYC) ; catalogue \xE0 prix fixe, offres bulk, ench\xE8res live/silencieuses ; aucune API trouv\xE9e.",
+    verified: "Mod\xE8le (catalogue, offres, ench\xE8res, escrow, KYC) : pages callisto.tech ; chiffres GMV : RecyclingToday/OHS (auto-d\xE9clar\xE9s).",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://callisto.tech/wholesale-used-smartphones-on-callisto",
+      "https://callisto.tech/wholesale-secondary-tablets-callisto",
+      "https://recyclingtoday.com/news/alchemys-callisto-platform-connects-wholesalers-of-secondary-and-used-technology"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "mobile-express-hde",
+    name: "Mobile Express (HDE Global Mobile Tech B.V.)",
+    segment: "A_refurb",
+    country: "NL",
+    deliveryZones: [
+      "EU"
+    ],
+    website: null,
+    catalogUrl: "https://www.refurbed.ie/m/1962",
+    categories: [
+      "smartphones"
+    ],
+    brands: [],
+    productTypes: [
+      "used"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Division B2B pour retailers/revendeurs : contact direct (site propre non trouv\xE9)",
+    accessModes: [
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Grossiste n\xE9erlandais de smartphones d'occasion grad\xE9s avec division B2B.",
+    howToGetCatalog: "Identifier le site/contact B2B (KvK 94898014, Beverwijk) puis demander la stock list ; non v\xE9rifi\xE9.",
+    verified: "Fiche vendeur refurbed uniquement (entit\xE9, adresse, TVA NL866929149B01, KvK 94898014) ; site propre NON trouv\xE9.",
+    verificationLevel: "unverified",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.refurbed.ie/m/1962"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "gsmexchange",
+    name: "gsmExchange",
+    segment: "A_refurb",
+    country: "IE",
+    deliveryZones: [
+      "Global"
+    ],
+    website: "https://www.gsmexchange.com/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "new",
+      "used",
+      "refurbished"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Adh\xE9sion v\xE9rifi\xE9e : historique commercial + 2 r\xE9f\xE9rences de membres (articles 2008-2012)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: null,
+    moq: "~100 unit\xE9s indicatif ; phoneLot pour plus petits volumes (sources anciennes)",
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Bourse B2B historique du n\xE9goce de t\xE9l\xE9phones (prix guides visibles des membres).",
+    howToGetCatalog: "Adh\xE9sion payante/v\xE9rifi\xE9e ; consultation manuelle ; la doc repo indique que l'acc\xE8s automatis\xE9 est interdit par les CGU.",
+    verified: "Uniquement articles de presse 2008-2012 et annuaire ; statut actuel non confirm\xE9 dans cette session.",
+    verificationLevel: "search_snippets+repo_doc",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://mobilenewscwp.co.uk/features/article/grey-matters-work-for-gsmexchange/",
+      "https://www.serchen.com/company/gsmexchange-com",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "handelot",
+    name: "Handelot",
+    segment: "A_refurb",
+    country: "PL",
+    deliveryZones: [
+      "Global"
+    ],
+    website: "https://www.handelot.com/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new",
+      "used",
+      "refurbished"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Membres VIP/VIP Gold/Junior ; 2 r\xE9f\xE9rences commerciales, > 1 an d'activit\xE9 (doc repo)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: null,
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Plateforme de trading B2B d'\xE9lectronique de marque (Wroc\u0142aw), alternative europ\xE9enne \xE0 gsmExchange.",
+    howToGetCatalog: "Adh\xE9sion puis consultation manuelle des offres ; aucun flux trouv\xE9.",
+    verified: "Non re-v\xE9rifi\xE9 dans cette session ; donn\xE9es issues de la doc repo (partielle).",
+    verificationLevel: "repo_doc_only",
+    knownInApp: false,
+    sourcesChecked: [
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "swappie-business",
+    name: "Swappie for Business",
+    segment: "A_refurb",
+    country: "FI",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://business.swappie.com/services/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "laptops"
+    ],
+    brands: [
+      "Apple"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Services pour marketplaces, leasing, op\xE9rateurs (pas un portail grossiste revendeurs)",
+    accessModes: [
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: "12 mois (offre Swappie Business IT, date inconnue)",
+    partQuality: null,
+    whyUseful: "Gros reconditionneur iPhone europ\xE9en ; partenariats B2B possibles mais pas d'offre revendeur standard identifi\xE9e.",
+    howToGetCatalog: "Contact via business.swappie.com ; pas de catalogue revendeur public.",
+    verified: "Page business.swappie.com/services (marketplaces, leasing, telcos, ITAD) via snippet ; offre 'Swappie Business' via 01net.it.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://business.swappie.com/services/",
+      "https://www.01net.it/iphone-ricondizionati-aziende-professionisti-offerta-swappie/"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "afb-france",
+    name: "AfB social & green IT (France)",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "EU"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "laptops",
+      "smartphones",
+      "tablets"
+    ],
+    brands: [
+      "Lenovo",
+      "HP",
+      "Dell",
+      "Apple"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Boutique AfB + ventes aux PME/\xE9coles/associations",
+    accessModes: [
+      "public_catalog",
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: "12 mois, extensible \xE0 24 (fiche Combak)",
+    partQuality: null,
+    whyUseful: "ITAD/reconditionneur social (si\xE8ge FR \xE0 Annecy) issu de parcs d'entreprises : source de PC portables business reconditionn\xE9s.",
+    howToGetCatalog: "Identifier la boutique AfB France et demander une offre revendeur ; achat pour revente non confirm\xE9.",
+    verified: "Activit\xE9 FR (Annecy, 2012) et garantie via Combak ; domaine de la boutique FR non confirm\xE9 dans cette session.",
+    verificationLevel: "unverified",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.combak.co/marchands/afb",
+      "https://good-search.org/about/en/making-the-world-a-greener-and-more-socially-responsible-place-with-used-it-equipment/"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "certideal",
+    name: "Certideal",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "EU"
+    ],
+    website: "https://eu.certideal.com",
+    catalogUrl: null,
+    categories: [
+      "smartphones"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: "B2C",
+    proAccountRequired: false,
+    accessConditions: "Site grand public ; aucune offre volume/pro trouv\xE9e",
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "TTC",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: "24 \xE0 30 mois selon sources",
+    partQuality: null,
+    whyUseful: "R\xE9f\xE9rence de prix public reconditionn\xE9 (benchmark), pas un fournisseur B2B.",
+    howToGetCatalog: "Pas d'acc\xE8s automatis\xE9 (robots.txt/403 constat\xE9 c\xF4t\xE9 serveur) ; utiliser seulement comme veille prix manuelle.",
+    verified: "B2C confirm\xE9 (siecledigital, reepeat) ; aucune offre B2B trouv\xE9e.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://eu.certideal.com/en/certideal-concept",
+      "https://www.reepeat.fr/boutiques/comparison/certideal-vs-easycash",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "easycash",
+    name: "Easycash",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "FR"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops"
+    ],
+    brands: [],
+    productTypes: [
+      "used",
+      "refurbished"
+    ],
+    sales: "B2C",
+    proAccountRequired: false,
+    accessConditions: "R\xE9seau de magasins + e-commerce grand public ; aucune offre pro trouv\xE9e",
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "TTC",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Benchmark prix occasion grand public ; pas une source B2B.",
+    howToGetCatalog: "Veille manuelle uniquement (SERVER.md : pas de catalogue public lisible).",
+    verified: "B2C confirm\xE9 par comparatifs ; aucune offre pro trouv\xE9e.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.reepeat.fr/boutiques/comparison/certideal-vs-easycash",
+      "https://www.combak.co/blog/easycash-avis",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "yes-yes",
+    name: "YesYes",
+    segment: "A_refurb",
+    country: "FR",
+    deliveryZones: [
+      "FR"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "smartphones"
+    ],
+    brands: [],
+    productTypes: [
+      "refurbished"
+    ],
+    sales: null,
+    proAccountRequired: null,
+    accessConditions: null,
+    accessModes: [],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Start-up fran\xE7aise du reconditionn\xE9 (lev\xE9e de 2,7 M\u20AC) ; mod\xE8le B2B non confirm\xE9.",
+    howToGetCatalog: "Non d\xE9termin\xE9 : aucune offre B2B trouv\xE9e ; SERVER.md : pas de donn\xE9e structur\xE9e publique.",
+    verified: "Seulement un titre LSA (lev\xE9e de fonds) ; rien sur l'acc\xE8s revendeur.",
+    verificationLevel: "unverified",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.lsa-conso.fr/la-start-up-de-produits-reconditionnes-yes-yes-leve-2-7-millions-d-euros,385973",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "foneday",
+    name: "Foneday",
+    segment: "B_parts",
+    country: "NL",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://www.foneday.shop",
+    catalogUrl: "https://www.foneday.shop",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung",
+      "Xiaomi",
+      "Google"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte professionnel (client\xE8le principalement B2B, > 14 pays)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "Grossiste NL 'one-stop-shop' pi\xE8ces/outils smartphone-tablette pour r\xE9parateurs europ\xE9ens.",
+    howToGetCatalog: "Ouvrir un compte pro ; demander \xE0 Foneday s'il existe un export CSV/API (aucune API publique trouv\xE9e ; SERVER.md : pas de catalogue public lisible).",
+    verified: "Activit\xE9, si\xE8ge Gilze, fond\xE9 2015, > 14 pays : jobicy/werkzoeken ; aucune doc API trouv\xE9e ; WebFetch bloqu\xE9.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://jobicy.com/company/foneday",
+      "https://www.werkzoeken.nl/bedrijf/8729-foneday",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "mobileparts-shop",
+    name: "Mobileparts.shop (2Service B.V.)",
+    segment: "B_parts",
+    country: "NL",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://www.mobileparts.shop",
+    catalogUrl: "https://www.mobileparts.shop/fr",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte professionnel (r\xE9parateurs, refurbishers, grossistes)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "Partenaire officiel Samsung/Apple annonc\xE9 : pi\xE8ces genuine + compatibles + r\xE9cup\xE9r\xE9es, > 5 000 r\xE9f\xE9rences, vitrine FR.",
+    howToGetCatalog: "Ouvrir un compte pro ; demander un export ; soci\xE9t\xE9s s\u0153urs SamsungParts.eu / SamsungSelfRepair.shop pour pi\xE8ces Samsung d'origine.",
+    verified: "Profil IFA Berlin (2Service, Arnhem, 84 marques, genuine/compatible/harvested) et Trusted Shops (vitrine FR) ; SERVER.md : pas de catalogue public lisible.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://ifa-berlin.com/exhibitors/2service-bv",
+      "https://www.trustedshops.de/company/2service_b_v_/",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "mobilesentrix-eu",
+    name: "MobileSentrix Europe",
+    segment: "B_parts",
+    country: "NL",
+    deliveryZones: [
+      "EU",
+      "UK"
+    ],
+    website: "https://www.mobilesentrix.eu",
+    catalogUrl: "https://genuineparts.mobilesentrix.eu/about",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung",
+      "Google"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte grossiste",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: "Cut-off tardif, livraison J+1 annonc\xE9e (UK 21h GMT)",
+    warranty: "Lifetime warranty annonc\xE9e (site UK)",
+    partQuality: "mixed",
+    whyUseful: "Grand grossiste nord-am\xE9ricain implant\xE9 aux Pays-Bas (rachat TouchFix) avec section pi\xE8ces d'origine.",
+    howToGetCatalog: "Compte grossiste ; l'int\xE9gration catalogue document\xE9e (RepairDesk) ne couvre que les vitrines US/CA ; demander un export pour l'UE.",
+    verified: "Pr\xE9sence NL/UK (IFA 2025, rachat TouchFix) ; int\xE9gration RepairDesk (t\xE9l\xE9chargement catalogue US/CA, stock temps r\xE9el) ; pas d'API publique.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.ifa-berlin.com/exhibitors/mobilesentrix",
+      "https://www.repairdesk.co/mobilesentrix-integration",
+      "https://www.trysignalbase.com/news/acquisitions/touchfix-acquired-by-mobilesentrix-acquisition",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "replacebase",
+    name: "ReplaceBase",
+    segment: "B_parts",
+    country: "GB",
+    deliveryZones: [
+      "UK",
+      "EU"
+    ],
+    website: "https://www.replacebase.co.uk",
+    catalogUrl: null,
+    categories: [
+      "spare_parts"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Compte trade",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "GBP",
+    moq: null,
+    shipping: "Depuis le UK (droits/TVA import vers FR)",
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "> 14 000 SKU t\xE9l\xE9phone/tablette/MacBook, 4 000-6 000 composants exp\xE9di\xE9s/jour.",
+    howToGetCatalog: "Compte trade ; l'\xE9tude de cas mentionne une int\xE9gration POS, pas d'API client publique ; demander un export.",
+    verified: "\xC9tude de cas EvinceDev + page about (miroir) ; pas d'API trouv\xE9e ; SERVER.md : pas de catalogue public lisible.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://evincedev.com/online-replacement-parts-case-study-replacebase",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "rewa-eu",
+    name: "REWA EU (avec GSM Parts Center)",
+    segment: "B_parts",
+    country: "NL",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://rewa.tech",
+    catalogUrl: "https://rewaeu.com",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: null,
+    accessConditions: "Site EU d\xE9di\xE9 ; conditions de compte non confirm\xE9es",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "Fabricant/grossiste de Shenzhen (35 000+ produits, outils de refurbishing) avec entit\xE9 EU lanc\xE9e en sept. 2025 avec GPC.",
+    howToGetCatalog: "Consulter rewaeu.com et ouvrir un compte ; aucun flux public trouv\xE9.",
+    verified: "Lancement REWA EU sept. 2025 en partenariat avec GPC et domaine rewaeu.com : pages rewa.tech (snippets).",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://rewa.tech/?p=30933",
+      "https://rewa.tech/products/",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "ifixit-pro-eu",
+    name: "iFixit Pro (EU)",
+    segment: "B_parts",
+    country: "DE",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://www.ifixit.com/en-eu/pro",
+    catalogUrl: "https://eu-store.ifixit.com/pages/business-customers",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung",
+      "Google"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: true,
+    accessConditions: "Inscription Pro gratuite ; formulaire de demande de tarifs (r\xE9ponse 2 jours ouvr\xE9s)",
+    accessModes: [
+      "public_catalog",
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: "Livraison standard offerte au-del\xE0 d'un seuil (montants affich\xE9s en $ sur certaines pages)",
+    warranty: "Garantie \xE0 vie sur les pi\xE8ces (hors consommables comme batteries)",
+    partQuality: "mixed",
+    whyUseful: "Pi\xE8ces OEM (dont Google Pixel) et aftermarket avec remises pro 10-60 % affich\xE9es sur fiche produit.",
+    howToGetCatalog: "S'inscrire au programme Pro ; prix remis\xE9s visibles connect\xE9 ; pas d'API/flux trouv\xE9.",
+    verified: "Pages ifixit.com/en-eu/pro et eu-store business-customers (snippets) ; formulaire pro.ifixit.com.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.ifixit.com/en-eu/pro",
+      "https://eu-store.ifixit.com/pages/business-customers",
+      "https://pro.ifixit.com/repair-pricing-request"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "brico-phone",
+    name: "Brico-phone",
+    segment: "B_parts",
+    country: "FR",
+    deliveryZones: [
+      "FR"
+    ],
+    website: "https://www.brico-phone.com",
+    catalogUrl: "https://www.brico-phone.com",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung",
+      "Huawei",
+      "Xiaomi"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2C",
+    proAccountRequired: false,
+    accessConditions: "Catalogue public (prix TTC)",
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "TTC",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "Seule source pi\xE8ces avec catalogue public structur\xE9 d\xE9j\xE0 lu par MON STOCK (sitemap + JSON-LD) ; qualit\xE9s vari\xE9es (OLED compatible, reconditionn\xE9 d'origine, batterie originale).",
+    howToGetCatalog: "Connecteur existant sitemap + JSON-LD ; aucun tarif pro trouv\xE9.",
+    verified: "Fiches produits (qualit\xE9s de pi\xE8ces) via snippets ; extraction prix valid\xE9e c\xF4t\xE9 serveur le 2026-10-10 (SERVER.md).",
+    verificationLevel: "server_verified",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.brico-phone.com/pieces-detachees-pour-huawei-p30-pro-4457",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "utopya",
+    name: "Utopya",
+    segment: "B_parts",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "EU"
+    ],
+    website: "https://www.utopya.fr",
+    catalogUrl: null,
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte professionnel (conditions exactes non trouv\xE9es)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur B2B europ\xE9en bas\xE9 \xE0 Nice (CA 78 M\u20AC 2023) : pi\xE8ces/accessoires smartphones, tablettes, montres pour r\xE9parateurs et reconditionneurs.",
+    howToGetCatalog: "Ouvrir un compte pro ; robots.txt interdit les chemins n\xE9cessaires (SERVER.md) \u2192 demander un flux fournisseur.",
+    verified: "Profil IFA et fiche Xerfi (snippets) ; robots.txt constat\xE9 c\xF4t\xE9 serveur.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.ifa-berlin.com/exhibitors/utopya-2",
+      "https://www.xerfi.com/etudes-par-entreprise/utopya_791460660",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "mobilax",
+    name: "Mobilax (ND Distribution)",
+    segment: "B_parts",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "EU"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Xiaomi",
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "R\xE9serv\xE9 exclusivement aux professionnels (application mobile B2B disponible)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: "Livraison Europe annonc\xE9e",
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "Grossiste lyonnais (2010) de pi\xE8ces et accessoires r\xE9serv\xE9 aux r\xE9parateurs, avec app B2B.",
+    howToGetCatalog: "Compte pro ; aucune API publique trouv\xE9e ; SERVER.md : prix apr\xE8s connexion \u2192 demander un flux.",
+    verified: "Fiche app (publisher ND Distribution) et fiche French Tech ; domaine non confirm\xE9 dans cette session (WebFetch bloqu\xE9).",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://mwm.ai/apps/mobilax/1599510586",
+      "https://lespepitestech.com/node/18571",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "injured-gadgets",
+    name: "Injured Gadgets",
+    segment: "B_parts",
+    country: "US",
+    deliveryZones: [
+      "US",
+      "Global"
+    ],
+    website: "https://www.injuredgadgets.com",
+    catalogUrl: null,
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: "Compte grossiste ; certains articles non exp\xE9diables hors USA",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "USD",
+    moq: null,
+    shipping: "Restrictions export selon article ; droits/TVA import vers FR",
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "Grossiste US (Norcross, GA) int\xE9gr\xE9 \xE0 RepairDesk (stock temps r\xE9el) ; pertinent surtout pour r\xE9f\xE9rences introuvables en UE.",
+    howToGetCatalog: "Pas d'API publique ; int\xE9gration RepairDesk r\xE9serv\xE9e aux utilisateurs RepairDesk ; robots.txt/403 constat\xE9 c\xF4t\xE9 serveur.",
+    verified: "Int\xE9gration RepairDesk et restriction d'exp\xE9dition sur une fiche produit (snippets).",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://blog.repairdesk.co/?p=798",
+      "https://www.injuredgadgets.com/tools-equipment/soldering/diagnostics",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "fixez",
+    name: "Fixez",
+    segment: "B_parts",
+    country: "US",
+    deliveryZones: [],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "spare_parts"
+    ],
+    brands: [],
+    productTypes: [
+      "parts"
+    ],
+    sales: null,
+    proAccountRequired: null,
+    accessConditions: null,
+    accessModes: [],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "USD",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "D\xE9j\xE0 pr\xE9sent dans l'app ; aucune information nouvelle trouv\xE9e.",
+    howToGetCatalog: "Non d\xE9termin\xE9 (robots.txt/403 constat\xE9 c\xF4t\xE9 serveur).",
+    verified: "Aucun r\xE9sultat de recherche pertinent dans cette session.",
+    verificationLevel: "unverified",
+    knownInApp: true,
+    sourcesChecked: [
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "4phones",
+    name: "4Phones",
+    segment: "B_parts",
+    country: "NL",
+    deliveryZones: [
+      "BE",
+      "NL",
+      "LU",
+      "DE",
+      "ES",
+      "PT",
+      "TR"
+    ],
+    website: "https://4phones.eu",
+    catalogUrl: "https://acc.4phones.eu",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Webshop ferm\xE9 : demande de compte sans engagement, stock et prix visibles apr\xE8s approbation",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: "Exp\xE9dition le jour m\xEAme (cut-off 18h00/19h30 CET selon fiches)",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Importateur/distributeur de pi\xE8ces t\xE9l\xE9phone/tablette/laptop (Valkenswaard) actif Benelux, DE, ES, PT.",
+    howToGetCatalog: "Demander un compte sur acc.4phones.eu ; FR non list\xE9 dans les zones \u2192 confirmer la livraison France ; demander un export.",
+    verified: "Pages produit acc.4phones.eu (compte requis, cut-offs) et LinkedIn (zones) via snippets.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://acc.4phones.eu/products/a00004569",
+      "https://4phones.eu/pages/our-mission",
+      "https://linkedin.com/company/4phones"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "gsm-parts-center",
+    name: "GSM Parts Center (GPC Group Global B.V.)",
+    segment: "B_parts",
+    country: "NL",
+    deliveryZones: [
+      "EU"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Mod\xE8le 'registered dealers' (support 7j/7)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur B2B pi\xE8ces/accessoires/outils, partenaire de REWA EU et certifi\xE9 Phonecheck.",
+    howToGetCatalog: "Trouver le site officiel GPC et s'enregistrer comme dealer ; URL non confirm\xE9e.",
+    verified: "Uniquement fiche partenaire Phonecheck + mention REWA EU ; site propre non trouv\xE9.",
+    verificationLevel: "unverified",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.phonecheck.com/fr/partners/gsm-parts-center",
+      "https://rewa.tech/?p=30933"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "mobiparts-gsmnet",
+    name: "Mobiparts / GSMnet",
+    segment: "B_parts",
+    country: "RO",
+    deliveryZones: [
+      "RO",
+      "EU"
+    ],
+    website: "https://www.mobiparts.ro",
+    catalogUrl: "https://www.mobiparts.ro",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung",
+      "Xiaomi"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: true,
+    accessConditions: "Plateforme B2B en ligne (> 5 000 soci\xE9t\xE9s clientes)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur roumain (CA ~31 M\u20AC 2022, > 25 000 produits) avec stock temps r\xE9el affich\xE9 et account managers B2B.",
+    howToGetCatalog: "Ouvrir un compte B2B sur mobiparts.ro ; demander un export XML/CSV (non document\xE9).",
+    verified: "Plateforme B2B mobiparts.ro, 5 000 soci\xE9t\xE9s, stock temps r\xE9el : Revista Biz, IFA, Economica (snippets).",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.revistabiz.ro/afacerile-gsmnet-ro-in-crestere-pana-la-31-de-milioane-de-euro/",
+      "https://www.ifa-berlin.com/archived-exhibitor/mobiparts"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "sifar",
+    name: "Sifar Group (groupe Esprinet)",
+    segment: "B_parts",
+    country: "IT",
+    deliveryZones: [
+      "IT",
+      "EU"
+    ],
+    website: "https://www.sifar.it",
+    catalogUrl: null,
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [
+      "Samsung",
+      "Realme",
+      "Huawei",
+      "Oppo",
+      "Asus",
+      "OnePlus",
+      "Apple",
+      "Xiaomi"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Plateforme web B2B (inscription revendeur)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: "Livraison 24/48 h (Italie)",
+    warranty: null,
+    partQuality: "mixed",
+    whyUseful: "Distributeur autoris\xE9 de pi\xE8ces Samsung, Realme, Huawei, Oppo, Asus, OnePlus (originales + compatibles), > 20 000 r\xE9f\xE9rences.",
+    howToGetCatalog: "Inscription sur sifar.it ; demander si le flux espriCATALOG d'Esprinet couvre les pi\xE8ces Sifar.",
+    verified: "Rachat par Esprinet (ao\xFBt 2023) et statut distributeur autoris\xE9 : MilanoFinanza, Soldionline, IFA (snippets).",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.ifa-berlin.com/exhibitors/sifar-group-srl",
+      "https://www.milanofinanza.it/news/esprinet-acquisisce-sifar-group-per-16-milioni-di-euro-e-prende-in-contropiede-gli-shortisti-la-tabella-202307191530379702",
+      "https://atoka.io/public/it/azienda/sifar-group-srl/851f5c5be92a"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "life365",
+    name: "Life365",
+    segment: "E_specialist",
+    country: "IT",
+    deliveryZones: [
+      "IT",
+      "EU"
+    ],
+    website: "https://www.life365.eu",
+    catalogUrl: "https://info.life365.eu/en/settori/telephony-and-repairs",
+    categories: [
+      "spare_parts",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "parts",
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte B2B ; 'pas de minimum' annonc\xE9",
+    accessModes: [
+      "api",
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: "Aucun minimum annonc\xE9",
+    shipping: "48 h Italie, < 4 jours reste de l'Europe (annonc\xE9)",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Plateforme B2B italienne (Forl\xEC) t\xE9l\xE9phonie/r\xE9paration qui annonce un 'API Access to Inventory' \u2014 candidat rare \xE0 une int\xE9gration API c\xF4t\xE9 pi\xE8ces.",
+    howToGetCatalog: "Contacter Life365 pour ouvrir un compte et obtenir la documentation API (non publique).",
+    verified: "'API Access to Inventory' et 'check availability through our APIs' sur pages Life365 (snippets) ; aucune doc technique trouv\xE9e.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://info.life365.eu/en/settori/telephony-and-repairs",
+      "https://info.life365.eu/en/settori/electrical-components",
+      "https://www.life365.eu/en/contatti"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "smartgrade",
+    name: "SmartGrade (Samsung Service Pack)",
+    segment: "B_parts",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "EU"
+    ],
+    website: "https://smartgrade.fr",
+    catalogUrl: "https://www.destockplus.com/boutique-grossiste-samsungservicepack.html",
+    categories: [
+      "spare_parts"
+    ],
+    brands: [
+      "Samsung"
+    ],
+    productTypes: [
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: null,
+    accessConditions: "Demande par e-mail (mod\xE8les, couleurs, volumes hebdo/mensuels, prix cibles)",
+    accessModes: [
+      "email_quote"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: "original",
+    whyUseful: "Grossiste ni\xE7ois d'\xE9crans Samsung Service Pack (pi\xE8ces d'origine) \u2014 se dit fournisseur certifi\xE9 Samsung Enterprise (non v\xE9rifi\xE9).",
+    howToGetCatalog: "Envoyer la liste des mod\xE8les et volumes \xE0 l'adresse commerciale indiqu\xE9e sur ses annonces Destockplus ; devis manuel.",
+    verified: "Annonces Destockplus (contact, site smartgrade.fr) et forum Samsung 2017 (snippets) ; statut Samsung non v\xE9rifi\xE9.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.destockplus.com/acheter/c-904670-ecran-original-samsung-service.html",
+      "https://eu.community.samsung.com/t5/autres-smartphones/samsung-service-pack/m-p/323819/highlight/true"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "smartpart4u",
+    name: "smartpart4u (JH Internet GmbH)",
+    segment: "B_parts",
+    country: "DE",
+    deliveryZones: [
+      "DE"
+    ],
+    website: "https://smartpart4u.de",
+    catalogUrl: null,
+    categories: [
+      "spare_parts"
+    ],
+    brands: [],
+    productTypes: [
+      "parts"
+    ],
+    sales: null,
+    proAccountRequired: null,
+    accessConditions: null,
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: "Livraison J+1 annonc\xE9e",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Se pr\xE9sente comme grossiste de pi\xE8ces smartphone (DE) ; \xE0 qualifier.",
+    howToGetCatalog: "V\xE9rifier l'existence d'un acc\xE8s revendeur ; non v\xE9rifi\xE9.",
+    verified: "Uniquement profil Trusted Shops (en partie g\xE9n\xE9r\xE9 par IA selon la page).",
+    verificationLevel: "unverified",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.trustedshops.de/company/jh_internet_gmbh/"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "bstock-europe",
+    name: "B-Stock Europe (Amazon EU, Supply Europe\u2026)",
+    segment: "C_liquidation",
+    country: "US",
+    deliveryZones: [
+      "EU",
+      "UK"
+    ],
+    website: "https://bstock.com/europe/",
+    catalogUrl: "https://bstock.com/auctions/europe/",
+    categories: [
+      "lots",
+      "smartphones",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "lots",
+      "used"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Inscription gratuite par marketplace ; licence commerciale + n\xB0 TVA (UE) ; adresse de livraison europ\xE9enne",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: "Palettes / camions",
+    shipping: "Acheteur responsable du transport, douane et droits",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Canal officiel des ench\xE8res de retours/surstocks Amazon EU et d'autres retailers europ\xE9ens, dont \xE9lectronique (neuf \xE0 salvage).",
+    howToGetCatalog: "S'inscrire sur chaque marketplace (Amazon EU, Supply Europe) ; manifestes par lot ; doc repo : acc\xE8s automatis\xE9 interdit par les CGU \u2192 mode manuel/alertes.",
+    verified: "Pages bstock.com (Amazon EU, Supply Europe, FAQ acheteurs : TVA, documents) via snippets.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://bstock.com/auctions/amazon-eu/",
+      "https://bstock.com/supplystoreeurope/faq/",
+      "https://bstock.com/supplystoreeurope/consumer-electronics/",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "merkandi",
+    name: "Merkandi",
+    segment: "C_liquidation",
+    country: "PL",
+    deliveryZones: [
+      "EU",
+      "Global"
+    ],
+    website: "https://merkandi.fr/",
+    catalogUrl: "https://merkandi.fr/",
+    categories: [
+      "lots",
+      "smartphones",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new",
+      "used",
+      "refurbished",
+      "lots"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Inscription ; contact vendeurs selon abonnement",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: "Variable selon vendeur",
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Grande place de march\xE9 B2B europ\xE9enne de surstocks, liquidations et retours (fiabilit\xE9 vendeurs in\xE9gale selon avis).",
+    howToGetCatalog: "Inscription acheteur ; le flux XML document\xE9 (AdTribes) sert aux VENDEURS pour publier, pas aux acheteurs ; aucune API acheteur trouv\xE9e.",
+    verified: "Flux XML vendeur via AdTribes ; avis Trustpilot ; robots.txt/403 c\xF4t\xE9 serveur.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://adtribes.io/?p=46813",
+      "https://ie.trustpilot.com/review/merkandi.com?page=2",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "stocklear",
+    name: "Stocklear",
+    segment: "C_liquidation",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "BE",
+      "DE",
+      "NL",
+      "ES",
+      "EU"
+    ],
+    website: "https://stocklear.fr/",
+    catalogUrl: "https://stocklear.fr/lots/cat/telephone-16",
+    categories: [
+      "lots",
+      "smartphones"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "lots",
+      "new",
+      "used"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte professionnel valid\xE9 (soldeurs, grossistes, reconditionneurs\u2026)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: "Lots aux ench\xE8res",
+    shipping: "Transport propos\xE9 sur chaque commande",
+    warranty: "SAV garanti sur chaque commande (annonc\xE9)",
+    partQuality: null,
+    whyUseful: "Ench\xE8res B2B de retours clients/invendus de grandes marques (Apple, Samsung\u2026), 9 niveaux de qualit\xE9 du neuf au non test\xE9.",
+    howToGetCatalog: "Cr\xE9er un compte pro ; consulter les lots t\xE9l\xE9phonie ; pas d'API acheteur trouv\xE9e (un connecteur Contentserv existe c\xF4t\xE9 vendeurs).",
+    verified: "Mod\xE8le, qualit\xE9s, acheteurs cibles : La Libre, CB Insights, Destockplus (snippets).",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.lalibre.be/economie/entreprises-startup/2020/06/08/stocklear-la-crise-a-eu-un-double-effet-daubaine-LT7OOAKQKVGM7P5SWU27BLSACM/",
+      "https://marketplace.contentserv.com/connectors/stocklear-connector",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "jobalots",
+    name: "Jobalots",
+    segment: "C_liquidation",
+    country: "GB",
+    deliveryZones: [
+      "UK",
+      "EU"
+    ],
+    website: "https://jobalots.com",
+    catalogUrl: "https://jobalots.com",
+    categories: [
+      "lots"
+    ],
+    brands: [],
+    productTypes: [
+      "lots",
+      "used"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: false,
+    accessConditions: "Inscription ; ench\xE8res de lots",
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "GBP",
+    moq: "Lots/palettes",
+    shipping: null,
+    warranty: "Aucune garantie sur les retours clients (non test\xE9s, non tri\xE9s, \xB110 % sur le manifeste)",
+    partQuality: null,
+    whyUseful: "Lots de retours clients avec manifeste ; utile pour sourcing opportuniste, risque \xE9lev\xE9.",
+    howToGetCatalog: "Consultation manuelle ; robots.txt interdit l'acc\xE8s automatis\xE9 (SERVER.md).",
+    verified: "Politique (pas de garantie, \xB110 %) via r\xE9ponses Jobalots sur reviews.io ; robots.txt constat\xE9 c\xF4t\xE9 serveur.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.reviews.io/company-reviews/store/jobalots.com-1gJ4Xrr/R1K",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "eurolots",
+    name: "EuroLots",
+    segment: "C_liquidation",
+    country: "BG",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://www.eurolots.com/en",
+    catalogUrl: "https://www.eurolots.com/en/fixed-price-lots",
+    categories: [
+      "lots"
+    ],
+    brands: [],
+    productTypes: [
+      "lots"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Inscription (remise premi\xE8re commande annonc\xE9e)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: "Lots/palettes",
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Plateforme de liquidation (Plovdiv) avec photos r\xE9elles et manifestes d\xE9taill\xE9s, dont \xE9lectronique.",
+    howToGetCatalog: "Inscription ; consultation manuelle ; aucune API trouv\xE9e.",
+    verified: "Uniquement fiche annuaire tiers (bestfoodimporters) ; URLs de la doc repo.",
+    verificationLevel: "unverified",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://bestfoodimporters.com/company/eurolots/",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "wholesale-clearance-uk",
+    name: "Wholesale Clearance UK",
+    segment: "C_liquidation",
+    country: "GB",
+    deliveryZones: [
+      "UK"
+    ],
+    website: "https://www.wholesaleclearance.co.uk/",
+    catalogUrl: "https://www.wholesaleclearance.co.uk/electrical__5.htm",
+    categories: [
+      "lots",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "lots",
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: null,
+    accessConditions: null,
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "GBP",
+    moq: null,
+    shipping: "UK (droits/TVA vers FR)",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "D\xE9stockage UK (rayon \xE9lectrique) ; faible pertinence smartphones.",
+    howToGetCatalog: "Consultation manuelle ; doc repo : acc\xE8s automatis\xE9 interdit par les CGU.",
+    verified: "Aucun r\xE9sultat de recherche dans cette session ; URLs issues de la doc repo.",
+    verificationLevel: "repo_doc_only",
+    knownInApp: true,
+    sourcesChecked: [
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "destockplus",
+    name: "Destockplus",
+    segment: "C_liquidation",
+    country: "FR",
+    deliveryZones: [
+      "FR"
+    ],
+    website: "https://www.destockplus.com/",
+    catalogUrl: "https://www.destockplus.com/acheter/recherche-fournisseur-0-telephonie.html",
+    categories: [
+      "lots",
+      "smartphones",
+      "spare_parts",
+      "laptops"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "new",
+      "refurbished",
+      "lots",
+      "parts"
+    ],
+    sales: "B2B",
+    proAccountRequired: false,
+    accessConditions: "Annonces publiques ; contact vendeur apr\xE8s inscription",
+    accessModes: [
+      "public_catalog",
+      "feed_xml"
+    ],
+    apiDocsUrl: "https://www.destockplus.com/modules/annonces/rss.php",
+    pricesTax: null,
+    currency: "EUR",
+    moq: "Selon annonceur",
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Petites annonces B2B de grossistes FR/\xE9trangers (iPhone/Android reconditionn\xE9s, Service Pack, PC en lots) ; flux RSS/XML public des annonces.",
+    howToGetCatalog: "Le flux RSS/XML public (rss.php) permet de surveiller les nouvelles annonces ; prix souvent 'sur demande' \u2192 contact manuel ; prudence sur la qualit\xE9 des annonces.",
+    verified: "Page flux RSS (gratuit, imm\xE9diat) et service 'flux d'annonces' vendeurs via snippets ; annonces t\xE9l\xE9phonie dat\xE9es juillet-ao\xFBt 2026.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.destockplus.com/modules/annonces/rss.php",
+      "https://www.destockplus.com/lire/nos-services-1.html",
+      "https://www.destockplus.com/acheter/recherche-fournisseur-0-telephonie.html"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "troostwijk",
+    name: "Troostwijk Auctions",
+    segment: "C_liquidation",
+    country: "NL",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://www.troostwijkauctions.com",
+    catalogUrl: null,
+    categories: [
+      "lots"
+    ],
+    brands: [],
+    productTypes: [
+      "lots",
+      "used"
+    ],
+    sales: "B2B",
+    proAccountRequired: null,
+    accessConditions: "Inscription ench\xE9risseur",
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Grande maison d'ench\xE8res B2B europ\xE9enne vendant chaque semaine des retours e-commerce (via Blue Banana Logistics).",
+    howToGetCatalog: "Consultation manuelle des ventes hebdomadaires de retours ; aucune vente smartphone sp\xE9cifique confirm\xE9e.",
+    verified: "Page partenaire bol.com (retours webshops, ventes hebdo) et page histoire Troostwijk (snippets).",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://partnerplatform.bol.com/en/cpdp/troostwijk-auctions",
+      "https://www.troostwijkauctions.com/fr/the-story-of-troostwijk-auctions"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "vavato",
+    name: "Vavato",
+    segment: "C_liquidation",
+    country: "BE",
+    deliveryZones: [
+      "BE",
+      "EU"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "lots"
+    ],
+    brands: [],
+    productTypes: [
+      "lots"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: null,
+    accessConditions: null,
+    accessModes: [
+      "public_catalog"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Plateforme d'ench\xE8res belge (overstock, insolvabilit\xE9s) ayant \xE9coul\xE9 39 % des retours Kr\xEBfel (2021).",
+    howToGetCatalog: "Consultation manuelle ; statut actuel (rachet\xE9/fusionn\xE9 selon PitchBook) \xE0 v\xE9rifier.",
+    verified: "RetailDetail/DH 2021 et PitchBook ; site non confirm\xE9 dans cette session.",
+    verificationLevel: "unverified",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://retaildetail.be/nl/news/elektro/krefel-vend-ses-retours-aux-encheres-sur-internet",
+      "https://pitchbook.com/profiles/company/343218-52"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "restposten-de",
+    name: "Restposten.de",
+    segment: "C_liquidation",
+    country: "DE",
+    deliveryZones: [
+      "DE",
+      "EU"
+    ],
+    website: "https://restposten.de",
+    catalogUrl: null,
+    categories: [
+      "lots"
+    ],
+    brands: [],
+    productTypes: [
+      "lots",
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "R\xE9serv\xE9 aux entreprises",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Marketplace B2B germanophone de restes de stock, surplus et retours (Solingen) ; \xE9lectronique list\xE9e parmi les cat\xE9gories.",
+    howToGetCatalog: "Inscription entreprise ; consultation manuelle ; ne pas confondre avec Restposten24.",
+    verified: "Description via annuaire tiers uniquement.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.monsterdealz.de/magazin/restposten-kaufen",
+      "https://erfahrungenscout.de/online-einkaufen/restposten-bewertungen?page=2"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "ebay-browse",
+    name: "eBay (Buy Browse API)",
+    segment: "C_liquidation",
+    country: "US",
+    deliveryZones: [
+      "FR",
+      "EU",
+      "Global"
+    ],
+    website: "https://www.ebay.fr",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "spare_parts",
+      "lots"
+    ],
+    brands: [],
+    productTypes: [
+      "new",
+      "used",
+      "refurbished",
+      "parts",
+      "lots"
+    ],
+    sales: "B2B+B2C",
+    proAccountRequired: false,
+    accessConditions: "Cl\xE9s d'application eBay ; sandbox ouvert, production des Buy APIs soumise \xE0 \xE9ligibilit\xE9/approbation/contrat",
+    accessModes: [
+      "api"
+    ],
+    apiDocsUrl: "https://developer.ebay.com/api-docs/buy/browse/overview.html",
+    pricesTax: "TTC",
+    currency: "EUR",
+    moq: null,
+    shipping: "Selon vendeur",
+    warranty: "Selon vendeur",
+    partQuality: null,
+    whyUseful: "Seule API officielle de recherche multi-vendeurs (lots, reconditionn\xE9s, pi\xE8ces) avec filtres GTIN/cat\xE9gorie.",
+    howToGetCatalog: "GET /buy/browse/v1/item_summary/search avec token d'application (client credentials) ; max 10 000 r\xE9sultats/requ\xEAte ; v\xE9rifier la nouvelle licence API (restrictions IA).",
+    verified: "Docs officielles developer.ebay.com (m\xE9thodes, overview, OAS3) via snippets.",
+    verificationLevel: "official_docs_snippet",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://developer.ebay.com/api-docs/buy/browse/overview.html",
+      "https://developer.ebay.com/api-docs/buy/browse/resources/methods",
+      "https://www.developer.ebay.com/api-docs/master/buy/browse/openapi/3/buy_browse_v1_oas3.yaml"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "ingram-micro-fr",
+    name: "Ingram Micro (France / Xvantage)",
+    segment: "D_distributor",
+    country: "FR",
+    deliveryZones: [
+      "FR"
+    ],
+    website: "https://fr.ingrammicro.eu/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung",
+      "Lenovo",
+      "HP"
+    ],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte revendeur (n\xB0 client) puis compte d\xE9veloppeur ; app \xE0 faire approuver",
+    accessModes: [
+      "api",
+      "pro_portal",
+      "manual_download"
+    ],
+    apiDocsUrl: "https://developer.ingrammicro.com/reseller/getting-started",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "API Reseller gratuite (OAuth) : recherche catalogue, d\xE9tail produit, prix et disponibilit\xE9 temps r\xE9el par entrep\xF4t ; fichier prix SFTP en secours.",
+    howToGetCatalog: "Ouvrir un compte Ingram FR ; cr\xE9er une app sur developer.ingrammicro.com avec le n\xB0 client, activer 'Product Catalog' ; sinon demander le fichier prix SFTP \xE0 l'account manager. Disponibilit\xE9 de l'API en France \xE0 confirmer (un guide tiers cite US/UK/CA seulement).",
+    verified: "Portail d\xE9veloppeur, endpoints v6 price-and-availability, SDK OpenAPI GitHub, gratuit\xE9 : snippets officiels ; couverture FR non confirm\xE9e.",
+    verificationLevel: "official_docs_snippet",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://developer.ingrammicro.com/reseller/getting-started",
+      "https://developer.ingrammicro.com/reseller/sdks",
+      "https://github.com/ingrammicro-xvantage/xi-sdk-openapispec",
+      "https://help.zomentum.com/support/solutions/articles/44001909124"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "td-synnex-fr",
+    name: "TD SYNNEX France",
+    segment: "D_distributor",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "BE",
+      "NL",
+      "UK"
+    ],
+    website: "https://fr.tdsynnex.com/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte revendeur ; code d'autorisation P&A temps r\xE9el ; login XML/API dans ECExpress + IP whitelist (process NA)",
+    accessModes: [
+      "api",
+      "feed_xml",
+      "pro_portal"
+    ],
+    apiDocsUrl: "https://developer.api.tdsynnex.com/eu",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Service europ\xE9en de prix & disponibilit\xE9 temps r\xE9el (divisions UK, BE, FR, NL) consommable en XML.",
+    howToGetCatalog: "Ouvrir un compte (fr.tdsynnex.com/newCustomerRegistration) ; demander \xE0 l'\xE9quipe e-commerce le code d'autorisation P&A et la spec XML ; portail dev EU indiqu\xE9 dans la doc repo.",
+    verified: "Guide QuoteWerks 'TD SYNNEX Europe Real-Time P&A' (UK/BE/FR/NL, code d'autorisation) + Quoter (ECExpress=XML) via snippets ; portail dev EU = doc repo.",
+    verificationLevel: "third_party_docs+repo_doc",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://support.quotewerks.com/helpfilelatest/tdsynnexeuroperealtimesetup.htm",
+      "https://help.quoter.com/hc/en-us/articles/32086346772251-Integrate-with-TD-Synnex-ECE-Express",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "also-fr",
+    name: "ALSO France / ALSO Deutschland",
+    segment: "D_distributor",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "DE",
+      "EU"
+    ],
+    website: "https://www.also.com/ec/cms5/fr_2000/2000/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Ouverture de compte revendeur",
+    accessModes: [
+      "edi",
+      "feed_xml",
+      "pro_portal"
+    ],
+    apiDocsUrl: "https://www.also.com/ec/cms5/de_1010/1010/services/it-services/edi-und-xml-integration/index.jsp",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur IT broadline (> 35 000 produits FR) avec int\xE9gration EDI/XML document\xE9e c\xF4t\xE9 DE.",
+    howToGetCatalog: "Ouvrir un compte ; demander l'int\xE9gration EDI/XML (prix/stock) ; aucune info trouv\xE9e dans cette session.",
+    verified: "Rien trouv\xE9 via la recherche de cette session ; pages EDI/XML et ouverture de compte issues de la doc repo.",
+    verificationLevel: "repo_doc_only",
+    knownInApp: false,
+    sourcesChecked: [
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "esprinet",
+    name: "Esprinet (espriCATALOG / espriREALTIME)",
+    segment: "D_distributor",
+    country: "IT",
+    deliveryZones: [
+      "IT",
+      "ES",
+      "PT"
+    ],
+    website: "https://esprinet.com",
+    catalogUrl: "https://esprinet.com/en/offer/services/digital-and-e-commerce-services/espricatalog-and-esprirealtime",
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Revendeur Esprinet (IT/ES)",
+    accessModes: [
+      "feed_xml",
+      "api",
+      "edi"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: "Dropshipping sur > 170 000 produits",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "espriCATALOG = base produits avec prix, disponibilit\xE9s, photos, fiches \xE0 importer ; espriREALTIME = commandes automatis\xE9es + tracking ; maison m\xE8re de Sifar (pi\xE8ces).",
+    howToGetCatalog: "Devenir revendeur Esprinet Italia ou Ib\xE9rica, demander l'activation espriCATALOG (format non publi\xE9) ; livraison France \xE0 confirmer.",
+    verified: "Page officielle esprinet.com d\xE9crivant espriCATALOG/espriREALTIME (snippet) ; format technique non trouv\xE9.",
+    verificationLevel: "official_page_snippet",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://esprinet.com/en/offer/services/digital-and-e-commerce-services/espricatalog-and-esprirealtime"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "copaco",
+    name: "Copaco (BE/NL)",
+    segment: "E_specialist",
+    country: "NL",
+    deliveryZones: [
+      "BE",
+      "NL"
+    ],
+    website: "https://www.copaco.com",
+    catalogUrl: "https://www.copaco.com/en-be/customer-service-e-commerce-fulfillment",
+    categories: [
+      "laptops",
+      "tablets",
+      "smartphones",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Identifiants FTP fournis par Copaco aux revendeurs",
+    accessModes: [
+      "feed_csv"
+    ],
+    apiDocsUrl: "https://pypi.org/project/python-copaco-connections/0.1.2",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Liste de prix CSV par FTP avec stock, EAN, prix hors/avec taxes (Recupel, Bebat\u2026), ATP et date de prochaine livraison.",
+    howToGetCatalog: "Devenir revendeur Copaco BE/NL, obtenir les identifiants FTP, importer la productlist CSV.",
+    verified: "Package PyPI tiers 'python-copaco-connections' d\xE9crivant le CSV FTP et ses champs (snippet) ; page Copaco non lue.",
+    verificationLevel: "third_party_docs",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://pypi.org/project/python-copaco-connections/0.1.2"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "exertis-fr",
+    name: "Exertis France (repris par WE.CONNECT)",
+    segment: "D_distributor",
+    country: "FR",
+    deliveryZones: [
+      "FR"
+    ],
+    website: "https://www.exertis.fr/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "laptops",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Ouverture de compte (CGV sign\xE9es, Kbis < 3 mois, RIB, CNI g\xE9rant \u2014 doc repo) ; premi\xE8res commandes pr\xE9pay\xE9es",
+    accessModes: [
+      "feed_csv",
+      "edi",
+      "pro_portal"
+    ],
+    apiDocsUrl: "https://exertis.fr/web-services.php",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur mobilit\xE9/IT FR ; fichiers prix (PriceCAT) et EDI ; changement de nom commercial annonc\xE9 suite au rachat par WE.CONNECT.",
+    howToGetCatalog: "Ouvrir un compte puis demander \xE0 l'account manager l'activation du fichier prix (SFTP CSV selon process Exertis d\xE9crit par Kaseya) ; v\xE9rifier si les services survivent au rebranding WE.CONNECT.",
+    verified: "Rachat WE.CONNECT (BusinessWire/ABC Bourse) ; process SFTP CSV Exertis (Kaseya, contexte UK) ; page web-services = doc repo.",
+    verificationLevel: "third_party_docs+repo_doc",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://help.quotemanager.kaseya.com/help/Content/2-integrate/supplier-integrations/exertis.htm",
+      "https://www.abcbourse.com/marches/weconnect-acquiert-exertis-france-et-exertis-iberia_673386",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "komsa",
+    name: "KOMSA",
+    segment: "D_distributor",
+    country: "DE",
+    deliveryZones: [
+      "DE"
+    ],
+    website: "https://komsa.com/",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "tablets",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "V\xE9rification soci\xE9t\xE9 et solvabilit\xE9, acc\xE8s shop KARLO + account manager (doc repo)",
+    accessModes: [
+      "api",
+      "edi",
+      "feed_xml",
+      "feed_json",
+      "pro_portal"
+    ],
+    apiDocsUrl: "https://komsa.com/fileadmin/komsa.com/Dokumente/EDI/de/KOMSA_Echtzeit-Bestandsabfrage_API_Spezifikation.pdf",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur t\xE9l\xE9com majeur (> 20 000 partenaires retail) avec API REST de disponibilit\xE9 temps r\xE9el + EDI XML/JSON/SFTP.",
+    howToGetCatalog: "Devenir partenaire, demander l'acc\xE8s API dispo + flux easydata ; livraison/facturation France \xE0 confirmer.",
+    verified: "App KARLO et > 20 000 partenaires via ChannelPartner ; spec API PDF et EDI issus de la doc repo (non retrouv\xE9s par la recherche de cette session).",
+    verificationLevel: "search_snippets+repo_doc",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.channelpartner.de/article/3898243/die-karlo-app-ist-da.html",
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "brodos",
+    name: "Brodos AG",
+    segment: "D_distributor",
+    country: "DE",
+    deliveryZones: [
+      "DE"
+    ],
+    website: "https://brodos.com/",
+    catalogUrl: "https://shop.brodos.net/",
+    categories: [
+      "smartphones",
+      "tablets",
+      "accessories"
+    ],
+    brands: [
+      "Apple",
+      "Samsung"
+    ],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Inscription B2B (brodos.com/registrierung) ; identifiants de test via account manager",
+    accessModes: [
+      "api",
+      "edi",
+      "pro_portal"
+    ],
+    apiDocsUrl: "https://forms.brodos.com/brodos-developer-area/",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur mobilit\xE9 avec Article Master Data API, Offer API et commandes openTRANS XML.",
+    howToGetCatalog: "S'inscrire, demander l'acc\xE8s Developer Area ; livraison France \xE0 confirmer.",
+    verified: "Non retrouv\xE9 par la recherche de cette session ; repose sur la doc repo.",
+    verificationLevel: "repo_doc_only",
+    knownInApp: false,
+    sourcesChecked: [
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "wortmann",
+    name: "Wortmann AG (TERRA)",
+    segment: "D_distributor",
+    country: "DE",
+    deliveryZones: [
+      "DE"
+    ],
+    website: "https://portal.wortmann.de",
+    catalogUrl: null,
+    categories: [
+      "laptops",
+      "tablets",
+      "accessories"
+    ],
+    brands: [
+      "TERRA"
+    ],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Enregistrement comme revendeur (+ certification pour TERRA Cloud)",
+    accessModes: [
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Constructeur/distributeur allemand 100 % indirect (PC/portables TERRA) ; int\xE9r\xEAt limit\xE9 pour le reconditionn\xE9.",
+    howToGetCatalog: "S'enregistrer sur le portail revendeur ; aucun flux/CSV trouv\xE9.",
+    verified: "portal.wortmann.de cit\xE9 par ChannelPartner ; aucune info flux.",
+    verificationLevel: "search_snippets",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.channelpartner.de/article/3900739/wortmann-ag-laedt-fachhaendler-ein.html",
+      "https://www.itreseller.ch/Artikel/87156/Terra_Cloud_am_Wortmann-Himmel.html"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "kosatec",
+    name: "Kosatec",
+    segment: "E_specialist",
+    country: "DE",
+    deliveryZones: [
+      "DE"
+    ],
+    website: "https://kosatec.de",
+    catalogUrl: null,
+    categories: [
+      "laptops",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "N\xB0 client + cl\xE9 EDI fournis par Kosatec",
+    accessModes: [
+      "feed_csv"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Liste de prix CSV t\xE9l\xE9chargeable par URL construite \xE0 partir du n\xB0 client et de la cl\xE9 EDI (int\xE9gration simple).",
+    howToGetCatalog: "Ouvrir un compte, demander la cl\xE9 EDI et la doc d'int\xE9gration (PDF sur kosatec.de) ; t\xE9l\xE9charger le CSV p\xE9riodiquement.",
+    verified: "Post Salesbuildr d\xE9crivant l'URL CSV (n\xB0 client + cl\xE9 EDI), marqu\xE9 'done' ; PDF officiel non lu.",
+    verificationLevel: "third_party_docs",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://salesbuildr.featurebase.app/p/distributer-kosatec"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "jarltech",
+    name: "Jarltech",
+    segment: "D_distributor",
+    country: "DE",
+    deliveryZones: [],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: null,
+    accessModes: [],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur sp\xE9cialis\xE9 (POS/AutoID) cit\xE9 dans la demande ; peu pertinent pour smartphones/refurb.",
+    howToGetCatalog: "Non d\xE9termin\xE9.",
+    verified: "Aucun r\xE9sultat pertinent dans cette session.",
+    verificationLevel: "unverified",
+    knownInApp: false,
+    sourcesChecked: [],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "bluechip",
+    name: "bluechip Computer AG",
+    segment: "D_distributor",
+    country: "DE",
+    deliveryZones: [
+      "DE"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "laptops",
+      "tablets"
+    ],
+    brands: [
+      "bluechip"
+    ],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Partenaire revendeurs/int\xE9grateurs",
+    accessModes: [],
+    apiDocsUrl: null,
+    pricesTax: null,
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Fabricant/distributeur IT allemand (Meuselwitz) pour le channel ; aucune info d'acc\xE8s catalogue.",
+    howToGetCatalog: "Non d\xE9termin\xE9.",
+    verified: "Seulement fiche Intel Partner Showcase et get-in-it.",
+    verificationLevel: "unverified",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.intel.com/content/www/us/en/partner/showcase/storefront/a5S3b0000016NfNEAU/bluechip-computer-ag.html"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "action-pl",
+    name: "Action S.A.",
+    segment: "D_distributor",
+    country: "PL",
+    deliveryZones: [
+      "PL",
+      "EU"
+    ],
+    website: "https://www.action.pl/en/about-action/e-commerce",
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "laptops",
+      "tablets",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Partenaire de la plateforme I-SERWIS",
+    accessModes: [
+      "manual_download",
+      "feed_csv",
+      "feed_xml",
+      "api"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "PLN",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Les partenaires I-SERWIS re\xE7oivent gratuitement des fichiers XLSX/CSV (prix, stock, dimensions, descriptions, photos) + API/XML.",
+    howToGetCatalog: "Devenir partenaire Action (I-SERWIS) ; t\xE9l\xE9charger XLSX/CSV ou demander l'API/XML ; livraison France \xE0 confirmer.",
+    verified: "Page officielle action.pl e-commerce (XLSX/CSV gratuits) + int\xE9grations Base.com/Shoper (snippets).",
+    verificationLevel: "official_page_snippet",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.action.pl/en/about-action/e-commerce",
+      "https://base.com/pl-PL/integracje/action/",
+      "https://www.shoper.pl/katalog-hurtowni/hurtownia/action"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "ab-sa-pl",
+    name: "AB S.A.",
+    segment: "D_distributor",
+    country: "PL",
+    deliveryZones: [
+      "PL"
+    ],
+    website: null,
+    catalogUrl: null,
+    categories: [
+      "smartphones",
+      "laptops",
+      "tablets",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Acc\xE8s \xE0 la passerelle XML/API sur demande",
+    accessModes: [
+      "feed_xml",
+      "api"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "PLN",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Grand distributeur IT polonais avec passerelle XML (produits, photos, prix, stocks) et commandes dropshipping.",
+    howToGetCatalog: "Ouvrir un compte AB et demander l'acc\xE8s 'bramka XML/API' ; sch\xE9ma \xE0 obtenir aupr\xE8s d'AB.",
+    verified: "Int\xE9grations tierces (Inteshop PDF, Base.com, Useme) via snippets ; doc officielle non trouv\xE9e.",
+    verificationLevel: "third_party_docs",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://www.shoper.pl/wp-content/help/images/SHOPER/control-panel/applications/my-applications/integracja-ab/dokumentacja_aplikacja_ab.pdf",
+      "https://base.com/pl-PL/integracje/ab/"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "ldlc-pro",
+    name: "LDLC.pro",
+    segment: "D_distributor",
+    country: "FR",
+    deliveryZones: [
+      "FR",
+      "BE",
+      "CH",
+      "LU"
+    ],
+    website: "https://www.ldlc.pro",
+    catalogUrl: "https://www.ldlc.pro",
+    categories: [
+      "laptops",
+      "smartphones",
+      "tablets",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte professionnel (entreprises, commer\xE7ants, revendeurs)",
+    accessModes: [
+      "public_catalog",
+      "pro_portal"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "both",
+    currency: "EUR",
+    moq: null,
+    shipping: null,
+    warranty: null,
+    partQuality: null,
+    whyUseful: "> 30 000 r\xE9f\xE9rences, cible aussi les revendeurs ; pas de flux/API trouv\xE9.",
+    howToGetCatalog: "Compte pro ; demander \xE0 un conseiller si un export catalogue existe (SERVER.md : pas de catalogue public lisible).",
+    verified: "Pages ldlc.pro (cibles revendeurs/commer\xE7ants) via snippets ; aucune API trouv\xE9e.",
+    verificationLevel: "search_snippets",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.ldlc.pro/qui-sommes-nous.html",
+      "https://www.ldlc.pro/ld/cibles/point-de-vente.html",
+      "repo:docs/SERVER.md \xA75 (v\xE9rification HTTP serveur du 2026-10-10)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "bigbuy",
+    name: "BigBuy",
+    segment: "E_specialist",
+    country: "ES",
+    deliveryZones: [
+      "EU"
+    ],
+    website: "https://www.bigbuy.eu/fr/",
+    catalogUrl: "https://www.bigbuy.eu/en/csv-xml-files.html",
+    categories: [
+      "accessories",
+      "laptops",
+      "tablets"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Pack payant (Ecommerce Pack : FTP CSV/XML + API ; B2B Pack pour achat en gros)",
+    accessModes: [
+      "api",
+      "feed_csv",
+      "feed_xml"
+    ],
+    apiDocsUrl: "https://api.bigbuy.eu/rest/doc",
+    pricesTax: "HT",
+    currency: "EUR",
+    moq: "\xC0 l'unit\xE9 (dropshipping) ; packs wholesale",
+    shipping: "Dropshipping UE",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "API REST JSON document\xE9e (Bearer, sandbox) + fichiers CSV/XML : int\xE9gration la plus simple, mais assortiment smartphones \xE0 v\xE9rifier.",
+    howToGetCatalog: "Souscrire au pack incluant l'API, demander la cl\xE9 API, utiliser api.sandbox.bigbuy.eu puis api.bigbuy.eu (endpoints catalogue/stock).",
+    verified: "FAQ API officielle + guide PDF officiel (base URLs, Bearer, sections stock) via snippets ; tarifs des packs via sources tierces.",
+    verificationLevel: "official_docs_snippet",
+    knownInApp: true,
+    sourcesChecked: [
+      "https://www.bigbuy.eu/public/doc/Guia_API_BigBuy_EN.pdf",
+      "https://www.bigbuy.eu/sv/api_bigbuy.html",
+      "https://www.itechguides.com/best/dropshipping-software/bigbuy/",
+      "https://www.bigbuy.eu/academy/en/how-to-place-large-quantity-orders"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "westcoast",
+    name: "Westcoast",
+    segment: "D_distributor",
+    country: "GB",
+    deliveryZones: [
+      "UK"
+    ],
+    website: "https://www.westcoast.co.uk/",
+    catalogUrl: null,
+    categories: [
+      "laptops",
+      "tablets",
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Ouverture de compte (openaccount.westcoast.co.uk)",
+    accessModes: [
+      "api",
+      "pro_portal"
+    ],
+    apiDocsUrl: "https://www.westcoast.co.uk/what-we-do/Electronic_Trading.html",
+    pricesTax: "HT",
+    currency: "GBP",
+    moq: null,
+    shipping: "UK",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Distributeur IT UK avec trading \xE9lectronique (XML) ; pertinent seulement pour flux UK.",
+    howToGetCatalog: "Compte + demande d'acc\xE8s Electronic Trading.",
+    verified: "Non re-v\xE9rifi\xE9 dans cette session ; doc repo.",
+    verificationLevel: "repo_doc_only",
+    knownInApp: false,
+    sourcesChecked: [
+      "repo:docs/sourcing-sources.md (extraits officiels du 2026-10-07, non re-v\xE9rifi\xE9s dans cette session)"
+    ],
+    checkedAt: "2026-10-10"
+  },
+  {
+    key: "hurtel",
+    name: "Hurtel",
+    segment: "E_specialist",
+    country: "PL",
+    deliveryZones: [
+      "PL",
+      "EU"
+    ],
+    website: null,
+    catalogUrl: "https://base.com/pl-PL/integracje/hurtel/",
+    categories: [
+      "accessories"
+    ],
+    brands: [],
+    productTypes: [
+      "new"
+    ],
+    sales: "B2B",
+    proAccountRequired: true,
+    accessConditions: "Compte B2B (activit\xE9 enregistr\xE9e attendue) ; lien XML fourni par le grossiste",
+    accessModes: [
+      "feed_xml"
+    ],
+    apiDocsUrl: null,
+    pricesTax: "HT",
+    currency: "PLN",
+    moq: null,
+    shipping: "Dropshipping possible",
+    warranty: null,
+    partQuality: null,
+    whyUseful: "Grossiste polonais d'accessoires GSM (coques, verres tremp\xE9s, chargeurs, c\xE2bles) avec fichiers XML 'full' et 'light' (code, stock, prix) pour dropshipping.",
+    howToGetCatalog: "Ouvrir un compte B2B Hurtel, r\xE9cup\xE9rer l'URL du fichier XML 'light' (stock/prix) et 'full' (fiches) dans le panneau grossiste.",
+    verified: "FAQ Base.com (fichiers passerelle XML Hurtel, version light) via snippets ; site officiel non lu.",
+    verificationLevel: "third_party_docs",
+    knownInApp: false,
+    sourcesChecked: [
+      "https://base.com/pl-PL/pomoc/faq/integracje/hurtownie/",
+      "https://base.com/pl-PL/integracje/hurtel/"
+    ],
+    checkedAt: "2026-10-10"
+  }
+];
+
+// src/services/sourcing/supplier-directory.ts
+init_admin();
+init_env();
+init_http();
+var SUPPLIER_DIRECTORY = supplier_directory_default;
+var DIRECTORY_RESEARCH_DATE = "2026-10-10";
+var LIBRARY_BY_DIRECTORY_KEY = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone" };
+var CONNECTOR_BY_DIRECTORY_KEY = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
+function integrationOf(key2) {
+  const lib = LIBRARY_BY_DIRECTORY_KEY[key2];
+  if (lib && getLibrarySource(lib)) return { kind: "library", libraryKey: lib };
+  const connector = CONNECTOR_BY_DIRECTORY_KEY[key2];
+  if (connector) return { kind: "connector", connectorKey: connector };
+  return { kind: "file_import" };
+}
+function directoryStages(entry, check, facts) {
+  const stages = ["identified"];
+  if (check?.reachable) stages.push("verified");
+  if (check && !check.reachable) stages.push("unavailable");
+  const integration = integrationOf(entry.key);
+  if (integration.kind === "library" && facts.libraryOk.has(integration.libraryKey)) stages.push("public_access");
+  if (entry.proAccountRequired === true) stages.push("account_required");
+  if (integration.kind === "connector") stages.push("connector_ready");
+  if (facts.importedKeys.has(entry.key)) stages.push("import_tested");
+  return stages;
+}
+var STAGE_RANK = ["import_tested", "public_access", "connector_ready", "account_required", "verified", "unavailable", "identified"];
+function primaryStage(stages) {
+  return STAGE_RANK.find((s) => stages.includes(s)) ?? "identified";
+}
+function nameKey(s) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(sas|sarl|sa|bv|gmbh|ltd|srl|s\.?a\.?)\b/g, "").replace(/[^a-z0-9]+/g, "");
+}
+function directoryKeyForSupplierName(name) {
+  const k = nameKey(name);
+  if (k.length < 3) return null;
+  const hit = SUPPLIER_DIRECTORY.find((e) => {
+    const ek = nameKey(e.name);
+    return ek === k || ek.length >= 5 && (k.startsWith(ek) || ek.startsWith(k));
+  });
+  return hit?.key ?? null;
+}
+function accessRequestEmail(entry, lang, org) {
+  const cats = entry.categories.join(", ") || (lang === "fr" ? "vos produits" : "your products");
+  if (lang === "fr") {
+    return {
+      subject: `Demande d'ouverture de compte professionnel et d'acc\xE8s catalogue \u2014 ${org.name}`,
+      body: [
+        "Bonjour,",
+        "",
+        `Je repr\xE9sente ${org.name}, revendeur professionnel de produits \xE9lectroniques${org.country ? ` (${org.country})` : ""}. Nous souhaitons travailler avec ${entry.name} pour : ${cats}.`,
+        "",
+        "Pourriez-vous nous indiquer :",
+        "1. Les conditions d'ouverture d'un compte professionnel (documents requis : Kbis / SIRET, num\xE9ro de TVA intracommunautaire).",
+        "2. Votre grille tarifaire revendeur (prix HT), les remises par volume et les quantit\xE9s minimales de commande.",
+        "3. La disponibilit\xE9 du stock et les d\xE9lais / frais de livraison vers la France.",
+        "4. Les conditions de garantie, de retour et, pour les appareils reconditionn\xE9s, la d\xE9finition de vos grades.",
+        "5. S'il existe un fichier catalogue ou un flux automatis\xE9 (CSV, Excel, XML, JSON ou API) comprenant r\xE9f\xE9rences, EAN, prix, stock et MOQ, ainsi que sa fr\xE9quence de mise \xE0 jour et ses conditions d'utilisation.",
+        "",
+        "Nous int\xE9grons les tarifs de nos fournisseurs dans notre logiciel de gestion de stock ; un fichier ou un flux r\xE9gulier nous permettrait de vous consulter en priorit\xE9.",
+        "",
+        "Merci par avance,",
+        "",
+        `${org.name}`
+      ].join("\n")
+    };
+  }
+  return {
+    subject: `Trade account and catalogue access request \u2014 ${org.name}`,
+    body: [
+      "Hello,",
+      "",
+      `I am writing on behalf of ${org.name}, a professional electronics reseller${org.country ? ` based in ${org.country}` : ""}. We would like to source from ${entry.name}: ${cats}.`,
+      "",
+      "Could you please share:",
+      "1. How to open a trade / B2B account (required documents, VAT number).",
+      "2. Your reseller price list (prices excluding VAT), volume discounts and minimum order quantities.",
+      "3. Stock availability, lead times and shipping costs to France.",
+      "4. Warranty and return terms and, for refurbished devices, your grading definitions.",
+      "5. Whether a catalogue file or automated feed is available (CSV, Excel, XML, JSON or API) with SKUs, EAN, prices, stock and MOQ, its update frequency and terms of use.",
+      "",
+      "We load our suppliers' price lists into our inventory software; a regular file or feed would let us check your offers first.",
+      "",
+      "Kind regards,",
+      "",
+      `${org.name}`
+    ].join("\n")
+  };
+}
+function detectPlatform2(html, headers = null) {
+  const h = html.slice(0, 3e5);
+  if (/cdn\.shopify\.com|Shopify\.theme|x-shopify/i.test(h) || headers?.get("x-shopid")) return "shopify";
+  if (/wp-content\/plugins\/woocommerce|woocommerce-/i.test(h)) return "woocommerce";
+  if (/Magento|mage\/cookies|static\/version\d+\/frontend/i.test(h)) return "magento";
+  if (/prestashop|var prestashop\b/i.test(h)) return "prestashop";
+  if (/shopware/i.test(h)) return "shopware";
+  return h.length > 0 ? "other" : null;
+}
+async function checkDirectoryWebsite(entry, fetchImpl, resolver) {
+  const started = Date.now();
+  const base = { key: entry.key, url: entry.website, final_url: null, robots_found: null, robots_disallow_all: null, sitemap_found: null, platform: null };
+  if (!entry.website) return { ...base, reachable: false, http_status: null, message: "Aucun site officiel identifi\xE9 par la recherche.", duration_ms: 0 };
+  const userAgent = serverEnv().SOURCING_USER_AGENT;
+  try {
+    const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8e3);
+    const robotsFound = robots.status === "ok";
+    const disallowAll = robotsFound ? !evaluateRobots(robots.rules, userAgent, "/").allowed : null;
+    const home = await fetchText(entry.website, { userAgent, timeoutMs: 1e4, maxBytes: 15e5, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
+    const reachable = home.status >= 200 && home.status < 400;
+    const platform = reachable ? detectPlatform2(home.text) : null;
+    return {
+      ...base,
+      final_url: home.finalUrl,
+      reachable,
+      http_status: home.status,
+      robots_found: robotsFound,
+      robots_disallow_all: disallowAll,
+      sitemap_found: robotsFound ? robots.rules.sitemaps.length > 0 : null,
+      platform,
+      message: reachable ? `Site joignable${platform && platform !== "other" ? ` (plateforme ${platform})` : ""}${disallowAll ? " ; robots.txt interdit l'acc\xE8s automatis\xE9" : ""}.` : `Le site a r\xE9pondu HTTP ${home.status}${home.status === 403 || home.status === 429 ? " (protection anti-robot : \xE0 consulter manuellement)" : ""}.`,
+      duration_ms: Date.now() - started
+    };
+  } catch (e) {
+    return { ...base, reachable: false, http_status: null, message: `Injoignable : ${e instanceof Error ? e.message.slice(0, 160) : "erreur r\xE9seau"}`, duration_ms: Date.now() - started };
+  }
+}
+async function runDirectoryChecks(options = {}) {
+  const admin = createAdminSupabaseClient();
+  const entries = SUPPLIER_DIRECTORY.filter((e) => !options.keys || options.keys.includes(e.key));
+  const results = [];
+  for (let i = 0; i < entries.length; i += 3) {
+    const batch = await Promise.all(entries.slice(i, i + 3).map((e) => checkDirectoryWebsite(e, options.fetchImpl)));
+    const { error } = await admin.from("supplier_directory_checks").upsert(batch.map((b) => ({ ...b, checked_at: (/* @__PURE__ */ new Date()).toISOString() })));
+    if (error) throw new Error(`Enregistrement des v\xE9rifications impossible : ${error.message}`);
+    results.push(...batch.map((b) => ({ key: b.key, reachable: b.reachable, http: b.http_status, platform: b.platform, message: b.message })));
+  }
+  return { checked: results.length, reachable: results.filter((r) => r.reachable).length, unreachable: results.filter((r) => !r.reachable).length, results };
+}
+async function directoryForOrg(ctx) {
+  const orgId = ctx.organization.id;
+  const [checksRes, libRes, suppliersRes, runsRes, sourcesRes] = await Promise.all([
+    ctx.supabase.from("supplier_directory_checks").select("key, checked_at, reachable, http_status, robots_found, robots_disallow_all, sitemap_found, platform, message"),
+    ctx.supabase.from("sourcing_library_checks").select("key, status"),
+    ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).limit(1e3),
+    ctx.supabase.from("sync_runs").select("source_ref, status").eq("organization_id", orgId).eq("source_kind", "supplier_feed").in("status", ["success", "partial"]).order("started_at", { ascending: false }).limit(500),
+    ctx.supabase.from("supplier_sources").select("supplier_id, status, config").eq("organization_id", orgId).limit(1e3)
+  ]);
+  const checks = new Map((checksRes.data ?? []).map((c) => [c.key, c]));
+  const libraryOk = new Set((libRes.data ?? []).filter((c) => c.status === "ok").map((c) => c.key));
+  const supplierKey = /* @__PURE__ */ new Map();
+  for (const s of suppliersRes.data ?? []) {
+    const k = directoryKeyForSupplierName(s.name);
+    if (k) supplierKey.set(s.id, k);
+  }
+  const importedKeys = /* @__PURE__ */ new Set();
+  if ((runsRes.data ?? []).length) {
+    const feedIds = [...new Set((runsRes.data ?? []).map((r) => r.source_ref).filter((x) => Boolean(x)))];
+    const { data: feeds } = feedIds.length ? await ctx.supabase.from("supplier_feeds").select("id, supplier_id").eq("organization_id", orgId).in("id", feedIds.slice(0, 300)) : { data: [] };
+    for (const f of feeds ?? []) {
+      const k = supplierKey.get(f.supplier_id);
+      if (k) importedKeys.add(k);
+    }
+  }
+  const activeKeys = /* @__PURE__ */ new Set();
+  for (const s of sourcesRes.data ?? []) {
+    const libKey = s.config?.library_key;
+    if (s.status === "active" && libKey) {
+      const dir = Object.entries(LIBRARY_BY_DIRECTORY_KEY).find(([, v2]) => v2 === libKey)?.[0];
+      if (dir) activeKeys.add(dir);
+    }
+  }
+  const facts = { importedKeys, libraryOk, activeKeys };
+  const lastCheckAt = [...checks.values()].map((c) => c.checked_at).sort().at(-1) ?? null;
+  const entries = SUPPLIER_DIRECTORY.map((e) => {
+    const check = checks.get(e.key) ?? null;
+    const stages = directoryStages(e, check, facts);
+    return {
+      key: e.key,
+      name: e.name,
+      segment: e.segment,
+      country: e.country,
+      deliveryZones: e.deliveryZones,
+      website: e.website,
+      catalogUrl: e.catalogUrl,
+      apiDocsUrl: e.apiDocsUrl,
+      categories: e.categories,
+      brands: e.brands,
+      productTypes: e.productTypes,
+      sales: e.sales,
+      proAccountRequired: e.proAccountRequired,
+      accessConditions: e.accessConditions,
+      accessModes: e.accessModes,
+      pricesTax: e.pricesTax,
+      currency: e.currency,
+      moq: e.moq,
+      shipping: e.shipping,
+      warranty: e.warranty,
+      partQuality: e.partQuality,
+      whyUseful: e.whyUseful,
+      howToGetCatalog: e.howToGetCatalog,
+      researchVerified: e.verified,
+      verificationLevel: e.verificationLevel,
+      sources: e.sourcesChecked,
+      researchedAt: e.checkedAt,
+      integration: integrationOf(e.key),
+      activeInOrg: activeKeys.has(e.key),
+      stages,
+      primaryStage: primaryStage(stages),
+      check: check ? { checkedAt: check.checked_at, reachable: check.reachable, httpStatus: check.http_status, robotsFound: check.robots_found, robotsDisallowAll: check.robots_disallow_all, sitemapFound: check.sitemap_found, platform: check.platform, message: check.message } : null,
+      email: { fr: accessRequestEmail(e, "fr", { name: ctx.organization.name, country: ctx.organization.country }), en: accessRequestEmail(e, "en", { name: ctx.organization.name, country: ctx.organization.country }) }
+    };
+  });
+  return { entries, researchDate: DIRECTORY_RESEARCH_DATE, lastCheckAt };
+}
+
 // server/edge/api.ts
 init_catalog_import();
 
@@ -14329,6 +17477,12 @@ async function route(request) {
           return runSearchSelfTest(body.query, body.source);
         });
       }
+      if (m === "POST" && path === "/cron/directory-checks") {
+        return handle(async () => {
+          const body = await parseBody(request, z33.object({ keys: z33.array(z33.string().min(1).max(80)).max(100).optional() }));
+          return runDirectoryChecks({ keys: body.keys });
+        });
+      }
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
@@ -14353,6 +17507,7 @@ async function route(request) {
         return activateLibrarySource(ctx, body.key);
       });
     }
+    if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request)));
     if (m === "POST" && path === "/sourcing/import/preview") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
