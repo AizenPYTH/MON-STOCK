@@ -143,107 +143,73 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 
 ---
 
-## 4. État réel de l'application mobile (9 octobre 2026)
+## 4. État réel de l'application mobile (10 octobre 2026)
 
 ### 4.1 Ce qui a changé par rapport au plan
 
-- **L'application web n'est pas déployée.** Le mobile lit et écrit donc directement dans Supabase,
-  avec la session de l'utilisateur. Toutes les requêtes passent par la RLS ; le mobile n'a jamais
-  de clé `service_role`. Les calculs réutilisent les modules purs du dépôt (vitesse, couverture,
-  marge, regroupements de ventes, priorités).
-  Le contrat `/api/mobile/v1` et sa projection côté serveur sont prêts
-  (`src/features/mobile-api/`), mais les routes ne sont pas branchées. Elles le seront avec le
-  déploiement web, pour la recherche fournisseurs en direct et la synchronisation eBay.
-- **Le design « MON STOCK — Design complet »** (handoff hi-fi) est appliqué :
-  - jetons, Manrope et icônes Lucide ;
-  - 4 onglets, ouverture sur Intelligence › Aujourd'hui ;
-  - une vingtaine de composants ;
-  - les 12 écrans, branchés sur les données réelles. Le badge DÉMO n'est pas repris.
-- **Plateforme cible de la bêta : iOS uniquement** (TestFlight). La configuration Android reste en
-  place, mais aucun build Android n'est préparé.
+- **Serveur déployé en Supabase Edge Function (`api`)** — l'application web Next.js n'étant pas
+  déployée, les traitements qui exigent des secrets ou du réseau sortant (recherche fournisseurs,
+  OAuth et synchronisation eBay, notifications eBay, tâches planifiées) tournent dans une Edge
+  Function construite à partir des MÊMES modules `src/` que le web (`scripts/build-edge.mjs`).
+  Voir [docs/SERVER.md](SERVER.md). Les lectures et écritures courantes du mobile restent
+  directes sous RLS (session de l'utilisateur, jamais de `service_role`).
+- **Le design « MON STOCK — Design complet »** est appliqué sur données réelles (badge DÉMO non repris).
+- **Plateforme cible de la bêta : iOS uniquement** (TestFlight).
 
 ### 4.2 Fonctionnalités réellement opérationnelles (code et tests)
 
-| Domaine | Opérationnel | Source des données |
+| Domaine | Opérationnel | Source / exécution |
 | --- | --- | --- |
-| Authentification | Connexion, inscription, mot de passe oublié, nouveau mot de passe, déconnexion locale, liens `monstock://auth/callback` (PKCE), renouvellement selon l'état de l'application | Supabase Auth |
-| Session | Stockée dans le trousseau iOS (`expo-secure-store`, découpée en morceaux de 1 800 caractères), jamais en clair | Appareil |
-| Organisations | Choix de l'organisation active par appareil, création d'organisation (propriétaire), rôle respecté : lecture seule, rédacteur, administrateur | `organization_members`, `create_organization_with_owner` |
-| Intelligence › Aujourd'hui | CA du jour, « vs hier », ventes, marge du jour (uniquement si tous les coûts sont connus), « À faire », dernières ventes | `v_daily_sales`, `orders`, `alerts`, catalogue |
-| Intelligence › Analyse | 7/30/90 j : CA et évolution, marge nette estimée (SKU au coût connu), ventes et panier moyen, couverture, valeur du stock, CA par semaine, top marges, alerte ouverte | `v_daily_sales`, `v_stock_overview`, `alerts` |
-| Stock | Catalogue produit → variantes, filtres Tous / Rupture / Faible / Sans annonce, recherche locale (nom, SKU, code-barres) | `v_stock_overview` (5 000 SKU max, signalé) |
-| Fiche produit / variante | Prix, coût moyen, marge, quantité, seuil, couverture, mouvements | `v_stock_overview`, `inventory_movements` |
-| Mouvements | Stepper (un mouvement réel par rafale, annulable), ajustement avec motif, validation et confirmation. La base reste l'arbitre : stock négatif refusé, signe contrôlé | `apply_inventory_movement` |
-| Ventes | Commandes groupées par jour, à expédier, CA 7 j, remboursées, annonces eBay, détail de commande avec marge non inventée | `orders`, `order_items`, `channel_listings` |
-| Sourcing | Offres enregistrées regroupées par produit, fournisseurs actifs, comparaison triée par marge estimée (coût rendu si le port est connu) | `sourcing_offers`, `suppliers` |
-| Commande fournisseur | Création d'un brouillon (statut `draft`, jamais envoyé), annulable | `purchase_orders`, `purchase_order_items` |
+| Authentification | Connexion, inscription, mot de passe oublié, déconnexion locale, liens `monstock://auth/callback` (PKCE) | Supabase Auth |
+| Organisations | Organisation active par appareil, création, rôles (lecture seule / rédacteur / administrateur) | RLS |
+| **Création de produit** | Marque, modèle, nom (déduit si vide), catégorie ; 1 à 50 variantes : capacité, couleur, grade A/B/C, état, SKU (suggéré, modifiable), prix d'achat, prix de vente cible, quantité initiale ; erreurs par champ ; confirmation ; une seule transaction | `create_product_with_skus` → `create_sku` (mouvement « Stock initial ») |
+| Édition | Produit (nom, marque, modèle, catégorie, description — verrou optimiste) ; variante (prix, capacité, couleur, grade, état, emplacement, seuil, EAN — `update_sku_with_variant`) ; ajout de variantes | Fonctions SQL existantes |
+| Stock | Catalogue, filtres, recherche, fiche produit / variante, stepper, ajustement avec motif, historique | `v_stock_overview`, `apply_inventory_movement` |
+| **Sourcing en direct** | Recherche libre (« iPhone 13 128 Go grade B »…) exécutée par le serveur sur les sources activées ; rapport par source ; offres : fournisseur, lien direct, prix + devise + HT/TTC, port, MOQ, disponibilité, état/grade, dernière vérification, coût rendu et marge (si connus) ; classes « disponibilité vérifiée » / « offre publiée » / « prix indicatif » | Edge Function → moteur de sourcing existant |
+| **Sources fournisseurs** | Bibliothèque vérifiée chaque jour en direct (robots.txt + produits avec prix, exemples affichés) ; activation après attestation des CGU | `sourcing_library_checks`, `supplier_sources` |
+| **eBay** | Connexion OAuth (page officielle eBay dans une session système), finalisation liée à l'utilisateur, première synchronisation, « Synchroniser maintenant », dernière synchro réussie, dernier passage, erreurs, reconnexion ; annonces → association à un SKU ; déduction des ventes en attente | Edge Function (tokens chiffrés côté serveur) + `map_listing_to_sku`, `apply_pending_sales_for_sku` |
+| Ventes | Commandes par jour, à expédier, annonces eBay | `orders`, `channel_listings` |
+| Intelligence | Aujourd'hui / Analyse 7-30-90 j | vues analytiques |
+| Commande fournisseur | Brouillon depuis la comparaison | `purchase_orders` |
 
-### 4.3 Affiché « bientôt » (désactivé, jamais simulé)
+### 4.3 Toujours désactivé (affiché comme tel, jamais simulé)
 
-- Mise en vente eBay.
-- Marquer une commande comme expédiée.
-- Étiquette d'expédition.
-- Scan de code-barres.
-- Création de produit sur mobile.
-- Saisie de vente directe.
-- Recherche fournisseurs en direct : elle nécessite le serveur MON STOCK. Sans source connectée,
-  une bannière l'indique.
-- Connexion eBay : elle se fait depuis le web (OAuth).
+- Création / publication d'annonces eBay depuis MON STOCK (voir docs/SERVER.md §6).
+- Marquer une commande comme expédiée, étiquette d'expédition, scan de code-barres.
+- Amazon, Shopify, WooCommerce (« prochainement »).
 
 ### 4.4 Écarts assumés avec le design
 
 | Design | Choix | Raison |
 | --- | --- | --- |
-| File d'écritures hors ligne | Aucune écriture hors ligne. Une bannière l'indique. | Un mouvement de stock rejoué plus tard pourrait être faux. La base doit confirmer. |
-| « Commander 10 unités chez X » | « Préparer la commande » crée un brouillon | Rien n'est envoyé au fournisseur depuis le mobile. |
-| « Retours » | « Remboursées · 30 j » | Il n'y a pas de statut « retour » dans les données importées. |
-| « Offre expire ce soir » | Non affiché | Les offres n'ont pas de date d'expiration future. |
-| Adresse de l'acheteur | Non affichée | Elle n'est pas importée depuis eBay. |
-| Swipe « Ajuster / Vendre » | Non implémenté | L'action « Vendre » n'existe pas encore. « Ajuster » est accessible depuis la fiche. |
+| File d'écritures hors ligne | Aucune écriture hors ligne | Un mouvement rejoué plus tard pourrait être faux : la base doit confirmer. |
+| « Commander 10 unités chez X » | Brouillon de commande | Rien n'est envoyé au fournisseur depuis le mobile. |
+| Grades eBay « Excellent / Très bon / Bon » | Non convertis en A/B/C | Aucune équivalence officielle : grade retenu seulement s'il est écrit par le vendeur. |
 
 ### 4.5 Tests exécutés (dans cet environnement)
 
 | Vérification | Résultat |
 | --- | --- |
 | Web : typecheck, lint | 0 erreur |
-| Web : tests unitaires (dont frontière web/mobile) | 651 / 651 |
-| Mobile : typecheck (strict, modules partagés inclus), lint (Expo + React Compiler) | 0 erreur |
-| Mobile : Jest (54 tests) | 54 / 54 |
-| Export iOS (Metro, Hermes) | Réussi |
-| Analyse des secrets du bundle (export JavaScript `--no-bytecode`) | 0 constat. Trois tests négatifs (clé `service_role`, JWT `service_role`, `sb_secret_`) sont bien détectés. |
-| Script SQL de TEST (base locale vide, puis base partielle comme le projet Supabase) | 39 tables, 106 politiques RLS, 5 vues. Abandon automatique si des données existent. |
+| Web : tests unitaires + intégration PostgreSQL local (toutes migrations) | 824 / 824 |
+| dont création de produit (SQL) | 6 (atomicité, droits, codes en double, multi-variantes, ajout à un produit) |
+| dont sourcing (adaptateurs eBay Browse, sitemap + JSON-LD, bibliothèque, secrets, routage, retour OAuth) | 22 |
+| Mobile : typecheck strict, lint | 0 erreur |
+| Mobile : Jest | 77 / 77 (dont création/édition produit 8, sourcing + appels serveur 8, eBay 7) |
+| Export iOS + analyse des secrets du bundle | Réussi, 0 constat |
+| Supabase TEST : `create_product_with_skus` (iPhone 13 grade B, 3 unités) | Stock 3, mouvement « initial » — transaction annulée |
+| Edge Function en production TEST (`/health`, tâches planifiées) | 200 ; secrets chargés du Vault ; taux BCE réels importés (29 devises) |
+| Bibliothèque de sources (vérification réelle depuis le serveur) | Brico-phone : vérifiée (ex. « Ecran Soft Oled pour iPhone 13 – Premium », 79,90 €) ; eBay : en attente des clés ; autres : refus documentés (voir docs/SERVER.md §5) |
 
-Les 54 tests mobiles couvrent :
-- la session (stockage découpé) et la configuration ;
-- la traduction des erreurs (identique au web) ;
-- l'organisation active et les permissions ;
-- les requêtes de stock (filtre organisation, pagination stable) ;
-- les mouvements (signe, refus de la base) ;
-- l'authentification et les liens profonds ;
-- la navigation protégée (4 onglets, ouverture sur Intelligence) ;
-- le catalogue, la comparaison d'offres et les brouillons de commande ;
-- le regroupement des ventes ;
-- les composants accessibles.
-
-**Non testé ici :**
-- Aucun lancement sur simulateur ni sur iPhone : pas de macOS, pas de SDK.
-- Aucun appel réel à Supabase depuis le conteneur : seul le registre npm est joignable.
+**Non testé ici :** exécution sur iPhone (pas de macOS), appel authentifié de bout en bout avec un
+vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay réelle (clés absentes).
 
 ## 5. Mise en place de l'environnement TEST
 
-1. **Base Supabase TEST** (projet `ccywsegdowikeirbsfae`).
-   - Générez le script avec `bash scripts/build-supabase-bootstrap.sh > bootstrap.sql`.
-   - Collez-le dans Supabase → SQL Editor → Run.
-   - Le script tourne dans une seule transaction et s'arrête si des données existent déjà.
-2. **Supabase Auth → URL Configuration** : ajoutez `monstock://**` aux Redirect URLs (liens de
-   confirmation et de mot de passe oublié). Sans cela, les liens email n'ouvrent pas l'application.
-3. **Variables publiques** : elles sont déjà définies dans `apps/mobile/eas.json` pour les profils
-   `development`, `preview` et `production`. Il s'agit de l'URL, de la clé `sb_publishable_…` et de
-   `EXPO_PUBLIC_APP_ENV=TEST`. Ces valeurs sont publiques par conception (RLS). Aucun secret n'est
-   dans le dépôt.
-4. **Développement local** :
-   - copiez `apps/mobile/.env.example` en `.env.local` ;
-   - lancez `npm ci` dans `apps/mobile` puis `npx expo start`.
+1. **Base Supabase TEST** (`ccywsegdowikeirbsfae`) : migrations appliquées jusqu'à `20261009000500`.
+2. **Supabase Auth → URL Configuration** : `monstock://**` dans les Redirect URLs.
+3. **Serveur** : voir [docs/SERVER.md](SERVER.md) (fonction `api`, secrets, tâches planifiées, eBay).
+4. **Variables publiques** du mobile : dans `apps/mobile/eas.json` (URL, clé `sb_publishable_…`, `TEST`).
 
 ## 6. Commandes (dans `apps/mobile`)
 
@@ -252,40 +218,30 @@ Les 54 tests mobiles couvrent :
 | `npm run check` | Typecheck, lint et tests Jest |
 | `npm run export:ios` | Bundle iOS (vérifie la compilation Metro) |
 | `npm run scan:bundle` | Bundle JavaScript, puis analyse des secrets |
-| `npx expo start` | Serveur de développement (build de développement ou Expo Go) |
-| `eas build -p ios --profile production` | Build TestFlight (Expo / EAS) |
-| `eas submit -p ios --profile production` | Envoi du build vers App Store Connect / TestFlight |
+| `eas build -p ios --profile production --auto-submit` | Build + envoi TestFlight |
 
 ## 7. Procédure de test sur iPhone (bêta)
 
-1. Le build `production` est envoyé sur TestFlight. Il utilise l'environnement TEST.
-2. Installez l'application via TestFlight, puis créez un compte (email de confirmation à ouvrir sur
-   le même iPhone).
-3. Créez une organisation, puis vérifiez que la session est conservée après fermeture et
-   réouverture de l'application.
-4. Ajoutez un produit depuis le web, ou par SQL sur TEST. Ensuite :
-   - **Stock** : vérifiez filtres, recherche, fiche, stepper (et « Annuler »), ajustement, refus
-     d'un stock négatif ;
-   - **Ventes** : vérifiez les commandes, puis les annonces si eBay est connecté depuis le web ;
-   - **Sourcing** : vérifiez la bannière « aucune source connectée », puis les offres si une source
-     est connectée ;
-   - **Intelligence** : vérifiez Aujourd'hui, Analyse et la période.
-5. Testez le mode avion :
-   - la bannière hors ligne s'affiche ;
-   - les écritures sont refusées avec un message clair ;
-   - la reprise se fait au retour du réseau.
-6. Rôle lecture seule (invitation depuis le web) : aucune écriture n'est proposée, et la base refuse
-   de toute façon.
+1. **Produit** : Stock → « + » → Marque `Apple`, Modèle `iPhone 13`, catégorie Smartphone ;
+   variante 128 Go, Noir, Grade B, Reconditionné, prix d'achat 310, prix de vente 429, quantité 3 →
+   Créer → confirmer. Le produit s'ouvre ; il apparaît dans le catalogue ; la fiche variante montre
+   le mouvement « Stock initial +3 ».
+2. **Variantes / édition** : « Ajouter » une variante 256 Go grade A ; crayon → modifier le prix ;
+   stepper +1 / −1 et « Annuler » ; ajustement avec motif.
+3. **Sourcing** : Sources (icône bibliothèque) → Brico-phone « Activer » (lire les CGU, attester) ;
+   puis rechercher « écran iPhone 13 » → offres réelles avec lien. « Trouver un fournisseur » depuis
+   la fiche SKU compare avec le coût d'achat.
+4. **eBay** (après configuration des clés, docs/SERVER.md §4) : Réglages → Intégrations → eBay →
+   « Connecter mon compte eBay » → autoriser chez eBay → retour automatique → synchronisation ;
+   Ventes → Annonces → associer chaque annonce à son SKU.
+5. Mode avion : bannière hors ligne, écritures refusées avec message clair.
 
 ## 8. Problèmes restants
 
-- La base TEST doit encore recevoir les migrations (étape 5.1). Le connecteur Supabase utilisé ici
-  refuse les instructions `drop` sans confirmation interactive.
-- L'API web n'est pas déployée : pas de recherche fournisseurs en direct ni de synchronisation eBay
-  depuis le mobile.
-- Aucune exécution sur appareil. Le premier test réel sera le build TestFlight.
-- Les données ne sont pas mises en cache sur l'appareil (choix de confidentialité). Hors ligne, seules
-  les données déjà chargées pendant la session restent affichées.
-- Le catalogue est limité à 5 000 SKU (signalé à l'écran).
-- `npm audit` signale des vulnérabilités dans les dépendances de développement de l'outillage Expo.
-  Les mises à jour forcées casseraient la compatibilité avec le SDK 57.
+- **eBay** : clés d'application eBay à fournir (App ID, Cert ID, RuName) et URL de retour à
+  déclarer chez eBay — seule action manuelle bloquante (docs/SERVER.md §4).
+- **Sources fournisseurs** : la plupart des fournisseurs spécialisés testés n'exposent pas leur
+  catalogue sans compte professionnel ; leur intégration demande vos identifiants ou un flux fourni
+  par le fournisseur (docs/SERVER.md §5).
+- Aucune exécution sur appareil depuis cet environnement : le build TestFlight est le premier test réel.
+- Catalogue limité à 5 000 SKU (signalé). Pas de cache hors ligne des données (confidentialité).

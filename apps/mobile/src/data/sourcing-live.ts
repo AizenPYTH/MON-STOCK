@@ -103,7 +103,7 @@ export async function activateLibrarySource(organizationId: string, key: string)
 }
 
 /** Exemples d'offres relevées lors de la vérification (preuve affichée telle quelle). */
-export function sampleOf(entry: LibraryEntry): Array<{ title: string; price: number | null; currency: string | null }> {
+export function sampleOf(entry: LibraryEntry): { title: string; price: number | null; currency: string | null }[] {
   const s = entry.check?.sample;
   if (!Array.isArray(s)) return [];
   return s

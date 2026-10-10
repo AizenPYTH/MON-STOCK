@@ -15,7 +15,7 @@ describe("création de produit (mobile → create_product_with_skus)", () => {
     });
     expect(r).toEqual({ productId: PRODUCT, skus: [{ skuId: "s1", code: "IPHONE13-128-NOIR-B" }] });
     expect(queries).toHaveLength(1);
-    const args = queries[0]!.calls[0]!.args[0] as { p_organization_id: string; p_product: Record<string, unknown>; p_items: Array<{ sku: Record<string, unknown>; variant: Record<string, unknown>; initial_quantity: number }> };
+    const args = queries[0]!.calls[0]!.args[0] as { p_organization_id: string; p_product: Record<string, unknown>; p_items: { sku: Record<string, unknown>; variant: Record<string, unknown>; initial_quantity: number }[] };
     expect(queries[0]!.target).toBe("rpc:create_product_with_skus");
     expect(args.p_organization_id).toBe(ORG);
     expect(args.p_product).toMatchObject({ name: "Apple iPhone 13", brand: "Apple", model: "iPhone 13", category: "Smartphone" });
