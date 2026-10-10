@@ -36,6 +36,7 @@ export const EBAY_TRADING_COMPATIBILITY_LEVEL = "1225";
  *  - sell.inventory             : Trading API GetMyeBaySelling (lecture des annonces actives) et
  *                                 ReviseInventoryStatus (envoi des quantités). Sans ce scope la Trading
  *                                 API refuse les appels avec un token OAuth.
+ *  - sell.account.readonly      : Account API (politiques métier) pour préparer les annonces.
  *  - commerce.identity.readonly : Identity API getUser → affiche « Connecté en tant que <username> »
  *                                 et relie les notifications eBay (userId) à la bonne connexion.
  */
@@ -43,6 +44,7 @@ export const EBAY_SCOPES: ReadonlyArray<{ scope: string; reason: string }> = [
   { scope: "https://api.ebay.com/oauth/api_scope", reason: "Scope de base requis par eBay pour tout token OAuth." },
   { scope: "https://api.ebay.com/oauth/api_scope/sell.fulfillment", reason: "Lecture des commandes (Sell Fulfillment API) : création, paiement, expédition, annulations." },
   { scope: "https://api.ebay.com/oauth/api_scope/sell.inventory", reason: "Lecture des annonces actives (GetMyeBaySelling) et mise à jour des quantités (ReviseInventoryStatus)." },
+  { scope: "https://api.ebay.com/oauth/api_scope/sell.account.readonly", reason: "Lecture des politiques métier (paiement, retour, expédition) nécessaires pour préparer une annonce (Account API)." },
   { scope: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly", reason: "Identifiant et pseudo du compte vendeur (Identity API) pour afficher le compte connecté et router les notifications." },
 ];
 

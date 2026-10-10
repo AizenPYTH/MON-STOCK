@@ -650,3 +650,100 @@ export interface DirectoryEntryDTO {
   check: { checkedAt: string; reachable: boolean; httpStatus: number | null; robotsFound: boolean | null; robotsDisallowAll: boolean | null; sitemapFound: boolean | null; platform: string | null; message: string | null } | null;
   email: { fr: { subject: string; body: string }; en: { subject: string; body: string } };
 }
+
+// ---------------------------------------------------------------------------
+// Radar d'opportunités d'achat
+// ---------------------------------------------------------------------------
+
+export type { RadarCostSettings, RadarEvaluation, RadarOfferInput, RadarSort, PriceOrigin } from "@/domain/sourcing/radar";
+import type { RadarCostSettings as _Settings, RadarEvaluation as _Eval, RadarOfferInput as _Offer } from "@/domain/sourcing/radar";
+
+export interface RadarItemDTO {
+  supplierId: string;
+  sku: { id: string; code: string; name: string; currency: string; units30d: number; quantityAvailable: number };
+  offer: _Offer;
+  savedAt: string | null;
+  priceAtSave: number | null;
+  evaluation: _Eval;
+  offersForSku: number;
+}
+
+export interface RadarRestockDTO {
+  skuId: string;
+  code: string;
+  name: string;
+  quantityAvailable: number;
+  units30d: number;
+  daysOfCover: number | null;
+  bestOfferId: string | null;
+  bestPrice: number | null;
+  bestSupplier: string | null;
+}
+
+export interface RadarDTO {
+  items: RadarItemDTO[];
+  restock: RadarRestockDTO[];
+  settings: _Settings;
+  /** paramètres repris du canal de vente (eBay) faute de réglage explicite */
+  settingsFromChannel: string[];
+  missingSettings: string[];
+  counts: { profitable: number; estimated: number; unprofitable: number; insufficient: number; unlinkedOffers: number; skus: number };
+  computedAt: string;
+}
+
+export interface MatchSuggestionDTO {
+  matchId: string;
+  confidence: number;
+  method: string;
+  reasons: string[];
+  offer: { id: string; title: string; price: number | null; currency: string | null; supplierName: string };
+  sku: { id: string; code: string; name: string };
+}
+
+// ---------------------------------------------------------------------------
+// Annonces eBay (préparation ; publication verrouillée)
+// ---------------------------------------------------------------------------
+
+export interface EbayListingDraftDTO {
+  sku: string;
+  marketplaceId: "EBAY_FR";
+  title: string;
+  description: string;
+  categoryId: string;
+  condition: string | null;
+  conditionDescription?: string;
+  price: number | null;
+  currency: "EUR";
+  quantity: number;
+  imageUrls: string[];
+  aspects: Record<string, string[]>;
+  brand?: string;
+  mpn?: string;
+  ean?: string;
+  policies?: { fulfillmentPolicyId: string; paymentPolicyId: string; returnPolicyId: string };
+  merchantLocationKey?: string;
+}
+
+export interface EbayListingPrefillDTO {
+  draft: EbayListingDraftDTO;
+  notes: string[];
+}
+
+export interface EbayPoliciesDTO {
+  configured: boolean;
+  connected: boolean;
+  fulfillment: { id: string; name: string }[];
+  payment: { id: string; name: string }[];
+  return: { id: string; name: string }[];
+  locations: { id: string; name: string }[];
+  errors: string[];
+}
+
+export interface EbayListingCheckDTO {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  /** contenu exact qui serait envoyé à eBay (simulation) */
+  payload: { inventoryItem: unknown; offer: unknown } | null;
+  publication: { allowed: boolean; blockers: string[] };
+}

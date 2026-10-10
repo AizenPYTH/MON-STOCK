@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { StockMovementInput } from "@/features/mobile-api/contract";
+import type { CatalogMapping, StockMovementInput } from "@/features/mobile-api/contract";
 import { requireSupabase } from "~/lib/supabase";
 import { useActiveOrg } from "~/org/org-provider";
 import { useUser } from "~/auth/session-provider";
@@ -10,8 +10,8 @@ import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } 
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
+import { decideMatch, fetchMatchSuggestions, fetchRadar, saveOffer, saveRadarSettings, unsaveOffer, type RadarCostSettings, type RadarSort } from "~/data/radar";
 import { fetchDirectory, previewImport, runImport, type PickedFile } from "~/data/suppliers-pro";
-import type { CatalogMapping } from "@/features/mobile-api/contract";
 import { applyPendingSales, connectEbay, fetchIntegrations, fetchListing, mapListing, syncEbay } from "~/data/ebay";
 import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";
 import {
@@ -253,6 +253,44 @@ export function useActivateSource() {
         queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-search"] }),
       ]),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Radar d'opportunités
+// ---------------------------------------------------------------------------------------------
+
+export function useRadar(sort: RadarSort) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "radar", sort], queryFn: () => fetchRadar(orgId, sort), staleTime: 2 * 60_000 });
+}
+
+export function useSaveRadarSettings() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (s: RadarCostSettings) => saveRadarSettings(orgId, s), onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "radar"] }) });
+}
+
+export function useMatchSuggestions() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "match-suggestions"], queryFn: () => fetchMatchSuggestions(orgId) });
+}
+
+export function useDecideMatch() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { matchId: string; decision: "confirm" | "reject" }) => decideMatch(orgId, v.matchId, v.decision),
+    onSettled: () => Promise.all([queryClient.invalidateQueries({ queryKey: [orgId, "match-suggestions"] }), queryClient.invalidateQueries({ queryKey: [orgId, "radar"] }), queryClient.invalidateQueries({ queryKey: [orgId, "offer-groups"] })]),
+  });
+}
+
+export function useSavedOffer() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { offerId: string; price: number | null; currency: string | null; saved: boolean }) => (v.saved ? unsaveOffer(requireSupabase(), orgId, v.offerId) : saveOffer(requireSupabase(), orgId, v)),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "radar"] }),
   });
 }
 

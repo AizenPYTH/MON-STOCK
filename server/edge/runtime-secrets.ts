@@ -15,6 +15,7 @@ export const RUNTIME_SECRET_NAMES = [
   "SOURCING_DISCOVERY_PROVIDER",
   "BRAVE_SEARCH_API_KEY",
   "ANTHROPIC_API_KEY",
+  "EBAY_LISTING_ENABLED",
 ] as const;
 
 export interface RuntimeSecretsState {

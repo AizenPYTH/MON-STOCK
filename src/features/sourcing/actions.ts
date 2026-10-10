@@ -1,4 +1,5 @@
 "use server";
+import { confirmOfferLink } from "@/services/sourcing/offer-linking";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireOrgContextForAction } from "@/features/auth/dal";
@@ -51,13 +52,7 @@ export async function suggestMatchesAction(offerId: string): Promise<ActionResul
 }
 
 async function confirmLink(ctxOrgId: string, supabase: Awaited<ReturnType<typeof requireOrgContextForAction>>["supabase"], userId: string, offerId: string, skuId: string, sourcingProductId: string | null): Promise<void> {
-  const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", ctxOrgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
-  const now = new Date().toISOString();
-  if (existing) await supabase.from("product_matches").update({ status: "confirmed", decided_by: userId, decided_at: now }).eq("id", existing.id);
-  else await supabase.from("product_matches").insert({ organization_id: ctxOrgId, offer_id: offerId, sourcing_product_id: sourcingProductId, sku_id: skuId, confidence: 1, method: "supplier_sku", reasons: ["Association confirmée manuellement"], status: "confirmed", created_by: userId, decided_by: userId, decided_at: now });
-  // Les autres suggestions de cette offre sont closes.
-  await supabase.from("product_matches").update({ status: "rejected", decided_by: userId, decided_at: now }).eq("organization_id", ctxOrgId).eq("offer_id", offerId).neq("sku_id", skuId).eq("status", "suggested");
-  await applyConfirmedMatch(supabase, ctxOrgId, { offerId, skuId, sourcingProductId });
+  await confirmOfferLink(ctxOrgId, supabase, userId, offerId, skuId, sourcingProductId);
 }
 
 export async function linkOfferToSkuAction(_prev: ActionResult<{ skuCode: string }> | null, formData: FormData): Promise<ActionResult<{ skuCode: string }>> {

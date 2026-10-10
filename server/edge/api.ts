@@ -12,6 +12,8 @@
  *   GET  /api/sourcing/status             état des sources de l'organisation
  *   GET  /api/sourcing/library            bibliothèque de sources (catalogue + état d'activation)
  *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (attestation de l'utilisateur)
+ *   GET  /api/radar?sort=…                radar d'opportunités d'achat (offres réelles × ventes réelles × coûts)
+ *   POST /api/radar/settings              paramètres de coûts (TVA, frais, emballage, retours, douane) — administrateur
  *   GET  /api/sourcing/directory          annuaire de fournisseurs qualifiés (statuts prouvés, e-mails de demande d'accès)
  *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
  *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
@@ -20,6 +22,10 @@
  *   GET|POST /api/ebay/webhook            notifications eBay (suppression de compte, commandes) — signées par eBay
  *   GET  /api/ebay/callback               retour d'eBay → redirection vers l'application (monstock://)
  *   POST /api/ebay/finalize               échange du code (utilisateur qui a démarré le flux uniquement)
+ *   POST /api/ebay/disconnect             déconnexion (administrateur) : tokens supprimés
+ *   GET  /api/ebay/listings/prefill       brouillon d'annonce depuis un SKU · GET /api/ebay/account-setup politiques/emplacements
+ *   POST /api/ebay/listings/check         contrôle + simulation (rien n'est envoyé à eBay)
+ *   POST /api/ebay/listings/publish       publication — verrouillée (EBAY_LISTING_ENABLED, administrateur, confirmation)
  *   POST /api/ebay/sync                   synchronisation immédiate d'une connexion
  *   POST /api/ai/product-draft            phrase dictée → brouillon du formulaire produit (Claude ; rien n'est créé)
  *   POST /api/ai/assistant                questions sur les ventes / le stock / eBay (Claude + lecture seule sous RLS)
@@ -57,6 +63,9 @@ import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
 import { runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
+import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listingRequestSchema, prefillListing, publishListingForOrg } from "@/services/channels/ebay-listing-service";
+import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/services/sourcing/offer-linking";
+import { buildRadar, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
 import { aiConfigured } from "@/services/ai/claude";
@@ -276,6 +285,26 @@ export async function route(request: Request): Promise<Response> {
         return activateLibrarySource(ctx, body.key);
       });
     }
+    if (m === "GET" && path === "/radar") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const q = parseQuery(request, z.object({ sort: z.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        return buildRadar(ctx, { sort: q.sort });
+      });
+    }
+    if (m === "POST" && path === "/radar/settings") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { admin: true });
+        return saveCostSettings(ctx, await parseBody(request, radarSettingsSchema));
+      });
+    }
+    if (m === "GET" && path === "/sourcing/matches") return handle(async () => listMatchSuggestions(await requireMobileOrgContext(request)));
+    if (m === "POST" && path === "/sourcing/matches/decide") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return decideMatch(ctx, await parseBody(request, matchDecisionSchema));
+      });
+    }
     if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request)));
     if (m === "POST" && path === "/sourcing/import/preview") {
       return handle(async () => {
@@ -308,6 +337,31 @@ export async function route(request: Request): Promise<Response> {
     if (m === "GET" && path === "/integrations") return handle(async () => integrations(await requireMobileOrgContext(request)));
     if (m === "POST" && path === "/ebay/connect") return handle(() => startEbayConnect(request));
     if (m === "POST" && path === "/ebay/finalize") return handle(() => finalizeEbayConnect(request));
+    if (m === "POST" && path === "/ebay/disconnect") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { admin: true });
+        return disconnectEbay(ctx, (await parseBody(request, disconnectSchema)).connectionId);
+      });
+    }
+    if (m === "GET" && path === "/ebay/listings/prefill") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return prefillListing(ctx, parseQuery(request, z.object({ skuId: uuidParam })).skuId);
+      });
+    }
+    if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));
+    if (m === "POST" && path === "/ebay/listings/check") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return checkListing(ctx, await parseBody(request, listingRequestSchema));
+      });
+    }
+    if (m === "POST" && path === "/ebay/listings/publish") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { admin: true });
+        return publishListingForOrg(ctx, await parseBody(request, listingRequestSchema));
+      });
+    }
     if (m === "POST" && path === "/ebay/sync") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
