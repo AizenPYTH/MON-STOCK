@@ -32,3 +32,4 @@ select cron.schedule('monstock-sourcing', '7 */6 * * *', $$select public.call_mo
 -- Vérification réelle de la bibliothèque de sources (robots.txt + produits avec prix).
 select cron.schedule('monstock-library-checks', '23 4 * * *', $$select public.call_monstock_cron('library-checks')$$);
 select cron.schedule('monstock-directory-checks', '41 5 * * *', $$select public.call_monstock_cron('directory-checks')$$);
+select cron.schedule('monstock-tracking', '17,47 * * * *', $$select public.call_monstock_cron('tracking')$$);

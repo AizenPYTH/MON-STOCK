@@ -5,7 +5,7 @@
 -- tracked_parcels     : colis suivis. Le statut, les événements et la date de livraison estimée
 --                       ne sont écrits QUE par le serveur (réponse d'une API de suivi) : les
 --                       utilisateurs ne peuvent modifier que le libellé, le transporteur choisi,
---                       la commande associée et l'archivage (privilèges par colonne).
+--                       la commande associée et l'archivage (déclencheur tracked_parcels_client_guard).
 -- RLS : lecture membres, écriture rédacteurs ; gardes « même organisation » installées.
 -- Réversible : drop table (aucune donnée existante modifiée).
 -- =============================================================================
@@ -38,22 +38,17 @@ create table if not exists public.shipping_rate_cards (
 
 create index if not exists shipping_rate_cards_org_idx on public.shipping_rate_cards (organization_id, carrier);
 
-drop trigger if exists shipping_rate_cards_set_updated_at on public.shipping_rate_cards;
 create trigger shipping_rate_cards_set_updated_at before update on public.shipping_rate_cards
   for each row execute function public.set_updated_at();
 
 alter table public.shipping_rate_cards enable row level security;
 
-drop policy if exists shipping_rate_cards_select on public.shipping_rate_cards;
 create policy shipping_rate_cards_select on public.shipping_rate_cards
   for select to authenticated using (public.is_org_member(organization_id));
-drop policy if exists shipping_rate_cards_insert on public.shipping_rate_cards;
 create policy shipping_rate_cards_insert on public.shipping_rate_cards
   for insert to authenticated with check (public.can_write_org(organization_id));
-drop policy if exists shipping_rate_cards_update on public.shipping_rate_cards;
 create policy shipping_rate_cards_update on public.shipping_rate_cards
   for update to authenticated using (public.can_write_org(organization_id)) with check (public.can_write_org(organization_id));
-drop policy if exists shipping_rate_cards_delete on public.shipping_rate_cards;
 create policy shipping_rate_cards_delete on public.shipping_rate_cards
   for delete to authenticated using (public.can_write_org(organization_id));
 
@@ -94,33 +89,27 @@ create index if not exists tracked_parcels_org_idx on public.tracked_parcels (or
 create index if not exists tracked_parcels_due_idx on public.tracked_parcels (next_check_at) where archived_at is null and next_check_at is not null;
 create index if not exists tracked_parcels_order_idx on public.tracked_parcels (order_id) where order_id is not null;
 
-drop trigger if exists tracked_parcels_set_updated_at on public.tracked_parcels;
 create trigger tracked_parcels_set_updated_at before update on public.tracked_parcels
   for each row execute function public.set_updated_at();
 
 alter table public.tracked_parcels enable row level security;
 
-drop policy if exists tracked_parcels_select on public.tracked_parcels;
 create policy tracked_parcels_select on public.tracked_parcels
   for select to authenticated using (public.is_org_member(organization_id));
-drop policy if exists tracked_parcels_insert on public.tracked_parcels;
 create policy tracked_parcels_insert on public.tracked_parcels
   for insert to authenticated with check (public.can_write_org(organization_id));
-drop policy if exists tracked_parcels_update on public.tracked_parcels;
 create policy tracked_parcels_update on public.tracked_parcels
   for update to authenticated using (public.can_write_org(organization_id)) with check (public.can_write_org(organization_id));
-drop policy if exists tracked_parcels_delete on public.tracked_parcels;
 create policy tracked_parcels_delete on public.tracked_parcels
   for delete to authenticated using (public.can_write_org(organization_id));
 
--- Privilèges par colonne : le statut et l'historique ne peuvent pas être écrits par l'application.
-revoke all on public.tracked_parcels from authenticated, anon;
-grant select, delete on public.tracked_parcels to authenticated;
-grant insert (organization_id, tracking_number, carrier_code, carrier_source, label, order_id, destination_country) on public.tracked_parcels to authenticated;
-grant update (carrier_code, carrier_source, label, order_id, destination_country, archived_at, next_check_at) on public.tracked_parcels to authenticated;
+-- Colonnes réservées au serveur : le statut, l'historique, la date estimée, le fournisseur et
+-- les compteurs ne peuvent être écrits que par le serveur (rôle service). L'application ne peut
+-- créer un colis qu'avec ses valeurs par défaut et ne peut modifier que le libellé, le
+-- transporteur choisi, la commande associée, le pays de destination, l'archivage, et avancer
+-- next_check_at à « maintenant » (jamais le reporter ni le désactiver).
+grant select, insert, update, delete on public.tracked_parcels to authenticated;
 
--- Un changement de transporteur relance le suivi (statut remis à « inconnu » par le serveur au
--- prochain passage) ; next_check_at ne peut qu'être avancé à « maintenant » par l'application.
 create or replace function public.tracked_parcels_client_guard()
 returns trigger
 language plpgsql
@@ -130,18 +119,32 @@ begin
   if public.is_service_role() then
     return new;
   end if;
-  if tg_op = 'UPDATE' and new.next_check_at is distinct from old.next_check_at and (new.next_check_at is null or new.next_check_at > now() + interval '1 minute') then
+  if tg_op = 'INSERT' then
+    if new.provider is not null or new.status <> 'unknown' or new.status_detail is not null or new.carrier_label is not null
+       or new.estimated_delivery is not null or new.delivered_at is not null or new.events <> '[]'::jsonb or new.provider_url is not null
+       or new.last_checked_at is not null or new.check_count <> 0 or new.last_error is not null then
+      raise exception 'PARCEL_SERVER_FIELDS' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+  if new.organization_id is distinct from old.organization_id or new.tracking_number is distinct from old.tracking_number
+     or new.provider is distinct from old.provider or new.status is distinct from old.status or new.status_detail is distinct from old.status_detail
+     or new.carrier_label is distinct from old.carrier_label or new.estimated_delivery is distinct from old.estimated_delivery
+     or new.delivered_at is distinct from old.delivered_at or new.events is distinct from old.events or new.provider_url is distinct from old.provider_url
+     or new.last_checked_at is distinct from old.last_checked_at or new.check_count is distinct from old.check_count
+     or new.last_error is distinct from old.last_error or new.created_by is distinct from old.created_by or new.created_at is distinct from old.created_at then
+    raise exception 'PARCEL_SERVER_FIELDS' using errcode = '42501';
+  end if;
+  if new.next_check_at is distinct from old.next_check_at and (new.next_check_at is null or new.next_check_at > now() + interval '1 minute') then
     raise exception 'PARCEL_NEXT_CHECK_FORBIDDEN' using errcode = '42501';
   end if;
   return new;
 end;
 $$;
 
-drop trigger if exists tracked_parcels_client_guard on public.tracked_parcels;
-create trigger tracked_parcels_client_guard before update on public.tracked_parcels
+create trigger tracked_parcels_client_guard before insert or update on public.tracked_parcels
   for each row execute function public.tracked_parcels_client_guard();
 
-revoke execute on function public.tracked_parcels_client_guard() from public, anon, authenticated;
 
 select public.install_same_org_guards('public.shipping_rate_cards'::regclass);
 select public.install_same_org_guards('public.tracked_parcels'::regclass);

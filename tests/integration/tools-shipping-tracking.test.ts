@@ -60,10 +60,10 @@ d("Mes outils : grilles tarifaires et suivi de colis", () => {
       expect(rows[0].status).toBe("unknown");
       expect(rows[0].created_by).toBe(a);
       // L'application ne peut pas inventer de statut, ni à la création ni ensuite.
-      await expectQueryError(c, "insert into public.tracked_parcels (organization_id, tracking_number, status) values ($1, 'XX123456789FR', 'delivered')", [orgA], /permission denied/);
-      await expectQueryError(c, "update public.tracked_parcels set status = 'delivered' where id = $1", [id], /permission denied/);
-      await expectQueryError(c, "update public.tracked_parcels set estimated_delivery = '2026-10-12' where id = $1", [id], /permission denied/);
-      await expectQueryError(c, "update public.tracked_parcels set events = '[]'::jsonb where id = $1", [id], /permission denied/);
+      await expectQueryError(c, "insert into public.tracked_parcels (organization_id, tracking_number, status) values ($1, 'XX123456789FR', 'delivered')", [orgA], /permission denied|PARCEL_SERVER_FIELDS/);
+      await expectQueryError(c, "update public.tracked_parcels set status = 'delivered' where id = $1", [id], /permission denied|PARCEL_SERVER_FIELDS/);
+      await expectQueryError(c, "update public.tracked_parcels set estimated_delivery = '2026-10-12' where id = $1", [id], /permission denied|PARCEL_SERVER_FIELDS/);
+      await expectQueryError(c, "update public.tracked_parcels set events = '[{\"label\":\"Livré\"}]'::jsonb where id = $1", [id], /permission denied|PARCEL_SERVER_FIELDS/);
       // Colonnes autorisées : libellé, transporteur, archivage, relance immédiate.
       await c.query("update public.tracked_parcels set label = 'iPhone 13', carrier_code = 'laposte', carrier_source = 'manual', next_check_at = now() where id = $1", [id]);
       // Mais pas de report arbitraire de l'actualisation.

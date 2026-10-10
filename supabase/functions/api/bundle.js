@@ -39,13 +39,13 @@ function emit(level, scope, message, meta) {
     message,
     ...meta ? redact(meta) : {}
   };
-  const text2 = `[${scope}] ${message}`;
+  const text3 = `[${scope}] ${message}`;
   const payload = meta ? JSON.stringify(redact(meta)) : "";
-  if (level === "error") console.error(text2, payload);
-  else if (level === "warn") console.warn(text2, payload);
+  if (level === "error") console.error(text3, payload);
+  else if (level === "warn") console.warn(text3, payload);
   else if (level === "debug") {
-    if (process.env.NODE_ENV !== "production") console.debug(text2, payload);
-  } else console.info(text2, payload);
+    if (process.env.NODE_ENV !== "production") console.debug(text3, payload);
+  } else console.info(text3, payload);
   return line;
 }
 function createLogger(scope) {
@@ -65,8 +65,8 @@ var init_logger = __esm({
 });
 
 // src/integrations/core/sanitize.ts
-function scrubSecrets(text2) {
-  let out = text2;
+function scrubSecrets(text3) {
+  let out = text3;
   for (const [pattern, replacement] of SECRET_PATTERNS) out = out.replace(pattern, replacement);
   return out;
 }
@@ -627,10 +627,10 @@ async function readBodyText(res, provider = "api", label = "body") {
   }
 }
 async function readJson(res, provider = "api") {
-  const text2 = await readBodyText(res, provider);
-  if (!text2) return null;
+  const text3 = await readBodyText(res, provider);
+  if (!text3) return null;
   try {
-    return JSON.parse(text2);
+    return JSON.parse(text3);
   } catch {
     return null;
   }
@@ -2120,8 +2120,8 @@ function isValidGtin(digits2) {
   for (let i = nums.length - 1, w2 = 3; i >= 0; i--, w2 = w2 === 3 ? 1 : 3) sum += nums[i] * w2;
   return (10 - sum % 10) % 10 === check;
 }
-function extractEan(text2) {
-  const m = text2.match(/(?<!\d)(\d{8}|\d{12,14})(?!\d)/);
+function extractEan(text3) {
+  const m = text3.match(/(?<!\d)(\d{8}|\d{12,14})(?!\d)/);
   if (!m || !m[1]) return null;
   return { ean: m[1], valid: isValidGtin(m[1]) };
 }
@@ -2137,8 +2137,8 @@ function looksLikeMpn(token) {
   if (prefix && MPN_STOPWORDS.has(prefix)) return false;
   return true;
 }
-function extractMpn(text2) {
-  for (const tok of text2.split(/\s+/)) {
+function extractMpn(text3) {
+  for (const tok of text3.split(/\s+/)) {
     const clean = tok.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9/]+$/g, "");
     if (looksLikeMpn(clean)) return clean.toUpperCase();
   }
@@ -2205,8 +2205,8 @@ function titleCase(s) {
 function buildNormalizedKey(p) {
   return [p.brand ?? UNKNOWN, p.model ?? UNKNOWN, p.storage?.toLowerCase() ?? UNKNOWN, p.color ?? UNKNOWN, p.condition, p.grade?.toLowerCase() ?? UNKNOWN].join("|");
 }
-function normalizeProduct(text2, hints = {}) {
-  const original = (text2 ?? "").trim();
+function normalizeProduct(text3, hints = {}) {
+  const original = (text3 ?? "").trim();
   let work = ` ${normalizeText(original)} `;
   const inferred = [];
   const eanFound = extractEan(original);
@@ -2642,8 +2642,8 @@ function stripHtml(html) {
   if (!html) return "";
   return html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
 }
-function inferConditionFromText(text2) {
-  const t = (text2 ?? "").slice(0, 4e3);
+function inferConditionFromText(text3) {
+  const t = (text3 ?? "").slice(0, 4e3);
   if (!t.trim()) return { condition: null, grade: null, inferred: [] };
   const inferred = [];
   const condition = normalizeCondition(t);
@@ -2658,7 +2658,7 @@ function cleanId(s) {
 }
 function matchesQuery(parsed, candidate) {
   if (parsed.kind === "empty") return false;
-  const text2 = normalizeText(`${candidate.title} ${candidate.brand ?? ""} ${candidate.mpn ?? ""} ${candidate.sku ?? ""} ${candidate.extraText ?? ""}`);
+  const text3 = normalizeText(`${candidate.title} ${candidate.brand ?? ""} ${candidate.mpn ?? ""} ${candidate.sku ?? ""} ${candidate.extraText ?? ""}`);
   if (parsed.ean) {
     const ean = (candidate.ean ?? "").replace(/\D/g, "");
     return ean.length >= 8 && (ean === parsed.ean || ean.replace(/^0+/, "") === parsed.ean.replace(/^0+/, ""));
@@ -2666,9 +2666,9 @@ function matchesQuery(parsed, candidate) {
   if (parsed.kind === "mpn" && parsed.mpn) {
     const q = cleanId(parsed.mpn);
     if (cleanId(candidate.mpn) === q || cleanId(candidate.sku) === q) return true;
-    return text2.replace(/[^a-z0-9]/g, "").includes(q.toLowerCase());
+    return text3.replace(/[^a-z0-9]/g, "").includes(q.toLowerCase());
   }
-  const tokensOk = parsed.tokens.length > 0 && parsed.tokens.every((t) => text2.includes(t));
+  const tokensOk = parsed.tokens.length > 0 && parsed.tokens.every((t) => text3.includes(t));
   if (parsed.kind !== "structured") return tokensOk;
   const n = normalizeProduct(candidate.title, { brand: candidate.brand ?? null, ean: candidate.ean ?? null, mpn: candidate.mpn ?? null });
   const c = parsed.criteria;
@@ -2859,11 +2859,11 @@ function flatten(obj2, prefix = "", out = {}, depth = 0) {
 function parseFeedContent(content, format, options = {}) {
   const warnings = [];
   let rows = [];
-  const text2 = content.replace(/^﻿/, "");
+  const text3 = content.replace(/^﻿/, "");
   if (format === "csv") {
-    const delimiter = options.delimiter ?? detectDelimiter(text2.slice(0, 4e3));
+    const delimiter = options.delimiter ?? detectDelimiter(text3.slice(0, 4e3));
     const headerRow = options.header_row ?? true;
-    const parsed = parseCsv(text2, {
+    const parsed = parseCsv(text3, {
       columns: headerRow ? true : options.columns ?? false,
       delimiter,
       bom: true,
@@ -2882,10 +2882,10 @@ function parseFeedContent(content, format, options = {}) {
   } else {
     let doc;
     if (format === "xml") {
-      const parser3 = new XMLParser2({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: true, cdataPropName: false });
-      doc = parser3.parse(text2);
+      const parser4 = new XMLParser2({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: true, cdataPropName: false });
+      doc = parser4.parse(text3);
     } else {
-      doc = JSON.parse(text2);
+      doc = JSON.parse(text3);
     }
     let items = null;
     if (options.root_path) {
@@ -3414,18 +3414,18 @@ var init_crawler2 = __esm({
 
 // src/integrations/sourcing/shopify-storefront/parser.ts
 import { z as z15 } from "npm:zod@4.6.5";
-function parseProductsJson(text2) {
-  const parsed = shopifyProductsResponseSchema.safeParse(JSON.parse(text2));
+function parseProductsJson(text3) {
+  const parsed = shopifyProductsResponseSchema.safeParse(JSON.parse(text3));
   if (!parsed.success) throw new Error(`R\xE9ponse products.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data.products;
 }
-function parseProductDetailJson(text2) {
-  const parsed = shopifyProductDetailResponseSchema.safeParse(JSON.parse(text2));
+function parseProductDetailJson(text3) {
+  const parsed = shopifyProductDetailResponseSchema.safeParse(JSON.parse(text3));
   if (!parsed.success) throw new Error(`R\xE9ponse products/{handle}.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data.product;
 }
-function parseSuggestJson(text2) {
-  const parsed = shopifySuggestResponseSchema.safeParse(JSON.parse(text2));
+function parseSuggestJson(text3) {
+  const parsed = shopifySuggestResponseSchema.safeParse(JSON.parse(text3));
   if (!parsed.success) throw new Error(`R\xE9ponse search/suggest.json inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data.resources.results.products;
 }
@@ -3667,8 +3667,8 @@ var init_crawler3 = __esm({
 
 // src/integrations/sourcing/woocommerce-store/parser.ts
 import { z as z16 } from "npm:zod@4.6.5";
-function parseWcProducts(text2) {
-  const parsed = z16.array(wcProductSchema).safeParse(JSON.parse(text2));
+function parseWcProducts(text3) {
+  const parsed = z16.array(wcProductSchema).safeParse(JSON.parse(text3));
   if (!parsed.success) throw new Error(`R\xE9ponse Store API inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data;
 }
@@ -3881,8 +3881,8 @@ function feedUrlOf(config) {
   if (!base) return null;
   return /\.(xml|rss|atom|tsv|csv|txt)(\?.*)?$/i.test(base) ? base : null;
 }
-function detectFeedFormat(text2, contentType) {
-  const head = text2.slice(0, 2e3).trimStart();
+function detectFeedFormat(text3, contentType) {
+  const head = text3.slice(0, 2e3).trimStart();
   if (head.startsWith("<")) return "xml";
   if (contentType && /xml/i.test(contentType) && !/csv|tab-separated/i.test(contentType)) return "xml";
   return "tsv";
@@ -3990,9 +3990,9 @@ function toItem(record) {
     raw
   };
 }
-function parseGmcXml(text2) {
-  const parser3 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
-  const doc = parser3.parse(text2.replace(/^\uFEFF/, ""));
+function parseGmcXml(text3) {
+  const parser4 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
+  const doc = parser4.parse(text3.replace(/^\uFEFF/, ""));
   const rss = doc.rss;
   const channel = rss?.channel;
   const feed = doc.feed;
@@ -4008,8 +4008,8 @@ function parseGmcXml(text2) {
   }
   return items;
 }
-function parseGmcTsv(text2) {
-  const clean = text2.replace(/^\uFEFF/, "");
+function parseGmcTsv(text3) {
+  const clean = text3.replace(/^\uFEFF/, "");
   const firstLine = clean.split(/\r?\n/)[0] ?? "";
   const delimiter = firstLine.includes("	") ? "	" : firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
   const rows = parseCsv2(clean, { columns: (header) => header.map((h) => h.trim().toLowerCase().replace(/^g:/, "")), delimiter, bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true, to: MAX_FEED_ITEMS + 1 });
@@ -4028,8 +4028,8 @@ function parseGmcTsv(text2) {
   }
   return items;
 }
-function parseGmcFeed(text2, format) {
-  return format === "xml" ? parseGmcXml(text2) : parseGmcTsv(text2);
+function parseGmcFeed(text3, format) {
+  return format === "xml" ? parseGmcXml(text3) : parseGmcTsv(text3);
 }
 var MAX_FEED_ITEMS, scalar, textNode, anyField, gmcItemSchema;
 var init_parser4 = __esm({
@@ -4222,8 +4222,8 @@ var init_crawler5 = __esm({
 
 // src/integrations/sourcing/bigbuy/parser.ts
 import { z as z18 } from "npm:zod@4.6.5";
-function parseList(text2, schema, label) {
-  const json2 = JSON.parse(text2);
+function parseList(text3, schema, label) {
+  const json2 = JSON.parse(text3);
   const parsed = z18.array(schema).safeParse(json2);
   if (!parsed.success) throw new Error(`R\xE9ponse ${label} inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data;
@@ -4258,10 +4258,10 @@ var init_parser5 = __esm({
       stocks: z18.array(z18.looseObject({ quantity: numOrStr3.nullish(), minHandlingDays: numOrStr3.nullish(), maxHandlingDays: numOrStr3.nullish(), warehouse: numOrStr3.nullish() })).default([])
     });
     bigbuyManufacturerSchema = z18.looseObject({ id: numOrStr3, name: z18.string().nullish() });
-    parseBigbuyProducts = (text2) => parseList(text2, bigbuyProductSchema, "products.json");
-    parseBigbuyProductsInformation = (text2) => parseList(text2, bigbuyProductInformationSchema, "productsinformation.json");
-    parseBigbuyStock = (text2) => parseList(text2, bigbuyStockSchema, "productsstockavailable.json");
-    parseBigbuyManufacturers = (text2) => parseList(text2, bigbuyManufacturerSchema, "manufacturers.json");
+    parseBigbuyProducts = (text3) => parseList(text3, bigbuyProductSchema, "products.json");
+    parseBigbuyProductsInformation = (text3) => parseList(text3, bigbuyProductInformationSchema, "productsinformation.json");
+    parseBigbuyStock = (text3) => parseList(text3, bigbuyStockSchema, "productsstockavailable.json");
+    parseBigbuyManufacturers = (text3) => parseList(text3, bigbuyManufacturerSchema, "manufacturers.json");
   }
 });
 
@@ -4515,20 +4515,20 @@ var init_crawler6 = __esm({
 
 // src/integrations/sourcing/ingram-micro/parser.ts
 import { z as z19 } from "npm:zod@4.6.5";
-function parseIngramToken(text2) {
-  const parsed = ingramTokenSchema.safeParse(JSON.parse(text2));
+function parseIngramToken(text3) {
+  const parsed = ingramTokenSchema.safeParse(JSON.parse(text3));
   if (!parsed.success) throw new Error("R\xE9ponse du serveur de jetons inattendue (access_token absent).");
   const exp = parsed.data.expires_in === null || parsed.data.expires_in === void 0 ? Number.NaN : Number(parsed.data.expires_in);
   return { accessToken: parsed.data.access_token, expiresInS: Number.isFinite(exp) && exp > 0 ? exp : null };
 }
-function parseIngramCatalog(text2) {
-  const parsed = ingramCatalogResponseSchema.safeParse(JSON.parse(text2));
+function parseIngramCatalog(text3) {
+  const parsed = ingramCatalogResponseSchema.safeParse(JSON.parse(text3));
   if (!parsed.success) throw new Error(`R\xE9ponse catalogue inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   const rf = Number(parsed.data.recordsFound ?? Number.NaN);
   return { items: parsed.data.catalog ?? [], recordsFound: Number.isFinite(rf) ? rf : null };
 }
-function parseIngramPriceAvailability(text2) {
-  const json2 = JSON.parse(text2);
+function parseIngramPriceAvailability(text3) {
+  const json2 = JSON.parse(text3);
   const parsed = z19.array(ingramPriceAvailabilityItemSchema).safeParse(json2);
   if (!parsed.success) throw new Error(`R\xE9ponse prix & disponibilit\xE9 inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data;
@@ -4992,12 +4992,12 @@ var init_ebay_browse = __esm({
 });
 
 // src/services/sourcing/crawler/robots.ts
-function parseRobotsTxt(text2) {
+function parseRobotsTxt(text3) {
   const groups = [];
   const sitemaps = [];
   let current = null;
   let lastWasAgent = false;
-  for (const rawLine of text2.split(/\r?\n/)) {
+  for (const rawLine of text3.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "").trim();
     if (!line) continue;
     const idx = line.indexOf(":");
@@ -5088,8 +5088,8 @@ async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e
     const res = await fetchImpl(`${origin}/robots.txt`, { headers: { "User-Agent": userAgent, Accept: "text/plain" }, redirect: "follow", signal: controller.signal });
     if (res.status === 404 || res.status === 410) return { status: "missing", rules: empty, httpStatus: res.status, error: null };
     if (!res.ok) return { status: "error", rules: empty, httpStatus: res.status, error: `robots.txt inaccessible (HTTP ${res.status}).` };
-    const text2 = await res.text();
-    return { status: "ok", rules: parseRobotsTxt(text2.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
+    const text3 = await res.text();
+    return { status: "ok", rules: parseRobotsTxt(text3.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
   } catch (e) {
     return { status: "error", rules: empty, httpStatus: null, error: e instanceof Error ? e.message : "Erreur r\xE9seau." };
   } finally {
@@ -5502,8 +5502,8 @@ var init_validation = __esm({
 import { XMLParser as XMLParser4 } from "npm:fast-xml-parser@5.11.2";
 import { z as z22 } from "npm:zod@4.6.5";
 function parseEcbXml(xml) {
-  const parser3 = new XMLParser4({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true });
-  const doc = parser3.parse(xml);
+  const parser4 = new XMLParser4({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true });
+  const doc = parser4.parse(xml);
   const envelope = doc.Envelope ?? doc;
   const outer = envelope.Cube;
   const dated = outer?.Cube;
@@ -7004,9 +7004,9 @@ function loadCatalogFile(file) {
       throw e;
     }
   }
-  const { text: text2, encoding } = decodeText(bytes);
+  const { text: text3, encoding } = decodeText(bytes);
   if (encoding !== "utf-8") notes.push("Fichier encod\xE9 en Windows-1252 (export Excel) : converti en UTF-8.");
-  return { format, feedFormat: format, content: text2, options: {}, notes };
+  return { format, feedFormat: format, content: text3, options: {}, notes };
 }
 function suggestCatalogMapping(columns) {
   const mapping = suggestMapping(columns);
@@ -7208,9 +7208,69 @@ function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
   }
   const price = offer.price;
   const sale = revenue;
+  const country = offer.supplierCountry?.toUpperCase() ?? null;
+  const eco = computeUnitEconomics(
+    {
+      salePrice: sale,
+      saleLabel: revenueBasis === "avg_sale_30d" ? "Prix de vente moyen constat\xE9 (30 j)" : "Prix de vente du SKU",
+      purchasePrice: price,
+      purchaseTaxType: offer.taxType,
+      supplierShipping: offer.shippingCost,
+      moq: offer.moq,
+      supplierOrigin: country ? EU.has(country) ? "eu" : "non_eu" : "unknown",
+      originLabel: country
+    },
+    s
+  );
+  missing.push(...eco.missing);
+  cautions.push(...eco.cautions);
+  breakdown.push(...eco.breakdown);
+  const { purchaseCost, landedCost: landed, revenueExVat, grossMargin } = eco;
+  const estimatedProfit = eco.estimatedProfit;
+  const marginPercent = eco.marginPercent;
+  if (freshness2 === "stale") cautions.push(`Prix vu il y a ${ageDays} jours : \xE0 rev\xE9rifier avant de commander.`);
+  if (freshness2 === "unknown") cautions.push("Date de relev\xE9 du prix inconnue.");
+  if (offer.priceOrigin !== "verified_live") cautions.push(PRICE_ORIGIN_LABEL[offer.priceOrigin] + ".");
+  if (offer.stockStatus === "unknown" && offer.availableQuantity === null) cautions.push("Disponibilit\xE9 non communiqu\xE9e.");
+  if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) cautions.push("Rupture chez le fournisseur.");
+  if (sku.currentCost !== null && sku.currentCost > 0 && purchaseCost !== null && purchaseCost < sku.currentCost) {
+    const pct2 = Math.round((sku.currentCost - purchaseCost) / sku.currentCost * 100);
+    if (pct2 >= 3) reasons.push(`Prix ${pct2} % sous votre co\xFBt d'achat actuel (${sku.currentCost.toFixed(2)}).`);
+  }
+  if (offer.previousPrice !== null && offer.previousPrice > price) {
+    const pct2 = Math.round((offer.previousPrice - price) / offer.previousPrice * 100);
+    if (pct2 >= 5) reasons.push(`Prix en baisse de ${pct2} % chez ce fournisseur.`);
+  }
+  const lowStock = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 1);
+  if (sku.units30d > 0 && lowStock) reasons.push(`Stock bas (${sku.quantityAvailable}) pour un produit vendu ${sku.units30d} fois en 30 jours.`);
+  else if (sku.units30d > 0) reasons.push(`Vous en vendez ${sku.units30d} par mois.`);
+  if (estimatedProfit > 0 && marginPercent !== null) reasons.push(`B\xE9n\xE9fice estim\xE9 ${estimatedProfit.toFixed(2)} par unit\xE9 (${marginPercent} %).`);
+  const status = estimatedProfit <= 0 ? "unprofitable" : missing.length === 0 && freshness2 !== "stale" ? "profitable" : "estimated";
+  let score = 0;
+  if (estimatedProfit > 0) {
+    score += Math.min(40, estimatedProfit / 2);
+    score += Math.min(20, Math.max(0, marginPercent ?? 0) / 2);
+  }
+  score += Math.min(15, sku.units30d * 2);
+  if (offer.stockStatus === "in_stock" || (offer.availableQuantity ?? 0) > 0) score += 10;
+  score += freshness2 === "fresh" ? 10 : freshness2 === "recent" ? 6 : 0;
+  score += missing.length === 0 ? 5 : Math.max(0, 5 - missing.length);
+  return { status, revenue: sale, revenueBasis, revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, breakdown, missing, cautions, reasons, freshness: freshness2, ageDays, score: Math.round(Math.min(100, score)) };
+}
+function computeUnitEconomics(input, s) {
+  const missing = [];
+  const cautions = [];
+  const breakdown = [];
+  if (input.salePrice === null || input.purchasePrice === null) {
+    if (input.salePrice === null) missing.push("prix de vente");
+    if (input.purchasePrice === null) missing.push("prix d'achat");
+    return { revenueExVat: null, purchaseCost: null, landedCost: null, grossMargin: null, estimatedProfit: null, marginPercent: null, sellingFees: null, breakdown, missing, cautions };
+  }
+  const price = input.purchasePrice;
+  const sale = input.salePrice;
   const vatRate = s.vatRate;
   let purchaseCost;
-  if (offer.taxType === "ht") {
+  if (input.purchaseTaxType === "ht") {
     if (s.vatRecoverable === true) purchaseCost = price;
     else if (s.vatRecoverable === false && vatRate !== null) {
       purchaseCost = r2(price * (1 + vatRate / 100));
@@ -7219,7 +7279,7 @@ function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
       purchaseCost = price;
       missing.push("r\xE9cup\xE9ration de la TVA sur achats (param\xE8tres de co\xFBts)");
     }
-  } else if (offer.taxType === "ttc") {
+  } else if (input.purchaseTaxType === "ttc") {
     if (s.vatRecoverable === true && vatRate !== null) purchaseCost = r2(price / (1 + vatRate / 100));
     else {
       purchaseCost = price;
@@ -7231,19 +7291,18 @@ function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
   }
   breakdown.push({ label: "Prix d'achat retenu", amount: purchaseCost });
   let landed = purchaseCost;
-  if (offer.shippingCost !== null) {
-    const perUnit = r2(offer.shippingCost / Math.max(1, offer.moq ?? 1));
+  if (input.supplierShipping !== null) {
+    const perUnit = r2(input.supplierShipping / Math.max(1, input.moq ?? 1));
     landed = r2(landed + perUnit);
-    breakdown.push({ label: `Transport fournisseur (\xF7 ${Math.max(1, offer.moq ?? 1)})`, amount: perUnit });
+    breakdown.push({ label: `Transport fournisseur (\xF7 ${Math.max(1, input.moq ?? 1)})`, amount: perUnit });
   } else missing.push("transport fournisseur");
-  const country = offer.supplierCountry?.toUpperCase() ?? null;
-  if (country && !EU.has(country)) {
+  if (input.supplierOrigin === "non_eu") {
     if (s.importDutyPercent !== null) {
       const duty = r2(price * s.importDutyPercent / 100);
       landed = r2(landed + duty);
       breakdown.push({ label: `Douane / import (${s.importDutyPercent} %)`, amount: duty });
-    } else missing.push(`droits de douane (fournisseur hors UE : ${country})`);
-  } else if (!country) cautions.push("Pays du fournisseur inconnu : frais d'import \xE9ventuels non \xE9valu\xE9s.");
+    } else missing.push(`droits de douane (fournisseur hors UE${input.originLabel ? ` : ${input.originLabel}` : ""})`);
+  } else if (input.supplierOrigin === "unknown") cautions.push("Pays du fournisseur inconnu : frais d'import \xE9ventuels non \xE9valu\xE9s.");
   breakdown.push({ label: "Co\xFBt d'achat rendu", amount: landed });
   let revenueExVat = null;
   let marginVat = 0;
@@ -7259,7 +7318,7 @@ function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
   } else if (s.vatRegime === "franchise") revenueExVat = sale;
   else missing.push("r\xE9gime de TVA (normal, marge ou franchise)");
   const base = revenueExVat ?? sale;
-  breakdown.unshift({ label: revenueBasis === "avg_sale_30d" ? "Prix de vente moyen constat\xE9 (30 j)" : "Prix de vente du SKU", amount: sale });
+  breakdown.unshift({ label: input.saleLabel, amount: sale });
   if (revenueExVat !== null && revenueExVat !== sale) breakdown.splice(1, 0, { label: "CA hors TVA", amount: revenueExVat });
   const grossMargin = r2(base - landed - marginVat);
   if (marginVat > 0) breakdown.push({ label: "TVA sur marge", amount: marginVat });
@@ -7284,34 +7343,7 @@ function evaluateRadarOffer(offer, sku, s, now = /* @__PURE__ */ new Date()) {
   const estimatedProfit = r2(grossMargin - fees);
   const marginPercent = sale > 0 ? r2(estimatedProfit / sale * 100) : null;
   breakdown.push({ label: missing.length ? "B\xE9n\xE9fice estim\xE9 (co\xFBts connus seulement)" : "B\xE9n\xE9fice estim\xE9", amount: estimatedProfit });
-  if (freshness2 === "stale") cautions.push(`Prix vu il y a ${ageDays} jours : \xE0 rev\xE9rifier avant de commander.`);
-  if (freshness2 === "unknown") cautions.push("Date de relev\xE9 du prix inconnue.");
-  if (offer.priceOrigin !== "verified_live") cautions.push(PRICE_ORIGIN_LABEL[offer.priceOrigin] + ".");
-  if (offer.stockStatus === "unknown" && offer.availableQuantity === null) cautions.push("Disponibilit\xE9 non communiqu\xE9e.");
-  if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) cautions.push("Rupture chez le fournisseur.");
-  if (sku.currentCost !== null && sku.currentCost > 0 && purchaseCost < sku.currentCost) {
-    const pct2 = Math.round((sku.currentCost - purchaseCost) / sku.currentCost * 100);
-    if (pct2 >= 3) reasons.push(`Prix ${pct2} % sous votre co\xFBt d'achat actuel (${sku.currentCost.toFixed(2)}).`);
-  }
-  if (offer.previousPrice !== null && offer.previousPrice > price) {
-    const pct2 = Math.round((offer.previousPrice - price) / offer.previousPrice * 100);
-    if (pct2 >= 5) reasons.push(`Prix en baisse de ${pct2} % chez ce fournisseur.`);
-  }
-  const lowStock = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 1);
-  if (sku.units30d > 0 && lowStock) reasons.push(`Stock bas (${sku.quantityAvailable}) pour un produit vendu ${sku.units30d} fois en 30 jours.`);
-  else if (sku.units30d > 0) reasons.push(`Vous en vendez ${sku.units30d} par mois.`);
-  if (estimatedProfit > 0 && marginPercent !== null) reasons.push(`B\xE9n\xE9fice estim\xE9 ${estimatedProfit.toFixed(2)} par unit\xE9 (${marginPercent} %).`);
-  const status = estimatedProfit <= 0 ? "unprofitable" : missing.length === 0 && freshness2 !== "stale" ? "profitable" : "estimated";
-  let score = 0;
-  if (estimatedProfit > 0) {
-    score += Math.min(40, estimatedProfit / 2);
-    score += Math.min(20, Math.max(0, marginPercent ?? 0) / 2);
-  }
-  score += Math.min(15, sku.units30d * 2);
-  if (offer.stockStatus === "in_stock" || (offer.availableQuantity ?? 0) > 0) score += 10;
-  score += freshness2 === "fresh" ? 10 : freshness2 === "recent" ? 6 : 0;
-  score += missing.length === 0 ? 5 : Math.max(0, 5 - missing.length);
-  return { status, revenue: sale, revenueBasis, revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, breakdown, missing, cautions, reasons, freshness: freshness2, ageDays, score: Math.round(Math.min(100, score)) };
+  return { revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, sellingFees: r2(fees), breakdown, missing, cautions };
 }
 function compareRadar(sort) {
   return (a, b) => {
@@ -7375,15 +7407,7 @@ var init_radar = __esm({
   }
 });
 
-// src/services/radar/radar.ts
-var radar_exports = {};
-__export(radar_exports, {
-  buildRadar: () => buildRadar,
-  priceOriginOf: () => priceOriginOf,
-  radarSettingsSchema: () => radarSettingsSchema,
-  readCostSettings: () => readCostSettings,
-  saveCostSettings: () => saveCostSettings
-});
+// src/domain/sourcing/radar-settings.ts
 import { z as z29 } from "npm:zod@4.6.5";
 function readCostSettings(orgSettings, channel) {
   const raw = orgSettings?.radar ?? {};
@@ -7411,6 +7435,36 @@ function readCostSettings(orgSettings, channel) {
   }
   return { settings: s, fromChannel };
 }
+var nullableNumber2, radarSettingsSchema;
+var init_radar_settings = __esm({
+  "src/domain/sourcing/radar-settings.ts"() {
+    "use strict";
+    init_radar();
+    nullableNumber2 = (min, max) => z29.number().finite().min(min).max(max).nullable();
+    radarSettingsSchema = z29.object({
+      vatRegime: z29.enum(["normal", "margin", "franchise"]).nullable(),
+      vatRate: nullableNumber2(0, 30),
+      vatRecoverable: z29.boolean().nullable(),
+      marketplaceFeePercent: nullableNumber2(0, 50),
+      paymentFeePercent: nullableNumber2(0, 20),
+      paymentFeeFixed: nullableNumber2(0, 50),
+      shippingToCustomer: nullableNumber2(0, 500),
+      packagingCost: nullableNumber2(0, 100),
+      returnProvisionPercent: nullableNumber2(0, 50),
+      importDutyPercent: nullableNumber2(0, 100)
+    });
+  }
+});
+
+// src/services/radar/radar.ts
+var radar_exports = {};
+__export(radar_exports, {
+  buildRadar: () => buildRadar,
+  priceOriginOf: () => priceOriginOf,
+  radarSettingsSchema: () => radarSettingsSchema,
+  readCostSettings: () => readCostSettings,
+  saveCostSettings: () => saveCostSettings
+});
 function priceOriginOf(sourceType, sourceConfig) {
   const kind = sourceConfig?.kind;
   if (sourceType === "API") return "verified_live";
@@ -7543,26 +7597,14 @@ async function saveCostSettings(ctx, input) {
   }
   return parsed;
 }
-var nullableNumber2, radarSettingsSchema, OFFER_SELECT2;
+var OFFER_SELECT2;
 var init_radar2 = __esm({
   "src/services/radar/radar.ts"() {
     "use strict";
     init_empty();
     init_errors();
     init_radar();
-    nullableNumber2 = (min, max) => z29.number().finite().min(min).max(max).nullable();
-    radarSettingsSchema = z29.object({
-      vatRegime: z29.enum(["normal", "margin", "franchise"]).nullable(),
-      vatRate: nullableNumber2(0, 30),
-      vatRecoverable: z29.boolean().nullable(),
-      marketplaceFeePercent: nullableNumber2(0, 50),
-      paymentFeePercent: nullableNumber2(0, 20),
-      paymentFeeFixed: nullableNumber2(0, 50),
-      shippingToCustomer: nullableNumber2(0, 500),
-      packagingCost: nullableNumber2(0, 100),
-      returnProvisionPercent: nullableNumber2(0, 50),
-      importDutyPercent: nullableNumber2(0, 100)
-    });
+    init_radar_settings();
     OFFER_SELECT2 = "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, tax_type, shipping_cost, moq, available_quantity, stock_status, last_seen_at, country, supplier:suppliers(name, country), source:supplier_sources(source_type, config)";
   }
 });
@@ -7613,8 +7655,8 @@ function checkListingDraft(input) {
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-function descriptionHtml(text2) {
-  return text2.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
+function descriptionHtml(text3) {
+  return text3.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
 }
 function buildInventoryItem(d) {
   const aspects = { ...d.aspects };
@@ -11134,7 +11176,7 @@ init_logger();
 init_crypto();
 init_admin();
 init_env();
-import { z as z37 } from "npm:zod@4.6.5";
+import { z as z40 } from "npm:zod@4.6.5";
 
 // src/lib/cron-auth.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
@@ -11222,9 +11264,9 @@ async function parseBody(request, schema, maxBytes = 64e3) {
   if (length > maxBytes) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
   let body;
   try {
-    const text2 = await request.text();
-    if (text2.length > maxBytes) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
-    body = text2 ? JSON.parse(text2) : {};
+    const text3 = await request.text();
+    if (text3.length > maxBytes) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
+    body = text3 ? JSON.parse(text3) : {};
   } catch (e) {
     if (isAppError(e)) throw e;
     throw new AppError("VALIDATION", "Corps de requ\xEAte JSON invalide.");
@@ -11402,6 +11444,21 @@ var sourcingSearchQuerySchema = z3.object({
   /** "0" : lecture des offres déjà enregistrées seulement (pas de requête vers les sources) */
   live: z3.enum(["0", "1"]).optional()
 });
+var shippingQuoteRequestSchema = z3.object({
+  weightKg: z3.number().positive().max(1e3),
+  lengthCm: z3.number().positive().max(600),
+  widthCm: z3.number().positive().max(600),
+  heightCm: z3.number().positive().max(600),
+  fromCountry: z3.string().regex(/^[A-Z]{2}$/),
+  fromPostcode: z3.string().trim().min(2).max(12),
+  fromCity: z3.string().trim().max(80).optional(),
+  toCountry: z3.string().regex(/^[A-Z]{2}$/),
+  toPostcode: z3.string().trim().min(2).max(12),
+  toCity: z3.string().trim().max(80).optional(),
+  /** valeur déclarée (requise par certains transporteurs à l'international) */
+  declaredValue: z3.number().nonnegative().max(1e5).optional()
+});
+var trackingRefreshSchema = z3.object({ parcelId: z3.string().uuid() });
 
 // src/features/mobile-api/context.ts
 var MAX_TOKEN_LENGTH = 8192;
@@ -13116,9 +13173,9 @@ var sourcingSearchParamsSchema = z21.object({
   /** live=0 : recherche dans les offres enregistrées uniquement (sans interroger les sources) */
   live: z21.enum(["0", "1"]).optional()
 });
-function parseCountries(text2) {
-  if (!text2) return void 0;
-  const list = text2.split(/[,\s;]+/).map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
+function parseCountries(text3) {
+  if (!text3) return void 0;
+  const list = text3.split(/[,\s;]+/).map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
   return list.length > 0 ? Array.from(new Set(list)) : void 0;
 }
 function toOfferFilters(p) {
@@ -13362,8 +13419,8 @@ var LIVE_SEARCH_MIN_VARIANT_BUDGET_MS = 1e3;
 function liveSearchVariants(input, max = LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const text2 of [...input.variants ?? [], ...input.variants && input.variants.length > 0 ? [] : [input.rawQuery]]) {
-    const t = text2.replace(/\s+/g, " ").trim();
+  for (const text3 of [...input.variants ?? [], ...input.variants && input.variants.length > 0 ? [] : [input.rawQuery]]) {
+    const t = text3.replace(/\s+/g, " ").trim();
     const key2 = normalizeText(t);
     if (!t || seen.has(key2)) continue;
     seen.add(key2);
@@ -13873,8 +13930,8 @@ function discoveryTemplates(category, secondHand) {
     { purpose: "b2b_intent", language: "en", build: (b) => `${b.en} wholesale` }
   ];
 }
-function dedupeKey2(text2) {
-  return normalizeText(text2).split(" ").filter(Boolean).sort().join(" ");
+function dedupeKey2(text3) {
+  return normalizeText(text3).split(" ").filter(Boolean).sort().join(" ");
 }
 function expandQuery(parsed, options = {}) {
   if (parsed.kind === "empty") return [];
@@ -13906,10 +13963,10 @@ function expandQuery(parsed, options = {}) {
     }
     discoveryBase = { en: join([brand, model]), fr: model };
   } else {
-    const text2 = parsed.raw.replace(/\s+/g, " ").trim();
+    const text3 = parsed.raw.replace(/\s+/g, " ").trim();
     const isIdentifierOnly = parsed.kind === "ean" || parsed.kind === "mpn";
-    if (!isIdentifierOnly) adapter.push({ text: text2, purpose: "exact", useFor: "adapter_search", language: "neutral" });
-    discoveryBase = { en: text2, fr: text2 };
+    if (!isIdentifierOnly) adapter.push({ text: text3, purpose: "exact", useFor: "adapter_search", language: "neutral" });
+    discoveryBase = { en: text3, fr: text3 };
   }
   if (discoveryBase && maxDiscovery > 0) {
     const secondHand = condition === "refurbished" || condition === "used" || grade !== null;
@@ -14790,8 +14847,8 @@ var B2B_SIGNALS = ["b2b", "professionnels", "professionnel", "pro uniquement", "
 function normalizeForMatch(s) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
-function hasWord(text2, word) {
-  return new RegExp(`(?:^| )${word}(?: |$)`).test(text2);
+function hasWord(text3, word) {
+  return new RegExp(`(?:^| )${word}(?: |$)`).test(text3);
 }
 function classifySupplierType(title, description, url) {
   let path = url;
@@ -14800,13 +14857,13 @@ function classifySupplierType(title, description, url) {
     path = `${u.hostname} ${u.pathname}`;
   } catch {
   }
-  const text2 = ` ${normalizeForMatch(`${title} ${description ?? ""} ${path.replace(/[-_/.]/g, " ")}`)} `.trim();
+  const text3 = ` ${normalizeForMatch(`${title} ${description ?? ""} ${path.replace(/[-_/.]/g, " ")}`)} `.trim();
   const scores = /* @__PURE__ */ new Map();
   for (const { type, words } of TYPE_KEYWORDS) {
-    const found = words.filter((w2) => hasWord(text2, w2));
+    const found = words.filter((w2) => hasWord(text3, w2));
     if (found.length > 0) scores.set(type, found);
   }
-  const b2b = B2B_SIGNALS.filter((w2) => hasWord(text2, w2));
+  const b2b = B2B_SIGNALS.filter((w2) => hasWord(text3, w2));
   let best = null;
   let bestCount = 0;
   for (const { type } of TYPE_KEYWORDS) {
@@ -14957,7 +15014,7 @@ function analyzePage(res) {
   const signals = [];
   const body = res.text.slice(0, 2 * 1024 * 1024);
   const isJson = (res.contentType ?? "").includes("json") || /^\s*[[{]/.test(body.slice(0, 10));
-  const text2 = body.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const text3 = body.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   const protectedResult = (label) => {
     signals.push(`Protection d\xE9tect\xE9e : ${label} (aucun contournement)`);
     return { platform: "unknown", access: "protected", priceVisibility: "unknown", jsonLdProduct: false, signals };
@@ -14965,7 +15022,7 @@ function analyzePage(res) {
   for (const [re, label] of CHALLENGE_PATTERNS) if (re.test(body)) return protectedResult(label);
   for (const [re, label] of CAPTCHA_WIDGET_PATTERNS) {
     if (!re.test(body)) continue;
-    if (!isJson && text2.length < THIN_PAGE_CHARS && !/application\/ld\+json/i.test(body)) return protectedResult(label);
+    if (!isJson && text3.length < THIN_PAGE_CHARS && !/application\/ld\+json/i.test(body)) return protectedResult(label);
     signals.push(`${label} pr\xE9sent sur la page (formulaire)`);
     break;
   }
@@ -15010,11 +15067,11 @@ function analyzePage(res) {
   }
   let access = "public";
   let priceVisibility = "unknown";
-  if (LOGIN_PRICE_PATTERNS.some((re) => re.test(text2))) {
+  if (LOGIN_PRICE_PATTERNS.some((re) => re.test(text3))) {
     priceVisibility = "after_login";
     access = "account";
     signals.push("Prix affich\xE9s apr\xE8s connexion");
-  } else if (LOGIN_WALL_PATTERNS.some((re) => re.test(text2)) || /type=["']?password/i.test(body) && !jsonLd.product && !/itemprop=["']?price/i.test(body)) {
+  } else if (LOGIN_WALL_PATTERNS.some((re) => re.test(text3)) || /type=["']?password/i.test(body) && !jsonLd.product && !/itemprop=["']?price/i.test(body)) {
     access = "account";
     signals.push("Page de connexion / acc\xE8s r\xE9serv\xE9");
   } else if (jsonPrices || jsonLd.price || /itemprop=["']?price["']?|property=["'](?:og:price:amount|product:price:amount)["']/i.test(body)) {
@@ -15995,8 +16052,8 @@ var COLORS2 = {
 function stripAccents(s) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
-function tokenize(text2) {
-  const lower = stripAccents(text2.toLowerCase()).replace(/(\d+)\s*(go|gb|gib)\b/g, "$1gb").replace(/(\d+)\s*(to|tb|tib)\b/g, "$1tb").replace(/(\d+)\s*(mo|mb)\b/g, "$1mb");
+function tokenize(text3) {
+  const lower = stripAccents(text3.toLowerCase()).replace(/(\d+)\s*(go|gb|gib)\b/g, "$1gb").replace(/(\d+)\s*(to|tb|tib)\b/g, "$1tb").replace(/(\d+)\s*(mo|mb)\b/g, "$1mb");
   const out = [];
   for (const raw of lower.split(/[^a-z0-9]+/)) {
     if (!raw || STOPWORDS.has(raw)) continue;
@@ -16173,7 +16230,7 @@ function emptyListingsResult() {
   return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
 }
 async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log25 } = ctx;
+  const { admin, log: log27 } = ctx;
   const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   const seen = /* @__PURE__ */ new Set();
   let truncated = false;
@@ -16181,7 +16238,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     result.fetched += page2.listings.length;
     result.invalid += page2.invalid.length;
     for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log25.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+    for (const w2 of page2.warnings) log27.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
@@ -16194,7 +16251,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
   result.complete = !truncated;
   if (truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log25.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log27.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
   const active = result.complete ? await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
@@ -16938,8 +16995,8 @@ function isUnknownKeyError(body) {
     const err = e;
     const params = Array.isArray(err.parameters) ? err.parameters : [];
     if (params.some((p) => p && typeof p === "object" && /^public_?key_?id$/i.test(String(p.name ?? "")))) return true;
-    const text2 = `${typeof err.message === "string" ? err.message : ""} ${typeof err.longMessage === "string" ? err.longMessage : ""}`;
-    return /public[ _]?key/i.test(text2) && /(invalid|not found|unknown|does not exist)/i.test(text2) && !/token|authoriz|authentic/i.test(text2);
+    const text3 = `${typeof err.message === "string" ? err.message : ""} ${typeof err.longMessage === "string" ? err.longMessage : ""}`;
+    return /public[ _]?key/i.test(text3) && /(invalid|not found|unknown|does not exist)/i.test(text3) && !/token|authoriz|authentic/i.test(text3);
   });
 }
 var EbayNotificationKeyStore = class {
@@ -17378,8 +17435,8 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
   const useAdapterCatalog = Boolean(adapter && adapterConfig2 && adapter.capabilities.catalog && adapter.fetchCatalog);
   const robotsUrls = Array.from(/* @__PURE__ */ new Set([...adapter && adapterConfig2 && useAdapterCatalog ? adapter.urlsForCatalog?.(adapterConfig2) ?? [] : [], ...config.urls]));
   if (robotsUrls.length === 0) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Aucune URL configur\xE9e pour cette source." };
-  const parser3 = useAdapterCatalog ? null : adapter?.htmlParser ?? getParser(config.parser);
-  if (!useAdapterCatalog && !parser3) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser \xAB ${config.parser} \xBB inconnu.` };
+  const parser4 = useAdapterCatalog ? null : adapter?.htmlParser ?? getParser(config.parser);
+  if (!useAdapterCatalog && !parser4) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser \xAB ${config.parser} \xBB inconnu.` };
   const run = await startSyncRun(admin, { organizationId: source.organization_id, sourceKind: "supplier_source", sourceRef: source.id, provider: adapter?.key ?? "public_web", trigger: options.trigger, createdBy: options.createdBy ?? null });
   const errors = [];
   try {
@@ -17392,7 +17449,7 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
       await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message2 }).eq("id", source.id);
       return { sourceId, runId: run.id, status: "refused", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: message2 };
     }
-    const crawl = useAdapterCatalog && adapter && adapterConfig2 ? await crawlWithAdapter(adapter, adapterConfig2, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls }) : await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser3, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls });
+    const crawl = useAdapterCatalog && adapter && adapterConfig2 ? await crawlWithAdapter(adapter, adapterConfig2, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls }) : await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser4, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls });
     for (const p of crawl.pages) if (p.error) errors.push({ code: "PAGE_FAILED", message: p.error, entityType: "page", entityRef: p.url });
     for (const u of crawl.skippedUrls) errors.push({ code: "URL_SKIPPED", message: "URL ignor\xE9e (h\xF4te diff\xE9rent, interdite ou au-del\xE0 de la limite de pages).", entityType: "page", entityRef: u });
     const ctx = {
@@ -17428,7 +17485,7 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
     const status = okPages === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
     const message = `${okPages}/${crawl.pages.length} page(s) lue(s), ${crawl.offers.length} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s), ${expired2} expir\xE9e(s).`;
     await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired: expired2, delaySeconds: crawl.delaySeconds, parser: parser3?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" }, errorSummary: status === "failed" ? message : null });
+    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired: expired2, delaySeconds: crawl.delaySeconds, parser: parser4?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" }, errorSummary: status === "failed" ? message : null });
     await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source.id);
     return { sourceId, runId: run.id, status, pages: crawl.pages.length, found: crawl.offers.length, stored, rejected, expired: expired2, message };
   } catch (e) {
@@ -18097,8 +18154,8 @@ function productDraftSystemPrompt(currency) {
     "R\xE8gle absolue : n'invente AUCUNE valeur (prix, quantit\xE9, capacit\xE9, couleur, grade). Ce qui n'est pas dit reste null."
   ].join("\n");
 }
-async function draftProductFromText(text2, currency) {
-  const transcript = text2.trim();
+async function draftProductFromText(text3, currency) {
+  const transcript = text3.trim();
   if (transcript.length < 3) throw new AppError("VALIDATION", "Dites ou \xE9crivez le produit \xE0 ajouter.");
   let raw;
   try {
@@ -18516,13 +18573,13 @@ async function askAssistant(ctx, request) {
       });
       model = response.model;
       if (response.stop_reason === "refusal") return { answer: "Je ne peux pas r\xE9pondre \xE0 cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
-      const text2 = response.content.map((b) => b.type === "text" ? b.text : "").join("").trim();
+      const text3 = response.content.map((b) => b.type === "text" ? b.text : "").join("").trim();
       const calls = response.content.filter((b) => b.type === "tool_use");
       if (response.stop_reason !== "tool_use" || calls.length === 0) {
-        if (!text2) throw new AppError("EXTERNAL_API", "L'assistant n'a pas formul\xE9 de r\xE9ponse. R\xE9essayez.");
-        return { answer: response.stop_reason === "max_tokens" ? `${text2}
+        if (!text3) throw new AppError("EXTERNAL_API", "L'assistant n'a pas formul\xE9 de r\xE9ponse. R\xE9essayez.");
+        return { answer: response.stop_reason === "max_tokens" ? `${text3}
 
-(r\xE9ponse interrompue : posez une question plus pr\xE9cise)` : text2, sources: used, model };
+(r\xE9ponse interrompue : posez une question plus pr\xE9cise)` : text3, sources: used, model };
       }
       messages.push({ role: "assistant", content: response.content });
       const results = await Promise.all(
@@ -18641,7 +18698,14 @@ var RUNTIME_SECRET_NAMES = [
   "SOURCING_DISCOVERY_PROVIDER",
   "BRAVE_SEARCH_API_KEY",
   "ANTHROPIC_API_KEY",
-  "EBAY_LISTING_ENABLED"
+  "EBAY_LISTING_ENABLED",
+  "PACKLINK_API_KEY",
+  "BOXTAL_V1_LOGIN",
+  "BOXTAL_V1_PASSWORD",
+  "BOXTAL_CONTENT_CODE",
+  "BOXTAL_API_URL",
+  "LAPOSTE_OKAPI_KEY",
+  "SHIP24_API_KEY"
 ];
 async function loadRuntimeSecrets(env, fetchImpl = fetch) {
   const fromEnv = RUNTIME_SECRET_NAMES.filter((n) => Boolean(env[n]));
@@ -18677,19 +18741,606 @@ async function loadRuntimeSecrets(env, fetchImpl = fetch) {
   return state;
 }
 
+// src/services/shipping/quotes.ts
+init_empty();
+init_errors2();
+
+// src/integrations/shipping/boxtal.ts
+init_empty();
+init_errors2();
+init_http();
+import { XMLParser as XMLParser6 } from "npm:fast-xml-parser@5.11.2";
+var BOXTAL_DEFAULT_URL = "https://www.envoimoinscher.com/api/v1/";
+var BOXTAL_API_VERSION = "1.3.7";
+function boxtalConfigured(env = process.env) {
+  return Boolean(env.BOXTAL_V1_LOGIN?.trim() && env.BOXTAL_V1_PASSWORD?.trim() && /^\d+$/.test(env.BOXTAL_CONTENT_CODE?.trim() ?? ""));
+}
+function nextCollectionDate(now) {
+  const paris = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Paris" }));
+  const d = new Date(Date.UTC(paris.getFullYear(), paris.getMonth(), paris.getDate()));
+  d.setUTCDate(d.getUTCDate() + 1);
+  if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+function boxtalQuoteUrl(req, env, now) {
+  const base = (env.BOXTAL_API_URL?.trim() || BOXTAL_DEFAULT_URL).replace(/\/?$/, "/");
+  const p = new URLSearchParams();
+  p.set("shipper.pays", req.fromCountry);
+  p.set("shipper.code_postal", req.fromPostcode);
+  if (req.fromCity) p.set("shipper.ville", req.fromCity);
+  p.set("shipper.type", "entreprise");
+  p.set("recipient.pays", req.toCountry);
+  p.set("recipient.code_postal", req.toPostcode);
+  if (req.toCity) p.set("recipient.ville", req.toCity);
+  p.set("recipient.type", "particulier");
+  p.set("colis_1.poids", String(req.weightKg));
+  p.set("colis_1.longueur", String(Math.ceil(req.lengthCm)));
+  p.set("colis_1.largeur", String(Math.ceil(req.widthCm)));
+  p.set("colis_1.hauteur", String(Math.ceil(req.heightCm)));
+  p.set("collecte", nextCollectionDate(now));
+  p.set("delay", "aucun");
+  p.set("content_code", env.BOXTAL_CONTENT_CODE?.trim() ?? "");
+  if (req.declaredValue !== void 0) p.set("colis.valeur", String(req.declaredValue));
+  return `${base}cotation?${p.toString()}`;
+}
+var parser3 = new XMLParser6({ ignoreAttributes: true, parseTagValue: false, trimValues: true, isArray: (name, jpath) => name === "offer" || String(jpath).endsWith("characteristics.label") });
+var asArray2 = (v2) => v2 === void 0 || v2 === null ? [] : Array.isArray(v2) ? v2 : [v2];
+var text2 = (v2) => typeof v2 === "string" && v2.trim() !== "" ? v2.trim() : typeof v2 === "number" ? String(v2) : null;
+var decimalText = (v2) => {
+  const s = text2(v2)?.replace(",", ".") ?? null;
+  return s && /^\d+(\.\d+)?$/.test(s) ? s : null;
+};
+function mapBoxtalXml(xml, quotedAt) {
+  let doc;
+  try {
+    doc = parser3.parse(xml);
+  } catch {
+    throw new ConnectorError("INVALID_RESPONSE", "boxtal", "R\xE9ponse Boxtal illisible (XML attendu).");
+  }
+  const err = doc.error ?? null;
+  if (err) throw new ConnectorError("API_ERROR", "boxtal", `Boxtal a refus\xE9 la cotation : ${text2(err.message) ?? text2(err.code) ?? "erreur inconnue"}.`);
+  const shipment = doc.cotation?.shipment ?? null;
+  if (!shipment) throw new ConnectorError("INVALID_RESPONSE", "boxtal", "R\xE9ponse Boxtal inattendue (cotation/shipment absent).");
+  const out = [];
+  asArray2(shipment.offer).forEach((o, i) => {
+    const price = o.price ?? {};
+    const incl = decimalText(price["tax-inclusive"]);
+    const excl = decimalText(price["tax-exclusive"]);
+    if (incl === null && excl === null) return;
+    const operator = o.operator ?? {};
+    const service = o.service ?? {};
+    const collection = o.collection ?? {};
+    const delivery = o.delivery ?? {};
+    const collectionType = text2((collection.type ?? {}).code);
+    const deliveryType = text2((delivery.type ?? {}).code);
+    const deliveryDate = text2(delivery.date);
+    const characteristics = asArray2((o.characteristics ?? {}).label).map(text2).filter((x) => Boolean(x));
+    out.push({
+      key: `boxtal:${text2(operator.code) ?? "op"}:${text2(service.code) ?? i}`,
+      provider: "boxtal",
+      providerLabel: "Boxtal",
+      carrier: text2(operator.label) ?? text2(operator.code) ?? "Transporteur non pr\xE9cis\xE9",
+      service: text2(service.label) ?? text2(service.code) ?? "Service",
+      priceInclVat: incl,
+      priceExclVat: excl,
+      currency: (text2(price.currency) ?? "EUR").toUpperCase(),
+      transitDaysMin: null,
+      transitDaysMax: null,
+      estimatedDelivery: deliveryDate && /^\d{4}-\d{2}-\d{2}/.test(deliveryDate) ? deliveryDate.slice(0, 10) : null,
+      // Codes Boxtal non documentés publiquement : seuls les libellés connus sont interprétés.
+      dropOff: collectionType === "POST_OFFICE" || collectionType === "DROPOFF_POINT" ? true : collectionType === "COMPANY" || collectionType === "HOME" ? false : null,
+      deliveryToPickupPoint: deliveryType === "PICKUP_POINT" ? true : deliveryType === "HOME" ? false : null,
+      tracking: null,
+      restrictions: characteristics.slice(0, 4),
+      quotedAt
+    });
+  });
+  return out;
+}
+async function boxtalQuotes(req, env = process.env, now = /* @__PURE__ */ new Date()) {
+  if (!boxtalConfigured(env)) throw new ConnectorError("NOT_CONFIGURED", "boxtal", "Boxtal non configur\xE9 (BOXTAL_V1_LOGIN, BOXTAL_V1_PASSWORD, BOXTAL_CONTENT_CODE).");
+  const auth = Buffer.from(`${env.BOXTAL_V1_LOGIN.trim()}:${env.BOXTAL_V1_PASSWORD.trim()}`).toString("base64");
+  const res = await fetchWithRetry(
+    boxtalQuoteUrl(req, env, now),
+    { method: "GET", headers: { Authorization: auth, "Api-Version": BOXTAL_API_VERSION, "Accept-Language": "fr-FR", Accept: "application/xml" } },
+    { provider: "boxtal", timeoutMs: 25e3, retries: 1, label: "cotation" }
+  );
+  if (res.status === 401 || res.status === 403) throw new ConnectorError("AUTH_EXPIRED", "boxtal", "Identifiants Boxtal refus\xE9s : v\xE9rifiez BOXTAL_V1_LOGIN / BOXTAL_V1_PASSWORD.", { httpStatus: res.status });
+  const body = await readBodyText(res, "boxtal", "cotation");
+  if (!res.ok && !body.includes("<error")) throw new ConnectorError("API_ERROR", "boxtal", `Boxtal a refus\xE9 la demande (HTTP ${res.status}).`, { httpStatus: res.status });
+  return mapBoxtalXml(body, now.toISOString());
+}
+
+// src/integrations/shipping/packlink.ts
+init_empty();
+init_errors2();
+init_http();
+import { z as z37 } from "npm:zod@4.6.5";
+var PACKLINK_BASE_URL = "https://api.packlink.com/v1/";
+var money5 = z37.union([z37.number(), z37.string()]).nullable().optional();
+var serviceSchema = z37.object({
+  id: z37.union([z37.number(), z37.string()]),
+  carrier_name: z37.string().nullable().optional(),
+  name: z37.string().nullable().optional(),
+  currency: z37.string().nullable().optional(),
+  price: z37.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
+  transit_time: z37.string().nullable().optional(),
+  transit_hours: z37.union([z37.number(), z37.string()]).nullable().optional(),
+  dropoff: z37.boolean().nullable().optional(),
+  delivery_to_parcelshop: z37.boolean().nullable().optional(),
+  category: z37.string().nullable().optional(),
+  first_estimated_delivery_date: z37.string().nullable().optional(),
+  customs_required: z37.boolean().nullable().optional()
+}).passthrough();
+function packlinkConfigured(env = process.env) {
+  return Boolean(env.PACKLINK_API_KEY && env.PACKLINK_API_KEY.trim().length >= 10);
+}
+function packlinkSearchUrl(req) {
+  const p = new URLSearchParams();
+  p.set("from[country]", req.fromCountry);
+  p.set("from[zip]", req.fromPostcode);
+  p.set("to[country]", req.toCountry);
+  p.set("to[zip]", req.toPostcode);
+  p.set("source", "PRO");
+  p.set("packages[0][height]", String(Math.ceil(req.heightCm)));
+  p.set("packages[0][width]", String(Math.ceil(req.widthCm)));
+  p.set("packages[0][length]", String(Math.ceil(req.lengthCm)));
+  p.set("packages[0][weight]", String(req.weightKg));
+  return `${PACKLINK_BASE_URL}services?${p.toString()}`;
+}
+function decimalText2(v2) {
+  if (v2 === null || v2 === void 0 || v2 === "") return null;
+  const s = typeof v2 === "number" ? String(v2) : String(v2).trim().replace(",", ".");
+  return /^\d+(\.\d+)?$/.test(s) ? s : null;
+}
+function parseTransit(transitTime, transitHours) {
+  const t = (transitTime ?? "").toUpperCase();
+  const range = /(\d+)\s*-\s*(\d+)\s*DAY/.exec(t);
+  if (range) return { min: Number(range[1]), max: Number(range[2]) };
+  const single = /(\d+)\s*DAY/.exec(t);
+  if (single) return { min: Number(single[1]), max: Number(single[1]) };
+  const hours = Number(transitHours);
+  if (Number.isFinite(hours) && hours > 0) {
+    const d = Math.ceil(hours / 24);
+    return { min: d, max: d };
+  }
+  return { min: null, max: null };
+}
+function mapPacklinkServices(body, quotedAt) {
+  if (!Array.isArray(body)) throw new ConnectorError("INVALID_RESPONSE", "packlink", "R\xE9ponse Packlink inattendue (liste de services attendue).");
+  const out = [];
+  for (const raw of body) {
+    const parsed = serviceSchema.safeParse(raw);
+    if (!parsed.success) continue;
+    const s = parsed.data;
+    const total = decimalText2(s.price?.total_price);
+    const base = decimalText2(s.price?.base_price);
+    if (total === null && base === null) continue;
+    const transit = parseTransit(s.transit_time, s.transit_hours);
+    const est = s.first_estimated_delivery_date && /^\d{4}\/\d{2}\/\d{2}$/.test(s.first_estimated_delivery_date) ? s.first_estimated_delivery_date.replace(/\//g, "-") : null;
+    const restrictions = [];
+    if (s.customs_required) restrictions.push("D\xE9claration en douane requise.");
+    if (s.dropoff) restrictions.push("D\xE9p\xF4t du colis en point relais ou bureau.");
+    out.push({
+      key: `packlink:${String(s.id)}`,
+      provider: "packlink",
+      providerLabel: "Packlink PRO",
+      carrier: s.carrier_name?.trim() || "Transporteur non pr\xE9cis\xE9",
+      service: s.name?.trim() || s.category || "Service",
+      priceInclVat: total,
+      priceExclVat: base,
+      currency: (s.currency ?? "EUR").toUpperCase(),
+      transitDaysMin: transit.min,
+      transitDaysMax: transit.max,
+      estimatedDelivery: est,
+      dropOff: s.dropoff ?? null,
+      deliveryToPickupPoint: s.delivery_to_parcelshop ?? null,
+      tracking: null,
+      restrictions,
+      quotedAt
+    });
+  }
+  return out;
+}
+async function packlinkQuotes(req, env = process.env, now = /* @__PURE__ */ new Date()) {
+  const key2 = env.PACKLINK_API_KEY?.trim();
+  if (!key2) throw new ConnectorError("NOT_CONFIGURED", "packlink", "Cl\xE9 Packlink PRO absente (secret PACKLINK_API_KEY).");
+  const res = await fetchWithRetry(packlinkSearchUrl(req), { method: "GET", headers: { Authorization: key2, Accept: "application/json" } }, { provider: "packlink", timeoutMs: 2e4, retries: 1, label: "services" });
+  if (res.status === 401 || res.status === 403) throw new ConnectorError("AUTH_EXPIRED", "packlink", "Cl\xE9 Packlink PRO refus\xE9e : v\xE9rifiez le secret PACKLINK_API_KEY.", { httpStatus: res.status });
+  const body = await readJson(res, "packlink");
+  if (!res.ok) throw new ConnectorError("API_ERROR", "packlink", `Packlink a refus\xE9 la demande de devis (HTTP ${res.status}).`, { httpStatus: res.status });
+  return mapPacklinkServices(body, now.toISOString());
+}
+
+// src/services/shipping/quotes.ts
+init_logger();
+var log24 = createLogger("SHIPPING");
+var PROVIDERS = [
+  { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: packlinkQuotes },
+  { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: boxtalQuotes }
+];
+function shippingProvidersStatus(env = process.env) {
+  return PROVIDERS.map((p) => ({ id: p.id, label: p.label, configured: p.configured(env) }));
+}
+async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new Date()) {
+  const results = await Promise.all(
+    PROVIDERS.map(async (p) => {
+      if (!p.configured(env)) return { status: { id: p.id, label: p.label, state: "not_configured", message: "Non configur\xE9 sur le serveur.", count: 0 }, quotes: [] };
+      try {
+        const quotes = await p.quote(req, env, now);
+        return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message: quotes.length ? null : "Aucun service propos\xE9 pour ce colis et ce trajet.", count: quotes.length }, quotes };
+      } catch (e) {
+        const message = isConnectorError(e) ? e.message : "Erreur inattendue.";
+        log24.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
+        return { status: { id: p.id, label: p.label, state: "error", message, count: 0 }, quotes: [] };
+      }
+    })
+  );
+  return { quotes: results.flatMap((r) => r.quotes), providers: results.map((r) => r.status), quotedAt: now.toISOString() };
+}
+
+// src/services/tracking/tracking.ts
+init_empty();
+
+// src/domain/tools/tracking.ts
+var LA_POSTE_GROUP = ["laposte", "colissimo", "chronopost"];
+var TRACKING_STATUS_LABEL = {
+  pending: "En attente d'informations",
+  info_received: "\xC9tiquette cr\xE9\xE9e, colis pas encore pris en charge",
+  in_transit: "En transit",
+  out_for_delivery: "En cours de livraison",
+  available_for_pickup: "Disponible en point de retrait",
+  failed_attempt: "\xC9chec de livraison",
+  exception: "Incident de transport",
+  delivered: "Livr\xE9",
+  returned: "Retourn\xE9 \xE0 l'exp\xE9diteur",
+  expired: "Suivi expir\xE9",
+  not_found: "Num\xE9ro inconnu du transporteur",
+  unknown: "Statut non disponible"
+};
+var FINAL_STATUSES = /* @__PURE__ */ new Set(["delivered", "returned", "expired"]);
+var PROBLEM_STATUSES = /* @__PURE__ */ new Set(["failed_attempt", "exception", "returned"]);
+function chooseProvider(carrier, configured) {
+  if (carrier && LA_POSTE_GROUP.includes(carrier) && configured.laposte) return "laposte";
+  if (configured.ship24) return "ship24";
+  if (carrier === null && configured.laposte) return "laposte";
+  return null;
+}
+function laPosteEventStatus(code) {
+  if (!code) return null;
+  const c = code.toUpperCase();
+  if (c === "DR1") return "info_received";
+  if (/^(PC[12]|ET[1-4]|EP1|DO[1-3]|PB2)$/.test(c)) return "in_transit";
+  if (c === "PB1") return "exception";
+  if (c === "MD2") return "out_for_delivery";
+  if (c === "ND1") return "failed_attempt";
+  if (c === "AG1") return "available_for_pickup";
+  if (c === "RE1" || c === "DI2") return "returned";
+  if (c === "DI1") return "delivered";
+  return null;
+}
+function ship24MilestoneStatus(milestone) {
+  switch (milestone) {
+    case "pending":
+      return "pending";
+    case "info_received":
+      return "info_received";
+    case "in_transit":
+      return "in_transit";
+    case "out_for_delivery":
+      return "out_for_delivery";
+    case "failed_attempt":
+      return "failed_attempt";
+    case "available_for_pickup":
+      return "available_for_pickup";
+    case "delivered":
+      return "delivered";
+    case "exception":
+      return "exception";
+    default:
+      return "unknown";
+  }
+}
+function sortEvents(events) {
+  const seen = /* @__PURE__ */ new Set();
+  const unique = events.filter((e) => {
+    const k = `${e.at ?? ""}|${e.code ?? ""}|${e.label}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return unique.sort((a, b) => (b.at ? Date.parse(b.at) : -Infinity) - (a.at ? Date.parse(a.at) : -Infinity));
+}
+var HOUR = 36e5;
+function nextCheckAt(status, now, ctx) {
+  if (FINAL_STATUSES.has(status)) return null;
+  const ageDays = (now.getTime() - Date.parse(ctx.createdAt)) / (24 * HOUR);
+  if (ageDays > 60) return null;
+  let hours;
+  switch (status) {
+    case "out_for_delivery":
+      hours = 2;
+      break;
+    case "in_transit":
+    case "available_for_pickup":
+    case "failed_attempt":
+    case "exception":
+      hours = 4;
+      break;
+    case "info_received":
+    case "pending":
+      hours = 8;
+      break;
+    case "not_found":
+      if (ageDays > 7) return null;
+      hours = 12;
+      break;
+    default:
+      hours = 12;
+  }
+  return new Date(now.getTime() + hours * HOUR);
+}
+function trackingAlerts(parcel, previous, next, now) {
+  const name = parcel.label || parcel.trackingNumber;
+  const out = [];
+  if (next.status === "delivered" && previous !== "delivered") {
+    out.push({ kind: "parcel_delivered", severity: "info", title: "Colis livr\xE9", message: `${name} a \xE9t\xE9 livr\xE9${next.deliveredAt ? ` le ${next.deliveredAt.slice(0, 10).split("-").reverse().join("/")}` : ""}.`, dedupeKey: `parcel_delivered:${parcel.id}` });
+  }
+  if (PROBLEM_STATUSES.has(next.status) && previous !== next.status) {
+    out.push({ kind: "parcel_problem", severity: "warning", title: "Probl\xE8me de livraison", message: `${name} : ${TRACKING_STATUS_LABEL[next.status].toLowerCase()}${next.statusDetail ? ` (${next.statusDetail})` : ""}.`, dedupeKey: `parcel_problem:${parcel.id}:${next.status}` });
+  }
+  if (next.estimatedDelivery && !FINAL_STATUSES.has(next.status)) {
+    const due = Date.parse(next.estimatedDelivery);
+    if (!Number.isNaN(due) && now.getTime() > due + 24 * HOUR) {
+      out.push({ kind: "parcel_delayed", severity: "warning", title: "Colis en retard", message: `${name} devait \xEAtre livr\xE9 le ${next.estimatedDelivery.slice(0, 10).split("-").reverse().join("/")} et ne l'est pas encore.`, dedupeKey: `parcel_delayed:${parcel.id}:${next.estimatedDelivery.slice(0, 10)}` });
+    }
+  }
+  return out;
+}
+
+// src/services/tracking/tracking.ts
+init_errors2();
+
+// src/integrations/tracking/laposte.ts
+init_empty();
+import { z as z38 } from "npm:zod@4.6.5";
+init_errors2();
+init_http();
+var LAPOSTE_SUIVI_URL = "https://api.laposte.fr/suivi/v2/idships/";
+var responseSchema = z38.object({
+  returnCode: z38.number().optional(),
+  returnMessage: z38.string().optional(),
+  shipment: z38.object({
+    idShip: z38.string().optional(),
+    product: z38.string().nullable().optional(),
+    isFinal: z38.boolean().optional(),
+    estimDate: z38.string().nullable().optional(),
+    deliveryDate: z38.string().nullable().optional(),
+    url: z38.string().nullable().optional(),
+    event: z38.array(z38.object({ code: z38.string().nullable().optional(), label: z38.string().nullable().optional(), date: z38.string().nullable().optional(), order: z38.number().nullable().optional() }).passthrough()).optional()
+  }).passthrough().optional()
+}).passthrough();
+function laPosteConfigured(env = process.env) {
+  return Boolean(env.LAPOSTE_OKAPI_KEY && env.LAPOSTE_OKAPI_KEY.trim().length >= 10);
+}
+var PRODUCT_LABEL = { colissimo: "Colissimo", chronopost: "Chronopost", courrier: "La Poste", lettre: "La Poste" };
+function mapLaPosteResponse(body, httpStatus) {
+  const parsed = responseSchema.safeParse(body);
+  if (!parsed.success) throw new ConnectorError("INVALID_RESPONSE", "laposte", "R\xE9ponse La Poste inattendue.");
+  const r = parsed.data;
+  const code = r.returnCode ?? httpStatus;
+  if (code === 404 || httpStatus === 404) return { status: "not_found", statusDetail: r.returnMessage ?? "Num\xE9ro inconnu de La Poste.", estimatedDelivery: null, deliveredAt: null, events: [], carrierLabel: null, providerUrl: null };
+  if (!r.shipment) throw new ConnectorError("INVALID_RESPONSE", "laposte", `R\xE9ponse La Poste sans suivi (code ${code}).`);
+  const s = r.shipment;
+  const events = sortEvents(
+    (s.event ?? []).map((e) => ({ at: e.date ?? null, label: (e.label ?? "").trim() || (e.code ?? "\xC9v\xE9nement"), location: null, status: laPosteEventStatus(e.code), code: e.code ?? null }))
+  );
+  const latestKnown = events.find((e) => e.status !== null);
+  const status = latestKnown?.status ?? (events.length > 0 ? "unknown" : "pending");
+  const delivered = events.find((e) => e.status === "delivered");
+  return {
+    status,
+    statusDetail: events[0]?.label ?? null,
+    estimatedDelivery: s.estimDate ?? null,
+    deliveredAt: s.deliveryDate ?? delivered?.at ?? null,
+    events,
+    carrierLabel: s.product ? PRODUCT_LABEL[s.product.toLowerCase()] ?? s.product : "La Poste",
+    providerUrl: s.url && /^https:\/\//.test(s.url) ? s.url : null
+  };
+}
+async function laPosteTrack(trackingNumber, env = process.env) {
+  const key2 = env.LAPOSTE_OKAPI_KEY?.trim();
+  if (!key2) throw new ConnectorError("NOT_CONFIGURED", "laposte", "Cl\xE9 La Poste absente (secret LAPOSTE_OKAPI_KEY).");
+  const res = await fetchWithRetry(`${LAPOSTE_SUIVI_URL}${encodeURIComponent(trackingNumber)}?lang=fr_FR`, { method: "GET", headers: { "X-Okapi-Key": key2, Accept: "application/json" } }, { provider: "laposte", timeoutMs: 15e3, retries: 1, label: "suivi/v2" });
+  if (res.status === 401 || res.status === 403) throw new ConnectorError("AUTH_EXPIRED", "laposte", "Cl\xE9 La Poste refus\xE9e ou non abonn\xE9e \xE0 \xAB Suivi v2 \xBB (LAPOSTE_OKAPI_KEY).", { httpStatus: res.status });
+  const body = await readJson(res, "laposte");
+  if (res.status === 400) return { status: "not_found", statusDetail: "Num\xE9ro refus\xE9 par La Poste (format invalide).", estimatedDelivery: null, deliveredAt: null, events: [], carrierLabel: null, providerUrl: null };
+  if (!res.ok && res.status !== 404) throw new ConnectorError("API_ERROR", "laposte", `La Poste a r\xE9pondu HTTP ${res.status}.`, { httpStatus: res.status });
+  return mapLaPosteResponse(body, res.status);
+}
+
+// src/integrations/tracking/ship24.ts
+init_empty();
+import { z as z39 } from "npm:zod@4.6.5";
+init_errors2();
+init_http();
+var SHIP24_TRACK_URL = "https://api.ship24.com/public/v1/trackers/track";
+var eventSchema = z39.object({
+  status: z39.string().nullable().optional(),
+  occurrenceDatetime: z39.string().nullable().optional(),
+  datetime: z39.string().nullable().optional(),
+  location: z39.string().nullable().optional(),
+  courierCode: z39.string().nullable().optional(),
+  statusMilestone: z39.string().nullable().optional(),
+  statusCode: z39.string().nullable().optional()
+}).passthrough();
+var trackingSchema = z39.object({
+  shipment: z39.object({
+    statusMilestone: z39.string().nullable().optional(),
+    statusCode: z39.string().nullable().optional(),
+    delivery: z39.object({ estimatedDeliveryDate: z39.string().nullable().optional(), courierEstimatedDeliveryDate: z39.object({ from: z39.string().nullable().optional(), to: z39.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
+  }).passthrough().nullable().optional(),
+  events: z39.array(eventSchema).optional(),
+  statistics: z39.object({ timestamps: z39.object({ deliveredDatetime: z39.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
+}).passthrough();
+var responseSchema2 = z39.object({ data: z39.object({ trackings: z39.array(trackingSchema) }).passthrough() }).passthrough();
+function ship24Configured(env = process.env) {
+  return Boolean(env.SHIP24_API_KEY && env.SHIP24_API_KEY.trim().length >= 10);
+}
+function mapShip24Response(body) {
+  const parsed = responseSchema2.safeParse(body);
+  if (!parsed.success) throw new ConnectorError("INVALID_RESPONSE", "ship24", "R\xE9ponse Ship24 inattendue.");
+  const t = parsed.data.data.trackings[0];
+  if (!t) return { status: "not_found", statusDetail: "Aucun r\xE9sultat Ship24 pour ce num\xE9ro.", estimatedDelivery: null, deliveredAt: null, events: [], carrierLabel: null, providerUrl: null };
+  const events = sortEvents(
+    (t.events ?? []).map((e) => ({ at: e.occurrenceDatetime ?? e.datetime ?? null, label: (e.status ?? "").trim() || "\xC9v\xE9nement", location: e.location ?? null, status: e.statusMilestone ? ship24MilestoneStatus(e.statusMilestone) : null, code: e.statusCode ?? null }))
+  );
+  const milestone = t.shipment?.statusMilestone ?? null;
+  const status = events.length === 0 && (!milestone || milestone === "pending") ? "pending" : ship24MilestoneStatus(milestone);
+  const est = t.shipment?.delivery?.estimatedDeliveryDate ?? t.shipment?.delivery?.courierEstimatedDeliveryDate?.to ?? null;
+  const courier = (t.events ?? []).find((e) => e.courierCode)?.courierCode ?? null;
+  return {
+    status,
+    statusDetail: events[0]?.label ?? null,
+    estimatedDelivery: est,
+    deliveredAt: t.statistics?.timestamps?.deliveredDatetime ?? (status === "delivered" ? events[0]?.at ?? null : null),
+    events,
+    carrierLabel: courier,
+    providerUrl: null
+  };
+}
+async function ship24Track(trackingNumber, opts = {}, env = process.env) {
+  const key2 = env.SHIP24_API_KEY?.trim();
+  if (!key2) throw new ConnectorError("NOT_CONFIGURED", "ship24", "Cl\xE9 Ship24 absente (secret SHIP24_API_KEY).");
+  const body = { trackingNumber };
+  if (opts.destinationCountry && /^[A-Z]{2}$/.test(opts.destinationCountry)) body.destinationCountryCode = opts.destinationCountry;
+  const res = await fetchWithRetry(SHIP24_TRACK_URL, { method: "POST", headers: { Authorization: `Bearer ${key2}`, "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify(body) }, { provider: "ship24", timeoutMs: 6e4, retries: 0, label: "trackers/track" });
+  if (res.status === 401 || res.status === 403) throw new ConnectorError("AUTH_EXPIRED", "ship24", "Cl\xE9 Ship24 refus\xE9e ou abonnement inactif (SHIP24_API_KEY).", { httpStatus: res.status });
+  const json2 = await readJson(res, "ship24");
+  if (res.status === 400 || res.status === 422) return { status: "not_found", statusDetail: "Num\xE9ro refus\xE9 par Ship24 (format invalide).", estimatedDelivery: null, deliveredAt: null, events: [], carrierLabel: null, providerUrl: null };
+  if (!res.ok) throw new ConnectorError("API_ERROR", "ship24", `Ship24 a r\xE9pondu HTTP ${res.status}.`, { httpStatus: res.status });
+  return mapShip24Response(json2);
+}
+
+// src/services/tracking/tracking.ts
+init_errors();
+init_logger();
+init_admin();
+init_alerts();
+var log25 = createLogger("TRACKING");
+function trackingProviders(env = process.env) {
+  return { laposte: laPosteConfigured(env), ship24: ship24Configured(env) };
+}
+var PARCEL_COLUMNS = "id, organization_id, tracking_number, carrier_code, label, status, destination_country, created_at, check_count, archived_at";
+async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), env = process.env, track = { laposte: laPosteTrack, ship24: ship24Track }) {
+  const providers = trackingProviders(env);
+  const provider = chooseProvider(parcel.carrier_code ?? null, providers);
+  if (!provider) {
+    const message = "Aucune API de suivi configur\xE9e sur le serveur (LAPOSTE_OKAPI_KEY ou SHIP24_API_KEY).";
+    await admin.from("tracked_parcels").update({ last_error: message, next_check_at: new Date(now.getTime() + 12 * 36e5).toISOString(), last_checked_at: now.toISOString() }).eq("id", parcel.id);
+    return { parcelId: parcel.id, status: parcel.status, provider: null, checked: false, message };
+  }
+  let snapshot;
+  try {
+    snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
+  } catch (e) {
+    const message = isConnectorError(e) ? e.message : "Erreur inattendue lors du suivi.";
+    log25.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
+    const retry = new Date(now.getTime() + 6 * 36e5).toISOString();
+    await admin.from("tracked_parcels").update({ last_error: message.slice(0, 500), last_checked_at: now.toISOString(), next_check_at: retry, check_count: parcel.check_count + 1 }).eq("id", parcel.id);
+    return { parcelId: parcel.id, status: parcel.status, provider, checked: false, message };
+  }
+  const previous = parcel.status;
+  const next = nextCheckAt(snapshot.status, now, { createdAt: parcel.created_at, checkCount: parcel.check_count + 1 });
+  const { error } = await admin.from("tracked_parcels").update({
+    provider,
+    status: snapshot.status,
+    status_detail: snapshot.statusDetail?.slice(0, 500) ?? null,
+    carrier_label: snapshot.carrierLabel?.slice(0, 80) ?? null,
+    estimated_delivery: snapshot.estimatedDelivery?.slice(0, 40) ?? null,
+    delivered_at: snapshot.deliveredAt?.slice(0, 40) ?? null,
+    events: snapshot.events.slice(0, 100),
+    provider_url: snapshot.providerUrl,
+    last_checked_at: now.toISOString(),
+    next_check_at: next ? next.toISOString() : null,
+    check_count: parcel.check_count + 1,
+    last_error: null
+  }).eq("id", parcel.id);
+  if (error) throw fromPostgrestError(error);
+  for (const a of trackingAlerts({ id: parcel.id, label: parcel.label, trackingNumber: parcel.tracking_number }, previous === "unknown" ? null : previous, snapshot, now)) {
+    await upsertAlert(admin, { organizationId: parcel.organization_id, type: a.kind, severity: a.severity, title: a.title, message: a.message, dedupeKey: a.dedupeKey, entityType: "tracked_parcel", entityId: parcel.id, actionHref: `/tools/tracking/${parcel.id}` });
+  }
+  return { parcelId: parcel.id, status: snapshot.status, provider, checked: true, message: null };
+}
+async function refreshParcelForOrg(ctx, parcelId, admin = createAdminSupabaseClient()) {
+  const { data, error } = await ctx.supabase.from("tracked_parcels").select(PARCEL_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", parcelId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!data) throw new AppError("NOT_FOUND", "Colis introuvable dans cette organisation.");
+  if (data.archived_at) throw new AppError("VALIDATION", "Colis archiv\xE9 : d\xE9sarchivez-le pour l'actualiser.");
+  return refreshParcel(admin, data);
+}
+async function runDueTracking(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient(), limit = 30, env = process.env) {
+  const providers = trackingProviders(env);
+  if (!providers.laposte && !providers.ship24) return { checked: 0, failed: 0, skipped: 0 };
+  const { data, error } = await admin.from("tracked_parcels").select(PARCEL_COLUMNS).is("archived_at", null).not("next_check_at", "is", null).lte("next_check_at", now.toISOString()).order("next_check_at", { ascending: true }).limit(limit);
+  if (error) throw fromPostgrestError(error);
+  let checked = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const p of data ?? []) {
+    try {
+      const r = await refreshParcel(admin, p, now, env);
+      if (r.checked) checked++;
+      else if (r.provider === null) skipped++;
+      else failed++;
+    } catch (e) {
+      failed++;
+      log25.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { checked, failed, skipped };
+}
+
+// src/services/tools/connectors-probe.ts
+init_empty();
+var TARGETS = [
+  { id: "packlink", url: `${PACKLINK_BASE_URL}services?from[country]=FR&from[zip]=75001&to[country]=FR&to[zip]=33000&source=PRO&packages[0][height]=10&packages[0][width]=15&packages[0][length]=20&packages[0][weight]=1`, init: { method: "GET", headers: { Accept: "application/json" } } },
+  { id: "boxtal", url: `${BOXTAL_DEFAULT_URL}cotation?shipper.pays=FR&shipper.code_postal=75001&recipient.pays=FR&recipient.code_postal=33000&colis_1.poids=1&colis_1.longueur=20&colis_1.largeur=15&colis_1.hauteur=10`, init: { method: "GET", headers: { Accept: "application/xml" } } },
+  { id: "laposte-suivi", url: `${LAPOSTE_SUIVI_URL}6A18987970674?lang=fr_FR`, init: { method: "GET", headers: { Accept: "application/json" } } },
+  { id: "ship24", url: SHIP24_TRACK_URL, init: { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify({ trackingNumber: "6A18987970674" }) } }
+];
+async function probeToolConnectors(fetchImpl = fetch) {
+  return Promise.all(
+    TARGETS.map(async (t) => {
+      const started = Date.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15e3);
+      try {
+        const res = await fetchImpl(t.url, { ...t.init, redirect: "manual", signal: controller.signal });
+        const text3 = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 160);
+        return { id: t.id, url: t.url.split("?")[0], httpStatus: res.status, authRequired: res.status === 401 || res.status === 403, bodyHint: text3 || null, error: null, durationMs: Date.now() - started };
+      } catch (e) {
+        return { id: t.id, url: t.url.split("?")[0], httpStatus: null, authRequired: false, bodyHint: null, error: e instanceof Error ? e.message : String(e), durationMs: Date.now() - started };
+      } finally {
+        clearTimeout(timer);
+      }
+    })
+  );
+}
+
 // server/edge/api.ts
-var log24 = createLogger("EDGE_API");
+var log26 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z37.object({ code: z37.string().min(1).max(2048), state: z37.string().min(16).max(200) });
-var syncSchema = z37.object({ connectionId: uuidParam, scope: z37.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z37.object({ hosts: z37.array(z37.string().min(3).max(120)).min(1).max(25), query: z37.string().min(2).max(80).optional() });
+var ebayFinalizeSchema = z40.object({ code: z40.string().min(1).max(2048), state: z40.string().min(16).max(200) });
+var syncSchema = z40.object({ connectionId: uuidParam, scope: z40.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z40.object({ hosts: z40.array(z40.string().min(3).max(120)).min(1).max(25), query: z40.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z37.object({ text: z37.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z37.object({ key: z37.string().min(1).max(80), attest: z37.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z40.object({ text: z40.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z40.object({ key: z40.string().min(1).max(80), attest: z40.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -18719,7 +19370,7 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log24.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
+  log26.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
   return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
 }
 async function finalizeEbayConnect(request) {
@@ -18730,7 +19381,7 @@ async function finalizeEbayConnect(request) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row.created_by !== ctx.user.id || row.organization_id !== ctx.organization.id) {
-    log24.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log26.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -18741,11 +19392,11 @@ async function finalizeEbayConnect(request) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
-    log24.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log26.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log24.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log26.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
@@ -18809,6 +19460,8 @@ async function route(request) {
           ebayEnvironment: ebay2?.EBAY_ENV ?? null,
           cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16),
           aiConfigured: aiConfigured(),
+          shippingProviders: shippingProvidersStatus().filter((p) => p.configured).map((p) => p.id),
+          trackingProviders: trackingProviders(),
           encryptionConfigured: Boolean(process.env.TOKEN_ENCRYPTION_KEY && process.env.TOKEN_ENCRYPTION_KEY.length >= 32),
           // Noms uniquement (jamais les valeurs).
           secrets: { fromEnv: secrets.fromEnv, fromVault: secrets.fromVault, error: secrets.error },
@@ -18826,24 +19479,26 @@ async function route(request) {
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z37.object({ query: z37.string().min(2).max(120), source: z37.string().min(1).max(80) }));
+          const body = await parseBody(request, z40.object({ query: z40.string().min(2).max(120), source: z40.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request, z37.object({ keys: z37.array(z37.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request, z40.object({ keys: z40.array(z40.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
       if (m === "POST" && path === "/cron/chain-selftest") return handle(() => runChainSelfTest());
+      if (m === "POST" && path === "/cron/tracking") return handle(() => runDueTracking());
+      if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z37.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z40.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z37.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request, z40.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
@@ -18867,8 +19522,26 @@ async function route(request) {
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery(request, z37.object({ sort: z37.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const q = parseQuery(request, z40.object({ sort: z40.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
+      });
+    }
+    if (m === "GET" && path === "/tools/status") {
+      return handle(async () => {
+        await requireMobileOrgContext(request);
+        return { shipping: shippingProvidersStatus(), tracking: trackingProviders() };
+      });
+    }
+    if (m === "POST" && path === "/shipping/quotes") {
+      return handle(async () => {
+        await requireMobileOrgContext(request);
+        return quoteShipping(await parseBody(request, shippingQuoteRequestSchema));
+      });
+    }
+    if (m === "POST" && path === "/tracking/refresh") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return refreshParcelForOrg(ctx, (await parseBody(request, trackingRefreshSchema)).parcelId);
       });
     }
     if (m === "POST" && path === "/radar/settings") {
@@ -18929,7 +19602,7 @@ async function route(request) {
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return prefillListing(ctx, parseQuery(request, z37.object({ skuId: uuidParam })).skuId);
+        return prefillListing(ctx, parseQuery(request, z40.object({ skuId: uuidParam })).skuId);
       });
     }
     if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));
@@ -18961,7 +19634,7 @@ async function route(request) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log24.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log26.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;
