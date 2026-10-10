@@ -47,6 +47,7 @@ import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
+import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
 
 const log = createLogger("EDGE_API");
 
@@ -160,7 +161,17 @@ export async function route(request: Request): Promise<Response> {
     if (m === "GET" && path === "/health") {
       return handle(async () => {
         const ebay = ebayEnv();
-        return { ok: true, ebayConfigured: Boolean(ebay), ebayEnvironment: ebay?.EBAY_ENV ?? null, cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16), time: new Date().toISOString() };
+        const secrets = await ensureRuntimeSecrets();
+        return {
+          ok: true,
+          ebayConfigured: Boolean(ebay),
+          ebayEnvironment: ebay?.EBAY_ENV ?? null,
+          cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16),
+          encryptionConfigured: Boolean(process.env.TOKEN_ENCRYPTION_KEY && process.env.TOKEN_ENCRYPTION_KEY.length >= 32),
+          // Noms uniquement (jamais les valeurs).
+          secrets: { fromEnv: secrets.fromEnv, fromVault: secrets.fromVault, error: secrets.error },
+          time: new Date().toISOString(),
+        };
       });
     }
     if (m === "GET" && path === "/ebay/callback") return ebayCallbackRedirect(url);
@@ -198,6 +209,18 @@ export async function route(request: Request): Promise<Response> {
   }
 }
 
+let secretsLoad: Promise<RuntimeSecretsState> | null = null;
+
+/** Chargement unique (par instance) des secrets du Vault avant la première requête. */
+export function ensureRuntimeSecrets(): Promise<RuntimeSecretsState> {
+  secretsLoad ??= loadRuntimeSecrets(process.env as Record<string, string | undefined>).then((s) => {
+    if (s.error) log.warn("secrets d'exécution incomplets", { error: s.error });
+    return s;
+  });
+  return secretsLoad;
+}
+
 export async function serve(request: Request): Promise<Response> {
+  await ensureRuntimeSecrets();
   return withCors(await route(request));
 }

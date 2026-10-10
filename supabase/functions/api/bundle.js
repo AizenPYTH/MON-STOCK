@@ -11923,6 +11923,52 @@ function ebayCallbackRedirect(url) {
   return new Response(html, { status: 302, headers: { Location: target, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
 }
 
+// server/edge/runtime-secrets.ts
+var RUNTIME_SECRET_NAMES = [
+  "TOKEN_ENCRYPTION_KEY",
+  "CRON_SECRET",
+  "EBAY_ENV",
+  "EBAY_CLIENT_ID",
+  "EBAY_CLIENT_SECRET",
+  "EBAY_RU_NAME",
+  "EBAY_WEBHOOK_VERIFICATION_TOKEN",
+  "SOURCING_DISCOVERY_PROVIDER",
+  "BRAVE_SEARCH_API_KEY"
+];
+async function loadRuntimeSecrets(env, fetchImpl = fetch) {
+  const fromEnv = RUNTIME_SECRET_NAMES.filter((n) => Boolean(env[n]));
+  const state = { fromEnv: [...fromEnv], fromVault: [], error: null };
+  const url = env.SUPABASE_URL;
+  const key2 = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key2) {
+    state.error = "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY absents : secrets du Vault non charg\xE9s.";
+    return state;
+  }
+  try {
+    const res = await fetchImpl(`${url.replace(/\/+$/, "")}/rest/v1/rpc/server_runtime_secrets`, {
+      method: "POST",
+      headers: { apikey: key2, Authorization: `Bearer ${key2}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}"
+    });
+    if (!res.ok) {
+      state.error = `Lecture du Vault refus\xE9e (HTTP ${res.status}).`;
+      return state;
+    }
+    const data = await res.json();
+    if (!data || typeof data !== "object" || Array.isArray(data)) return state;
+    for (const name of RUNTIME_SECRET_NAMES) {
+      const value = data[name];
+      if (!env[name] && typeof value === "string" && value.length > 0) {
+        env[name] = value;
+        state.fromVault.push(name);
+      }
+    }
+  } catch (e) {
+    state.error = `Vault injoignable : ${e instanceof Error ? e.message : String(e)}`.slice(0, 300);
+  }
+  return state;
+}
+
 // server/edge/api.ts
 var log22 = createLogger("EDGE_API");
 var CORS = {
@@ -12019,7 +12065,17 @@ async function route(request) {
     if (m === "GET" && path === "/health") {
       return handle(async () => {
         const ebay2 = ebayEnv();
-        return { ok: true, ebayConfigured: Boolean(ebay2), ebayEnvironment: ebay2?.EBAY_ENV ?? null, cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16), time: (/* @__PURE__ */ new Date()).toISOString() };
+        const secrets = await ensureRuntimeSecrets();
+        return {
+          ok: true,
+          ebayConfigured: Boolean(ebay2),
+          ebayEnvironment: ebay2?.EBAY_ENV ?? null,
+          cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16),
+          encryptionConfigured: Boolean(process.env.TOKEN_ENCRYPTION_KEY && process.env.TOKEN_ENCRYPTION_KEY.length >= 32),
+          // Noms uniquement (jamais les valeurs).
+          secrets: { fromEnv: secrets.fromEnv, fromVault: secrets.fromVault, error: secrets.error },
+          time: (/* @__PURE__ */ new Date()).toISOString()
+        };
       });
     }
     if (m === "GET" && path === "/ebay/callback") return ebayCallbackRedirect(url);
@@ -12056,7 +12112,16 @@ async function route(request) {
     return errorResponse(e);
   }
 }
+var secretsLoad = null;
+function ensureRuntimeSecrets() {
+  secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
+    if (s.error) log22.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    return s;
+  });
+  return secretsLoad;
+}
 async function serve(request) {
+  await ensureRuntimeSecrets();
   return withCors(await route(request));
 }
 

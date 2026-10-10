@@ -174,3 +174,26 @@ describe("Edge Function api : routage et retour OAuth eBay", () => {
 });
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient: () => ({}) }));
+
+describe("secrets d'exécution (Vault)", () => {
+  it("variables d'environnement prioritaires ; Vault complète les absents ; noms seulement", async () => {
+    const { loadRuntimeSecrets } = await import("../../server/edge/runtime-secrets");
+    const env: Record<string, string | undefined> = { SUPABASE_URL: "https://p.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "srk", CRON_SECRET: "from-env-xxxxxxxxxxxx" };
+    const { fetchImpl, calls } = mockFetch([["/rest/v1/rpc/server_runtime_secrets", { body: JSON.stringify({ CRON_SECRET: "from-vault", TOKEN_ENCRYPTION_KEY: "k".repeat(44), OTHER: "ignored" }) }]]);
+    const s = await loadRuntimeSecrets(env, fetchImpl);
+    expect(env.CRON_SECRET).toBe("from-env-xxxxxxxxxxxx");
+    expect(env.TOKEN_ENCRYPTION_KEY).toBe("k".repeat(44));
+    expect(env.OTHER).toBeUndefined();
+    expect(s).toEqual({ fromEnv: ["CRON_SECRET"], fromVault: ["TOKEN_ENCRYPTION_KEY"], error: null });
+    expect((calls[0]!.init?.headers as Record<string, string>).apikey).toBe("srk");
+  });
+
+  it("Vault refusé → erreur explicite, rien d'inventé", async () => {
+    const { loadRuntimeSecrets } = await import("../../server/edge/runtime-secrets");
+    const env: Record<string, string | undefined> = { SUPABASE_URL: "https://p.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "srk" };
+    const { fetchImpl } = mockFetch([["/rest/v1/rpc/", { status: 401, body: "{}" }]]);
+    const s = await loadRuntimeSecrets(env, fetchImpl);
+    expect(s.error).toMatch(/HTTP 401/);
+    expect(env.TOKEN_ENCRYPTION_KEY).toBeUndefined();
+  });
+});
