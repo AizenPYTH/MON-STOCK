@@ -18,6 +18,18 @@ const ALLOWED_PACKAGES = new Set(["zod"]);
 /** Modules internes interdits même s'ils n'importent rien d'interdit (accès privilégiés). */
 const FORBIDDEN_INTERNAL = [/^@\/lib\/supabase\/(server|admin|bearer|proxy)$/, /^@\/lib\/(env|crypto|logger|cron-auth)$/, /^@\/features\/[^/]+\/(actions|queries|dal)$/, /^@\/app\//];
 
+/**
+ * API Intl NON implémentées par Hermes (moteur JavaScript de l'application iOS/Android) : leur
+ * appel lève « undefined is not a constructor » et ferme l'application en production, alors que
+ * les tests (Node) passent. Constaté : Intl.RelativeTimeFormat sur l'écran de comparaison.
+ */
+const HERMES_MISSING_INTL = /\bIntl\.(RelativeTimeFormat|PluralRules|ListFormat|Segmenter|DisplayNames|DurationFormat)\b/g;
+
+/** Code sans commentaires (une mention dans un commentaire n'est pas un appel). */
+function codeOnly(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
 const IMPORT_RE = /(?:^|\n)\s*(import|export)\s+(type\s+)?(?:[^"';]*?\sfrom\s+)?["']([^"']+)["']/g;
 
 function walk(dir: string): string[] {
@@ -78,6 +90,7 @@ describe("frontière des modules partagés avec l'application mobile", () => {
       const rel = path.relative(ROOT, file);
       const text = readFileSync(file, "utf8");
       if (/^\s*["']use (server|client)["']/m.test(text)) problems.push(`${rel} : directive "use server/client"`);
+      for (const m of codeOnly(text).matchAll(HERMES_MISSING_INTL)) problems.push(`${rel} : Intl.${m[1]} (absent de Hermes : l'application iOS se ferme)`);
       if (file.endsWith(".tsx")) problems.push(`${rel} : composant web (.tsx) partagé`);
       for (const { spec: dep, typeOnly } of runtimeImports(file)) {
         if (dep.startsWith("@/")) {
@@ -94,6 +107,15 @@ describe("frontière des modules partagés avec l'application mobile", () => {
       }
     }
     expect(problems).toEqual([]);
+  });
+
+  it("aucune API Intl absente de Hermes dans le code de l'application (sinon l'app se ferme à l'exécution)", () => {
+    const offenders: string[] = [];
+    for (const f of walk(MOBILE_SRC)) {
+      const text = readFileSync(f, "utf8");
+      for (const m of codeOnly(text).matchAll(HERMES_MISSING_INTL)) offenders.push(`${path.relative(ROOT, f)} : Intl.${m[1]}`);
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("le mobile ne lit que des variables EXPO_PUBLIC_* et jamais un secret ou le client service_role", () => {

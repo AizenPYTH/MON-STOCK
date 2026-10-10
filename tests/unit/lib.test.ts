@@ -63,3 +63,22 @@ describe("slugify", () => {
     expect(slugify("")).toBe("org");
   });
 });
+
+describe("formatRelative sans Intl.RelativeTimeFormat (absent du moteur Hermes de l'app iOS)", () => {
+  it("fonctionne même si Intl.RelativeTimeFormat n'existe pas", () => {
+    const original = Intl.RelativeTimeFormat;
+    // Simule Hermes : l'API est absente.
+    (Intl as unknown as { RelativeTimeFormat?: unknown }).RelativeTimeFormat = undefined;
+    try {
+      const now = new Date("2026-10-07T12:00:00Z");
+      expect(formatRelative(new Date("2026-10-07T11:59:40Z"), now)).toBe("à l'instant");
+      expect(formatRelative(new Date("2026-10-07T11:48:00Z"), now)).toBe("il y a 12 minutes");
+      expect(formatRelative(new Date("2026-10-07T11:00:00Z"), now)).toBe("il y a 1 heure");
+      expect(formatRelative(new Date("2026-10-04T12:00:00Z"), now)).toBe("il y a 3 jours");
+      expect(formatRelative(new Date("2026-10-07T14:00:00Z"), now)).toBe("dans 2 heures");
+      expect(formatRelative("2026-10-10T05:36:55.482+00:00", now)).toBe("dans 3 jours");
+    } finally {
+      (Intl as unknown as { RelativeTimeFormat?: unknown }).RelativeTimeFormat = original;
+    }
+  });
+});

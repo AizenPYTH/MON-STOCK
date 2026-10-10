@@ -1,4 +1,6 @@
 import { computeLandedCost, computeMargin } from "@/domain/pricing/margin";
+import { detectTitleIssue } from "@/domain/sourcing/offer-filter";
+import { normalizeText } from "@/domain/sourcing/normalizer";
 import type { MarginContext } from "@/features/stock/model";
 import { skuLabel } from "@/features/stock/model";
 import type { MobileSupabase } from "~/lib/supabase";
@@ -78,9 +80,26 @@ function toRow(o: RawOffer): OfferRow {
   };
 }
 
-/** Clé de regroupement : SKU associé, sinon produit normalisé, sinon l'offre seule. */
-export function groupKeyOf(o: Pick<OfferRow, "id" | "skuId" | "normalizedProductId">): string {
-  return o.skuId ? `sku:${o.skuId}` : o.normalizedProductId ? `np:${o.normalizedProductId}` : `offer:${o.id}`;
+/** Empreinte courte et stable d'un texte (djb2, base 36) — sert uniquement de clé d'URL. */
+function shortHash(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/**
+ * Clé de regroupement : SKU associé, sinon produit normalisé, sinon l'offre seule.
+ * Le produit normalisé désigne l'APPAREIL (« iPhone 13 ») : une pièce détachée ou un accessoire
+ * (« Écran iPhone 13 », « Batterie iPhone 13 ») rattaché au même appareil n'est pas le même
+ * article — ces offres sont séparées par leur titre normalisé pour ne jamais comparer un écran à
+ * une batterie.
+ */
+export function groupKeyOf(o: Pick<OfferRow, "id" | "skuId" | "normalizedProductId"> & { title?: string }): string {
+  if (o.skuId) return `sku:${o.skuId}`;
+  if (!o.normalizedProductId) return `offer:${o.id}`;
+  const issue = o.title ? detectTitleIssue(o.title) : null;
+  if (issue && (issue.issue === "spare_part" || issue.issue === "accessory")) return `np:${o.normalizedProductId}:${shortHash(normalizeText(o.title!))}`;
+  return `np:${o.normalizedProductId}`;
 }
 
 export function groupOffers(raw: readonly RawOffer[]): OfferGroup[] {
@@ -165,9 +184,10 @@ export async function fetchComparison(supabase: MobileSupabase, organizationId: 
   if (!id || !["sku", "np", "offer"].includes(kind ?? "")) return null;
   let q = supabase.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");
   q = kind === "sku" ? q.eq("sku_id", id) : kind === "np" ? q.eq("normalized_product_id", id) : q.eq("id", id);
-  const { data, error } = await q.limit(100);
+  const { data, error } = await q.limit(200);
   if (error) throw error;
-  const raw = (data ?? []) as unknown as RawOffer[];
+  // Le filtre en base porte sur le produit normalisé ; la clé complète sépare ensuite les pièces.
+  const raw = ((data ?? []) as unknown as RawOffer[]).filter((r) => groupKeyOf(toRow(r)) === key);
   if (raw.length === 0) return null;
   const group = groupOffers(raw)[0]!;
   let sku: Comparison["sku"] = null;
