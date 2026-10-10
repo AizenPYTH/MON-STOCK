@@ -172,7 +172,13 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Intelligence | Aujourd'hui / Analyse 7-30-90 j | vues analytiques |
 | **Produit à la voix (IA)** | « Dites ou écrivez le produit » : dictée iOS en français, phrase comprise par Claude (marque, modèle, variantes, prix d'achat/vente, quantités, ambiguïtés signalées) → formulaire pré-rempli, création après vérification | Edge Function `/ai/product-draft` (clé `ANTHROPIC_API_KEY` serveur) |
 | **Assistant (IA)** | Intelligence → « Demandez à l'assistant » : questions écrites ou dictées (« quel est le produit que j'ai le plus vendu ? ») ; réponses calculées sur les vraies ventes / commandes / stock / annonces eBay, données consultées affichées | Edge Function `/ai/assistant` (lecture seule sous la session de l'utilisateur) |
-| Commande fournisseur | Brouillon depuis la comparaison | `purchase_orders` |
+| Commande fournisseur | Brouillon depuis la comparaison ou le radar (jamais envoyé automatiquement) | `purchase_orders` |
+| **Fournisseurs professionnels** | Sourcing → « Fournisseurs » (ou Réglages) : annuaire de 63 fournisseurs, filtres par segment, statut réel (identifié, vérifié, accès public, compte pro requis, connecteur, import testé, indisponible), dernier contrôle du site, procédure d'accès, e-mail de demande FR/EN | `/sourcing/directory` |
+| **Import de catalogue** | Sourcing → « Importer » : fichier CSV, TSV, XLSX, XML ou JSON du fournisseur → colonnes détectées, correspondance modifiable, HT/TTC, devise, aperçu et erreurs par ligne → confirmation → offres réelles horodatées | `/sourcing/import/preview`, `/sourcing/import` |
+| **Radar d'opportunités** | Sourcing → « Radar » : offres rapprochées d'un SKU, coût rendu, CA HT, marge brute, bénéfice net, coûts manquants listés, origine et fraîcheur du prix ; tri ; fiche détaillée ; enregistrer l'offre (prix figé) ; brouillon de commande ; paramètres de coûts (administrateur) ; rapprochements à valider | `/radar`, `/radar/settings`, `/sourcing/matches` |
+| **Annonce eBay (préparation)** | Fiche variante → « Préparer une annonce eBay » : pré-remplissage réel, catégorie, état, photos, politiques et emplacement du compte, « Vérifier l'annonce » (simulation exacte) ; « Publier… » n'apparaît que si les 4 verrous serveur sont levés, puis confirmation | `/ebay/listings/*` |
+| **Déconnexion eBay** | Réglages → eBay → « Déconnecter » (administrateur, confirmation) | `/ebay/disconnect` |
+| **Diagnostic** | Réglages → Diagnostic : base, compte et rôle, serveur, assistant IA, sourcing, eBay — états réels mesurés, durées, aucun secret affiché | lectures RLS + `/health` |
 
 ### 4.2 bis Correctif TestFlight build 4
 
@@ -185,7 +191,8 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 
 ### 4.3 Toujours désactivé (affiché comme tel, jamais simulé)
 
-- Création / publication d'annonces eBay depuis MON STOCK (voir docs/SERVER.md §6).
+- Publication réelle d'annonces eBay : préparée et contrôlable, **verrouillée** côté serveur
+  (`EBAY_LISTING_ENABLED`, voir docs/SERVER.md §7) ; jamais testée contre eBay.
 - Marquer une commande comme expédiée, étiquette d'expédition, scan de code-barres.
 - Amazon, Shopify, WooCommerce (« prochainement »).
 
@@ -213,12 +220,28 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Recherche de bout en bout sur le serveur (organisation temporaire supprimée ensuite) : « écran iPhone 13 » | 4 offres relevées et stockées ; résultat retenu « Ecran iPhone 13 – Origine Apple », 199,90 € TTC, lien direct ; racks SIM écartés (« pas la pièce recherchée ») |
 | Bibliothèque de sources (vérification réelle depuis le serveur) | Brico-phone : vérifiée (ex. « Ecran Soft Oled pour iPhone 13 – Premium », 79,90 €) ; eBay : en attente des clés ; autres : refus documentés (voir docs/SERVER.md §5) |
 
+Mise à jour du 10 octobre 2026 (audit total) :
+
+| Vérification | Résultat |
+| --- | --- |
+| Web : typecheck, lint | 0 erreur |
+| Web : unitaires + intégration PostgreSQL local (toutes migrations) | **891 / 891** (106 fichiers) |
+| dont import de catalogue (CSV Windows-1252, XLSX, XML, JSON, erreurs par ligne) | 8 |
+| dont annuaire fournisseurs (statuts, e-mails, contrôle de site, plateforme) | 10 |
+| dont radar (modèle de coût, TVA, coûts manquants, tri) + service | 15 |
+| dont annonce eBay (validation, contenu, anti-doublon, verrous) | 8 |
+| dont remboursement après expédition (pas de recrédit, alerte unique) | 3 |
+| dont tables nouvelles : RLS, isolation entre organisations, gardes, quotas IA | matrice complète |
+| Mobile : typecheck, lint, Jest | 0 erreur, **98 / 98** (19 suites) |
+| Mobile : bundle iOS + analyse des secrets | aucun secret ni code serveur |
+| Supabase TEST — Edge Function v18 | `/health` 200 ; contrôle de lecture (radar, annuaire, suggestions) OK ; import réel (2 offres, 1 ligne illisible) OK ; chaîne complète SKU → import → rapprochement EAN → radar → contrôle eBay OK ; outils IA 6/6 ; annuaire 53/63 sites joignables |
+
 **Non testé ici :** exécution sur iPhone (pas de macOS), appel authentifié de bout en bout avec un
 vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay réelle (clés absentes).
 
 ## 5. Mise en place de l'environnement TEST
 
-1. **Base Supabase TEST** (`ccywsegdowikeirbsfae`) : migrations appliquées jusqu'à `20261009000500`.
+1. **Base Supabase TEST** (`ccywsegdowikeirbsfae`) : migrations appliquées jusqu'à `20261010000300`.
 2. **Supabase Auth → URL Configuration** : `monstock://**` dans les Redirect URLs.
 3. **Serveur** : voir [docs/SERVER.md](SERVER.md) (fonction `api`, secrets, tâches planifiées, eBay).
 4. **Variables publiques** du mobile : dans `apps/mobile/eas.json` (URL, clé `sb_publishable_…`, `TEST`).
@@ -252,7 +275,21 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
 6. **Assistant** : Intelligence → « Demandez à l'assistant » → micro ou texte « quel est le
    produit que j'ai le plus vendu ? » → réponse chiffrée + « Données consultées : Ventes par
    produit ». Sans vente synchronisée, l'assistant le dit (il n'invente rien).
-7. Mode avion : bannière hors ligne, écritures refusées avec message clair.
+7. **Import de catalogue** : Sourcing → « Importer » → nom du fournisseur → choisir le fichier
+   (CSV/XLSX reçu par e-mail, dans Fichiers) → vérifier les colonnes proposées (référence, titre,
+   prix, HT/TTC, stock, EAN) et l'aperçu → « Confirmer l'import » → « Voir les offres ».
+8. **Radar** : créer d'abord le SKU avec son EAN ; après l'import, Sourcing → « Radar » → l'offre
+   rapprochée apparaît avec marge et coûts manquants → icône réglages → compléter TVA, commissions,
+   port, emballage, retours → la fiche passe d'« Estimation partielle » à « Rentable (coûts complets) » si plus rien ne manque et que le prix est frais (ou « Non rentable ») →
+   enregistrer l'offre / préparer un brouillon de commande.
+9. **Fournisseurs** : Sourcing → « Fournisseurs » → fiche → « E-mail de demande d'accès » →
+   la messagerie s'ouvre avec la demande pré-rédigée.
+10. **Annonce eBay** (eBay connecté) : fiche variante → « Préparer une annonce eBay » → catégorie,
+    état, photo HTTPS, politiques, emplacement → « Vérifier l'annonce » → contenu exact affiché.
+    Ne publiez qu'après avoir décidé d'activer `EBAY_LISTING_ENABLED`.
+11. **Diagnostic** : Réglages → Diagnostic → chaque ligne est « OK », « attention » ou « erreur »
+    avec la raison (ex. « Assistant IA : non activé »).
+12. Mode avion : bannière hors ligne, écritures refusées avec message clair.
 
 ## 8. Problèmes restants
 
@@ -260,8 +297,11 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
   la dictée transcrit mais le remplissage et l'assistant affichent « non activé ».
 - **eBay** : clés d'application eBay à fournir (App ID, Cert ID, RuName) et URL de retour à
   déclarer chez eBay — seule action manuelle bloquante (docs/SERVER.md §4).
-- **Sources fournisseurs** : la plupart des fournisseurs spécialisés testés n'exposent pas leur
-  catalogue sans compte professionnel ; leur intégration demande vos identifiants ou un flux fourni
-  par le fournisseur (docs/SERVER.md §5).
+- **Sources fournisseurs** : aucun fournisseur spécialisé testé n'expose son catalogue sans compte
+  professionnel ; le canal réaliste est compte pro + fichier (import fonctionnel) ou API
+  (docs/SERVER.md §5).
+- **Reconnexion eBay** après l'ajout du scope `sell.account.readonly` (comptes connectés avant le
+  10 octobre 2026).
+- **Protection des mots de passe divulgués** à activer dans Supabase Auth.
 - Aucune exécution sur appareil depuis cet environnement : le build TestFlight est le premier test réel.
 - Catalogue limité à 5 000 SKU (signalé). Pas de cache hors ligne des données (confidentialité).
