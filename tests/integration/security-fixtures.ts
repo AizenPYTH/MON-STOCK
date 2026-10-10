@@ -186,6 +186,8 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
     "insert into public.replenishment_recommendations (organization_id, sku_id, current_stock, explanation, supplier_id, offer_id, purchase_order_id) values ($1, $2, 5, 'Explication', $3, $4, $5) returning id",
     [orgId, sku, supplier, offer, po],
   );
+  await one("sourcing_saved_offers", "insert into public.sourcing_saved_offers (organization_id, offer_id, price_at_save, currency_at_save) values ($1, $2, 180, 'EUR') returning id", [orgId, offer]);
+  await one("ai_usage_events", "insert into public.ai_usage_events (organization_id, user_id, kind) values ($1, $2, 'assistant') returning id", [orgId, ownerId]);
   await one("organization_invitations", "insert into public.organization_invitations (organization_id, email, role) values ($1, $2, 'member') returning id", [orgId, `invite-${slug}@example.test`]);
   ids["organizations"] = orgId;
   ids["organization_members"] = ownerId;

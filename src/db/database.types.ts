@@ -6,7 +6,13 @@ export type Database = {
   
   "public": {
           Tables: {
-            "alerts": {
+            "ai_usage_events": {
+  Row: { created_at: string; id: string; kind: string; organization_id: string; user_id: string };
+  Insert: { created_at?: string; id?: string; kind: string; organization_id: string; user_id?: string };
+  Update: { created_at?: string; id?: string; kind?: string; organization_id?: string; user_id?: string };
+  Relationships: [];
+},
+"alerts": {
                   Row: {
                     "action_href": string | null,"created_at": string,"dedupe_key": string,"entity_id": string | null,"entity_type": string | null,"id": string,"message": string,"organization_id": string,"resolved_at": string | null,"severity": Database["public"]['Enums']["alert_severity"],"status": Database["public"]['Enums']["alert_status"],"title": string,"type": string,"updated_at": string
                   }
@@ -866,7 +872,14 @@ isOneToOne: false
       referencedColumns: ["sku_id"]
     }
                   ]
-                },"sourcing_library_checks": {
+                },"sourcing_saved_offers": {
+  Row: { created_at: string; created_by: string | null; currency_at_save: string | null; id: string; note: string | null; offer_id: string; organization_id: string; price_at_save: number | null };
+  Insert: { created_at?: string; created_by?: string | null; currency_at_save?: string | null; id?: string; note?: string | null; offer_id: string; organization_id: string; price_at_save?: number | null };
+  Update: { created_at?: string; created_by?: string | null; currency_at_save?: string | null; id?: string; note?: string | null; offer_id?: string; organization_id?: string; price_at_save?: number | null };
+  Relationships: [
+    { foreignKeyName: "sourcing_saved_offers_offer_id_fkey"; columns: ["offer_id"]; isOneToOne: false; referencedRelation: "sourcing_offers"; referencedColumns: ["id"] },
+  ];
+},"sourcing_library_checks": {
   Row: { adapter: string | null; checked_at: string; duration_ms: number | null; http_status: number | null; key: string; message: string | null; product_count: number | null; robots_allowed: boolean | null; sample: Json; status: string };
   Insert: { adapter?: string | null; checked_at?: string; duration_ms?: number | null; http_status?: number | null; key: string; message?: string | null; product_count?: number | null; robots_allowed?: boolean | null; sample?: Json; status: string };
   Update: { adapter?: string | null; checked_at?: string; duration_ms?: number | null; http_status?: number | null; key?: string; message?: string | null; product_count?: number | null; robots_allowed?: boolean | null; sample?: Json; status?: string };
