@@ -33,7 +33,7 @@ const warningsOf = (r: ReturnType<typeof run>, id: string) => [...r.kept, ...r.r
 
 describe("criteriaFromParsedQuery", () => {
   it("l'état déduit d'un grade n'est pas un état explicitement demandé", () => {
-    expect(iphone13).toEqual({ brand: "apple", model: "iphone 13", storage: "128GB", color: null, grade: "A", condition: "unknown" });
+    expect(iphone13).toEqual({ brand: "apple", model: "iphone 13", storage: "128GB", color: null, grade: "A", condition: "unknown", itemKind: "device", itemLabel: null });
     expect(criteriaFromParsedQuery(parseQuery("iPhone 13 128GB neuf")).condition).toBe("new");
   });
 });
