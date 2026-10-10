@@ -747,3 +747,78 @@ export interface EbayListingCheckDTO {
   payload: { inventoryItem: unknown; offer: unknown } | null;
   publication: { allowed: boolean; blockers: string[] };
 }
+
+// ---------------------------------------------------------------------------
+// Mes outils — expédition et suivi de colis
+// ---------------------------------------------------------------------------
+
+export const shippingQuoteRequestSchema = z.object({
+  weightKg: z.number().positive().max(1000),
+  lengthCm: z.number().positive().max(600),
+  widthCm: z.number().positive().max(600),
+  heightCm: z.number().positive().max(600),
+  fromCountry: z.string().regex(/^[A-Z]{2}$/),
+  fromPostcode: z.string().trim().min(2).max(12),
+  fromCity: z.string().trim().max(80).optional(),
+  toCountry: z.string().regex(/^[A-Z]{2}$/),
+  toPostcode: z.string().trim().min(2).max(12),
+  toCity: z.string().trim().max(80).optional(),
+  /** valeur déclarée (requise par certains transporteurs à l'international) */
+  declaredValue: z.number().nonnegative().max(100000).optional(),
+});
+
+export type ShippingQuoteRequest = z.infer<typeof shippingQuoteRequestSchema>;
+
+/** Devis d'une plateforme d'expédition connectée (prix réel du compte, au moment de la demande). */
+export interface ShippingQuoteDTO {
+  key: string;
+  provider: "packlink" | "boxtal";
+  providerLabel: string;
+  carrier: string;
+  service: string;
+  /** prix TTC tel que renvoyé (texte décimal exact, ex. « 10.13 ») */
+  priceInclVat: string | null;
+  /** prix HT tel que renvoyé */
+  priceExclVat: string | null;
+  currency: string;
+  transitDaysMin: number | null;
+  transitDaysMax: number | null;
+  /** date de livraison estimée FOURNIE par la plateforme */
+  estimatedDelivery: string | null;
+  /** dépôt en point relais / bureau (true) ou enlèvement à domicile (false) ; null si inconnu */
+  dropOff: boolean | null;
+  /** livraison en point relais (true) ou à domicile (false) ; null si inconnu */
+  deliveryToPickupPoint: boolean | null;
+  tracking: boolean | null;
+  restrictions: string[];
+  quotedAt: string;
+}
+
+export interface ShippingProviderStatusDTO {
+  id: "packlink" | "boxtal";
+  label: string;
+  state: "ok" | "not_configured" | "error" | "no_result";
+  message: string | null;
+  count: number;
+}
+
+export interface ShippingQuotesDTO {
+  quotes: ShippingQuoteDTO[];
+  providers: ShippingProviderStatusDTO[];
+  quotedAt: string;
+}
+
+export const trackingRefreshSchema = z.object({ parcelId: z.string().uuid() });
+
+export interface TrackingProvidersDTO {
+  laposte: boolean;
+  ship24: boolean;
+}
+
+export interface TrackingRefreshDTO {
+  parcelId: string;
+  status: string;
+  provider: string | null;
+  checked: boolean;
+  message: string | null;
+}

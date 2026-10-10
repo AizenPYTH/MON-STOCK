@@ -1,6 +1,6 @@
 import type { ColorValue } from "react-native";
 import { Tabs } from "expo-router/tabs";
-import { BarChart3, Package, Tag, Truck, type LucideIcon } from "lucide-react-native";
+import { BarChart3, Package, Tag, Truck, Wrench, type LucideIcon } from "lucide-react-native";
 import { color } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -11,7 +11,7 @@ function tabIcon(Icon: LucideIcon) {
   return TabIcon;
 }
 
-/** 4 onglets (Stock, Ventes, Sourcing, Intelligence) ; pas de badge numérique (les alertes vivent dans « À faire »). */
+/** 5 onglets (Stock, Ventes, Sourcing, Intelligence, Outils) ; pas de badge numérique (les alertes vivent dans « À faire »). */
 export default function TabsLayout() {
   return (
     <Tabs
@@ -28,6 +28,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="sales" options={{ title: "Ventes", tabBarIcon: tabIcon(Tag) }} />
       <Tabs.Screen name="sourcing" options={{ title: "Sourcing", tabBarIcon: tabIcon(Truck) }} />
       <Tabs.Screen name="intelligence" options={{ title: "Intelligence", tabBarIcon: tabIcon(BarChart3) }} />
+      <Tabs.Screen name="tools" options={{ title: "Outils", tabBarIcon: tabIcon(Wrench), tabBarAccessibilityLabel: "Mes outils" }} />
     </Tabs>
   );
 }

@@ -188,6 +188,8 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
   );
   await one("sourcing_saved_offers", "insert into public.sourcing_saved_offers (organization_id, offer_id, price_at_save, currency_at_save) values ($1, $2, 180, 'EUR') returning id", [orgId, offer]);
   await one("ai_usage_events", "insert into public.ai_usage_events (organization_id, user_id, kind) values ($1, $2, 'assistant') returning id", [orgId, ownerId]);
+  await one("shipping_rate_cards", "insert into public.shipping_rate_cards (organization_id, carrier, service, bands) values ($1, 'Colissimo', 'Domicile', '[{\"maxWeightKg\":1,\"price\":\"7.35\"}]'::jsonb) returning id", [orgId]);
+  await one("tracked_parcels", "insert into public.tracked_parcels (organization_id, tracking_number, carrier_code, label) values ($1, $2, 'colissimo', 'Fixture') returning id", [orgId, `6A${slug.replace(/[^0-9]/g, "").padEnd(11, "0").slice(0, 11)}`]);
   await one("organization_invitations", "insert into public.organization_invitations (organization_id, email, role) values ($1, $2, 'member') returning id", [orgId, `invite-${slug}@example.test`]);
   ids["organizations"] = orgId;
   ids["organization_members"] = ownerId;

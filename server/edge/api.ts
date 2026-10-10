@@ -47,7 +47,7 @@ import { ebayEnv } from "@/lib/env";
 import { authorizeCron } from "@/lib/cron-auth";
 import { errorResponse, handle, parseBody, parseQuery, uuidParam } from "@/features/mobile-api/http";
 import { requireMobileOrgContext } from "@/features/mobile-api/context";
-import { sourcingSearchQuerySchema } from "@/features/mobile-api/contract";
+import { shippingQuoteRequestSchema, sourcingSearchQuerySchema, trackingRefreshSchema } from "@/features/mobile-api/contract";
 import { integrations, sourcingSearch, sourcingStatus } from "@/features/mobile-api/service";
 import { syncConnectionNow } from "@/features/integrations/sync-service";
 import { OAUTH_STATE_TTL_SECONDS, oauthErrorCodeFor } from "@/features/integrations/oauth-flow";
@@ -75,6 +75,9 @@ import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
 import { checkAssistantTools, checkReadOnlyRoutes } from "@/services/ai/tools-check";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
 import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
+import { quoteShipping, shippingProvidersStatus } from "@/services/shipping/quotes";
+import { refreshParcelForOrg, runDueTracking, trackingProviders } from "@/services/tracking/tracking";
+import { probeToolConnectors } from "@/services/tools/connectors-probe";
 
 const log = createLogger("EDGE_API");
 
@@ -235,6 +238,8 @@ export async function route(request: Request): Promise<Response> {
           ebayEnvironment: ebay?.EBAY_ENV ?? null,
           cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16),
           aiConfigured: aiConfigured(),
+          shippingProviders: shippingProvidersStatus().filter((p) => p.configured).map((p) => p.id),
+          trackingProviders: trackingProviders(),
           encryptionConfigured: Boolean(process.env.TOKEN_ENCRYPTION_KEY && process.env.TOKEN_ENCRYPTION_KEY.length >= 32),
           // Noms uniquement (jamais les valeurs).
           secrets: { fromEnv: secrets.fromEnv, fromVault: secrets.fromVault, error: secrets.error },
@@ -263,6 +268,8 @@ export async function route(request: Request): Promise<Response> {
         });
       }
       if (m === "POST" && path === "/cron/chain-selftest") return handle(() => runChainSelfTest());
+      if (m === "POST" && path === "/cron/tracking") return handle(() => runDueTracking());
+      if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
         return handle(async () => checkReadOnlyRoutes((await parseBody(request, z.object({ organizationId: uuidParam.optional() }))).organizationId));
@@ -295,6 +302,24 @@ export async function route(request: Request): Promise<Response> {
         const ctx = await requireMobileOrgContext(request);
         const q = parseQuery(request, z.object({ sort: z.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
+      });
+    }
+    if (m === "GET" && path === "/tools/status") {
+      return handle(async () => {
+        await requireMobileOrgContext(request);
+        return { shipping: shippingProvidersStatus(), tracking: trackingProviders() };
+      });
+    }
+    if (m === "POST" && path === "/shipping/quotes") {
+      return handle(async () => {
+        await requireMobileOrgContext(request);
+        return quoteShipping(await parseBody(request, shippingQuoteRequestSchema));
+      });
+    }
+    if (m === "POST" && path === "/tracking/refresh") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return refreshParcelForOrg(ctx, (await parseBody(request, trackingRefreshSchema)).parcelId);
       });
     }
     if (m === "POST" && path === "/radar/settings") {

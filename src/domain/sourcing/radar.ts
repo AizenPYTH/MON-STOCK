@@ -171,11 +171,115 @@ export function evaluateRadarOffer(offer: RadarOfferInput, sku: RadarSkuInput, s
   }
   const price = offer.price as number;
   const sale = revenue as number;
+  const country = offer.supplierCountry?.toUpperCase() ?? null;
+  const eco = computeUnitEconomics(
+    {
+      salePrice: sale,
+      saleLabel: revenueBasis === "avg_sale_30d" ? "Prix de vente moyen constaté (30 j)" : "Prix de vente du SKU",
+      purchasePrice: price,
+      purchaseTaxType: offer.taxType,
+      supplierShipping: offer.shippingCost,
+      moq: offer.moq,
+      supplierOrigin: country ? (EU.has(country) ? "eu" : "non_eu") : "unknown",
+      originLabel: country,
+    },
+    s,
+  );
+  missing.push(...eco.missing);
+  cautions.push(...eco.cautions);
+  breakdown.push(...eco.breakdown);
+  const { purchaseCost, landedCost: landed, revenueExVat, grossMargin } = eco;
+  const estimatedProfit = eco.estimatedProfit as number;
+  const marginPercent = eco.marginPercent;
+
+  // qualité des données
+  if (freshness === "stale") cautions.push(`Prix vu il y a ${ageDays} jours : à revérifier avant de commander.`);
+  if (freshness === "unknown") cautions.push("Date de relevé du prix inconnue.");
+  if (offer.priceOrigin !== "verified_live") cautions.push(PRICE_ORIGIN_LABEL[offer.priceOrigin] + ".");
+  if (offer.stockStatus === "unknown" && offer.availableQuantity === null) cautions.push("Disponibilité non communiquée.");
+  if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) cautions.push("Rupture chez le fournisseur.");
+
+  // raisons
+  if (sku.currentCost !== null && sku.currentCost > 0 && purchaseCost !== null && purchaseCost < sku.currentCost) {
+    const pct = Math.round(((sku.currentCost - purchaseCost) / sku.currentCost) * 100);
+    if (pct >= 3) reasons.push(`Prix ${pct} % sous votre coût d'achat actuel (${sku.currentCost.toFixed(2)}).`);
+  }
+  if (offer.previousPrice !== null && offer.previousPrice > price) {
+    const pct = Math.round(((offer.previousPrice - price) / offer.previousPrice) * 100);
+    if (pct >= 5) reasons.push(`Prix en baisse de ${pct} % chez ce fournisseur.`);
+  }
+  const lowStock = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 1);
+  if (sku.units30d > 0 && lowStock) reasons.push(`Stock bas (${sku.quantityAvailable}) pour un produit vendu ${sku.units30d} fois en 30 jours.`);
+  else if (sku.units30d > 0) reasons.push(`Vous en vendez ${sku.units30d} par mois.`);
+  if (estimatedProfit > 0 && marginPercent !== null) reasons.push(`Bénéfice estimé ${estimatedProfit.toFixed(2)} par unité (${marginPercent} %).`);
+
+  const status: RadarStatus = estimatedProfit <= 0 ? "unprofitable" : missing.length === 0 && freshness !== "stale" ? "profitable" : "estimated";
+
+  // score : bénéfice et marge d'abord, puis rotation, disponibilité et qualité des données
+  let score = 0;
+  if (estimatedProfit > 0) {
+    score += Math.min(40, estimatedProfit / 2);
+    score += Math.min(20, Math.max(0, marginPercent ?? 0) / 2);
+  }
+  score += Math.min(15, sku.units30d * 2);
+  if (offer.stockStatus === "in_stock" || (offer.availableQuantity ?? 0) > 0) score += 10;
+  score += freshness === "fresh" ? 10 : freshness === "recent" ? 6 : 0;
+  score += missing.length === 0 ? 5 : Math.max(0, 5 - missing.length);
+  return { status, revenue: sale, revenueBasis, revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, breakdown, missing, cautions, reasons, freshness, ageDays, score: Math.round(Math.min(100, score)) };
+}
+
+export type SupplierOrigin = "eu" | "non_eu" | "unknown";
+
+export interface UnitEconomicsInput {
+  /** prix de vente unitaire (TTC en régime normal, prix encaissé en marge / franchise) */
+  salePrice: number | null;
+  saleLabel: string;
+  purchasePrice: number | null;
+  purchaseTaxType: "ht" | "ttc" | "unknown";
+  /** transport fournisseur pour la commande minimale (réparti sur `moq`) */
+  supplierShipping: number | null;
+  moq: number | null;
+  supplierOrigin: SupplierOrigin;
+  /** code pays affiché dans les messages (douane) */
+  originLabel?: string | null;
+}
+
+export interface UnitEconomics {
+  revenueExVat: number | null;
+  purchaseCost: number | null;
+  landedCost: number | null;
+  grossMargin: number | null;
+  /** bénéfice avec les coûts CONNUS uniquement */
+  estimatedProfit: number | null;
+  marginPercent: number | null;
+  /** total des frais de vente connus */
+  sellingFees: number | null;
+  breakdown: RadarLine[];
+  missing: string[];
+  cautions: string[];
+}
+
+/**
+ * Économie unitaire d'une vente (partagée par le radar et « Mes outils ») : coût d'achat rendu,
+ * CA hors TVA selon le régime, marge brute, frais de vente, bénéfice. Un coût inconnu n'est
+ * jamais supposé nul : il est listé dans `missing` et n'est pas déduit.
+ */
+export function computeUnitEconomics(input: UnitEconomicsInput, s: RadarCostSettings): UnitEconomics {
+  const missing: string[] = [];
+  const cautions: string[] = [];
+  const breakdown: RadarLine[] = [];
+  if (input.salePrice === null || input.purchasePrice === null) {
+    if (input.salePrice === null) missing.push("prix de vente");
+    if (input.purchasePrice === null) missing.push("prix d'achat");
+    return { revenueExVat: null, purchaseCost: null, landedCost: null, grossMargin: null, estimatedProfit: null, marginPercent: null, sellingFees: null, breakdown, missing, cautions };
+  }
+  const price = input.purchasePrice;
+  const sale = input.salePrice;
   const vatRate = s.vatRate;
 
   // TVA sur l'achat : récupérable uniquement si déclarée récupérable (régime normal)
   let purchaseCost: number;
-  if (offer.taxType === "ht") {
+  if (input.purchaseTaxType === "ht") {
     if (s.vatRecoverable === true) purchaseCost = price;
     else if (s.vatRecoverable === false && vatRate !== null) {
       purchaseCost = r2(price * (1 + vatRate / 100));
@@ -184,7 +288,7 @@ export function evaluateRadarOffer(offer: RadarOfferInput, sku: RadarSkuInput, s
       purchaseCost = price;
       missing.push("récupération de la TVA sur achats (paramètres de coûts)");
     }
-  } else if (offer.taxType === "ttc") {
+  } else if (input.purchaseTaxType === "ttc") {
     if (s.vatRecoverable === true && vatRate !== null) purchaseCost = r2(price / (1 + vatRate / 100));
     else {
       purchaseCost = price;
@@ -198,21 +302,20 @@ export function evaluateRadarOffer(offer: RadarOfferInput, sku: RadarSkuInput, s
 
   // transport fournisseur
   let landed = purchaseCost;
-  if (offer.shippingCost !== null) {
-    const perUnit = r2(offer.shippingCost / Math.max(1, offer.moq ?? 1));
+  if (input.supplierShipping !== null) {
+    const perUnit = r2(input.supplierShipping / Math.max(1, input.moq ?? 1));
     landed = r2(landed + perUnit);
-    breakdown.push({ label: `Transport fournisseur (÷ ${Math.max(1, offer.moq ?? 1)})`, amount: perUnit });
+    breakdown.push({ label: `Transport fournisseur (÷ ${Math.max(1, input.moq ?? 1)})`, amount: perUnit });
   } else missing.push("transport fournisseur");
 
   // douane
-  const country = offer.supplierCountry?.toUpperCase() ?? null;
-  if (country && !EU.has(country)) {
+  if (input.supplierOrigin === "non_eu") {
     if (s.importDutyPercent !== null) {
       const duty = r2((price * s.importDutyPercent) / 100);
       landed = r2(landed + duty);
       breakdown.push({ label: `Douane / import (${s.importDutyPercent} %)`, amount: duty });
-    } else missing.push(`droits de douane (fournisseur hors UE : ${country})`);
-  } else if (!country) cautions.push("Pays du fournisseur inconnu : frais d'import éventuels non évalués.");
+    } else missing.push(`droits de douane (fournisseur hors UE${input.originLabel ? ` : ${input.originLabel}` : ""})`);
+  } else if (input.supplierOrigin === "unknown") cautions.push("Pays du fournisseur inconnu : frais d'import éventuels non évalués.");
   breakdown.push({ label: "Coût d'achat rendu", amount: landed });
 
   // CA hors TVA selon le régime
@@ -230,7 +333,7 @@ export function evaluateRadarOffer(offer: RadarOfferInput, sku: RadarSkuInput, s
   } else if (s.vatRegime === "franchise") revenueExVat = sale;
   else missing.push("régime de TVA (normal, marge ou franchise)");
   const base = revenueExVat ?? sale;
-  breakdown.unshift({ label: revenueBasis === "avg_sale_30d" ? "Prix de vente moyen constaté (30 j)" : "Prix de vente du SKU", amount: sale });
+  breakdown.unshift({ label: input.saleLabel, amount: sale });
   if (revenueExVat !== null && revenueExVat !== sale) breakdown.splice(1, 0, { label: "CA hors TVA", amount: revenueExVat });
 
   const grossMargin = r2(base - landed - marginVat);
@@ -259,41 +362,7 @@ export function evaluateRadarOffer(offer: RadarOfferInput, sku: RadarSkuInput, s
   const estimatedProfit = r2(grossMargin - fees);
   const marginPercent = sale > 0 ? r2((estimatedProfit / sale) * 100) : null;
   breakdown.push({ label: missing.length ? "Bénéfice estimé (coûts connus seulement)" : "Bénéfice estimé", amount: estimatedProfit });
-
-  // qualité des données
-  if (freshness === "stale") cautions.push(`Prix vu il y a ${ageDays} jours : à revérifier avant de commander.`);
-  if (freshness === "unknown") cautions.push("Date de relevé du prix inconnue.");
-  if (offer.priceOrigin !== "verified_live") cautions.push(PRICE_ORIGIN_LABEL[offer.priceOrigin] + ".");
-  if (offer.stockStatus === "unknown" && offer.availableQuantity === null) cautions.push("Disponibilité non communiquée.");
-  if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) cautions.push("Rupture chez le fournisseur.");
-
-  // raisons
-  if (sku.currentCost !== null && sku.currentCost > 0 && purchaseCost < sku.currentCost) {
-    const pct = Math.round(((sku.currentCost - purchaseCost) / sku.currentCost) * 100);
-    if (pct >= 3) reasons.push(`Prix ${pct} % sous votre coût d'achat actuel (${sku.currentCost.toFixed(2)}).`);
-  }
-  if (offer.previousPrice !== null && offer.previousPrice > price) {
-    const pct = Math.round(((offer.previousPrice - price) / offer.previousPrice) * 100);
-    if (pct >= 5) reasons.push(`Prix en baisse de ${pct} % chez ce fournisseur.`);
-  }
-  const lowStock = sku.quantityAvailable <= Math.max(sku.reorderPoint ?? 0, 1);
-  if (sku.units30d > 0 && lowStock) reasons.push(`Stock bas (${sku.quantityAvailable}) pour un produit vendu ${sku.units30d} fois en 30 jours.`);
-  else if (sku.units30d > 0) reasons.push(`Vous en vendez ${sku.units30d} par mois.`);
-  if (estimatedProfit > 0 && marginPercent !== null) reasons.push(`Bénéfice estimé ${estimatedProfit.toFixed(2)} par unité (${marginPercent} %).`);
-
-  const status: RadarStatus = estimatedProfit <= 0 ? "unprofitable" : missing.length === 0 && freshness !== "stale" ? "profitable" : "estimated";
-
-  // score : bénéfice et marge d'abord, puis rotation, disponibilité et qualité des données
-  let score = 0;
-  if (estimatedProfit > 0) {
-    score += Math.min(40, estimatedProfit / 2);
-    score += Math.min(20, Math.max(0, marginPercent ?? 0) / 2);
-  }
-  score += Math.min(15, sku.units30d * 2);
-  if (offer.stockStatus === "in_stock" || (offer.availableQuantity ?? 0) > 0) score += 10;
-  score += freshness === "fresh" ? 10 : freshness === "recent" ? 6 : 0;
-  score += missing.length === 0 ? 5 : Math.max(0, 5 - missing.length);
-  return { status, revenue: sale, revenueBasis, revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, breakdown, missing, cautions, reasons, freshness, ageDays, score: Math.round(Math.min(100, score)) };
+  return { revenueExVat, purchaseCost, landedCost: landed, grossMargin, estimatedProfit, marginPercent, sellingFees: r2(fees), breakdown, missing, cautions };
 }
 
 export type RadarSort = "score" | "profit" | "margin" | "availability" | "freshness";

@@ -12,6 +12,11 @@ import { fetchSourcingOverview } from "~/data/sourcing";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
 import { decideMatch, fetchMatchSuggestions, fetchRadar, saveOffer, saveRadarSettings, unsaveOffer, type RadarCostSettings, type RadarSort } from "~/data/radar";
 import { fetchDirectory, previewImport, runImport, type PickedFile } from "~/data/suppliers-pro";
+import { fetchCostDefaults, fetchFxRates } from "~/data/tools";
+import { deleteRateCard, fetchRateCards, fetchToolsStatus, requestShippingQuotes, saveRateCard, type RateCardInput } from "~/data/shipping";
+import { addParcel, deleteParcel, fetchParcel, fetchParcels, fetchRecentOrdersForLink, refreshParcel, updateParcel, type NewParcel } from "~/data/tracking";
+import type { ShippingQuoteRequest } from "@/features/mobile-api/contract";
+import type { CarrierCode } from "@/domain/tools/tracking";
 import { applyPendingSales, connectEbay, disconnectEbay, fetchIntegrations, fetchListing, mapListing, syncEbay } from "~/data/ebay";
 import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";
 import {
@@ -382,4 +387,88 @@ export function useApplyPendingSales(skuId: string) {
     mutationFn: () => applyPendingSales(requireSupabase(), skuId),
     onSettled: () => Promise.all([[orgId, "sku", skuId], [orgId, "catalog"], [orgId, "today"], [orgId, "analysis"]].map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
   });
+}
+
+export function useCostDefaults() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "tools", "cost-defaults"], queryFn: () => fetchCostDefaults(requireSupabase(), orgId), staleTime: 5 * 60_000 });
+}
+
+export function useFxRates() {
+  return useQuery({ queryKey: ["fx-rates"], queryFn: () => fetchFxRates(requireSupabase()), staleTime: 30 * 60_000 });
+}
+
+export function useToolsStatus() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "tools", "status"], queryFn: () => fetchToolsStatus(orgId), staleTime: 10 * 60_000, retry: 1 });
+}
+
+export function useRateCards() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "tools", "rate-cards"], queryFn: () => fetchRateCards(requireSupabase(), orgId) });
+}
+
+export function useSaveRateCard() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string | null; input: RateCardInput }) => saveRateCard(requireSupabase(), orgId, v.id, v.input),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "tools", "rate-cards"] }),
+  });
+}
+
+export function useDeleteRateCard() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => deleteRateCard(requireSupabase(), orgId, id), onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "tools", "rate-cards"] }) });
+}
+
+export function useShippingQuotes() {
+  const orgId = useOrgId();
+  return useMutation({ mutationFn: (req: ShippingQuoteRequest) => requestShippingQuotes(orgId, req) });
+}
+
+export function useParcels(archived = false) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "tools", "parcels", archived], queryFn: () => fetchParcels(requireSupabase(), orgId, archived) });
+}
+
+export function useParcel(id: string) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "tools", "parcel", id], queryFn: () => fetchParcel(requireSupabase(), orgId, id), enabled: Boolean(id) });
+}
+
+function useInvalidateParcels() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: [orgId, "tools"] });
+}
+
+export function useAddParcel() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateParcels();
+  return useMutation({ mutationFn: (p: NewParcel) => addParcel(requireSupabase(), orgId, p), onSettled: invalidate });
+}
+
+export function useRefreshParcel() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateParcels();
+  return useMutation({ mutationFn: (id: string) => refreshParcel(orgId, id), onSettled: invalidate });
+}
+
+export function useUpdateParcel() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateParcels();
+  return useMutation({ mutationFn: (v: { id: string; patch: { label?: string; carrierCode?: CarrierCode | null; orderId?: string | null; archived?: boolean } }) => updateParcel(requireSupabase(), orgId, v.id, v.patch), onSettled: invalidate });
+}
+
+export function useDeleteParcel() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateParcels();
+  return useMutation({ mutationFn: (id: string) => deleteParcel(requireSupabase(), orgId, id), onSettled: invalidate });
+}
+
+export function useOrdersForLink(q: string) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "tools", "orders-link", q], queryFn: () => fetchRecentOrdersForLink(requireSupabase(), orgId, q), staleTime: 60_000 });
 }
