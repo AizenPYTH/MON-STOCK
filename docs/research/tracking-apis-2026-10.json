@@ -1,0 +1,701 @@
+{
+  "checkedAt": "2026-10-10",
+  "methodology": "Direct WebFetch/curl to vendor doc sites (aftership.com, api.17track.net, developer.laposte.fr, developer.dhl.com, developer.ups.com, docs.ship24.com, trackingmore.com, parcelsapp.com, parcelmonitor.com, chronopost.fr) was BLOCKED by the session egress proxy (HTTP 403 CONNECT / DNS failure). Sources used instead: (1) official vendor SDKs/specs cloned from public GitHub (AfterShip/tracking-sdk-nodejs @2026-07-13, API 2026-07; UPS-API/api-documentation Tracking.yaml @2026-10-07; ship24/ship24-node spec/ship24-tracking-api.yaml @2026-10-06; TrackingMore-API/trackingmore-sdk-nodejs @2024-02-04), (2) WebSearch snippets of official doc pages (quoted, not fully read), (3) community code (marked). The WebSearch budget ran out before the tracking-number format research; patterns therefore come from the community dataset jkeen/tracking_number_data plus earlier snippets. Anything not confirmed by an official source is marked 'unconfirmed'.",
+  "providers": [
+    {
+      "name": "17TRACK Tracking API v2.4",
+      "type": "aggregator",
+      "docs": "https://api.17track.net/en/doc (fetch blocked; known via search snippets)",
+      "coverage": {
+        "carriersCount": "3,400+ (17track.net carrier pages cite 3,462-3,473)",
+        "laPosteColissimo": "yes (unconfirmed exact carrier key)",
+        "chronopost": "unconfirmed",
+        "mondialRelay": "unconfirmed",
+        "dpdFrance": "yes (17track.net/en/carriers/dpd-fr page exists)",
+        "gls": "unconfirmed",
+        "ups": "yes",
+        "dhl": "yes",
+        "colisPrive": "yes (17track.net carrier page colis-prive)",
+        "relaisColis": "yes (17track.net carrier page relaiscolis)"
+      },
+      "auth": "HTTP header '17token: <API key>' (confirmed by official doc snippet); key from 17TRACK API console",
+      "endpoints": {
+        "register": "POST https://api.17track.net/track/v2.4/register (confirmed via official doc snippet)",
+        "fetch": "POST https://api.17track.net/track/v2.4/gettrackinfo (confirmed via official doc snippet); v2.2 also had POST /track/v2.2/getRealTimeTrackInfo",
+        "carrierDetection": "Automatic on register when 'carrier' omitted (official v2.2 doc: if no carrier and several match, processed for each matched carrier). No standalone detect endpoint confirmed.",
+        "other": "stoptrack / retrack / deletetrack / changecarrier / getquota / gettracklist: unconfirmed under v2.4 (exist in older versions per memory, not verified)"
+      },
+      "requestBody": "JSON array of objects, max 40 per request: [{\"number\":\"RR123456789CN\",\"carrier\":3011}] ; 'carrier' (integer key) optional for register; gettrackinfo example uses number + carrier (e.g. 100003, 21051)",
+      "responseEnvelope": "{ \"code\": 0, \"data\": { \"accepted\": [ {\"origin\":1, \"number\":\"RR123456789CN\", \"carrier\":3011} ], \"rejected\": [ {\"number\":\"1234\", \"error\":{\"code\":-18010012, ...}} ] } } (field names accepted/rejected/origin/number/carrier and code -18010012 seen in official snippets; exact 'error' sub-object shape unconfirmed)",
+      "status": {
+        "field": "track_info.latest_status.status and track_info.latest_status.sub_status (sub_status path quoted by official help center; 'track_info' quoted by v2.2 docs; full path unconfirmed)",
+        "values": [
+          "NotFound",
+          "InfoReceived",
+          "InTransit",
+          "Expired",
+          "AvailableForPickup",
+          "OutForDelivery",
+          "DeliveryFailure",
+          "Delivered",
+          "Exception"
+        ],
+        "valuesSource": "https://help.17track.net/hc/en-us/articles/37471096573337-Understanding-Tracking-Status-Main-Status-Substatus (9 main statuses, 30 sub-statuses; e.g. NotFound_Other, NotFound_InvalidCode, InTransit_PickedUp, InTransit_Departure, InTransit_CustomsProcessing)",
+        "expiredRule": "Expired = >75 days since InfoReceived without delivery (help center)"
+      },
+      "events": "Per-event fields time_iso, description, location appear on 17track.net/en/api example; container path (e.g. track_info.tracking.providers[].events[]) and fields time_utc/stage/sub_status: unconfirmed",
+      "estimatedDelivery": "unconfirmed (field like track_info.time_metrics.estimated_delivery_date not confirmed)",
+      "webhook": {
+        "supported": true,
+        "events": "TRACKING_UPDATED (immediate on status change), also TRACKING_STOPPED unconfirmed",
+        "signature": "Header 'sign' = hex(SHA256(rawBody + '/' + apiKey)) per v2 doc snippet and help-center Python example (https://help.17track.net/hc/en-us/articles/37573146087321-Webhook-Development-Example-Code). v1 put sign in body - use v2.x rule and verify against a test push.",
+        "configuredIn": "17TRACK API console (webhook URL)"
+      },
+      "freeTier": "Per official API doc notice: effective 2026-01-07 00:00 UTC the monthly 100 free numbers ended; accounts registered after that date get a ONE-TIME 200 free tracking numbers. (Older help-center 'Plan Details' still says 100/month - outdated.) 1 successful registration = 1 quota; continued tracking of a registered number costs no extra quota (help center).",
+      "paidPricing": "Prepaid annual quota packs, valid 12 months (help center). Price figures only from third parties: ~$119 / 5,000 numbers / year up to $9,299 / 500,000 (Ship24 comparison - competitor) - unconfirmed",
+      "signup": "17TRACK account + API console key; email signup; no contract",
+      "rateLimits": "3 requests/second, max 40 numbers per request, HTTP 429 above (official help center); optional daily cap configurable",
+      "dataRetention": "unconfirmed (third-party claims 90 days)",
+      "privacy": "Chinese-headquartered company (Shenzhen) - check GDPR/DPA terms before sending customer emails/names; only send tracking numbers. unconfirmed",
+      "fitForSmallFrenchSeller": "Best value: auto-detection, widest FR coverage incl. Colis Prive/Relais Colis/DPD FR, cheap prepaid annual packs, signed webhooks. Weakness: response schema could not be verified from here; free quota now one-time only."
+    },
+    {
+      "name": "AfterShip Tracking API (version 2026-07; previous 2025-07, 2025-04, 2025-01, 2024-xx)",
+      "type": "aggregator",
+      "docs": "https://www.aftership.com/docs/tracking/2026-07/quickstart/api-quick-start (fetch blocked) ; official SDK https://github.com/AfterShip/tracking-sdk-nodejs (read, API Version 2026-07, SDK 17.0.0)",
+      "coverage": {
+        "carriersCount": "1,100+ (marketing) / 1,318 (carriers.aftership.com)",
+        "laPosteColissimo": "yes (aftership.com/integrations/carriers/la-poste-colissimo)",
+        "chronopost": "unconfirmed",
+        "mondialRelay": "yes (slugs mondialrelay, mondialrelay-fr per support.aftership.com)",
+        "dpdFrance": "unconfirmed",
+        "gls": "yes (aftership.com/carriers/gls/api)",
+        "ups": "yes",
+        "dhl": "yes",
+        "colisPrive": "unconfirmed",
+        "relaisColis": "unconfirmed"
+      },
+      "auth": "Header 'as-api-key: <key>' (confirmed in SDK src/lib/request.ts and quickstart snippet). Optional signed modes: 'as-signature-hmac-sha256' (AES) or 'as-signature-rsa-sha256' (RSA).",
+      "endpoints": {
+        "create": "POST https://api.aftership.com/tracking/2026-07/trackings",
+        "fetch": "GET https://api.aftership.com/tracking/2026-07/trackings/{id}  (also GET /tracking/2026-07/trackings?tracking_numbers=... list)",
+        "carrierDetection": "POST https://api.aftership.com/tracking/2026-07/couriers/detect ; also auto-detect when slug omitted on create (restricted to couriers enabled in admin -> error 4012 BAD_COURIER otherwise)",
+        "other": "PUT/DELETE /trackings/{id}, POST /trackings/{id}/retrack, POST /trackings/{id}/mark-as-completed, GET /couriers, POST /estimated-delivery-date/predict"
+      },
+      "requestBody": "CreateTrackingRequest: tracking_number (required), slug?, slug_group?, title?, order_id?, order_number?, destination_postal_code?, destination_country_region?, language?, customers?[], note? ... DetectCourierRequest: tracking_number (required), slug?[], slug_group?, destination_postal_code?, tracking_ship_date?, origin_country_region?, destination_country_region?",
+      "responseEnvelope": "{ \"meta\": {\"code\":200, ...}, \"data\": <Tracking> }",
+      "status": {
+        "field": "data.tag (+ data.subtag, data.subtag_message)",
+        "values": [
+          "Pending",
+          "InfoReceived",
+          "InTransit",
+          "OutForDelivery",
+          "AttemptFail",
+          "Delivered",
+          "AvailableForPickup",
+          "Exception",
+          "Expired"
+        ],
+        "valuesSource": "SDK src/model/Tag.ts"
+      },
+      "events": "data.checkpoints[]: checkpoint_time (carrier local time), created_at, location, city, state, postal_code, country_region (ISO3), country_region_name, message, tag, subtag, subtag_message, raw_tag, slug, hash (dedupe) - SDK src/model/Checkpoint.ts",
+      "estimatedDelivery": "data.courier_estimated_delivery_date{estimated_delivery_date,estimated_delivery_date_min,estimated_delivery_date_max}; data.latest_estimated_delivery{type: specific|range, source: 'Carrier EDD'|'AfterShip EDD'|'Custom EDD'|'Order EDD', datetime, datetime_min, datetime_max, revise_reason}; data.aftership_estimated_delivery_date; data.first_estimated_delivery",
+      "webhook": {
+        "supported": true,
+        "signature": "Header 'aftership-hmac-sha256' = base64(HMAC-SHA256(rawBody, webhookSecret)); secret in admin Settings > Webhooks/Notifications (https://www.aftership.com/docs/tracking/2026-07/webhook/webhook-signature). No timestamp header (third-party note, unconfirmed)"
+      },
+      "freeTier": "A Free plan (~50 shipments/month) exists per third parties, but API + webhooks require Premium for new accounts (unconfirmed from official page; pricing page fetch blocked)",
+      "paidPricing": "Official pricing page snippet (marked old): Essentials from $29/mo, Premium from $59/mo (annual) incl. API, 6,000 shipments/year; Shopify listing $70/mo Premium. unconfirmed for 2026.",
+      "signup": "AfterShip account (admin.aftership.com) + API key (organization.automizely.com/api-keys); courier must be enabled in courier settings for auto-detect",
+      "rateLimits": "10 requests/second default (SDK error table); headers X-RateLimit-Limit/Remaining/Reset",
+      "dataRetention": "unconfirmed",
+      "privacy": "Hong Kong/US company; offers DPA (unconfirmed)",
+      "fitForSmallFrenchSeller": "Cleanest, best-documented API (fully confirmed from official SDK) but API access is paywalled (~$59-70/mo) - overkill for a small reseller."
+    },
+    {
+      "name": "Ship24 Tracking API (public/v1)",
+      "type": "aggregator",
+      "docs": "https://docs.ship24.com (fetch blocked); official OpenAPI spec in https://github.com/ship24/ship24-node/blob/main/spec/ship24-tracking-api.yaml (read)",
+      "coverage": {
+        "carriersCount": "1,500+ per vendor marketing (unconfirmed)",
+        "laPosteColissimo": "unconfirmed",
+        "chronopost": "unconfirmed",
+        "mondialRelay": "unconfirmed",
+        "dpdFrance": "unconfirmed",
+        "gls": "unconfirmed",
+        "ups": "yes",
+        "dhl": "yes",
+        "colisPrive": "unconfirmed",
+        "relaisColis": "unconfirmed"
+      },
+      "auth": "Header 'Authorization: Bearer <api_key>' (spec)",
+      "endpoints": {
+        "create": "POST https://api.ship24.com/public/v1/trackers (idempotent)",
+        "createAndFetch": "POST https://api.ship24.com/public/v1/trackers/track (sync, first call up to ~60 s)",
+        "fetch": "GET https://api.ship24.com/public/v1/trackers/{trackerId}/results or GET https://api.ship24.com/public/v1/trackers/search/{trackingNumber}/results",
+        "carrierDetection": "Automatic when courierCode omitted; GET https://api.ship24.com/public/v1/couriers lists couriers",
+        "perCall": "POST https://api.ship24.com/public/v1/tracking/search (separate per-call subscription)"
+      },
+      "requestBody": "trackingNumber (required), shipmentReference?, clientTrackerId?, originCountryCode?, destinationCountryCode?, destinationPostCode?, shippingDate?, courierCode?[], courierName?, trackingUrl?, orderNumber?, settings.restrictTrackingToCourierCode?",
+      "status": {
+        "field": "data.trackings[].shipment.statusMilestone (+ statusCode, statusCategory)",
+        "values": [
+          "pending (unconfirmed)",
+          "info_received",
+          "in_transit",
+          "out_for_delivery",
+          "failed_attempt",
+          "available_for_pickup",
+          "delivered",
+          "exception"
+        ],
+        "valuesSource": "milestone names from spec statistics.timestamps fields (infoReceivedDatetime, inTransitDatetime, outForDeliveryDatetime, failedAttemptDatetime, availableForPickupDatetime, exceptionDatetime, deliveredDatetime) and examples; full list at https://docs.ship24.com/status/#statusmilestone"
+      },
+      "events": "data.trackings[].events[]: eventId, trackingNumber, eventTrackingNumber, status (raw text), occurrenceDatetime, datetime, utcOffset, hasNoTime, order, location, sourceCode, courierCode, statusCode, statusCategory, statusMilestone",
+      "estimatedDelivery": "shipment.delivery.estimatedDeliveryDate; shipment.delivery.courierEstimatedDeliveryDate{from,to}; shipment.delivery.aiPredictiveDeliveryDate (paid add-on)",
+      "webhook": {
+        "supported": true,
+        "signature": "No HMAC: Ship24 sends 'Authorization: Bearer <your_webhook_secret>' header on each push (spec /your-endpoint); compare in constant time"
+      },
+      "freeTier": "10 shipments/month on per-shipment plan incl. API + webhooks + auto-detection, no overage (tracking stops); first-month bonus 100 (ship24.com pricing snippet). Per-call free: 100 calls/month.",
+      "paidPricing": "Pro $39/month for 1,000 shipments (ship24.com pricing snippet; unconfirmed for current)",
+      "signup": "Self-serve dashboard, API key in dashboard",
+      "rateLimits": "unconfirmed",
+      "dataRetention": "unconfirmed",
+      "privacy": "unconfirmed",
+      "fitForSmallFrenchSeller": "Excellent DX and fully verified spec, free tier usable for tests only (10/month)."
+    },
+    {
+      "name": "TrackingMore API v4",
+      "type": "aggregator",
+      "docs": "https://www.trackingmore.com/docs/trackingmore (fetch blocked); official SDK https://github.com/TrackingMore-API/trackingmore-sdk-nodejs (read, last commit 2024-02)",
+      "coverage": {
+        "carriersCount": "1,200+ (unconfirmed)",
+        "laPosteColissimo": "unconfirmed",
+        "chronopost": "unconfirmed",
+        "mondialRelay": "unconfirmed",
+        "dpdFrance": "yes (trackingmore.com/dpd-fr-tracking-api)",
+        "gls": "unconfirmed",
+        "ups": "yes",
+        "dhl": "yes",
+        "colisPrive": "unconfirmed",
+        "relaisColis": "unconfirmed"
+      },
+      "auth": "Header 'Tracking-Api-Key: <key>' (SDK src/lib/request.js)",
+      "endpoints": {
+        "create": "POST https://api.trackingmore.com/v4/trackings/create",
+        "batchCreate": "POST https://api.trackingmore.com/v4/trackings/batch (max 40)",
+        "fetch": "GET https://api.trackingmore.com/v4/trackings/get?tracking_numbers=...&courier_code=...",
+        "carrierDetection": "POST https://api.trackingmore.com/v4/couriers/detect {\"tracking_number\":...}",
+        "other": "PUT /v4/trackings/update/{id}, DELETE /v4/trackings/delete/{id}, POST /v4/trackings/retrack/{id}, GET /v4/couriers/all"
+      },
+      "requestBody": "{tracking_number, courier_code, order_number?, customer_name?, title?, language?, note?}",
+      "status": {
+        "field": "delivery_status",
+        "values": [
+          "pending",
+          "notfound",
+          "transit",
+          "pickup",
+          "delivered",
+          "expired",
+          "undelivered",
+          "exception",
+          "inforeceived"
+        ],
+        "valuesSource": "TrackingMore Postman docs snippet (~2024)"
+      },
+      "events": "unconfirmed",
+      "estimatedDelivery": "unconfirmed",
+      "webhook": {
+        "supported": true,
+        "signature": "v4 webhook secret, SHA256 HMAC - exact header/encoding unconfirmed (sources conflict)"
+      },
+      "freeTier": "Free plan 50 shipments/month; whether API is included is unconfirmed",
+      "paidPricing": "Conflicting: Basic $9-11/mo (150-200), Pro $59-74/mo (1,200-2,000); API possibly Pro only - unconfirmed",
+      "signup": "Self-serve",
+      "rateLimits": "unconfirmed",
+      "dataRetention": "unconfirmed",
+      "privacy": "unconfirmed"
+    },
+    {
+      "name": "ParcelsApp API v3",
+      "type": "aggregator",
+      "docs": "https://parcelsapp.com/api-docs/ (fetch blocked)",
+      "coverage": {
+        "carriersCount": "~1,540 (third-party profile)",
+        "others": "unconfirmed"
+      },
+      "auth": "apiKey parameter in request body/query (unconfirmed)",
+      "endpoints": {
+        "create": "POST https://parcelsapp.com/api/v3/shipments/tracking (returns uuid; unconfirmed)",
+        "fetch": "GET https://parcelsapp.com/api/v3/shipments/tracking?uuid=...&apiKey=... (unconfirmed)",
+        "carrierDetection": "automatic (unconfirmed)"
+      },
+      "webhook": {
+        "supported": "webhookUrl param (unconfirmed)",
+        "signature": "unconfirmed"
+      },
+      "freeTier": "3 free shipments to start (parcelsapp.com/developers snippet)",
+      "paidPricing": "plans 300-60,000 shipments/month; $19/$29/$49 per third party - unconfirmed",
+      "signup": "Self-serve",
+      "rateLimits": "unconfirmed",
+      "dataRetention": "unconfirmed",
+      "privacy": "unconfirmed"
+    },
+    {
+      "name": "Parcel Monitor API",
+      "type": "aggregator",
+      "docs": "not reachable",
+      "coverage": {
+        "carriersCount": "1,000-1,100+",
+        "laPosteColissimo": "yes (parcelmonitor.com/track-france)",
+        "chronopost": "yes",
+        "mondialRelay": "yes",
+        "relaisColis": "yes",
+        "others": "unconfirmed"
+      },
+      "auth": "unconfirmed",
+      "endpoints": "unconfirmed",
+      "webhook": "unconfirmed",
+      "freeTier": "unconfirmed (directory tag 'Freemium')",
+      "paidPricing": "unconfirmed (sales-led / enterprise)",
+      "signup": "unconfirmed"
+    },
+    {
+      "name": "La Poste - API Suivi v2 (Okapi)",
+      "type": "official carrier (La Poste lettres suivies, Colissimo, Chronopost harmonised)",
+      "docs": "https://developer.laposte.fr/products/suivi/2 (fetch blocked)",
+      "coverage": {
+        "carriersCount": "La Poste courrier suivi, Colissimo, Chronopost",
+        "laPosteColissimo": "yes",
+        "chronopost": "yes (harmonised in Suivi v2)",
+        "others": "no"
+      },
+      "auth": "Header 'X-Okapi-Key: <application key>' (official FAQ faq.developer.laposte.fr; 401 {\"code\":\"AUTHORIZATION\",...} on bad key; 403 if API not subscribed for key)",
+      "endpoints": {
+        "register": "none (stateless lookup)",
+        "fetch": "GET https://api.laposte.fr/suivi/v2/idships/{idShip}?lang=fr_FR (community libs + forums; path not read on official page)",
+        "carrierDetection": "none (La Poste group only); header Accept: application/json"
+      },
+      "response": "{lang, scope, returnCode, shipment:{idShip, holder, product ('colissimo'|...), isFinal (bool, delivered/final), entryDate, deliveryDate?, timeline[{id 1..5, shortLabel, longLabel, date, country, status(bool), type}], event[{order, label, date, code}], contextData{originCountry, arrivalCountry, deliveryChoice}, estimDate, url}} - from community test fixture (debuss/lapostesuivi tests/Mock/200.json), unconfirmed vs official",
+      "status": {
+        "field": "shipment.event[].code (latest = highest order) and shipment.timeline[] step 1-5 + shipment.isFinal",
+        "values": [
+          "DR1",
+          "PC1",
+          "PC2",
+          "ET1",
+          "ET2",
+          "ET3",
+          "ET4",
+          "EP1",
+          "DO1",
+          "DO2",
+          "DO3",
+          "PB1",
+          "PB2",
+          "MD2",
+          "ND1",
+          "AG1",
+          "RE1",
+          "DI1",
+          "DI2"
+        ],
+        "valuesSource": "community enum https://github.com/e-amzallag/laposte-suivi-api (LPCodeEvenement.java) - unconfirmed; meanings: DR1 declaratif receptionne, PC1/PC2 pris en charge, ET1-4 en cours de traitement, EP1 en attente de presentation, DO1-3 douane, PB1 probleme en cours, PB2 probleme resolu, MD2 mis en distribution, ND1 non distribuable, AG1 en attente au guichet (point retrait), RE1 retourne expediteur, DI1 distribue, DI2 distribue a l'expediteur"
+      },
+      "estimatedDelivery": "shipment.estimDate (community fixture; unconfirmed)",
+      "webhook": {
+        "supported": false,
+        "note": "polling only (no push found)"
+      },
+      "freeTier": "Free per community libs ('Subscribe ... it is free'); 429 body 'max quota reached (100 calls per 1s)'. Official plan/quota page not read - unconfirmed",
+      "paidPricing": "none known for Suivi (unconfirmed)",
+      "signup": "developer.laposte.fr account, create application, subscribe to Suivi v2, copy app key",
+      "rateLimits": "100 calls/second (community 429 fixture)",
+      "dataRetention": "unconfirmed",
+      "privacy": "French public-group operator, data in EU (unconfirmed)"
+    },
+    {
+      "name": "DHL Shipment Tracking - Unified API",
+      "type": "official carrier (all DHL divisions)",
+      "docs": "https://developer.dhl.com/api-reference/shipment-tracking (fetch blocked)",
+      "coverage": {
+        "carriersCount": "DHL Express, Parcel DE, eCommerce, Freight, etc."
+      },
+      "auth": "Header 'DHL-API-Key: <key>' (official developer.dhl.com snippet)",
+      "endpoints": {
+        "fetch": "GET https://api-eu.dhl.com/track/shipments?trackingNumber=... (host from third-party connector; query param name unconfirmed)",
+        "register": "none (pull); separate 'Shipment Tracking - Unified - Push' API for webhooks",
+        "carrierDetection": "optional 'service' param (unconfirmed)"
+      },
+      "status": {
+        "field": "shipments[].status.statusCode (unconfirmed path)",
+        "values": [
+          "pre-transit",
+          "transit",
+          "delivered",
+          "failure",
+          "unknown"
+        ],
+        "valuesSource": "https://support-developer.dhl.com/support/solutions/articles/47001197243"
+      },
+      "webhook": {
+        "supported": "via separate Push API (developer.dhl.com/api-reference/shipment-tracking-unified-push)",
+        "signature": "unconfirmed"
+      },
+      "freeTier": "Free; initial 250 calls/day, max 1 call / 5 s (development level; upgrade on request) - official developer page + support article",
+      "signup": "developer.dhl.com account + app approval",
+      "rateLimits": "250/day, 1 per 5 s initially"
+    },
+    {
+      "name": "UPS Track API",
+      "type": "official carrier",
+      "docs": "https://github.com/UPS-API/api-documentation/blob/main/Tracking.yaml (read)",
+      "auth": "OAuth2 client_credentials: POST https://onlinetools.ups.com/security/v1/oauth/token (CIE: https://wwwcie.ups.com/security/v1/oauth/token), client_secret_basic; then 'Authorization: Bearer <token>'. Required headers transId, transactionSrc.",
+      "endpoints": {
+        "fetch": "GET https://onlinetools.ups.com/api/track/v1/details/{inquiryNumber}?locale=fr_FR",
+        "byReference": "GET https://onlinetools.ups.com/api/track/v1/reference/details/{referenceNumber}",
+        "register": "none (UPS Track Alert API separate for push)",
+        "carrierDetection": "n/a"
+      },
+      "status": {
+        "field": "trackResponse.shipment[].package[].currentStatus{code, description, simplifiedTextDescription, statusCode, type} and activity[].status",
+        "values": "status.type single letters (e.g. 'X' example) - full list in UPS API Codes doc (unconfirmed)"
+      },
+      "events": "activity[]: date (YYYYMMDD), time, gmtDate, gmtTime, gmtOffset, location{address...}, status{type, description, code, statusCode}",
+      "estimatedDelivery": "package.deliveryDate[]{date, type: SDD scheduled | RDD rescheduled | DEL delivered}",
+      "freeTier": "Free with UPS developer account (unconfirmed quota)",
+      "signup": "UPS developer portal app + UPS account number"
+    },
+    {
+      "name": "Chronopost Tracking web service (SOAP)",
+      "type": "official carrier",
+      "endpoints": {
+        "fetch": "SOAP https://ws.chronopost.fr/tracking-cxf/TrackingServiceWS (WSDL ?wsdl); operations trackSkybillV2, trackSkybill, trackSearch, trackWithSenderRef, searchPOD, trackESD, cancelSkybill"
+      },
+      "requestBody": "trackSkybillV2: language, skybillNumber (from community WSDL-generated code)",
+      "auth": "none for public tracking ops (unconfirmed)",
+      "note": "Chronopost numbers are also covered by La Poste Suivi v2 (REST/JSON) - prefer that.",
+      "freeTier": "unconfirmed",
+      "webhook": {
+        "supported": false
+      }
+    },
+    {
+      "name": "Mondial Relay Web Service (SOAP)",
+      "type": "official carrier",
+      "docs": "https://www.mondialrelay.fr/media/125022/solution-web-service-v512.pdf (V-5.12, Sept 2024; not read in full)",
+      "endpoints": {
+        "fetch": "SOAP method WSI2_TracingColisDetaille (endpoint URL unconfirmed, historically https://api.mondialrelay.com/Web_Services.asmx)"
+      },
+      "auth": "Enseigne (8 chars) + Security = UPPER(MD5(concat(params in documented order) + private key)), regex ^[0-9A-Z]{32}$; test brand BDTEST13 (test key changed 2024-09-17)",
+      "signup": "Requires Mondial Relay merchant contract (private key issued by MR)",
+      "freeTier": "included with contract (unconfirmed)",
+      "webhook": {
+        "supported": false
+      }
+    },
+    {
+      "name": "GLS ShipIT Track & Trace",
+      "type": "official carrier",
+      "docs": "https://shipit.gls-group.eu/webservices/3_4_19/doxygen/WS-REST-API/rest_tracking.html",
+      "auth": "HTTP Basic (login:password) issued by GLS contact; endpoint URL given with credentials",
+      "signup": "Contracted GLS shipper only; no public self-signup found for GLS France",
+      "webhook": {
+        "supported": "unconfirmed"
+      }
+    },
+    {
+      "name": "DPD France",
+      "type": "official carrier",
+      "note": "No public DPD France developer tracking API found; tracking via aggregators or contract-based web services (unconfirmed)"
+    }
+  ],
+  "samples": {
+    "17track_register": {
+      "status": "PARTIAL - assembled from official v2.2 doc snippets returned by search (doc fetch blocked); NOT a verbatim copy. Re-check https://api.17track.net/en/doc before coding.",
+      "request": "curl -X POST https://api.17track.net/track/v2.4/register -H '17token: YOUR_KEY' -H 'Content-Type: application/json' -d '[{\"number\":\"RR123456789CN\"}]'",
+      "response": {
+        "code": 0,
+        "data": {
+          "accepted": [
+            {
+              "origin": 1,
+              "number": "RR123456789CN",
+              "carrier": 3011
+            }
+          ],
+          "rejected": [
+            {
+              "number": "1234",
+              "error": {
+                "code": -18010012,
+                "message": "The format of '1234' is invalid."
+              }
+            }
+          ]
+        }
+      },
+      "sources": [
+        "https://api.17track.net/en/doc",
+        "https://asset.17track.net/api/document/v2.2_en/index.html"
+      ]
+    },
+    "aftership_create_verbatim": {
+      "source": "https://github.com/AfterShip/tracking-sdk-nodejs/blob/main/README.md (official SDK, API 2026-07)",
+      "request": "const createTrackingRequestBody = {\n  tracking_number: \"valid_value\",\n};\n\naftership.tracking\n  .createTracking(createTrackingRequestBody)\n  .then((result) => console.log(result))\n  .catch((e) => console.log(e));",
+      "http": "POST https://api.aftership.com/tracking/2026-07/trackings  headers: as-api-key, Content-Type: application/json"
+    },
+    "ship24_track_verbatim": {
+      "source": "https://github.com/ship24/ship24-node/blob/main/spec/ship24-tracking-api.yaml (paths./public/v1/trackers/track + components.examples.response-result-tracker), converted YAML->JSON, truncated after 2 events",
+      "request": {
+        "trackingNumber": "9400115901047177598206",
+        "shipmentReference": "c6e4fef4-a816-b68f-4024-3b7e4c5a9f81",
+        "clientTrackerId": "3fa99515-3ca0-4901-85bb-056ee016799b",
+        "originCountryCode": "CN",
+        "destinationCountryCode": "US",
+        "destinationPostCode": "94901",
+        "shippingDate": "2021-03-01T11:09:00.000Z",
+        "courierCode": [
+          "us-post"
+        ],
+        "courierName": "USPS Standard",
+        "trackingUrl": "https://tools.usps.com/go/TrackConfirmAction?tLabels=9400115901047177598206",
+        "orderNumber": "DF14R2022",
+        "settings": {
+          "restrictTrackingToCourierCode": true
+        }
+      },
+      "response": {
+        "data": {
+          "trackings": [
+            {
+              "tracker": {
+                "trackerId": "26148317-7502-d3ac-44a9-546d240ac0dd",
+                "trackingNumber": "9400115901047177598206",
+                "shipmentReference": "c6e4fef4-a816-b68f-4024-3b7e4c5a9f81",
+                "clientTrackerId": "3fa99515-3ca0-4901-85bb-056ee016799b",
+                "isSubscribed": true,
+                "isTracked": true,
+                "createdAt": "2021-03-10T05:13:00.000Z"
+              },
+              "shipment": {
+                "shipmentId": "f4f888d7-d140-423f-9a48-e0689d27e098",
+                "statusCode": "delivery_delivered",
+                "statusCategory": "delivery",
+                "statusMilestone": "delivered",
+                "originCountryCode": "US",
+                "destinationCountryCode": "CN",
+                "delivery": {
+                  "estimatedDeliveryDate": "2021-03-04T18:00:00",
+                  "courierEstimatedDeliveryDate": {
+                    "from": "2021-03-04T17:00:00",
+                    "to": "2021-03-04T18:00:00"
+                  },
+                  "service": null,
+                  "signedBy": null
+                },
+                "trackingNumbers": [
+                  {
+                    "tn": "9400115901047177598206"
+                  },
+                  {
+                    "tn": "9400111202544843610364"
+                  }
+                ],
+                "recipient": {
+                  "name": null,
+                  "address": null,
+                  "postCode": "94901",
+                  "city": null,
+                  "subdivision": null
+                }
+              },
+              "events": [
+                {
+                  "eventId": "ee8ebe96-4eae-4a91-9a99-8f3afa6a0f46",
+                  "trackingNumber": "9400111202544843610364",
+                  "eventTrackingNumber": "9400111202544843610364",
+                  "status": "Delivered to the addressee",
+                  "occurrenceDatetime": "2021-03-04T17:12:57",
+                  "order": 9,
+                  "location": "SAN RAFAEL, CA 94901",
+                  "sourceCode": "usps-tracking",
+                  "courierCode": "us-post",
+                  "statusCode": "delivery_delivered",
+                  "statusCategory": "delivery",
+                  "statusMilestone": "delivered"
+                },
+                {
+                  "eventId": "ee8ebe96-4eae-4a91-9a99-8f3afa6a00ja",
+                  "trackingNumber": "9400111202544843610364",
+                  "eventTrackingNumber": "9400111202544843610364",
+                  "status": "Out for Delivery",
+                  "occurrenceDatetime": "2021-03-04T10:12:57",
+                  "order": 8,
+                  "location": "SAN RAFAEL, CA 94901",
+                  "sourceCode": "usps-tracking",
+                  "courierCode": "us-post",
+                  "statusCode": "delivery_out_for_delivery",
+                  "statusCategory": "delivery",
+                  "statusMilestone": "out_for_delivery"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "laposte_suivi_v2": {
+      "status": "COMMUNITY test fixture, not official docs (developer.laposte.fr fetch blocked)",
+      "source": "https://github.com/debuss/lapostesuivi/blob/master/tests/Mock/200.json",
+      "request": "GET https://api.laposte.fr/suivi/v2/idships/6A18987970674?lang=fr_FR  headers: X-Okapi-Key: <key>, Accept: application/json",
+      "response": {
+        "lang": "fr_FR",
+        "scope": "open",
+        "returnCode": 200,
+        "shipment": {
+          "idShip": "6A18987970674",
+          "holder": 4,
+          "product": "colissimo",
+          "isFinal": false,
+          "entryDate": "2020-07-04T01:25:12+02:00",
+          "timeline": [
+            {
+              "shortLabel": "Votre colis est pris en charge",
+              "longLabel": "",
+              "id": 1,
+              "date": "2020-07-04T01:25:12+02:00",
+              "country": "",
+              "status": true,
+              "type": 1
+            }
+          ],
+          "event": [
+            {
+              "order": 100,
+              "label": "Votre colis est en transit sur nos plateformes logistiques pour vous être livré le plus rapidement possible.",
+              "date": "2020-07-04T01:25:12+02:00",
+              "code": "ET1"
+            },
+            {
+              "order": 99,
+              "label": "Votre Colissimo va bientôt nous être confié ! Il est en cours de préparation chez votre expéditeur.",
+              "date": "2020-07-03T15:05:47+02:00",
+              "code": "DR1"
+            }
+          ],
+          "contextData": {
+            "deliveryChoice": {
+              "deliveryChoice": 0
+            },
+            "originCountry": "FR",
+            "arrivalCountry": "FR"
+          },
+          "estimDate": "2023-01-27T00:00:00+01:00",
+          "url": "https://www.laposte.fr/outils/suivre-vos-envois?code=6A18987970674"
+        }
+      },
+      "note": "timeline truncated to first of 5 entries"
+    }
+  },
+  "patterns": [
+    {
+      "carrier": "UPU S10 (international postal: La Poste Lettre/Colissimo International, Chronopost Intl, Chinese posts...)",
+      "regex": "^[A-Z]{2}\\d{8}\\d[A-Z]{2}$",
+      "checksum": "S10 mod 11, weights [8,6,4,2,3,5,9,7] on 8 serial digits; check = 11 - (sum % 11), 10->0, 11->5",
+      "example": "RB123456785GB",
+      "source": "community https://github.com/jkeen/tracking_number_data/blob/main/couriers/s10.json (standard: UPU S10)",
+      "fr": "suffix FR = La Poste / Colissimo / Chronopost (S10 suffix = issuing country); prefix letters (e.g. C*, L*, R*, E*) indicate service class",
+      "ambiguity": "Any S10 number from any country; suffix tells origin post, not last-mile carrier"
+    },
+    {
+      "carrier": "Colissimo / La Poste domestic (13 chars)",
+      "regex": "^[0-9][A-Z][0-9]{11}$ (e.g. 6A..., 8L..., 1K... ) - broader: ^[0-9A-Z]{2}[0-9]{11}$",
+      "example": "6A18987970674 (from La Poste API test fixture)",
+      "source": "community / unconfirmed - example seen in https://github.com/debuss/lapostesuivi tests/Mock/200.json; 2L00754800000 in developpez.net forum",
+      "ambiguity": "13-char alnum overlaps with S10 (S10 has 2 letters at end); prefixes not officially documented here"
+    },
+    {
+      "carrier": "Chronopost",
+      "regex": "^[A-Z]{2}\\d{9}[A-Z]{2}$ (S10-style, e.g. XX123456789FR) ; domestic also 13 chars",
+      "source": "community pattern / unconfirmed",
+      "ambiguity": "Indistinguishable from La Poste S10 by regex alone - route both to La Poste Suivi v2 which covers Chronopost"
+    },
+    {
+      "carrier": "UPS",
+      "regex": "^1Z[A-Z0-9]{6}[A-Z0-9]{2}[A-Z0-9]{7}[0-9]$ (= ^1Z[A-Z0-9]{15}[0-9]$, 18 chars)",
+      "checksum": "mod10 variant",
+      "example": "1Z5R89390357567127",
+      "source": "community https://github.com/jkeen/tracking_number_data/blob/main/couriers/ups.json",
+      "ambiguity": "low"
+    },
+    {
+      "carrier": "DHL Express (waybill)",
+      "regex": "^\\d{10,11}$",
+      "checksum": "mod7",
+      "example": "3318810025",
+      "source": "community https://github.com/jkeen/tracking_number_data/blob/main/couriers/dhl.json",
+      "ambiguity": "HIGH - 10 digits also matches Colis Prive? / Mondial Relay? / many others; always confirm via aggregator detection"
+    },
+    {
+      "carrier": "DHL Express piece ID",
+      "regex": "^J[A-Z]{2,3}\\d{9,10}$",
+      "example": "JJD0099999999",
+      "source": "community jkeen dhl.json"
+    },
+    {
+      "carrier": "DHL eCommerce",
+      "regex": "^(GM|LX|RX|UV|CN|SG|TH|IN|HK|MY)[0-9A-Z]{10,39}$",
+      "source": "community jkeen dhl.json"
+    },
+    {
+      "carrier": "DPD (France and others)",
+      "regex": "^\\d{14}$ (DPD France 14 digits, per TrackingMore) ; international parcel label: ^\\d{14}[0-9A-Z]$ with mod 37/36 check char",
+      "example": "09980000020033F (jkeen)",
+      "source": "community: https://www.trackingmore.com/dpd-fr-tracking (14 digits) and jkeen dpd.json",
+      "ambiguity": "HIGH - 14 digits also matches DHL eCommerce (14) and FedEx Ground fragments"
+    },
+    {
+      "carrier": "Mondial Relay",
+      "regex": "^\\d{8}$ (expedition number) or ^\\d{12}$ ; ^\\d{10}$ unconfirmed",
+      "source": "community pattern / unconfirmed (no official spec read; MR WS doc V-5.12 defines Expedition as 8 digits - unconfirmed)",
+      "ambiguity": "HIGH - pure digits; tracing via MR web service also needs Enseigne + key"
+    },
+    {
+      "carrier": "GLS",
+      "regex": "^\\d{11,12}$ (parcel number) ; ^[A-Z0-9]{8}$ TrackID",
+      "source": "community pattern / unconfirmed",
+      "ambiguity": "HIGH"
+    },
+    {
+      "carrier": "Colis Prive",
+      "regex": "^\\d{10,16}$ / alnum unconfirmed",
+      "source": "community pattern / unconfirmed (no source found)",
+      "ambiguity": "HIGH"
+    },
+    {
+      "carrier": "Relais Colis",
+      "regex": "unconfirmed",
+      "source": "none found",
+      "ambiguity": "HIGH"
+    },
+    {
+      "carrier": "FedEx Express",
+      "regex": "^\\d{12}$ (also 15-digit Ground ^\\d{15}$, 20/22-digit Ground 96: ^96\\d{20}$, SSCC-18 ^00\\d{18}$? see source)",
+      "example": "986578788855",
+      "source": "community https://github.com/jkeen/tracking_number_data/blob/main/couriers/fedex.json",
+      "ambiguity": "HIGH for 12/15 digits"
+    },
+    {
+      "carrier": "Amazon Logistics",
+      "regex": "^TB[ACM]\\d{12}$",
+      "example": "TBA000000000000",
+      "source": "community https://github.com/jkeen/tracking_number_data/blob/main/couriers/amazon.json",
+      "ambiguity": "low"
+    }
+  ],
+  "recommendation": "Integrate 17TRACK API v2.4 first: auto carrier detection on /register (no carrier needed), 3,400+ carriers including the full French set (La Poste/Colissimo, Chronopost, Mondial Relay, Colis Prive, Relais Colis, DPD FR, GLS, UPS, DHL), signed webhooks (header 'sign' = sha256(body + '/' + key)), 3 req/s & 40 numbers/request, one quota per registered number, and the cheapest paid path (prepaid annual packs, ~USD 119 / 5,000 numbers per third-party data). Caveats: since 2026-01-07 the free tier is a one-time 200 numbers (not monthly), and its response field paths (track_info.*) could not be verified here - verify against https://api.17track.net/en/doc before coding. Add La Poste Suivi v2 (Okapi, X-Okapi-Key, GET https://api.laposte.fr/suivi/v2/idships/{id}) as a free official route for La Poste/Colissimo/Chronopost numbers (polling, no webhooks) - this also saves 17TRACK quota since most French C2C/B2C parcels go via Colissimo. Fallback aggregator if 17TRACK is unsuitable: Ship24 (fully verified OpenAPI, Bearer auth, free 10/month, Pro $39/month/1,000). AfterShip is the best-documented but its API needs a paid Premium plan (~$59-70/month): not recommended for a small reseller."
+}

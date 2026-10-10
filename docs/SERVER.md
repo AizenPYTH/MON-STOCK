@@ -39,7 +39,7 @@ maximale (64 Ko par défaut ; fichier catalogue : 15 Mo, soit 21 Mo une fois enc
 | `GET /api/sourcing/search?q=…&sku=…` | membre | recherche d'offres : sources activées en direct + offres stockées |
 | `GET /api/sourcing/status` · `GET /api/sourcing/library` | membre | état des sources, bibliothèque vérifiée |
 | `POST /api/sourcing/library/activate` | rédacteur | activer une source vérifiée (attestation CGU obligatoire) |
-| `GET /api/sourcing/directory` | membre | annuaire de 63 fournisseurs professionnels : fiche, statut, dernier contrôle réel du site, modèles d'e-mail de demande d'accès FR/EN |
+| `GET /api/sourcing/directory` | membre | annuaire de 120 fournisseurs professionnels : fiche, niveau d'accès réel, prochaine action, dernier contrôle du site, e-mails de demande d'accès FR/EN |
 | `POST /api/sourcing/import/preview` | rédacteur | fichier catalogue (CSV, TSV, XLSX, XML, JSON ; UTF-8 / Windows-1252) → colonnes détectées, correspondance proposée, 20 premières lignes, erreurs par ligne ; rien n'est enregistré |
 | `POST /api/sourcing/import` | rédacteur | import réel avec la correspondance validée : fournisseur et source « Import de fichier » créés au besoin, offres horodatées (origine du prix « catalogue importé »), historique des prix, lignes illisibles comptées |
 | `GET /api/sourcing/matches` · `POST /api/sourcing/matches/decide` | membre · rédacteur | suggestions de rapprochement offre ↔ SKU (EAN/MPN exacts confirmés automatiquement, le reste à valider) |
@@ -58,7 +58,11 @@ maximale (64 Ko par défaut ; fichier catalogue : 15 Mo, soit 21 Mo une fois enc
 | `GET/POST /api/ebay/webhook` | eBay (signé) | challenge + notifications (suppression de compte, commandes) |
 | `POST /api/ai/product-draft` | rédacteur | phrase dictée → brouillon du formulaire produit (Claude, sortie structurée) ; rien n'est créé |
 | `POST /api/ai/assistant` | membre | questions sur les ventes, le stock, eBay : Claude appelle des outils de LECTURE exécutés avec la session de l'utilisateur (RLS) |
-| `POST /api/cron/sync` · `/sourcing` · `/library-checks` · `/directory-checks` · `/scout` | `CRON_SECRET` | tâches planifiées |
+| `GET /api/tools/status` | membre | plateformes d'expédition et API de suivi configurées (noms uniquement) |
+| `POST /api/shipping/quotes` | membre | devis réels Packlink PRO / Boxtal pour un colis (poids, dimensions, codes postaux) ; aucune plateforme = aucun prix |
+| `POST /api/tracking/refresh` | rédacteur | actualise un colis suivi (La Poste Suivi v2 ou Ship24) ; seul le numéro est transmis |
+| `POST /api/cron/sync` · `/sourcing` · `/library-checks` · `/directory-checks` · `/scout` · `/tracking` | `CRON_SECRET` | tâches planifiées |
+| `POST /api/cron/connectors-probe` | `CRON_SECRET` | contrôle sans identifiants des API d'expédition et de suivi (le point d'accès doit répondre et exiger une authentification) |
 | `POST /api/cron/ai-tools-check` · `/readonly-check` · `/import-selftest` · `/chain-selftest` · `/e2e-search` | `CRON_SECRET` | contrôles serveur sur le schéma réel (organisations temporaires supprimées ensuite) |
 
 ## 3. Secrets
@@ -75,6 +79,10 @@ Vault** via `server_runtime_secrets()` (exécutable par `service_role` uniquemen
 | `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | **à fournir** (voir §4) |
 | `ANTHROPIC_API_KEY` | **à fournir** : clé de l'API Claude (console.anthropic.com → API Keys) dans Edge Functions → Secrets. Sans elle, `/api/ai/*` répond « non configuré » (jamais de réponse simulée) ; `/api/health` → `aiConfigured` |
 | `EBAY_LISTING_ENABLED` | facultatif, `true` pour autoriser la publication d'annonces (désactivée par défaut) |
+| `PACKLINK_API_KEY` | facultatif : devis d'expédition Packlink PRO (Packlink PRO → Paramètres → clé API) |
+| `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE` (`BOXTAL_API_URL` facultatif) | facultatif : cotation Boxtal (identifiants API v1 ; code de catégorie de contenu de vos envois, liste fournie par Boxtal) |
+| `LAPOSTE_OKAPI_KEY` | facultatif : suivi La Poste / Colissimo / Chronopost (developer.laposte.fr → application → abonnement « Suivi v2 ») |
+| `SHIP24_API_KEY` | facultatif : suivi multi-transporteurs (dashboard.ship24.com → API keys) |
 
 Tâches planifiées (pg_cron, `supabase/ops/schedule-edge-cron.sql`) :
 
@@ -84,6 +92,7 @@ Tâches planifiées (pg_cron, `supabase/ops/schedule-edge-cron.sql`) :
 | `monstock-sourcing` | toutes les 6 h (h:07) | taux BCE, flux fournisseurs, alertes de prix |
 | `monstock-library-checks` | 04:23 | vérification de la bibliothèque de sources |
 | `monstock-directory-checks` | 05:41 | contrôle réel des sites de l'annuaire (16 par passage, les plus anciens d'abord) |
+| `monstock-tracking` | h:17 et h:47 | actualisation des colis dont l'échéance est passée (30 par passage ; rien si aucune clé de suivi) |
 
 ## 4. eBay — seule configuration manuelle restante
 
@@ -132,46 +141,85 @@ borné pour les lectures ; **jamais** pour une écriture POST, afin d'éviter un
 
 ## 5. Fournisseurs professionnels
 
-### 5.1 Annuaire (63 fournisseurs, recherche du 10 octobre 2026)
+### 5.1 Annuaire (120 fournisseurs, recherches du 10 octobre 2026)
 
 Données : `src/services/sourcing/data/supplier-directory.json` (copie et méthode :
-[docs/research/suppliers-2026-10.md](research/suppliers-2026-10.md)). Segments : reconditionné B2B
-(16), pièces détachées (17), liquidation / lots (11), distributeurs IT (14), spécialistes (5).
-Chaque fiche : pays, zones de livraison, site, catalogue, catégories, marques, types de produits,
-B2B/B2C, compte pro requis, conditions d'accès, modes d'accès (API, flux, portail, fichier),
-documentation API, prix HT/TTC, devise, MOQ, livraison, garantie, intérêt, procédure pour obtenir
-le catalogue, niveau de vérification, sources consultées.
+[docs/research/suppliers-2026-10.md](research/suppliers-2026-10.md)). Première recherche : 63 fiches
+(acteurs connus). Seconde recherche (FR, BE, NL, ES, DE, IT, PL, AT, CZ ; annuaires, exposants de
+salons, boutiques B2B) : **57 fournisseurs moins connus**, dont :
+- des grossistes d'iPhone par grade : Refreshed Apples, Mobile Depot Europe, Mobistock, Molano,
+  ITP Technologie, TR Vertriebs ;
+- des distributeurs à flux ou API : Nedis, Infortisa, DMI Computer, Megasur, Home Screen
+  Distribution, MICHAEL AG, TelePart ;
+- des grossistes de pièces : Horepa, Pieces2Mobile, mpsmobile, Mobiltec 24, GSMOK, Nowacell,
+  Servisní díly, Fixje ;
+- des lots de retours : BitStockz, Planet Outlet, Subastalotes ;
+- des PC ex-entreprise : Ecoportátil, PC-Portátil, Bestellaptops, Omnicomp.
 
-Statuts (calculés, jamais déclarés à la main) :
+Chaque fiche contient : pays, zones de livraison, site, catalogue, catégories, marques, types de
+produits, B2B/B2C, compte pro, conditions et modes d'accès, prix HT/TTC, devise, MOQ, livraison,
+garantie, intérêt, procédure pour obtenir le catalogue, niveau de vérification et sources.
 
-| Statut | Condition réelle |
+**Niveau d'accès réel** (calculé, affiché et filtrable dans l'application) :
+
+| Niveau | Condition |
 | --- | --- |
-| identifié | fiche issue de la recherche |
-| vérifié | site officiel joignable lors du dernier contrôle serveur |
-| accès public fonctionnel | une source publique de ce fournisseur est vérifiée dans la bibliothèque (ex. Brico-phone) |
-| compte pro requis | la fiche l'indique (la grande majorité) |
-| connecteur fonctionnel | une source de l'organisation est active pour ce fournisseur |
-| import réel testé | au moins un import de fichier / flux réussi pour ce fournisseur dans l'organisation |
-| temporairement indisponible | dernier contrôle en échec (403, délai, DNS) |
+| connecté | source active ou import réussi dans votre organisation |
+| importable | le fournisseur fournit un fichier, un flux, une API ou une liste de prix que MON STOCK importe |
+| accessible | catalogue public vérifié depuis le serveur |
+| vérifié | site officiel joignable depuis le serveur |
+| identifié | fiche issue de la recherche, rien de vérifié |
 
-Contrôle réel du 10 octobre 2026 depuis l'Edge Function (`/cron/directory-checks`, robots.txt lu,
-une requête par hôte, aucun contournement) : **53 / 63 sites joignables**. Non joignables :
-`ebay-browse` (page développeur, 403 anti-robot), Largo, Merkandi, Mobiparts, Westcoast, Fixez
-(403 anti-robot : à consulter manuellement), Exertis (délai), AFB France, Mobile Express HDE,
-Yes-yes (site non trouvé / injoignable). Aucun fournisseur de pièces ou de reconditionné testé
-n'expose de catalogue public exploitable (essais Shopify `products.json`, WooCommerce Store API,
-PrestaShop, sitemap + JSON-LD : 429, robots.txt interdit ou prix après connexion) ; le canal
-réaliste est **compte professionnel + fichier ou API fournis par le fournisseur**.
+Chaque fiche affiche aussi la **prochaine action** concrète (activer la source, demander le flux,
+envoyer l'e-mail de liste de prix, importer le fichier…). Les statuts détaillés (vérifié, compte pro
+requis, connecteur, import testé, indisponible) restent calculés comme avant.
+
+**Contrôle réel des sites** depuis l'Edge Function (10 octobre 2026, robots.txt lu, aucun
+contournement) : **102 / 120 joignables**.
+- Première série, non joignables : eBay développeurs, Largo, Merkandi, Mobiparts, Westcoast, Fixez,
+  Exertis, AFB France, Mobile Express HDE, Yes-yes.
+- Seconde série, non joignables :
+  - Megasur, Serviphone, Planet Outlet, Smartphone Italia : 403 anti-robot ;
+  - Big Brand Depot, Omnicomp, Avides : aucune réponse ;
+  - GSP Electronics : HTTP 500.
+
+**Catalogues publics réellement exploitables** (éclaireur serveur `/cron/scout` sur 34 sites de la
+seconde série, puis vérification de la bibliothèque) :
+- **Refreshed Apples** (NL, iPhone par grade) : 117 fiches avec prix, plan du site + données
+  structurées ;
+- **Fixje** (NL, pièces) : 200 fiches avec prix, WooCommerce. Certaines fiches sont des prix de
+  réparation : vérifiez chaque offre ;
+- **Servisní díly** (CZ, pièces) : fiches avec prix en CZK, converties par les taux BCE.
+
+Ces trois sources sont ajoutées à la bibliothèque, comme Brico-phone. Les autres refusent
+l'automatisation, et MON STOCK le respecte :
+- robots.txt interdit : Pieces2Mobile, ITP Technologie, Ingrosmart, Planet Outlet ;
+- prix masqués sans compte : Punto Ingrosso (prix à 0) ;
+- 429 : Shopify products.json ;
+- catalogue rendu en JavaScript, sans données lisibles.
+
+Pour toutes ces sources, le canal reste un compte pro avec un fichier ou une API.
 
 ### 5.2 Accès pratique aux catalogues
 
 | Mode | Connecteur | État |
 | --- | --- | --- |
-| Fichier envoyé par le fournisseur (CSV/TSV/XLSX/XML/JSON) | Import de catalogue (§2) | **fonctionnel, testé sur TEST** (`/cron/import-selftest` : 2 offres, 1 ligne illisible signalée, statut « partiel ») |
+| Fichier envoyé par le fournisseur (CSV/TSV/XLSX/XML/JSON) | Import de catalogue (§2) | **fonctionnel, testé sur TEST** (`/cron/import-selftest` : 6 offres + 1 ligne illisible ; fichier défectueux suspendu sans rien modifier ; mise à jour avec doublon ignoré) |
 | Flux URL (CSV/XML/JSON) | `supplier_feeds` + moteur de sourcing (toutes les 6 h) | fonctionnel (tests d'intégration) ; à configurer avec l'URL du fournisseur |
 | API officielle | eBay Browse, BigBuy, Ingram Micro (adaptateurs existants) | eBay : en attente des clés ; BigBuy / Ingram : identifiants du compte revendeur |
-| Catalogue public | Sitemap + données structurées (Brico-phone) | vérifié (prix publics TTC) |
+| Catalogue public | Sitemap + données structurées, WooCommerce Store API | vérifiés : Brico-phone, Refreshed Apples, Fixje, Servisní díly (prix publics) |
 | Portail sans export | — | consultation manuelle ; demander un export (modèle d'e-mail fourni) |
+
+**Protection des imports** (`src/domain/sourcing/import-quality.ts`) : avant toute écriture, le
+fichier entier est lu. L'import est **suspendu, sans aucune modification**, si :
+- plus de 50 % des lignes sont illisibles ;
+- le catalogue fait moins de la moitié du dernier import ;
+- plus de la moitié des références connues changent de prix de plus de 60 % (mauvaise colonne,
+  HT/TTC, devise) ;
+- la colonne de référence n'identifie pas les produits.
+
+Les doublons (même référence) sont ignorés et signalés. Si le fichier est correct, l'utilisateur
+peut confirmer : « Importer quand même ».
 
 Modèles d'e-mail de demande d'accès (FR / EN) : générés par fournisseur dans l'application
 (Réglages → Fournisseurs professionnels → fiche → « E-mail de demande d'accès » FR ou EN, ouvert dans la messagerie du téléphone), demandent un export
@@ -184,6 +232,9 @@ mise à jour.
 | --- | --- | --- |
 | **eBay France (API Browse officielle)** | en attente des clés eBay (§4) | API officielle |
 | **Brico-phone** (FR, pièces) | ✅ vérifiée : produits avec prix relevés | catalogue public (sitemap + données structurées) |
+| **Refreshed Apples** (NL, iPhone par grade) | ✅ vérifiée le 10/10/2026 : 117 produits avec prix | catalogue public (sitemap + données structurées) |
+| **Fixje** (NL, pièces) | ✅ vérifiée le 10/10/2026 : 200 produits avec prix (dont prestations de réparation) | WooCommerce Store API publique |
+| **Servisní díly** (CZ, pièces) | ✅ vérifiée le 10/10/2026 : produits avec prix en CZK | catalogue public (sitemap + données structurées) |
 | Utopya, Certideal, Recommerce, Largo, Injured Gadgets, Merkandi, Fixez, Jobalots | ❌ robots.txt interdit ou 403 | compte / partenariat |
 | Mobilax, Yes-yes, Refurbed, Eurolots, Wholesale Clearance, Cash Converters, Mobilesentrix EU, REWA, Foneday, MobileParts.shop, Replacebase, iFixit Pro EU, Stocklear, LDLC Pro, Destockplus, Easycash, Smaaart | ❌ pas de catalogue public lisible | compte pro, flux ou fichier |
 
@@ -271,3 +322,61 @@ activer** (Dashboard → Authentication → Policies) ; 3 tables serveur sans po
 Migrations de cet audit, appliquées sur TEST : `20261010000100` (durcissement, offres enregistrées,
 quotas IA), `20261010000200` (contrôles de l'annuaire), `20261010000300` (remboursement après
 expédition).
+
+## 10. « Mes outils » : expédition et suivi de colis
+
+Comparatif des API : [docs/research/shipping-tracking-apis-2026-10.md](research/shipping-tracking-apis-2026-10.md).
+
+### 10.1 Calculs locaux (sans serveur)
+
+- **Outils concernés :** TVA, marge, prix de vente, frais eBay, remise.
+- **Où :** modules purs `src/domain/tools/*` (tests `tests/unit/tools-calculators.test.ts`).
+- **Calcul exact :** fractions BigInt, arrondi au centime uniquement à l'affichage.
+- **Marge et prix de vente :** même fonction que le radar (`computeUnitEconomics`).
+- **Convertisseur de devises :** taux BCE de la table `fx_rates`, avec leur date.
+
+### 10.2 Comparateur de frais de port
+
+| Source | Connecteur | État |
+| --- | --- | --- |
+| Packlink PRO | `src/integrations/shipping/packlink.ts` (contrat du code officiel `packlink-dev/ecommerce_module_core`) | prêt ; **en attente de `PACKLINK_API_KEY`** ; hôte joignable (contrôle sans clé) |
+| Boxtal API v1 | `src/integrations/shipping/boxtal.ts` (contrat du SDK officiel `boxtal/php-library`) | prêt ; **en attente des identifiants v1 et du code de contenu** ; point d'accès actif (401 sans identifiants) |
+| Grilles de l'utilisateur | table `shipping_rate_cards` (RLS), calcul local | **fonctionnel** |
+
+Sans plateforme ni grille : aucun prix, message explicite (« MON STOCK n'invente aucun prix »).
+
+> Les clés de plateforme sont celles du serveur : tous les utilisateurs de ce déploiement voient
+> les devis de ce compte. En exploitation multi-clients, prévoir une clé par organisation.
+
+### 10.3 Suivi de colis
+
+| API | Pour | Connecteur | État |
+| --- | --- | --- | --- |
+| La Poste Suivi v2 (officiel, gratuit) | La Poste, Colissimo, Chronopost | `src/integrations/tracking/laposte.ts` | prêt ; **en attente de `LAPOSTE_OKAPI_KEY`** ; point d'accès actif (401 sans clé) |
+| Ship24 (multi-transporteurs, détection automatique) | tous les autres transporteurs | `src/integrations/tracking/ship24.ts` (spécification OpenAPI officielle) | prêt ; **en attente de `SHIP24_API_KEY`** ; point d'accès actif |
+
+- **Colis :** table `tracked_parcels` (RLS, garde « même organisation »).
+- **Colonnes réservées au serveur :** le statut, l'historique, la date estimée et la source ne
+  sont écrits que par le serveur. Le déclencheur `tracked_parcels_client_guard` refuse toute
+  modification par l'application, ce que testent les tests d'intégration.
+- **Actualisation automatique** (`/cron/tracking`, deux fois par heure, 30 colis par passage) :
+  - toutes les 2 h si le colis est en cours de livraison, 4 h s'il est en transit, 8 h si
+    l'étiquette est seulement créée ;
+  - arrêt une fois le colis livré, après 7 jours si le numéro est introuvable, et après 60 jours
+    au total ;
+  - sans clé : nouvel essai toutes les 12 h, sans aucun statut écrit.
+- **Alertes** (table `alerts`, sans doublon) :
+  - colis livré ;
+  - problème (échec de livraison, incident, retour) ;
+  - retard, uniquement si l'API a fourni une date estimée désormais dépassée.
+- **Données transmises :** le numéro de suivi et, s'il est connu, le pays de destination. Aucune
+  donnée client.
+
+### 10.4 Activer une plateforme ou une API (aucune clé dans le dépôt)
+
+1. Créer le compte chez le fournisseur et générer la clé (voir §3).
+2. Supabase → Edge Functions → **Secrets** : ajouter la variable.
+3. Vérifier :
+   - `GET /api/health` → `shippingProviders` / `trackingProviders` ;
+   - application → Outils → Frais de port ou Suivi de colis.
+4. Contrôle des points d'accès : `select public.call_monstock_cron('connectors-probe');`.

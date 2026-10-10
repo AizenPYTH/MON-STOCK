@@ -219,7 +219,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     taxType: "unknown",
     termsUrl: "https://www.fixje.nl",
     access: "public_json",
-    notes: "Pièces et accessoires smartphone (Pays-Bas), offre professionnelle « Zakelijk ». Contrôle serveur du 10/10/2026 : catalogue public WooCommerce avec prix (prix publics, remise pro sur compte).",
+    notes: "Pièces et accessoires smartphone (Pays-Bas), offre professionnelle « Zakelijk ». Contrôle serveur du 10/10/2026 : 200 fiches avec prix publics (WooCommerce) ; certaines fiches « modèle » sont des prix de réparation, pas des pièces : vérifiez chaque offre. Remise pro sur compte.",
     probeQuery: "iphone 13",
   },
   {

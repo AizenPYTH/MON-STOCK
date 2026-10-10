@@ -122,3 +122,74 @@ BigBuy, Copaco, Kosatec, Hurtel, Life365.
    - l'existence d'un export CSV/XML ou d'une API de stock et de prix pour les revendeurs ;
    - les conditions de livraison et de facturation en France (TVA intracommunautaire).
 3. Prévoir côté MON STOCK un connecteur générique « import de tableur fournisseur » (XLSX/CSV avec mapping de colonnes). Il couvrirait Foxway, iOutlet, Exertis, Copaco, Kosatec et Action sans développement propre à chaque fournisseur.
+
+## Seconde recherche : 57 fournisseurs moins connus (10 octobre 2026)
+
+- **Recherche :** multilingue (FR, ES, NL, DE, IT, PL), dans des annuaires, listes d'exposants de salons et boutiques B2B.
+- **Vérification :** depuis le serveur MON STOCK.
+  - Joignabilité du site.
+  - Éclaireur de catalogue public : Shopify, WooCommerce, données structurées, plan du site. robots.txt respecté, aucun contournement.
+- **Sources :** les URL consultées par la recherche figurent dans le JSON (`sourcesChecked`).
+- **Retirés :** deux candidats sans site officiel (fiches d'exposants IFA uniquement), et un doublon.
+
+| Fournisseur | Pays | Segment | Site | Accès au catalogue | Contrôle serveur |
+| --- | --- | --- | --- | --- | --- |
+| Nedis (Nedis Connect) | NL | Distributeur | https://nedis.com/en-us/business | flux, portail pro | site joignable |
+| Infortisa | ES | Distributeur | https://www.infortisa.com/ | API, flux, portail pro | site joignable |
+| Globomatik | ES | Distributeur | https://www.globomatik.com/ | portail pro, flux | site joignable |
+| DMI Computer | ES | Distributeur | https://www.dmi.es/ | flux, API, portail pro | site joignable |
+| Megasur | ES | Distributeur | https://www.megasur.es/ | flux, portail pro | injoignable (403 anti-robot) |
+| SOSav Pro | FR | Pièces | https://www.sosav.fr/ | catalogue public, portail pro | site joignable |
+| Pieces2Mobile | FR | Pièces | https://www.pieces2mobile.com/ | catalogue public, portail pro | robots.txt interdit l'automatisation |
+| Horepa | FR | Pièces | https://horepa.fr/fr/ | catalogue public, portail pro | site joignable |
+| ITP Technologie | FR | Reconditionné | https://www.itp-technologie.com/ | catalogue public, liste de prix par e-mail | robots.txt interdit l'automatisation |
+| EB-TECH | FR | Distributeur | https://eb-tech.fr/ | portail pro | site joignable |
+| Prodealee (Wedealee SAS) | FR | Distributeur | https://www.grossiste-telephone.com/ | portail pro | site joignable |
+| Mobile Depot Europe (Taqat BV / MJ Phone) | NL | Reconditionné | https://www.mobiledepot.eu/ | catalogue public, liste de prix par e-mail | site joignable |
+| Refreshed Apples | NL | Spécialiste | https://www.refreshedapples.com/ | catalogue public, liste de prix par e-mail | catalogue public exploitable : 117 fiches avec prix (bibliothèque) |
+| Molano B.V. (Buy Molano) | NL | Spécialiste | https://buymolano.com/ | catalogue public, liste de prix par e-mail | site joignable |
+| Mobistock BV | NL | Reconditionné | https://www.mobistock.nl/ | catalogue public, liste de prix par e-mail | site joignable |
+| Dutch Mobile Parts B.V. | NL | Pièces | https://dutchmobileparts.nl/ | portail pro | site joignable |
+| DutchSpares B.V. | NL | Pièces | https://www.dutchspares.com/ | catalogue public, portail pro | site joignable |
+| iPartsPro Europe Distribution | BE | Pièces | https://ipartspro.eu/ | portail pro | site joignable |
+| Fixje (FixjeZakelijk) | NL | Pièces | https://www.fixje.nl/ | catalogue public, portail pro | catalogue public exploitable : 200 fiches avec prix (bibliothèque ; inclut des prix de réparation) |
+| RepuestosMovil | ES | Pièces | https://repuestosmovil.es/ | portail pro | site joignable |
+| Mobilex (Serviphone) | ES | Pièces | https://serviphone.net/ | catalogue public, portail pro | injoignable (403 anti-robot) |
+| Tecnofix Informática (Alicante) | ES | Pièces | https://www.tecnofixinformatica.com/ | portail pro, liste de prix par e-mail | site joignable |
+| Spainsellers (Microrepuestos S.L.U.) | ES | Pièces | https://www.spainsellers.com/ | flux, portail pro | site joignable |
+| Ecoportátil | ES | Reconditionné | https://ecoportatil.es/ | catalogue public, portail pro | site joignable |
+| PC-Portátil (mayorista informática segunda mano) | ES | Reconditionné | https://www.pc-portatil.com/ | catalogue public, liste de prix par e-mail | site joignable |
+| PhoneMad (Renova PhoneMadrid S.L.) | ES | Spécialiste | https://www.phonemadrid.com/ | catalogue public, portail pro | site joignable |
+| Planet Outlet | ES | Lots / retours | https://planetoutlet.es/ | catalogue public | robots.txt interdit, 403 |
+| Subastalotes | ES | Lots / retours | https://subastalotes.com/ | catalogue public | WooCommerce sans produit public |
+| Bestellaptops.nl (Laptop Groothandel) | NL | Reconditionné | https://bestellaptops.nl/ | catalogue public, liste de prix par e-mail | Shopify, products.json limité (429) |
+| Big Brand Depot | FR | Lots / retours | https://bigbranddepot.fr/ | catalogue public, liste de prix par e-mail | injoignable (aucune réponse) |
+| Partner Tele.com | PL | Distributeur | https://partnertele.com/ | portail pro, flux, fichier à télécharger | site joignable |
+| Home Screen Distribution | PL | Distributeur | https://b2b.homescreen.pl/en/ | portail pro, flux, API | site joignable |
+| TelePart Distribution GmbH | DE | Distributeur | https://www.telepart.com/de | portail pro, fichier à télécharger, liste de prix par e-mail | site joignable |
+| TR Vertriebs GmbH | DE | Reconditionné | https://www.tr-vertrieb.de/ | liste de prix par e-mail | site joignable |
+| mpsmobile GmbH | DE | Pièces | https://mpsmobile.de/en | portail pro, catalogue public | site joignable |
+| Mobiltec 24 GmbH | DE | Pièces | https://www.mobiltec24.de/ | catalogue public, portail pro | site joignable |
+| Nowacell | PL | Pièces | https://nowacell.pl/ | catalogue public, portail pro, liste de prix par e-mail | site joignable |
+| GSMOK.com | PL | Pièces | https://gsmok.com/en/ | catalogue public, portail pro | site joignable |
+| MobileWorld (Linz) | AT | Pièces | https://www.mobileworld.at/ | catalogue public, portail pro | site joignable |
+| Servisní díly (servisnidily.cz) | CZ | Pièces | https://www.servisnidily.cz/ | catalogue public, portail pro | catalogue public exploitable : prix en CZK (bibliothèque) |
+| Technoworld Reseller (TW Reseller) | IT | Pièces | https://www.shop-technoworld.eu/ | catalogue public, portail pro | site joignable |
+| Ingrosmart (Newmobi) | IT | Pièces | https://www.ingrosmart.it/ | catalogue public, portail pro | robots.txt interdit l'automatisation |
+| MICHAEL AG (Michael Telecom) | DE | Distributeur | https://www.michael-ag.de/ | portail pro, fichier à télécharger, flux | site joignable |
+| Incom Group | PL | Distributeur | https://www.incomgroup.pl/ | catalogue public, portail pro | site joignable |
+| Omnicomp | DE | Reconditionné | https://omnicomp.de/ | liste de prix par e-mail | injoignable (aucune réponse) |
+| Flashmac B2B | IT | Reconditionné | https://www.flashmac.com/ | portail pro | site joignable |
+| BitStockz | PL | Lots / retours | https://www.bitstockz.pl/ | catalogue public, fichier à télécharger, place de marché | site joignable |
+| AVIDES | DE | Lots / retours | https://www.avides.com/en/ | liste de prix par e-mail | injoignable (aucune réponse) |
+| RetourenDirekt (Auctum GmbH) | DE | Lots / retours | https://retourendirekt.de/en | catalogue public | site joignable |
+| Punto Ingrosso | IT | Distributeur | https://www.puntoingrosso.it/ | catalogue public, portail pro | catalogue public, prix masqués (0 €) sans compte |
+| Smartphone Italia Srl | IT | Spécialiste | https://smartphoneitalia.it/it/ | portail pro | injoignable (403 anti-robot) |
+| TELEHURT | PL | Pièces | https://telehurt.pl/ | catalogue public | site joignable |
+| Mobilepart.pl | PL | Pièces | https://mobilepart.pl/pl/ | catalogue public, portail pro | site joignable |
+| hurtowniagsm.pl | PL | Pièces | https://www.hurtowniagsm.pl/ | catalogue public, flux | site joignable |
+| GSP Electronics Großhandel | DE | Pièces | https://gspelectronics-grosshandel.de/ | catalogue public | injoignable (HTTP 500) |
+| PC Ricondizionati | IT | Reconditionné | https://www.pc-ricondizionati.com/ | liste de prix par e-mail | site joignable |
+| Portatilmovil | ES | Reconditionné | https://www.portatilmovil.com/ | liste de prix par e-mail | site joignable |
+
+Pourquoi chacun est intéressant et comment obtenir son catalogue : champs `whyUseful` et `howToGetCatalog` du JSON, affichés dans l'application (Sourcing → Fournisseurs → fiche → « Prochaine action »).

@@ -1,0 +1,551 @@
+{
+  "checkedAt": "2026-10-10",
+  "researchLimits": "WebFetch failed (DNS) and the egress proxy denied developer.boxtal.com, sendcloud.dev, developer.dhl.com, developer.ups.com, developer.laposte.fr, packlink, myflyingbox, upela, goshippo, easypost, chronopost, colissimo hosts (HTTP 403 connect_rejected). Sources actually read: raw.githubusercontent.com (official SDK/spec repos), registry.npmjs.org tarballs, packagist metadata, and search-engine snippets of official doc pages. WebSearch budget (200/turn) was exhausted before Upela, Mondial Relay, Cubyn, La Poste tarif status could be checked.",
+  "providers": [
+    {
+      "name": "Boxtal (API v1 - cotation)",
+      "type": "aggregator (multi-carrier broker, French; formerly Envoimoinscher)",
+      "sourceQuality": "Endpoint, params, auth header and response XPaths read from Boxtal's OFFICIAL GitHub SDK boxtal/php-library (Emc/WebService.php, Emc/Quotation.php, README). developer.boxtal.com pages were blocked by the egress proxy; only search-engine snippets of them were seen.",
+      "rateQuote": {
+        "method": "GET",
+        "url": "https://www.envoimoinscher.com/api/v1/cotation",
+        "sandboxUrl": "https://test.envoimoinscher.com/api/v1/cotation",
+        "hostNote": "Hosts are those hard-coded in the official SDK (server_prod/server_test). Boxtal's current doc page (developer.boxtal.com/apiv1/guide/quote-api-v1) names the endpoint 'GET /cotation' but its base host could not be read: current host = unconfirmed. Sandbox accounts are created on boxtal.build (README).",
+        "format": "query string in, XML out"
+      },
+      "auth": {
+        "type": "HTTP header Authorization = base64(login:password) of the Boxtal v1 API account",
+        "exactFromSdk": "'Authorization: ' . base64_encode(user . ':' . pass)  (note: the official SDK sends NO 'Basic ' prefix)",
+        "otherHeaders": [
+          "Accept-Language: fr-FR|en-US",
+          "Api-Version: 1.3.7 (value used by SDK)"
+        ],
+        "note": "A third-party Boxtal plugin README states v1 keys are needed for prices and v3 keys for labels (separate credentials). Whether 'Basic ' prefix is accepted/required: unconfirmed."
+      },
+      "requestFields": {
+        "shipper.pays": "ISO-2 country, e.g. FR",
+        "shipper.code_postal": "postcode",
+        "shipper.ville": "city",
+        "shipper.type": "'entreprise' | 'particulier'",
+        "shipper.adresse": "street (optional for quote)",
+        "recipient.pays": "ISO-2",
+        "recipient.code_postal": "postcode",
+        "recipient.ville": "city",
+        "recipient.type": "'entreprise' | 'particulier'",
+        "colis_1.poids": "weight in kg (SDK sample: 1)",
+        "colis_1.longueur": "cm",
+        "colis_1.largeur": "cm",
+        "colis_1.hauteur": "cm",
+        "parcelTypePrefix": "colis | pli | encombrant | palette (prefix of the key, e.g. pli_1.poids)",
+        "collecte": "YYYY-MM-DD collection date (no Sundays/holidays)",
+        "delay": "'aucun' (SDK sample)",
+        "content_code": "content category id from GET /contents (SDK sample 10120)",
+        "colis.valeur": "declared value (required for cross-border)",
+        "filters": "operator, service, offers[N] (from doc snippet)",
+        "unitsConfirmed": "kg / cm per README sample values; explicit unit statement in docs: unconfirmed"
+      },
+      "responseFields": {
+        "xpathRoot": "/cotation/shipment/offer",
+        "price": "price/tax-exclusive (HT) and price/tax-inclusive (TTC)",
+        "currency": "price/currency",
+        "carrier": "operator/code, operator/label, operator/logo",
+        "service": "service/code, service/label",
+        "deliveryEstimate": "delivery/date",
+        "collection": "collection/type/code + collection/type/label + collection/date (pickup at home vs drop-off: codes = unconfirmed)",
+        "deliveryType": "delivery/type/code + label (home vs relay point)",
+        "other": "characteristics (list of text lines), mode, alert, mandatory_informations, options, insurance/*",
+        "trackingIncluded": "unconfirmed"
+      },
+      "negotiatedPrices": "Boxtal's own negotiated tariffs (the price you pay Boxtal), not your own carrier contracts. Contract-hosted offers exist in v3 (shippingOfferId) only.",
+      "signup": {
+        "account": "free user account (official README: 'create a (free) user account'); developer profile register link https://redirect.boxtal.com/iam/redirect/register?profile=developer",
+        "company/SIRET": "unconfirmed",
+        "monthlyFee": "unconfirmed",
+        "minVolume": "unconfirmed",
+        "apiCost": "unconfirmed",
+        "paymentToOrder": "v3: deferred direct-debit payment mode must be configured to place orders (search snippet of v3 getting-started)"
+      },
+      "coverage": "France origin, many destinations; carriers include Colissimo, Mondial Relay, Chronopost, UPS, DHL etc. - exact list: unconfirmed",
+      "rateLimits": "unconfirmed",
+      "v3Note": "Boxtal API v3 (JSON, 'shipping' API, POST /v3.1/shipping-order, test server https://api.boxtal.build/shipping) has NO quote endpoint: its own page 'quote-api-v3' says requesting a quote with v3 is currently not possible and points to v1 GET /cotation (from search snippet of https://developer.boxtal.com/fr/en/apiv3/guide/quote-api-v3). v3 auth scheme: unconfirmed.",
+      "docs": [
+        "https://github.com/boxtal/php-library (official, read)",
+        "https://developer.boxtal.com/apiv1/guide/quote-api-v1 (snippet only)",
+        "https://developer.boxtal.com/fr/en/apiv3/guide/quote-api-v3 (snippet only)"
+      ]
+    },
+    {
+      "name": "Boxtal Connect / API v3",
+      "type": "aggregator (shipping/order API)",
+      "rateQuote": {
+        "method": null,
+        "url": null,
+        "note": "No quotation endpoint in v3 per Boxtal doc snippet; use v1 /cotation."
+      },
+      "auth": "unconfirmed",
+      "requestFields": null,
+      "responseFields": null,
+      "docs": [
+        "https://developer.boxtal.com/fr/fr/apiv3/guide/getting-started-api-v3 (snippet only)",
+        "https://developer.boxtal.com/fr/en/apiv3/guide/sandbox-api-v3 (snippet only)"
+      ]
+    },
+    {
+      "name": "Sendcloud (API v3 - Shipping options)",
+      "type": "aggregator / shipping software (NL; uses Sendcloud rates or your own carrier contracts)",
+      "sourceQuality": "sendcloud.dev blocked by egress proxy; everything below comes from search-engine snippets of sendcloud.dev pages.",
+      "rateQuote": {
+        "method": "POST",
+        "url": "https://panel.sendcloud.sc/api/v3/shipping-options",
+        "sandboxUrl": "none documented (unconfirmed)",
+        "note": "'Return a list of available shipping options'. Older POST /api/v3/fetch-shipping-options is deprecated since 14 Jan 2026. Legacy v2: GET https://panel.sendcloud.sc/api/v2/shipping-price?shipping_method_id=&from_country=&to_country=&weight=&weight_unit=kilogram|gram (one method per call, no zonal/postcode carriers, v2 entering maintenance)."
+      },
+      "auth": {
+        "type": "HTTP Basic: username = Public Key, password = Secret Key (created in Sendcloud panel > Integrations > Sendcloud API)",
+        "header": "Authorization: Basic base64(public_key:secret_key)",
+        "note": "OAuth2 also exists for some integrations (details unconfirmed). Secret keys server-side only."
+      },
+      "requestFields": {
+        "calculate_quotes": "boolean, default false; must be true to get prices",
+        "from_address / to_address": "objects with country_code, postal_code, city, address_line_1, state_province_code (exact key names inside the objects: country_code key name unconfirmed; snippet lists postal_code, city, address_line_1, state_province_code)",
+        "alt_flat_fields": "from_country_code, from_postal_code, to_country_code, to_postal_code (deprecated, mutually exclusive with *_address objects)",
+        "parcels": "array; each parcel: weight {value: string, unit: 'kg'} and dimensions {length, width, height, unit: 'cm'}",
+        "contract_id": "optional; else default contract per carrier",
+        "functionalities": "optional filters (e.g. signature)"
+      },
+      "responseFields": {
+        "quotes": "object per shipping option, empty/null if price can't be computed; returned only when origin+destination given",
+        "estimated_surcharges": "array added 2026 to quote, separate from base price",
+        "lead_time": "nullable",
+        "billed_weight": "present",
+        "shipping_option code": "used later as shipping_option_code when creating shipment",
+        "exactPriceFieldNames": "unconfirmed (could not read schema: price/total/value/currency layout unconfirmed)",
+        "vat": "unconfirmed",
+        "trackingIncluded": "unconfirmed",
+        "pickupDropoffType": "via functionalities (exact keys unconfirmed)"
+      },
+      "negotiatedPrices": "Sendcloud's own rates or your own direct carrier contract (contract_id); one contract per carrier per call",
+      "signup": {
+        "account": "Sendcloud account; plans Free/Lite/Growth/... (third-party sources conflict on whether Free plan includes API access and on prices ~25-35 EUR/mo Lite)",
+        "company/SIRET": "unconfirmed",
+        "apiCost": "unconfirmed"
+      },
+      "coverage": "supports shipping from ~8 countries incl. France (third-party source); carriers incl. Colissimo, Chronopost, Mondial Relay, UPS, DHL... (exact list unconfirmed)",
+      "rateLimits": "general: GET 1000 req/min, POST/PATCH/PUT/DELETE 100 req/min with burst 15 req/s; HTTP 429 when exceeded (sendcloud.dev/docs/getting-started/rate-limits snippet). Endpoint-specific limit for shipping-options: unconfirmed",
+      "docs": [
+        "https://sendcloud.dev/api/v3/shipping-options/return-a-list-of-available-shipping-options",
+        "https://sendcloud.dev/docs/shipments/shipping-options-and-quotes",
+        "https://sendcloud.dev/docs/getting-started/authentication",
+        "https://sendcloud.dev/docs/getting-started/rate-limits",
+        "https://sendcloud.dev/api/v2/shipping-prices/retrieve-a-shipping-price"
+      ]
+    },
+    {
+      "name": "Packlink PRO API",
+      "type": "aggregator (multi-carrier broker, Auctane group)",
+      "sourceQuality": "No public official API reference found. Endpoint/params/response keys read from Packlink's OFFICIAL open-source integration core github.com/packlink-dev/ecommerce_module_core (src/BusinessLogic/Http/Proxy.php and DTO/ShippingServiceSearch.php, ShippingServiceDetails.php, Package.php). Treat as implementation-grade but not contractually documented.",
+      "rateQuote": {
+        "method": "GET",
+        "url": "https://api.packlink.com/v1/services?from[country]=FR&from[zip]=75001&to[country]=FR&to[zip]=33000&packages[0][weight]=1&packages[0][length]=20&packages[0][width]=15&packages[0][height]=10",
+        "sandboxUrl": "exists per unofficial clients ('sandbox' environment) - URL unconfirmed",
+        "optionalParams": "source (brand), serviceId"
+      },
+      "auth": {
+        "type": "API key in raw Authorization header (no 'Bearer' prefix in official core): 'Authorization: <api_key>'",
+        "keyFrom": "Packlink PRO web app > Settings > 'Packlink PRO API key' > Generate API key (help-center article 213431749)",
+        "otherHeaders": "Accept/Content-Type application/json; X-Module-Version, X-Ecommerce-Name, X-Ecommerce-Version are sent by plugins (whether required for direct use: unconfirmed)"
+      },
+      "requestFields": {
+        "from[country]": "ISO-2",
+        "from[zip]": "postcode",
+        "to[country]": "ISO-2",
+        "to[zip]": "postcode",
+        "packages[i][weight]": "kg (float)",
+        "packages[i][length|width|height]": "cm (integers; core does ceil())"
+      },
+      "responseFields": {
+        "array of services": "each: id, carrier_name, name (service), currency, country, price.total_price, price.base_price, price.tax_price, transit_time, transit_hours, first_estimated_delivery_date, dropoff (bool: drop-off at departure), delivery_to_parcelshop (bool), labels_required, category, service_info, available_dates, national, tags, cash_on_delivery",
+        "vat": "total_price vs base_price + tax_price => total looks TTC, base HT (interpretation unconfirmed)",
+        "trackingIncluded": "unconfirmed"
+      },
+      "negotiatedPrices": "Packlink's negotiated tariffs (no own contract)",
+      "signup": {
+        "account": "free, no commitment, no minimum volume (marketing/listing pages, third-party); optional paid subscription for extra discounts",
+        "company/SIRET": "Packlink PRO targets professionals; SIRET requirement unconfirmed",
+        "apiCost": "free (unconfirmed officially)"
+      },
+      "coverage": "ES/FR/IT/DE... origins; many carriers (Colissimo, Chronopost, Mondial Relay, UPS, DHL, DPD...) - exact list unconfirmed",
+      "rateLimits": "unconfirmed",
+      "docs": [
+        "https://github.com/packlink-dev/ecommerce_module_core/blob/master/src/BusinessLogic/Http/Proxy.php (read)",
+        "https://support-pro.packlink.com/hc/en-gb/articles/213431749-How-do-I-generate-an-API-key-on-Packlink-PRO (snippet)"
+      ]
+    },
+    {
+      "name": "Colissimo (La Poste) web services",
+      "type": "carrier",
+      "rateQuote": {
+        "method": null,
+        "url": null,
+        "note": "No public Colissimo rate-quote API found. Colissimo WS cover label generation (SLS ws.colissimo.fr/sls-ws), pickup points, tracking. Contract prices are in PDF grids (Facilite/Privilege) on colissimo.entreprise.laposte.fr. Existence of a contract rate API: unconfirmed (ask Colissimo account manager)."
+      },
+      "auth": "contract number + Webservice API password (separate from colissimo.fr password) for SLS - per third-party guide",
+      "signup": {
+        "account": "Colissimo Pro/entreprise contract required for WS"
+      },
+      "docs": [
+        "https://www.colissimo.entreprise.laposte.fr (PDF grids, snippets only)"
+      ]
+    },
+    {
+      "name": "La Poste Okapi - 'tarifenvoi' (Tarifs d'envoi)",
+      "type": "carrier (public price list API)",
+      "rateQuote": {
+        "method": "GET",
+        "url": "https://api.laposte.fr/tarifenvoi/v1?type=colis&poids=<grams>",
+        "note": "Seen only in La Poste's official but OLD slide deck github.com/DeveloperLaPoste/okapi-intro (gh-pages/index.html: url apiBaseUrl + '/tarifenvoi/v1?type=colis&poids=' and result[0].price + result[0].currency). Whether this API is still in the Okapi catalogue in 2026: UNCONFIRMED. Returns public counter prices only, no dimensions, no destination postcode."
+      },
+      "auth": "Okapi app key header 'X-Okapi-Key: <key>' (official okapi-cli README)",
+      "requestFields": {
+        "type": "colis|lettre...",
+        "poids": "grams"
+      },
+      "responseFields": {
+        "array": "price, currency (other fields unconfirmed)"
+      },
+      "negotiatedPrices": "no (public tariffs)",
+      "signup": {
+        "account": "free developer.laposte.fr account + subscribe to API in store (unconfirmed for this API)"
+      },
+      "otherOkapiApis": "Suivi (tracking) e.g. GET suivi/v1/<id> per okapi-cli README; current Suivi v2 path unconfirmed",
+      "docs": [
+        "https://github.com/DeveloperLaPoste/okapi-cli (read)",
+        "https://github.com/DeveloperLaPoste/okapi-intro (read, old)",
+        "https://developer.laposte.fr/ (blocked)"
+      ]
+    },
+    {
+      "name": "Chronopost QuickCost",
+      "type": "carrier (SOAP)",
+      "rateQuote": {
+        "method": "SOAP POST",
+        "url": "https://ws.chronopost.fr/quickcost-cxf/QuickcostServiceWS",
+        "wsdl": "https://ws.chronopost.fr/quickcost-cxf/QuickcostServiceWS?wsdl",
+        "operations": "quickCost(accountNumber,password,depCode,arrCode,weight,productCode,type) -> amount, amountTTC, amountTVA, errorCode, errorMessage, zone, service[]; calculateProducts(accountNumber,password,depCountryCode,depZipCode,arrCountryCode,arrZipCode,arrCity,type,weight,height,length,width,shippingDate); calculateDeliveryTime"
+      },
+      "sourceQuality": "Field names from classes generated from the official WSDL (github.com/Kwaadpepper/Chronopost-QuickCost, wsdltophp). WSDL itself blocked. Units (kg/cm) and 'type' values: unconfirmed.",
+      "auth": "Chronopost contract accountNumber + password inside SOAP body",
+      "negotiatedPrices": "yes, contract prices (HT amount + TTC + TVA)",
+      "signup": {
+        "account": "Chronopost business contract required"
+      },
+      "coverage": "Chronopost products only",
+      "docs": [
+        "https://github.com/Kwaadpepper/Chronopost-QuickCost (read)"
+      ]
+    },
+    {
+      "name": "DHL Express - MyDHL API",
+      "type": "carrier",
+      "rateQuote": {
+        "method": "GET (single piece) / POST (multi-piece)",
+        "url": "https://express.api.dhl.com/mydhlapi/rates",
+        "sandboxUrl": "https://express.api.dhl.com/mydhlapi/test/rates (mock: https://api-mock.dhl.com/mydhlapi/rates)"
+      },
+      "sourceQuality": "Read from DHL's official OpenAPI file v2.7.0 (2022) as vendored in github.com/Korbeil/dhl-express-php-api/resources/dpdhl-express-api-2.7.0-swagger.yaml. Newer spec versions exist (unofficial SDK mentions 3.x and a required x-version header) - check current spec.",
+      "auth": "HTTP Basic (username/password issued by DHL after access request on developer.dhl.com)",
+      "requestFields": {
+        "accountNumber": "required",
+        "originCountryCode": "ISO-2 required",
+        "originPostalCode": "optional",
+        "originCityName": "required",
+        "destinationCountryCode": "required",
+        "destinationPostalCode": "optional",
+        "destinationCityName": "required",
+        "weight": "required number (kg when unitOfMeasure=metric)",
+        "length/width/height": "required (cm when metric)",
+        "plannedShippingDate": "required, e.g. 2020-02-26",
+        "isCustomsDeclarable": "required true|false",
+        "unitOfMeasure": "required metric|imperial",
+        "nextBusinessDay": "optional"
+      },
+      "responseFields": {
+        "products[]": "productName, productCode, localProductCode, networkTypeCode, isCustomerAgreement, weight, totalPrice[] {currencyType BILLC|PULCL|BASEC, priceCurrency, price}, totalPriceBreakdown, detailedPriceBreakdown, pickupCapabilities, deliveryCapabilities {deliveryTypeCode, estimatedDeliveryDateAndTime, totalTransitDays...}",
+        "vat": "unconfirmed"
+      },
+      "negotiatedPrices": "yes, account-specific (accountNumber); PULCL = public rates currency",
+      "signup": {
+        "account": "DHL Express account number + MyDHL API access approval; for business"
+      },
+      "coverage": "DHL Express only (international express)",
+      "rateLimits": "unconfirmed",
+      "docs": [
+        "https://developer.dhl.com/api-reference/dhl-express-mydhl-api (blocked)",
+        "https://raw.githubusercontent.com/Korbeil/dhl-express-php-api/main/resources/dpdhl-express-api-2.7.0-swagger.yaml (read)"
+      ]
+    },
+    {
+      "name": "DHL Parcel DE (Post & Parcel Germany) Shipping API v2",
+      "type": "carrier (Germany)",
+      "rateQuote": {
+        "method": null,
+        "url": null,
+        "note": "Official SDK netresearch/dhl-sdk-api-parcel-de covers label/order creation only; no rate endpoint found (absence = unconfirmed). Auth: API key header + business customer user/password. Relevant only for shipping from Germany."
+      },
+      "docs": [
+        "https://github.com/netresearch/dhl-sdk-api-parcel-de (read)"
+      ]
+    },
+    {
+      "name": "UPS Rating API",
+      "type": "carrier",
+      "rateQuote": {
+        "method": "POST",
+        "url": "https://onlinetools.ups.com/api/rating/{version}/{requestoption}  (version e.g. v2409; requestoption Rate|Shop|Ratetimeintransit|Shoptimeintransit)",
+        "sandboxUrl": "https://wwwcie.ups.com/api/rating/{version}/{requestoption}",
+        "multiService": "requestoption=Shop returns all UPS services; Shoptimeintransit adds transit times"
+      },
+      "auth": {
+        "type": "OAuth2 client credentials",
+        "tokenUrl": "POST https://onlinetools.ups.com/security/v1/oauth/token (CIE: https://wwwcie.ups.com/security/v1/oauth/token)",
+        "tokenRequest": "Basic auth client_id:client_secret (client_secret_basic), form body grant_type=client_credentials, optional header x-merchant-id (6-digit UPS account)",
+        "use": "Authorization: Bearer <access_token>"
+      },
+      "requestFields": {
+        "RateRequest.Shipment.Shipper/ShipTo/ShipFrom.Address": "AddressLine[], City, StateProvinceCode, PostalCode, CountryCode",
+        "Shipper.ShipperNumber": "UPS account (needed for negotiated rates)",
+        "Package.PackageWeight": "UnitOfMeasurement.Code KGS|LBS, Weight (string)",
+        "Package.Dimensions": "UnitOfMeasurement.Code CM|IN, Length, Width, Height (strings)",
+        "Package.PackagingType.Code": "e.g. '02'",
+        "Service.Code": "for Rate mode",
+        "ShipmentRatingOptions.NegotiatedRatesIndicator": "'Y' to get contract rates"
+      },
+      "responseFields": {
+        "RateResponse.RatedShipment[]": "Service.Code, TotalCharges{CurrencyCode, MonetaryValue}, TotalChargesWithTaxes (if TaxInformationIndicator), NegotiatedRateCharges, TaxCharges[], BillingWeight, TimeInTransit, GuaranteedDelivery"
+      },
+      "negotiatedPrices": "yes with NegotiatedRatesIndicator + ShipperNumber; otherwise published rates",
+      "signup": {
+        "account": "UPS account + app on developer.ups.com (free API access)"
+      },
+      "coverage": "UPS only",
+      "docs": [
+        "https://github.com/UPS-API/api-documentation/blob/main/Rating.yaml (read)",
+        "https://github.com/UPS-API/api-documentation/blob/main/OAuthClientCredentials.yaml (read)"
+      ]
+    },
+    {
+      "name": "MyFlyingBox (LCE) API v2",
+      "type": "aggregator (French, B2B)",
+      "sourceQuality": "Official docs (myflyingbox.com/api, dashboard.myflyingbox.com/en/docs/api/v2) blocked; details below come from a THIRD-PARTY Thelia module (github.com/thelia-modules/MyFlyingBox, Service/LceApiService.php). Treat as unconfirmed.",
+      "rateQuote": {
+        "method": "POST",
+        "url": "https://api.myflyingbox.com/v2/quotes",
+        "sandboxUrl": "https://test.myflyingbox.com/v2/quotes"
+      },
+      "auth": "HTTP Basic login:password (API credentials of MyFlyingBox account)",
+      "requestFields": {
+        "body": "{\"quote\": {\"shipper\": {city, postal_code, country}, \"recipient\": {city, postal_code, country, is_a_company}, \"parcels\": [{length, width, height, weight}], \"product_codes\"?: [...]}} (units kg/cm presumed - unconfirmed)"
+      },
+      "responseFields": {
+        "offers[]": "product.code, product.name, product.carrier_code, product.delay, product.pick_up, product.drop_off, product.preset_delivery_location, product.tracking_url, price.amount, price.currency, total_price.amount, insurance_price.amount (HT/TTC: unconfirmed)"
+      },
+      "negotiatedPrices": "MyFlyingBox tariffs (unconfirmed)",
+      "signup": "unconfirmed",
+      "rateLimits": "unconfirmed",
+      "docs": [
+        "https://github.com/thelia-modules/MyFlyingBox (third-party, read)"
+      ]
+    },
+    {
+      "name": "Upela API",
+      "type": "aggregator (French)",
+      "rateQuote": "unconfirmed",
+      "auth": "unconfirmed",
+      "note": "Could not reach upela.com nor find docs within the search budget. Everything unconfirmed.",
+      "docs": []
+    },
+    {
+      "name": "Envoimoinscher",
+      "type": "= Boxtal (former brand)",
+      "note": "Same API as Boxtal v1 (hosts www/test.envoimoinscher.com in official SDK)."
+    },
+    {
+      "name": "Shippo",
+      "type": "aggregator (US-centric)",
+      "rateQuote": {
+        "method": "POST",
+        "url": "https://api.goshippo.com/shipments/",
+        "note": "rates[] returned in the Shipment object (async false)"
+      },
+      "auth": "Header 'Authorization: ShippoToken <api_key>' (official SDK hook src/hooks/registration.ts); optional SHIPPO-API-VERSION",
+      "requestFields": {
+        "address_from": "address object",
+        "address_to": "address object",
+        "parcels[]": "length,width,height (string), distance_unit 'cm'|'in'..., weight (string), mass_unit 'kg'|'lb'...",
+        "carrier_accounts": "optional list",
+        "async": "boolean"
+      },
+      "responseFields": {
+        "rates[]": "amount, currency, amount_local, currency_local, provider, servicelevel, estimated_days, arrives_by, duration_terms, carrier_account, attributes, zone"
+      },
+      "frCarriers": "Official SDK has carrier-account create models for colissimo, chronopost, mondial_relay, dhl_express, dpd_de, ups... i.e. BYO-contract; whether Shippo supports a FR-based sender account and provides its own FR rates: unconfirmed",
+      "negotiatedPrices": "your own carrier account rates when connected",
+      "docs": [
+        "https://registry.npmjs.org/shippo (official JS SDK 2.18.0, read)"
+      ]
+    },
+    {
+      "name": "EasyPost",
+      "type": "aggregator (US-centric)",
+      "rateQuote": {
+        "method": "POST",
+        "url": "https://api.easypost.com/v2/shipments",
+        "note": "rates[] in shipment; also beta stateless POST https://api.easypost.com/v2/beta/rates (SDK beta_rate_service)"
+      },
+      "auth": "HTTP Basic with API key as username, empty password (SDK superagent request.auth(key))",
+      "requestFields": {
+        "parcel": "length/width/height in INCHES, weight in OUNCES (SDK types)"
+      },
+      "responseFields": {
+        "rates[]": "carrier, service, rate, currency, retail_rate, list_rate, delivery_days, est_delivery_days, delivery_date, delivery_date_guaranteed, carrier_account_id"
+      },
+      "frCarriers": "unconfirmed (no Colissimo/Chronopost/La Poste/Mondial Relay reference in SDK)",
+      "docs": [
+        "https://registry.npmjs.org/@easypost/api (official SDK 8.9.0, read)"
+      ]
+    },
+    {
+      "name": "Mondial Relay",
+      "type": "carrier (relay points)",
+      "rateQuote": {
+        "method": null,
+        "url": null,
+        "note": "No rate API found: SOAP WSI services (relay search, labels) and REST 'API V2 Dual Carrier' for shipments/labels. Prices come from contract grid. Absence of rates endpoint = unconfirmed."
+      },
+      "docs": []
+    },
+    {
+      "name": "Cubyn",
+      "type": "3PL / fulfilment (not a rate-quote API)",
+      "note": "No public rate API found; unconfirmed.",
+      "docs": []
+    }
+  ],
+  "samples": {
+    "boxtal_v1_cotation": {
+      "status": "Official SDK README sample (PHP arrays, not raw HTTP). The SDK turns them into the query string shown under 'derivedQueryString' (derivation by Quotation::setPerson/setType, keys verified in code; values copied).",
+      "from docs: https://github.com/boxtal/php-library/blob/master/README.md": "$from = array('pays' => 'FR','code_postal' => '38400','ville' => \"Saint Martin d'Hères\",'type' => 'entreprise','adresse' => '13 Rue Martin Luther King'); $to = array('pays' => 'FR','code_postal' => '33000','ville' => 'Bordeaux','type' => 'particulier','adresse' => '24, rue des Ayres'); $parcels = array('type' => 'colis','dimensions' => array(1 => array('poids' => 1,'longueur' => 15,'largeur' => 16,'hauteur' => 8))); $additionalParams = array('collecte' => date(\"Y-m-d\"),'delay' => 'aucun','content_code' => 10120,'valeur' => \"42.655\");",
+      "derivedQueryString": "GET {host}/api/v1/cotation?shipper.pays=FR&shipper.code_postal=38400&shipper.ville=Saint+Martin+d%27H%C3%A8res&shipper.type=entreprise&shipper.adresse=...&recipient.pays=FR&recipient.code_postal=33000&recipient.ville=Bordeaux&recipient.type=particulier&recipient.adresse=...&colis_1.poids=1&colis_1.longueur=15&colis_1.largeur=16&colis_1.hauteur=8&collecte=YYYY-MM-DD&delay=aucun&content_code=10120&valeur=42.655",
+      "sampleResponse": "NOT available: no raw XML response could be read from official docs (only XPaths in SDK: /cotation/shipment/offer/{operator/code,operator/label,service/code,service/label,price/currency,price/tax-exclusive,price/tax-inclusive,collection/type/code,collection/date,delivery/type/code,delivery/date,characteristics})"
+    },
+    "packlink_services": {
+      "status": "No official doc sample available. Param names from official core code (ShippingServiceSearch::toArray).",
+      "sampleRequest": "NOT from docs - shape only: GET https://api.packlink.com/v1/services?from[country]=..&from[zip]=..&to[country]=..&to[zip]=..&packages[0][height]=..&packages[0][width]=..&packages[0][length]=..&packages[0][weight]=..",
+      "sampleResponse": "NOT available (keys known from ShippingServiceDetails::fromArray, see provider entry)"
+    },
+    "sendcloud_shipping_options": {
+      "status": "Official page could not be fetched (proxy). No verbatim sample copied; do not rely on any invented one.",
+      "confirmedShapeFromSnippets": "POST /api/v3/shipping-options with from_address/to_address (or deprecated from_country_code/from_postal_code/to_country_code/to_postal_code), parcels[].weight{value:'<string>',unit:'kg'}, parcels[].dimensions{length,width,height,unit:'cm'}, calculate_quotes:true",
+      "sampleResponse": "NOT available"
+    },
+    "ups_rating_simple_rate_request": {
+      "from docs: https://github.com/UPS-API/api-documentation/blob/main/Rating.yaml (example 'Simple Rate')": {
+        "RateRequest": {
+          "Request": {
+            "TransactionReference": {
+              "CustomerContext": "CustomerContext"
+            }
+          },
+          "Shipment": {
+            "Shipper": {
+              "Name": "ShipperName",
+              "ShipperNumber": "ShipperNumber",
+              "Address": {
+                "AddressLine": [
+                  "ShipperAddressLine",
+                  "ShipperAddressLine",
+                  "ShipperAddressLine"
+                ],
+                "City": "TIMONIUM",
+                "StateProvinceCode": "MD",
+                "PostalCode": "21093",
+                "CountryCode": "US"
+              }
+            },
+            "ShipTo": {
+              "Name": "ShipToName",
+              "Address": {
+                "AddressLine": [
+                  "ShipToAddressLine",
+                  "ShipToAddressLine",
+                  "ShipToAddressLine"
+                ],
+                "City": "Alpharetta",
+                "StateProvinceCode": "GA",
+                "PostalCode": "30005",
+                "CountryCode": "US"
+              }
+            },
+            "ShipFrom": {
+              "Name": "ShipFromName",
+              "Address": {
+                "AddressLine": [
+                  "ShipFromAddressLine",
+                  "ShipFromAddressLine",
+                  "ShipFromAddressLine"
+                ],
+                "City": "TIMONIUM",
+                "StateProvinceCode": "MD",
+                "PostalCode": "21093",
+                "CountryCode": "US"
+              }
+            },
+            "PaymentDetails": {
+              "ShipmentCharge": [
+                {
+                  "Type": "01",
+                  "BillShipper": {
+                    "AccountNumber": ""
+                  }
+                }
+              ]
+            },
+            "Service": {
+              "Code": "03",
+              "Description": "Ground"
+            },
+            "NumOfPieces": "1",
+            "Package": {
+              "SimpleRate": {
+                "Description": "SimpleRateDescription",
+                "Code": "XS"
+              },
+              "PackagingType": {
+                "Code": "02",
+                "Description": "Packaging"
+              },
+              "Dimensions": {
+                "UnitOfMeasurement": {
+                  "Code": "IN",
+                  "Description": "Inches"
+                },
+                "Length": "5",
+                "Width": "5",
+                "Height": "5"
+              },
+              "PackageWeight": {
+                "UnitOfMeasurement": {
+                  "Code": "LBS",
+                  "Description": "Pounds"
+                },
+                "Weight": "1"
+              }
+            }
+          }
+        }
+      },
+      "sampleResponse": "NOT in spec (schema only)"
+    }
+  },
+  "recommendation": "Implement first (multi-carrier in ONE call, no carrier contract, free account): (1) Packlink PRO GET https://api.packlink.com/v1/services - simplest: one API key from the PRO web app, JSON, query-string inputs exactly matching ours (country+zip both sides, weight kg, L/W/H cm), returns every carrier with total/base/tax price, transit time, drop-off vs pickup and parcelshop flags. Caveat: not publicly documented; contract taken from Packlink's own open-source plugin core. (2) Boxtal API v1 GET /api/v1/cotation - French broker, free account, official SDK, returns HT and TTC prices per operator/service with collection (pickup/drop-off) and delivery (home/relay) types and delivery date. Caveats: XML, needs a content_code and a collection date, v1 keys distinct from v3, current host to confirm in sandbox. Boxtal v3 has NO quote endpoint. (3) Sendcloud v3 POST /shipping-options with calculate_quotes=true - best-documented modern JSON API, Basic auth public/secret key, can also price your own Colissimo/Chronopost contracts later; but plan/API-access conditions are unclear (Free plan API access disputed) and exact quote schema must be read on sendcloud.dev before coding. Skip for v1: carrier-direct APIs (UPS Rating, DHL MyDHL /rates, Chronopost QuickCost) each need a carrier account/contract and return one carrier only; Colissimo/Mondial Relay have no public rate API; La Poste Okapi 'tarifenvoi' (public counter tariff, weight only) status in 2026 unconfirmed. Implementation hint: wrap each provider in an adapter returning {provider, carrier, service, priceExclVat, priceInclVat, currency, transitDays|deliveryDate, pickupType, deliveryType} and run them in parallel from the Edge Function with secrets in Deno.env."
+}

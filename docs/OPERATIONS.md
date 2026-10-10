@@ -64,6 +64,10 @@ Supabase Dashboard → projet → **Edge Functions → Secrets** (jamais dans Gi
 | `EBAY_ENV` (`production`), `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | pour connecter eBay (§5) |
 | `ANTHROPIC_API_KEY` | pour le produit dicté et l'assistant (§6) |
 | `EBAY_LISTING_ENABLED` = `true` | seulement quand vous décidez d'autoriser la publication d'annonces |
+| `PACKLINK_API_KEY` | devis d'expédition réels (Packlink PRO → Paramètres → clé API) |
+| `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE` | cotation Boxtal (identifiants API v1, code de catégorie de contenu fourni par Boxtal) |
+| `LAPOSTE_OKAPI_KEY` | suivi La Poste / Colissimo / Chronopost (gratuit : developer.laposte.fr → application → abonnement « Suivi v2 ») |
+| `SHIP24_API_KEY` | suivi des autres transporteurs (dashboard.ship24.com → API keys ; offre gratuite limitée à 10 envois / mois) |
 
 Générés automatiquement dans Vault (ne pas modifier) : `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`,
 `EBAY_WEBHOOK_VERIFICATION_TOKEN`. Un nouveau secret est pris en compte par la fonction sans
@@ -157,67 +161,74 @@ diagnostic, mode avion.
 
 ---
 
-## Checklist finale (10 octobre 2026)
+## Checklist finale (11 octobre 2026)
 
 ### 1. Fonctionnel et testé réellement
 
-- Edge Function `api` v18 sur TEST : `/health`, secrets du Vault, tâches planifiées (pg_cron).
-- Migrations `20261010000100` → `0300` appliquées sur TEST ; droits et `search_path` vérifiés
-  (conseiller de sécurité : 18 → 12 fonctions exposées, 13 → 0 avertissements `search_path`).
-- Import de catalogue : fichier réel importé sur TEST (2 offres, 1 ligne illisible signalée,
-  organisation temporaire supprimée).
-- Chaîne SKU → import → rapprochement EAN automatique → radar (bénéfice, coût manquant signalé,
-  origine du prix) → contrôle d'annonce eBay (verrous) sur TEST.
-- Annuaire : 63 fiches, contrôle réel des sites depuis le serveur (53 joignables).
-- Source publique Brico-phone : offres réelles relevées ; taux BCE importés.
-- Outils de lecture de l'assistant (6) sur le schéma réel.
-- Règles de stock (vente unique, rejeu sans effet, annulation, remboursement avant / après
-  expédition), RLS et isolation entre organisations, gardes « même organisation », quotas IA,
-  offres enregistrées : tests d'intégration sur PostgreSQL réel avec toutes les migrations
-  (891 / 891).
-- Application : typecheck, lint, 98 tests ; bundle iOS de production exporté et analysé (aucun
-  secret) ; build TestFlight 6 accepté par Apple (avant cet audit).
+- **Serveur :** Edge Function `api` v20 sur TEST, avec `/health`, les secrets du Vault et les
+  tâches planifiées (dont le suivi de colis toutes les 30 min).
+- **Migrations appliquées sur TEST :**
+  - `20261010000100` → `0300` : droits et `search_path` vérifiés (conseiller de sécurité : 18 → 12
+    fonctions exposées, 13 → 0 avertissements `search_path`) ;
+  - `20261011000100` (grilles tarifaires, colis suivis) : RLS, 4 politiques et gardes vérifiées.
+- **Import de catalogue sur TEST :**
+  - 6 offres, 1 ligne illisible signalée ;
+  - un fichier défectueux est suspendu sans rien modifier ;
+  - une mise à jour avec un doublon ignoré.
+- **Chaîne complète sur TEST :** SKU → import → rapprochement EAN automatique → radar → contrôle
+  d'annonce eBay.
+- **Annuaire :** 120 fournisseurs ; 102 sites joignables depuis le serveur.
+- **Sources publiques avec prix relevés depuis le serveur :** Brico-phone, Refreshed Apples,
+  Fixje, Servisní díly. Taux BCE importés.
+- **Points d'accès des API d'expédition et de suivi** (Boxtal, La Poste, Ship24, Packlink), joints
+  sans identifiants :
+  - Boxtal et La Poste demandent une authentification ;
+  - Ship24 signale l'en-tête Authorization manquant ;
+  - Packlink répond 400 sans clé, ce qui ne prouve pas que la requête sera acceptée.
+- **Règles en base, testées sur PostgreSQL réel :**
+  - stock : vente unique, rejeu sans effet, remboursement avant / après expédition ;
+  - RLS et isolation entre organisations ;
+  - colonnes de colis réservées au serveur ;
+  - 959 / 959 tests web.
+- **Application :** typecheck, lint, 106 tests (dont « Mes outils » sur petit écran).
 
 ### 2. Fonctionnel uniquement avec des tests simulés
 
-- eBay OAuth (anti-CSRF, échange, rafraîchissement, révocation), synchronisation des commandes et
-  annonces, webhooks signés, limites de débit : réponses eBay simulées.
-- Préparation, contrôle et publication d'annonce eBay (anti-doublon, verrous), lecture des
-  politiques du compte : réponses eBay simulées.
-- Produit dicté et assistant IA : réponses Claude simulées (schéma, outils, refus, erreurs,
-  délais) ; fonctionnement sans clé testé.
-- Connecteurs flux URL, BigBuy, Ingram Micro, eBay Browse : fichiers de réponse de test.
-- Écrans mobiles (radar, import, annuaire, annonce, diagnostic, assistant) : rendus en Jest avec
-  serveur simulé — pas encore exécutés sur iPhone.
+- eBay OAuth, synchronisation, webhooks, annonces : réponses eBay simulées.
+- Produit dicté et assistant IA : réponses Claude simulées ; fonctionnement sans clé testé.
+- Devis Packlink PRO et Boxtal : réponses au format de leur code officiel, simulées.
+- Suivi La Poste et Ship24 : formats de la bibliothèque communautaire et de la spécification
+  officielle, simulés.
+- Écrans mobiles : rendus en Jest. **À tester sur iPhone** (nouveau build nécessaire).
 
 ### 3. En attente d'un compte ou d'identifiants
 
-- Clés eBay (`EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME`) : connexion,
-  synchronisation, sourcing eBay Browse, annonces.
-- `ANTHROPIC_API_KEY` : produit dicté et assistant.
-- Comptes professionnels fournisseurs (Foxway, Mobilax, Foneday, Utopya, MobileSentrix, etc.) :
-  catalogues à importer ou flux / API.
-- Identifiants BigBuy / Ingram Micro si vous ouvrez ces comptes.
+- Clés eBay et `ANTHROPIC_API_KEY`.
+- `PACKLINK_API_KEY` ou identifiants Boxtal v1 : devis d'expédition réels. En attendant, saisissez
+  vos grilles tarifaires.
+- `LAPOSTE_OKAPI_KEY` et / ou `SHIP24_API_KEY` : statut réel des colis.
+- Comptes professionnels fournisseurs : Foxway, Mobilax, Foneday, Utopya, Nedis, Infortisa, DMI,
+  Home Screen Distribution, TelePart, MICHAEL AG… Ils donnent accès aux catalogues sous forme de
+  fichiers, de flux ou d'API.
 
 ### 4. En attente d'une approbation externe
 
-- eBay : activation du keyset Production (conformité à la notification de suppression de compte),
-  RuName avec URL de politique de confidentialité.
-- Fournisseurs : validation de votre compte revendeur (Kbis, solvabilité) et accord pour un export
-  ou une API.
-- Apple : nouveau build TestFlight (traitement Apple ; relecture « Beta App Review » seulement
-  pour des testeurs externes).
+- eBay : keyset Production et RuName.
+- Fournisseurs : validation du compte revendeur (Kbis, numéro de TVA) et accord pour un export ou
+  une API.
+- Apple : traitement du build TestFlight.
 
 ### 5. Encore incomplet
 
-- Publication réelle d'une annonce eBay : jamais exécutée (à tester sur une annonce de test, avec
-  votre autorisation) ; choix de catégorie par l'API Taxonomy non implémenté (identifiant saisi) ;
-  mise à jour groupée prix/quantité construite mais non branchée.
-- Expédition (marquer expédié, étiquettes), scan de code-barres, Amazon / Shopify / WooCommerce.
-- Protection des mots de passe divulgués à activer (Dashboard → Authentication) ; extensions
-  `pg_trgm` / `unaccent` dans `public` (documenté).
-- Android : configuration vérifiée et bundle exporté, mais aucun build Play Store (bêta iOS
-  uniquement).
-- Application web Next.js non déployée (le serveur tourne en Edge Function) : la saisie d'un flux
-  URL ou d'identifiants BigBuy / Ingram n'a pas encore d'écran mobile (import de fichier en
-  attendant).
+- **Outils :** « Rentabilité d'un lot » est annoncé « À venir ». Sendcloud n'est pas intégré
+  (schéma de réponse non confirmé), ni 17TRACK (champs des événements non confirmés).
+- **Clés d'expédition et de suivi :** ce sont celles du serveur, partagées par toutes les
+  organisations du déploiement. En multi-clients, prévoir une clé par organisation.
+- **eBay :** la publication réelle d'une annonce n'a jamais été exécutée. La catégorie se saisit
+  par son identifiant.
+- **Fonctions absentes :** expédition depuis une commande (étiquette), scan de code-barres, canaux
+  Amazon, Shopify et WooCommerce.
+- **Supabase :** la protection des mots de passe divulgués reste à activer.
+- **Android :** aucun build Play Store.
+- **Application web :** non déployée. Les flux par URL et les identifiants BigBuy / Ingram n'ont
+  pas encore d'écran mobile.

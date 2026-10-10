@@ -179,6 +179,16 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | **Annonce eBay (préparation)** | Fiche variante → « Préparer une annonce eBay » : pré-remplissage réel, catégorie, état, photos, politiques et emplacement du compte, « Vérifier l'annonce » (simulation exacte) ; « Publier… » n'apparaît que si les 4 verrous serveur sont levés, puis confirmation | `/ebay/listings/*` |
 | **Déconnexion eBay** | Réglages → eBay → « Déconnecter » (administrateur, confirmation) | `/ebay/disconnect` |
 | **Diagnostic** | Réglages → Diagnostic : base, compte et rôle, serveur, assistant IA, sourcing, eBay — états réels mesurés, durées, aucun secret affiché | lectures RLS + `/health` |
+| **Mes outils** (5ᵉ onglet « Outils ») | Catalogue d'outils extensible (`src/domain/tools/catalog.ts`) ; outils « à venir » affichés comme tels, jamais ouvrables | — |
+| Calculateur de TVA | HT → TTC, TTC → HT, TVA seule (base HT/TTC explicite) ; 20 / 10 / 5,5 / 2,1 % + taux personnalisés ; calcul exact (fractions), arrondi au centime à l'affichage ; inversion du sens ; copie ; aucun appel serveur | local |
+| Calculateur de marge / de prix de vente | Même calcul que le radar (`computeUnitEconomics`) ; paramètres de coûts de l'organisation repris sur demande ; frais non saisis listés, jamais comptés pour 0 ; taux de marge et taux de marque distingués | local + paramètres (RLS) |
+| Calculateur de frais eBay | Aucun taux codé en dur : grille de l'utilisateur ou de son canal eBay ; commission sur objet + port ou objet seul ; reste après frais, envoi et achat | local |
+| Calculateur de remise | Prix remisé, % de remise, prix initial (calcul exact) | local |
+| Convertisseur de devises | Taux BCE datés (âge signalé), frais bancaires (% et fixe) séparés, taux effectif | `fx_rates` (RLS) |
+| Comparateur de frais de port | Poids, dimensions, départ / arrivée ; devis réels Packlink PRO / Boxtal si configurés ; grilles tarifaires saisies (tranches, poids volumétrique, limites) ; tri prix / rapidité ; exclusions expliquées ; aucun tarif inventé | `/shipping/quotes` + `shipping_rate_cards` |
+| Suivi de colis | Détection du transporteur (suggestion) ou choix manuel ; La Poste Suivi v2 / Ship24 ; liste, statut, historique, date estimée fournie par l'API ; actualisation automatique sobre ; alertes livré / problème / retard ; commande associée facultative ; statut jamais saisi à la main | `tracked_parcels` + `/tracking/refresh` |
+| Fournisseurs (annuaire) | 120 fournisseurs ; niveau d'accès réel (connecté, importable, accessible, vérifié, identifié) et prochaine action ; filtres | `/sourcing/directory` |
+| Import protégé | Fichier suspect (lignes illisibles, catalogue tronqué, prix décalés, doublons) : import suspendu, rien n'est modifié, « Importer quand même » après vérification | `/sourcing/import` |
 
 ### 4.2 bis Correctif TestFlight build 4
 
@@ -225,14 +235,14 @@ Mise à jour du 10 octobre 2026 (audit total) :
 | Vérification | Résultat |
 | --- | --- |
 | Web : typecheck, lint | 0 erreur |
-| Web : unitaires + intégration PostgreSQL local (toutes migrations) | **891 / 891** (106 fichiers) |
+| Web : unitaires + intégration PostgreSQL local (toutes migrations) | **959 / 959** (110 fichiers, 11 octobre 2026) |
 | dont import de catalogue (CSV Windows-1252, XLSX, XML, JSON, erreurs par ligne) | 8 |
 | dont annuaire fournisseurs (statuts, e-mails, contrôle de site, plateforme) | 10 |
 | dont radar (modèle de coût, TVA, coûts manquants, tri) + service | 15 |
 | dont annonce eBay (validation, contenu, anti-doublon, verrous) | 8 |
 | dont remboursement après expédition (pas de recrédit, alerte unique) | 3 |
 | dont tables nouvelles : RLS, isolation entre organisations, gardes, quotas IA | matrice complète |
-| Mobile : typecheck, lint, Jest | 0 erreur, **98 / 98** (19 suites) |
+| Mobile : typecheck, lint, Jest | 0 erreur, **106 / 106** (20 suites) |
 | Mobile : bundle iOS + analyse des secrets | aucun secret ni code serveur |
 | Supabase TEST — Edge Function v18 | `/health` 200 ; contrôle de lecture (radar, annuaire, suggestions) OK ; import réel (2 offres, 1 ligne illisible) OK ; chaîne complète SKU → import → rapprochement EAN → radar → contrôle eBay OK ; outils IA 6/6 ; annuaire 53/63 sites joignables |
 
@@ -289,7 +299,14 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
     Ne publiez qu'après avoir décidé d'activer `EBAY_LISTING_ENABLED`.
 11. **Diagnostic** : Réglages → Diagnostic → chaque ligne est « OK », « attention » ou « erreur »
     avec la raison (ex. « Assistant IA : non activé »).
-12. Mode avion : bannière hors ligne, écritures refusées avec message clair.
+12. **Mes outils** (onglet « Outils ») :
+    - TVA : saisir `100` en HT → TVA 20,00 €, TTC 120,00 € ; ⇅ inverse le sens ; taux 5,5 % ; « Copier » ;
+    - Marge : prix d'achat 300, vente 479 → bénéfice et frais non renseignés listés ; « Reprendre mes paramètres » ;
+    - Frais eBay : saisir vos taux réels (aucun n'est proposé par défaut) ;
+    - Devises : 100 USD → EUR, date du taux BCE affichée ; ajouter 2 % de frais bancaires ;
+    - Frais de port : « Gérer mes grilles tarifaires » → saisir une grille Colissimo → comparer un colis de 1,2 kg ;
+    - Suivi de colis : « Suivre un colis » → numéro réel → transporteur détecté ; sans clé, le colis est enregistré sans statut.
+13. Mode avion : bannière hors ligne, écritures refusées avec message clair.
 
 ## 8. Problèmes restants
 
