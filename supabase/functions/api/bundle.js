@@ -3,12 +3,22 @@ import { Buffer as __Buffer } from "node:buffer";
 const __denoEnv = globalThis.Deno?.env?.toObject?.() ?? {};
 const process = { env: { NODE_ENV: "production", ...__denoEnv, NEXT_PUBLIC_SUPABASE_URL: __denoEnv.SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY: __denoEnv.SUPABASE_ANON_KEY, NEXT_PUBLIC_APP_URL: __denoEnv.APP_URL ?? __denoEnv.SUPABASE_URL } };
 const Buffer = globalThis.Buffer ?? __Buffer;
-
-// server/edge/api.ts
-import { z as z32 } from "npm:zod@4.6.5";
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // src/lib/logger.ts
-var SENSITIVE = /token|secret|password|authorization|credential|api[_-]?key|cookie/i;
 function redact(value, depth = 0) {
   if (depth > 6) return value;
   if (Array.isArray(value)) return value.map((v2) => redact(v2, depth + 1));
@@ -46,22 +56,15 @@ function createLogger(scope) {
     error: (message, meta) => emit("error", scope, message, meta)
   };
 }
+var SENSITIVE;
+var init_logger = __esm({
+  "src/lib/logger.ts"() {
+    "use strict";
+    SENSITIVE = /token|secret|password|authorization|credential|api[_-]?key|cookie/i;
+  }
+});
 
 // src/integrations/core/sanitize.ts
-var SECRET_PATTERNS = [
-  // En-têtes d'autorisation recopiés dans un message.
-  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=^#%!*-]{6,}/gi, "$1 [REDACTED]"],
-  // Tokens OAuth eBay (« v^1.1#i^1#… »).
-  [/v\^1\.1#[^\s"'<>,;)]+/g, "[REDACTED_TOKEN]"],
-  // Secrets chiffrés MON STOCK (v1:<iv>:<ciphertext>:<tag>).
-  [/\bv1:[A-Za-z0-9+/=]{8,}:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]{8,}/g, "[REDACTED_ENCRYPTED]"],
-  // JWT (clés Supabase, tokens d'application…).
-  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[REDACTED_JWT]"],
-  // Paramètres d'URL ou de formulaire sensibles.
-  [/([?&\s"']|^)((?:access_token|refresh_token|client_secret|code|token|assertion)=)[^&\s"'<>]+/gi, "$1$2[REDACTED]"],
-  // Champs JSON sensibles recopiés tels quels dans un message.
-  [/("(?:access_token|refresh_token|client_secret|authorization)"\s*:\s*")[^"]*"/gi, '$1[REDACTED]"']
-];
 function scrubSecrets(text2) {
   let out = text2;
   for (const [pattern, replacement] of SECRET_PATTERNS) out = out.replace(pattern, replacement);
@@ -82,56 +85,29 @@ function scrubValues(value, depth) {
   }
   return value;
 }
+var SECRET_PATTERNS;
+var init_sanitize = __esm({
+  "src/integrations/core/sanitize.ts"() {
+    "use strict";
+    init_logger();
+    SECRET_PATTERNS = [
+      // En-têtes d'autorisation recopiés dans un message.
+      [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=^#%!*-]{6,}/gi, "$1 [REDACTED]"],
+      // Tokens OAuth eBay (« v^1.1#i^1#… »).
+      [/v\^1\.1#[^\s"'<>,;)]+/g, "[REDACTED_TOKEN]"],
+      // Secrets chiffrés MON STOCK (v1:<iv>:<ciphertext>:<tag>).
+      [/\bv1:[A-Za-z0-9+/=]{8,}:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]{8,}/g, "[REDACTED_ENCRYPTED]"],
+      // JWT (clés Supabase, tokens d'application…).
+      [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[REDACTED_JWT]"],
+      // Paramètres d'URL ou de formulaire sensibles.
+      [/([?&\s"']|^)((?:access_token|refresh_token|client_secret|code|token|assertion)=)[^&\s"'<>]+/gi, "$1$2[REDACTED]"],
+      // Champs JSON sensibles recopiés tels quels dans un message.
+      [/("(?:access_token|refresh_token|client_secret|authorization)"\s*:\s*")[^"]*"/gi, '$1[REDACTED]"']
+    ];
+  }
+});
 
 // src/lib/db-error-messages.ts
-var SQL_ERROR_MESSAGES = {
-  AUTH_REQUIRED: { code: "AUTH_REQUIRED", message: "Connexion requise." },
-  FORBIDDEN: { code: "FORBIDDEN", message: "Vous n'avez pas les droits n\xE9cessaires sur cette organisation." },
-  CROSS_ORGANIZATION_REFERENCE: { code: "FORBIDDEN", message: "Op\xE9ration refus\xE9e : cet \xE9l\xE9ment appartient \xE0 une autre organisation." },
-  ORGANIZATION_IMMUTABLE: { code: "FORBIDDEN", message: "Op\xE9ration refus\xE9e : un \xE9l\xE9ment ne peut pas changer d'organisation." },
-  ORGANIZATION_NOT_MEMBER: { code: "FORBIDDEN", message: "Vous n'\xEAtes pas membre de cette organisation." },
-  LAST_OWNER: { code: "CONFLICT", message: "Impossible : l'organisation doit conserver au moins un propri\xE9taire." },
-  INVITATION_INVALID: { code: "NOT_FOUND", message: "Invitation invalide ou expir\xE9e." },
-  INVITATION_EMAIL_MISMATCH: { code: "FORBIDDEN", message: "Cette invitation a \xE9t\xE9 envoy\xE9e \xE0 une autre adresse email." },
-  INVITATION_EMAIL_NOT_CONFIRMED: { code: "FORBIDDEN", message: "Confirmez d'abord votre adresse email, puis acceptez l'invitation." },
-  INVITATION_EMAIL_INVALID: { code: "VALIDATION", message: "Adresse email d'invitation invalide." },
-  INVALID_TOKEN: { code: "VALIDATION", message: "Lien invalide." },
-  INSUFFICIENT_STOCK: { code: "VALIDATION", message: "Stock insuffisant : ce mouvement rendrait le stock n\xE9gatif." },
-  MOVEMENT_QUANTITY_ZERO: { code: "VALIDATION", message: "La quantit\xE9 d'un mouvement ne peut pas \xEAtre nulle." },
-  MOVEMENT_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Quantit\xE9 trop importante pour un seul mouvement." },
-  MOVEMENT_SIGN_INVALID: { code: "VALIDATION", message: "Sens du mouvement incoh\xE9rent avec son type (entr\xE9e / sortie)." },
-  STOCK_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Le stock r\xE9sultant d\xE9passerait la limite autoris\xE9e." },
-  SKU_NOT_FOUND: { code: "NOT_FOUND", message: "SKU introuvable." },
-  SKU_CODE_EXISTS: { code: "CONFLICT", message: "Ce code SKU existe d\xE9j\xE0 dans votre organisation." },
-  SKU_CODE_REQUIRED: { code: "VALIDATION", message: "Le code SKU est requis." },
-  SKU_CODE_DUPLICATE_IN_REQUEST: { code: "VALIDATION", message: "Deux variantes utilisent le m\xEAme code SKU : chaque variante doit avoir un code unique." },
-  VARIANTS_REQUIRED: { code: "VALIDATION", message: "Ajoutez au moins une variante." },
-  VARIANTS_TOO_MANY: { code: "VALIDATION", message: "50 variantes maximum par envoi." },
-  PRODUCT_NAME_REQUIRED: { code: "VALIDATION", message: "Le nom du produit est requis." },
-  SKU_STALE: { code: "CONFLICT", message: "Ce SKU a \xE9t\xE9 modifi\xE9 entre-temps (autre onglet ou autre utilisateur). Rechargez la page pour voir la derni\xE8re version : vos changements n'ont pas \xE9t\xE9 enregistr\xE9s." },
-  SKU_UPDATE_INVALID: { code: "VALIDATION", message: "Modification du SKU invalide : v\xE9rifiez les champs du formulaire." },
-  SKU_HAS_HISTORY: { code: "CONFLICT", message: "Ce SKU a un historique (mouvements, ventes ou commandes) : archivez-le plut\xF4t que de le supprimer." },
-  PRODUCT_NOT_FOUND: { code: "NOT_FOUND", message: "Produit introuvable." },
-  LISTING_NOT_FOUND: { code: "NOT_FOUND", message: "Annonce introuvable." },
-  CHANNEL_NOT_FOUND: { code: "NOT_FOUND", message: "Canal de vente introuvable." },
-  CONNECTION_NOT_FOUND: { code: "NOT_FOUND", message: "Connexion introuvable." },
-  INVALID_ORDER: { code: "VALIDATION", message: "Commande externe invalide (donn\xE9es incompl\xE8tes ou incoh\xE9rentes) : elle n'a pas \xE9t\xE9 import\xE9e." },
-  PURCHASE_ORDER_NOT_FOUND: { code: "NOT_FOUND", message: "Commande fournisseur introuvable." },
-  PURCHASE_ORDER_ITEM_NOT_FOUND: { code: "NOT_FOUND", message: "Ligne de commande fournisseur introuvable." },
-  PURCHASE_ORDER_CANCELLED: { code: "CONFLICT", message: "Cette commande fournisseur est annul\xE9e." },
-  PURCHASE_ORDER_CLOSED: { code: "CONFLICT", message: "Cette commande fournisseur est cl\xF4tur\xE9e." },
-  PURCHASE_ORDER_ALREADY_RECEIVED: { code: "CONFLICT", message: "Cette commande fournisseur a d\xE9j\xE0 \xE9t\xE9 enti\xE8rement re\xE7ue." },
-  PURCHASE_ORDER_EMPTY: { code: "VALIDATION", message: "La commande fournisseur ne contient aucune ligne." },
-  PURCHASE_ORDER_INVALID_STATUS: { code: "VALIDATION", message: "Statut de commande fournisseur invalide." },
-  PURCHASE_ORDER_INVALID_TRANSITION: { code: "CONFLICT", message: "Ce changement de statut n'est pas autoris\xE9 pour cette commande." },
-  PURCHASE_ORDER_LOCKED: { code: "CONFLICT", message: "Cette commande n'est plus modifiable (envoy\xE9e ou r\xE9ceptionn\xE9e)." },
-  PURCHASE_ORDER_NOT_DELETABLE: { code: "CONFLICT", message: "Cette commande ne peut pas \xEAtre supprim\xE9e : seules les commandes en brouillon le peuvent." },
-  PURCHASE_ORDER_NOT_SENT: { code: "CONFLICT", message: "La commande doit \xEAtre envoy\xE9e avant d'\xEAtre r\xE9ceptionn\xE9e." },
-  PURCHASE_ORDER_RECEIPT_REQUIRED: { code: "VALIDATION", message: "Indiquez au moins une quantit\xE9 re\xE7ue." },
-  PURCHASE_ORDER_STALE: { code: "CONFLICT", message: "La commande a \xE9t\xE9 modifi\xE9e entre-temps : rechargez la page et r\xE9essayez." },
-  INVALID_RECEIPTS: { code: "VALIDATION", message: "R\xE9ception invalide : v\xE9rifiez les quantit\xE9s saisies." }
-};
-var NETWORK_ERROR = /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|socket hang up|Network request failed/i;
 function describeDbError(e) {
   const msg = e.message ?? "Erreur base de donn\xE9es";
   const head = msg.match(/^([A-Z][A-Z0-9_]{2,})\b/)?.[1];
@@ -152,22 +128,63 @@ function describeDbError(e) {
   if (NETWORK_ERROR.test(msg)) return { code: "INTERNAL", message: "Base de donn\xE9es injoignable pour le moment. R\xE9essayez dans quelques instants." };
   return null;
 }
+var SQL_ERROR_MESSAGES, NETWORK_ERROR;
+var init_db_error_messages = __esm({
+  "src/lib/db-error-messages.ts"() {
+    "use strict";
+    SQL_ERROR_MESSAGES = {
+      AUTH_REQUIRED: { code: "AUTH_REQUIRED", message: "Connexion requise." },
+      FORBIDDEN: { code: "FORBIDDEN", message: "Vous n'avez pas les droits n\xE9cessaires sur cette organisation." },
+      CROSS_ORGANIZATION_REFERENCE: { code: "FORBIDDEN", message: "Op\xE9ration refus\xE9e : cet \xE9l\xE9ment appartient \xE0 une autre organisation." },
+      ORGANIZATION_IMMUTABLE: { code: "FORBIDDEN", message: "Op\xE9ration refus\xE9e : un \xE9l\xE9ment ne peut pas changer d'organisation." },
+      ORGANIZATION_NOT_MEMBER: { code: "FORBIDDEN", message: "Vous n'\xEAtes pas membre de cette organisation." },
+      LAST_OWNER: { code: "CONFLICT", message: "Impossible : l'organisation doit conserver au moins un propri\xE9taire." },
+      INVITATION_INVALID: { code: "NOT_FOUND", message: "Invitation invalide ou expir\xE9e." },
+      INVITATION_EMAIL_MISMATCH: { code: "FORBIDDEN", message: "Cette invitation a \xE9t\xE9 envoy\xE9e \xE0 une autre adresse email." },
+      INVITATION_EMAIL_NOT_CONFIRMED: { code: "FORBIDDEN", message: "Confirmez d'abord votre adresse email, puis acceptez l'invitation." },
+      INVITATION_EMAIL_INVALID: { code: "VALIDATION", message: "Adresse email d'invitation invalide." },
+      INVALID_TOKEN: { code: "VALIDATION", message: "Lien invalide." },
+      INSUFFICIENT_STOCK: { code: "VALIDATION", message: "Stock insuffisant : ce mouvement rendrait le stock n\xE9gatif." },
+      MOVEMENT_QUANTITY_ZERO: { code: "VALIDATION", message: "La quantit\xE9 d'un mouvement ne peut pas \xEAtre nulle." },
+      MOVEMENT_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Quantit\xE9 trop importante pour un seul mouvement." },
+      MOVEMENT_SIGN_INVALID: { code: "VALIDATION", message: "Sens du mouvement incoh\xE9rent avec son type (entr\xE9e / sortie)." },
+      STOCK_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Le stock r\xE9sultant d\xE9passerait la limite autoris\xE9e." },
+      SKU_NOT_FOUND: { code: "NOT_FOUND", message: "SKU introuvable." },
+      SKU_CODE_EXISTS: { code: "CONFLICT", message: "Ce code SKU existe d\xE9j\xE0 dans votre organisation." },
+      SKU_CODE_REQUIRED: { code: "VALIDATION", message: "Le code SKU est requis." },
+      SKU_CODE_DUPLICATE_IN_REQUEST: { code: "VALIDATION", message: "Deux variantes utilisent le m\xEAme code SKU : chaque variante doit avoir un code unique." },
+      SAVED_OFFER_IMMUTABLE: { code: "FORBIDDEN", message: "Le prix relev\xE9 lors de l'enregistrement d'une offre ne peut pas \xEAtre modifi\xE9." },
+      VARIANTS_REQUIRED: { code: "VALIDATION", message: "Ajoutez au moins une variante." },
+      VARIANTS_TOO_MANY: { code: "VALIDATION", message: "50 variantes maximum par envoi." },
+      PRODUCT_NAME_REQUIRED: { code: "VALIDATION", message: "Le nom du produit est requis." },
+      SKU_STALE: { code: "CONFLICT", message: "Ce SKU a \xE9t\xE9 modifi\xE9 entre-temps (autre onglet ou autre utilisateur). Rechargez la page pour voir la derni\xE8re version : vos changements n'ont pas \xE9t\xE9 enregistr\xE9s." },
+      SKU_UPDATE_INVALID: { code: "VALIDATION", message: "Modification du SKU invalide : v\xE9rifiez les champs du formulaire." },
+      SKU_HAS_HISTORY: { code: "CONFLICT", message: "Ce SKU a un historique (mouvements, ventes ou commandes) : archivez-le plut\xF4t que de le supprimer." },
+      PRODUCT_NOT_FOUND: { code: "NOT_FOUND", message: "Produit introuvable." },
+      LISTING_NOT_FOUND: { code: "NOT_FOUND", message: "Annonce introuvable." },
+      CHANNEL_NOT_FOUND: { code: "NOT_FOUND", message: "Canal de vente introuvable." },
+      CONNECTION_NOT_FOUND: { code: "NOT_FOUND", message: "Connexion introuvable." },
+      INVALID_ORDER: { code: "VALIDATION", message: "Commande externe invalide (donn\xE9es incompl\xE8tes ou incoh\xE9rentes) : elle n'a pas \xE9t\xE9 import\xE9e." },
+      PURCHASE_ORDER_NOT_FOUND: { code: "NOT_FOUND", message: "Commande fournisseur introuvable." },
+      PURCHASE_ORDER_ITEM_NOT_FOUND: { code: "NOT_FOUND", message: "Ligne de commande fournisseur introuvable." },
+      PURCHASE_ORDER_CANCELLED: { code: "CONFLICT", message: "Cette commande fournisseur est annul\xE9e." },
+      PURCHASE_ORDER_CLOSED: { code: "CONFLICT", message: "Cette commande fournisseur est cl\xF4tur\xE9e." },
+      PURCHASE_ORDER_ALREADY_RECEIVED: { code: "CONFLICT", message: "Cette commande fournisseur a d\xE9j\xE0 \xE9t\xE9 enti\xE8rement re\xE7ue." },
+      PURCHASE_ORDER_EMPTY: { code: "VALIDATION", message: "La commande fournisseur ne contient aucune ligne." },
+      PURCHASE_ORDER_INVALID_STATUS: { code: "VALIDATION", message: "Statut de commande fournisseur invalide." },
+      PURCHASE_ORDER_INVALID_TRANSITION: { code: "CONFLICT", message: "Ce changement de statut n'est pas autoris\xE9 pour cette commande." },
+      PURCHASE_ORDER_LOCKED: { code: "CONFLICT", message: "Cette commande n'est plus modifiable (envoy\xE9e ou r\xE9ceptionn\xE9e)." },
+      PURCHASE_ORDER_NOT_DELETABLE: { code: "CONFLICT", message: "Cette commande ne peut pas \xEAtre supprim\xE9e : seules les commandes en brouillon le peuvent." },
+      PURCHASE_ORDER_NOT_SENT: { code: "CONFLICT", message: "La commande doit \xEAtre envoy\xE9e avant d'\xEAtre r\xE9ceptionn\xE9e." },
+      PURCHASE_ORDER_RECEIPT_REQUIRED: { code: "VALIDATION", message: "Indiquez au moins une quantit\xE9 re\xE7ue." },
+      PURCHASE_ORDER_STALE: { code: "CONFLICT", message: "La commande a \xE9t\xE9 modifi\xE9e entre-temps : rechargez la page et r\xE9essayez." },
+      INVALID_RECEIPTS: { code: "VALIDATION", message: "R\xE9ception invalide : v\xE9rifiez les quantit\xE9s saisies." }
+    };
+    NETWORK_ERROR = /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|socket hang up|Network request failed/i;
+  }
+});
 
 // src/lib/errors.ts
-var AppError = class extends Error {
-  code;
-  status;
-  details;
-  action;
-  constructor(code, message, options = {}) {
-    super(message, options.cause !== void 0 ? { cause: options.cause } : void 0);
-    this.name = "AppError";
-    this.code = code;
-    this.status = options.status ?? defaultStatus(code);
-    this.details = options.details;
-    this.action = options.action;
-  }
-};
 function defaultStatus(code) {
   switch (code) {
     case "AUTH_REQUIRED":
@@ -195,7 +212,6 @@ function defaultStatus(code) {
 function isAppError(e) {
   return e instanceof AppError;
 }
-var log = createLogger("db-error");
 function newErrorReference() {
   const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
   return uuid.replace(/-/g, "").slice(0, 8).toUpperCase();
@@ -231,44 +247,47 @@ function toUserMessage(e) {
   if (e instanceof Error) return e.message;
   return "Une erreur inattendue s'est produite.";
 }
+var AppError, log;
+var init_errors = __esm({
+  "src/lib/errors.ts"() {
+    "use strict";
+    init_logger();
+    init_sanitize();
+    init_db_error_messages();
+    init_db_error_messages();
+    AppError = class extends Error {
+      code;
+      status;
+      details;
+      action;
+      constructor(code, message, options = {}) {
+        super(message, options.cause !== void 0 ? { cause: options.cause } : void 0);
+        this.name = "AppError";
+        this.code = code;
+        this.status = options.status ?? defaultStatus(code);
+        this.details = options.details;
+        this.action = options.action;
+      }
+    };
+    log = createLogger("db-error");
+  }
+});
 
-// src/lib/crypto.ts
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
+// server/edge/shims/empty.ts
+var init_empty = __esm({
+  "server/edge/shims/empty.ts"() {
+    "use strict";
+  }
+});
 
 // src/lib/env.ts
 import { z } from "npm:zod@4.6.5";
-var publicSchema = z.object({
-  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1)
-});
-var serverSchema = z.object({
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  TOKEN_ENCRYPTION_KEY: z.string().min(32, "TOKEN_ENCRYPTION_KEY doit faire au moins 32 caract\xE8res (base64 de 32 octets)."),
-  CRON_SECRET: z.string().min(16).optional(),
-  SOURCING_USER_AGENT: z.string().min(1).default("MonStockBot/0.1")
-});
-var ebaySchema = z.object({
-  EBAY_ENV: z.enum(["production", "sandbox"]).default("production"),
-  EBAY_CLIENT_ID: z.string().min(1),
-  EBAY_CLIENT_SECRET: z.string().min(1),
-  EBAY_RU_NAME: z.string().min(1),
-  EBAY_WEBHOOK_VERIFICATION_TOKEN: z.string().min(32).max(80).optional()
-});
-var EnvError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "EnvError";
-  }
-};
 function formatIssues(prefix, error) {
   const lines = error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`);
   return `${prefix}
 ${lines.join("\n")}
 Voir .env.example pour la liste des variables attendues.`;
 }
-var publicCache = null;
-var serverCache = null;
 function publicEnv() {
   if (publicCache) return publicCache;
   const parsed = publicSchema.safeParse({
@@ -299,8 +318,2534 @@ function ebayEnvIssues() {
   const parsed = ebaySchema.safeParse(process.env);
   return parsed.success ? [] : parsed.error.issues.map((i) => `${i.path.join(".")} : ${i.message}`);
 }
+var publicSchema, serverSchema, ebaySchema, EnvError, publicCache, serverCache;
+var init_env = __esm({
+  "src/lib/env.ts"() {
+    "use strict";
+    publicSchema = z.object({
+      NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+      NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1)
+    });
+    serverSchema = z.object({
+      SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+      TOKEN_ENCRYPTION_KEY: z.string().min(32, "TOKEN_ENCRYPTION_KEY doit faire au moins 32 caract\xE8res (base64 de 32 octets)."),
+      CRON_SECRET: z.string().min(16).optional(),
+      SOURCING_USER_AGENT: z.string().min(1).default("MonStockBot/0.1")
+    });
+    ebaySchema = z.object({
+      EBAY_ENV: z.enum(["production", "sandbox"]).default("production"),
+      EBAY_CLIENT_ID: z.string().min(1),
+      EBAY_CLIENT_SECRET: z.string().min(1),
+      EBAY_RU_NAME: z.string().min(1),
+      EBAY_WEBHOOK_VERIFICATION_TOKEN: z.string().min(32).max(80).optional()
+    });
+    EnvError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "EnvError";
+      }
+    };
+    publicCache = null;
+    serverCache = null;
+  }
+});
+
+// src/lib/supabase/admin.ts
+import { createClient } from "npm:@supabase/supabase-js@2.117.3";
+function createAdminSupabaseClient() {
+  if (cached) return cached;
+  const pub = publicEnv();
+  const srv = serverEnv();
+  cached = createClient(pub.NEXT_PUBLIC_SUPABASE_URL, srv.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  return cached;
+}
+var cached;
+var init_admin = __esm({
+  "src/lib/supabase/admin.ts"() {
+    "use strict";
+    init_empty();
+    init_env();
+    cached = null;
+  }
+});
+
+// src/lib/postgrest.ts
+function escapeLike(s) {
+  return s.replace(/[%_\\]/g, (m) => `\\${m}`);
+}
+var init_postgrest = __esm({
+  "src/lib/postgrest.ts"() {
+    "use strict";
+  }
+});
+
+// src/domain/sourcing/dictionaries.ts
+function variantWord(v2) {
+  if (!v2) return "";
+  const x = v2.replace(/\s+/g, " ").trim();
+  if (x === "promax" || x === "pro max") return "pro max";
+  if (x === "+" || x === "plus") return "plus";
+  return x;
+}
+function cap(s) {
+  return s.split(" ").map((w2) => w2.length === 0 ? w2 : w2[0].toUpperCase() + w2.slice(1)).join(" ");
+}
+var BRANDS, MODEL_PATTERNS, COLORS, CONDITION_WORDS, NOISE_TOKENS, VARIANT_TOKENS, MPN_STOPWORDS, ISO_4217, STORAGE_SIZES_GB;
+var init_dictionaries = __esm({
+  "src/domain/sourcing/dictionaries.ts"() {
+    "use strict";
+    BRANDS = [
+      { key: "apple", display: "Apple", aliases: ["apple"] },
+      { key: "samsung", display: "Samsung", aliases: ["samsung"] },
+      { key: "google", display: "Google", aliases: ["google"] },
+      { key: "xiaomi", display: "Xiaomi", aliases: ["xiaomi", "mi"] },
+      { key: "huawei", display: "Huawei", aliases: ["huawei"] },
+      { key: "honor", display: "Honor", aliases: ["honor"] },
+      { key: "oneplus", display: "OnePlus", aliases: ["oneplus", "one plus"] },
+      { key: "oppo", display: "Oppo", aliases: ["oppo"] },
+      { key: "realme", display: "Realme", aliases: ["realme"] },
+      { key: "sony", display: "Sony", aliases: ["sony"] },
+      { key: "nintendo", display: "Nintendo", aliases: ["nintendo"] },
+      { key: "microsoft", display: "Microsoft", aliases: ["microsoft"] },
+      { key: "dyson", display: "Dyson", aliases: ["dyson"] },
+      { key: "lenovo", display: "Lenovo", aliases: ["lenovo"] },
+      { key: "dell", display: "Dell", aliases: ["dell"] },
+      { key: "hp", display: "HP", aliases: ["hp", "hewlett packard"] },
+      { key: "asus", display: "Asus", aliases: ["asus"] },
+      { key: "acer", display: "Acer", aliases: ["acer"] },
+      { key: "motorola", display: "Motorola", aliases: ["motorola", "moto"] },
+      { key: "nokia", display: "Nokia", aliases: ["nokia"] },
+      { key: "jbl", display: "JBL", aliases: ["jbl"] },
+      { key: "bose", display: "Bose", aliases: ["bose"] },
+      { key: "garmin", display: "Garmin", aliases: ["garmin"] },
+      { key: "gopro", display: "GoPro", aliases: ["gopro", "go pro"] },
+      { key: "dji", display: "DJI", aliases: ["dji"] },
+      { key: "logitech", display: "Logitech", aliases: ["logitech"] },
+      { key: "philips", display: "Philips", aliases: ["philips"] },
+      { key: "bosch", display: "Bosch", aliases: ["bosch"] },
+      { key: "lg", display: "LG", aliases: ["lg"] }
+    ];
+    MODEL_PATTERNS = [
+      // ---- Apple ----
+      {
+        brand: "apple",
+        regex: /\biphone\s?(xs\s?max|xs|xr|x)\b/,
+        build: (m) => {
+          const v2 = (m[1] ?? "").replace(/\s+/g, " ");
+          return { model: `iphone ${v2}`, display: `iPhone ${v2.toUpperCase()}` };
+        }
+      },
+      {
+        brand: "apple",
+        regex: /\biphone\s?se\b\s?(?:\(?\s?(20(?:16|20|22))\s?\)?|(2|3)(?:nd|rd|e|eme|ème)?(?:\s?gen(?:eration)?)?)?/,
+        build: (m) => {
+          const year = m[1] ?? (m[2] === "2" ? "2020" : m[2] === "3" ? "2022" : void 0);
+          return { model: year ? `iphone se ${year}` : "iphone se", display: year ? `iPhone SE (${year})` : "iPhone SE" };
+        }
+      },
+      {
+        brand: "apple",
+        regex: /\biphone\s?(\d{1,2})\s?(pro\s?max|promax|pro|plus|mini|max)?\b/,
+        build: (m) => {
+          const n = Number(m[1]);
+          if (n < 3 || n > 30) return null;
+          const v2 = variantWord(m[2]);
+          return { model: `iphone ${n}${v2 ? ` ${v2}` : ""}`, display: `iPhone ${n}${v2 ? ` ${cap(v2)}` : ""}` };
+        }
+      },
+      {
+        brand: "apple",
+        // taille (décimale, ou 11 / 12 / 13 pouces), génération (1–10, « 9e gén. », « 9th generation »), année.
+        // Chaque nombre est borné (?![a-z0-9]) : « iPad Air 2022 » ne donne jamais « ipad air 20 ».
+        regex: /\bipad\s?(pro|air|mini)?(?:\s?(\d{1,2}[.,]\d|1[1-3])(?![a-z0-9])(?:\s?(?:pouces?|inch))?)?(?:\s?(\d{1,2})(?:\s?(?:e|eme|th|nd|rd|st))?(?:\s?gen(?:eration)?)?(?![a-z0-9]))?(?:\s?(20[12]\d)(?![a-z0-9]))?/,
+        build: (m) => {
+          const v2 = m[1] ?? "";
+          const size = m[2]?.replace(",", ".") ?? "";
+          const gen = m[3] && Number(m[3]) >= 1 && Number(m[3]) <= 10 ? String(Number(m[3])) : "";
+          if (m[3] && !gen) return null;
+          const year = m[4] ?? "";
+          const model = ["ipad", v2, size, gen, year].filter(Boolean).join(" ");
+          const display = ["iPad", v2 ? cap(v2) : "", size ? `${size}"` : "", gen, year].filter(Boolean).join(" ");
+          return { model, display };
+        }
+      },
+      {
+        brand: "apple",
+        // puce Apple Silicon (M1–M4, Pro / Max / Ultra) conservée dans le modèle : « MacBook Air M2 » ≠ « MacBook Air M1 ».
+        // L'année n'entre dans le modèle qu'en l'absence de puce (générations Intel).
+        regex: /\bmacbook\s?(air|pro)?(?:\s?(1[3-6](?:[.,]\d)?)(?![a-z0-9])(?:\s?(?:pouces?|inch))?)?(?:\s?(m[1-4](?:\s?(?:pro|max|ultra))?)(?![a-z0-9]))?(?:\s?(20[012]\d)(?![a-z0-9]))?(?![a-z0-9])/,
+        build: (m) => {
+          const v2 = m[1] ?? "";
+          const size = m[2]?.replace(",", ".") ?? "";
+          const chip = m[3]?.replace(/\s+/g, " ") ?? "";
+          const year = !chip && m[4] ? m[4] : "";
+          return {
+            model: ["macbook", v2, size, chip, year].filter(Boolean).join(" "),
+            display: ["MacBook", v2 ? cap(v2) : "", size ? `${size}"` : "", chip ? chip.toUpperCase().replace(/ (PRO|MAX|ULTRA)$/, (x) => cap(x.toLowerCase())) : "", year].filter(Boolean).join(" ")
+          };
+        }
+      },
+      {
+        brand: "apple",
+        regex: /\bairpods\s?(pro|max)?\s?(\d)?\b/,
+        build: (m) => {
+          const v2 = m[1] ?? "";
+          const gen = m[2] ?? "";
+          return { model: ["airpods", v2, gen].filter(Boolean).join(" "), display: ["AirPods", v2 ? cap(v2) : "", gen].filter(Boolean).join(" ") };
+        }
+      },
+      {
+        brand: "apple",
+        regex: /\b(?:apple\s?)?watch\s?(ultra|se|series)?\s?(\d{1,2})?\b/,
+        build: (m) => {
+          if (!m[1] && !m[2]) return null;
+          const v2 = m[1] ?? "series";
+          const n = m[2] ?? "";
+          return { model: ["apple watch", v2, n].filter(Boolean).join(" "), display: ["Apple Watch", cap(v2), n].filter(Boolean).join(" ") };
+        }
+      },
+      { brand: "apple", regex: /\bmac\s?mini\b/, build: () => ({ model: "mac mini", display: "Mac mini" }) },
+      { brand: "apple", regex: /\bimac\b/, build: () => ({ model: "imac", display: "iMac" }) },
+      // ---- Samsung ----
+      {
+        brand: "samsung",
+        regex: /\bgalaxy\s?s(\d{2})\s?(ultra|plus|\+|fe|edge)?(?![a-z0-9])/,
+        build: (m) => {
+          const v2 = variantWord(m[2]);
+          return { model: `galaxy s${m[1]}${v2 ? ` ${v2}` : ""}`, display: `Galaxy S${m[1]}${v2 ? ` ${v2 === "fe" ? "FE" : cap(v2)}` : ""}` };
+        }
+      },
+      {
+        brand: "samsung",
+        regex: /\bgalaxy\s?note\s?(\d{1,2})\s?(ultra|plus|\+)?(?![a-z0-9])/,
+        build: (m) => {
+          const v2 = variantWord(m[2]);
+          return { model: `galaxy note ${m[1]}${v2 ? ` ${v2}` : ""}`, display: `Galaxy Note ${m[1]}${v2 ? ` ${cap(v2)}` : ""}` };
+        }
+      },
+      {
+        brand: "samsung",
+        regex: /\bgalaxy\s?z\s?(fold|flip)\s?(\d)?\b/,
+        build: (m) => ({ model: ["galaxy z", m[1], m[2]].filter(Boolean).join(" "), display: ["Galaxy Z", cap(m[1] ?? ""), m[2]].filter(Boolean).join(" ") })
+      },
+      {
+        brand: "samsung",
+        regex: /\bgalaxy\s?tab\s?(s|a)\s?(\d{1,2})\s?(ultra|plus|\+|fe|lite)?(?![a-z0-9])/,
+        build: (m) => {
+          const v2 = variantWord(m[3]);
+          return { model: `galaxy tab ${m[1]}${m[2]}${v2 ? ` ${v2}` : ""}`, display: `Galaxy Tab ${(m[1] ?? "").toUpperCase()}${m[2]}${v2 ? ` ${v2 === "fe" ? "FE" : cap(v2)}` : ""}` };
+        }
+      },
+      {
+        brand: "samsung",
+        regex: /\bgalaxy\s?a(\d{2})\s?(s|e)?\b/,
+        build: (m) => ({ model: `galaxy a${m[1]}${m[2] ?? ""}`, display: `Galaxy A${m[1]}${m[2] ?? ""}` })
+      },
+      { brand: "samsung", regex: /\bgalaxy\s?m(\d{2})\b/, build: (m) => ({ model: `galaxy m${m[1]}`, display: `Galaxy M${m[1]}` }) },
+      {
+        brand: "samsung",
+        regex: /\bgalaxy\s?xcover\s?(\d)?\s?(pro)?\b/,
+        build: (m) => ({ model: ["galaxy xcover", m[1], m[2]].filter(Boolean).join(" "), display: ["Galaxy XCover", m[1], m[2] ? "Pro" : ""].filter(Boolean).join(" ") })
+      },
+      {
+        brand: "samsung",
+        regex: /\bgalaxy\s?(buds|watch)\s?(\d)?\s?(pro|ultra|fe|classic|live)?\b/,
+        build: (m) => ({
+          model: ["galaxy", m[1], m[2], m[3]].filter(Boolean).join(" "),
+          display: ["Galaxy", cap(m[1] ?? ""), m[2], m[3] ? m[3] === "fe" ? "FE" : cap(m[3]) : ""].filter(Boolean).join(" ")
+        })
+      },
+      // ---- Google ----
+      {
+        brand: "google",
+        regex: /\bpixel\s?(\d{1,2})\s?(a|pro\s?xl|pro|xl|fold)?\b/,
+        build: (m) => {
+          const v2 = (m[2] ?? "").replace(/\s+/g, " ");
+          if (v2 === "a") return { model: `pixel ${m[1]}a`, display: `Pixel ${m[1]}a` };
+          return { model: `pixel ${m[1]}${v2 ? ` ${v2}` : ""}`, display: `Pixel ${m[1]}${v2 ? ` ${v2 === "xl" ? "XL" : v2 === "pro xl" ? "Pro XL" : cap(v2)}` : ""}` };
+        }
+      },
+      // ---- Xiaomi ----
+      {
+        brand: "xiaomi",
+        regex: /\bredmi\s?(note)?\s?(\d{1,2})\s?(pro\s?\+|pro\s?plus|pro|s|t|c|lite|ultra)?(?![a-z0-9])/,
+        build: (m) => {
+          const v2 = (m[3] ?? "").replace(/\s+/g, " ").replace("pro +", "pro plus");
+          return { model: ["redmi", m[1], m[2], v2].filter(Boolean).join(" "), display: ["Redmi", m[1] ? "Note" : "", m[2], v2 ? cap(v2) : ""].filter(Boolean).join(" ") };
+        }
+      },
+      {
+        brand: "xiaomi",
+        regex: /\bpoco\s?([xfmc]\d{1,2})\s?(pro|gt)?\b/,
+        build: (m) => ({ model: ["poco", m[1], m[2]].filter(Boolean).join(" "), display: ["Poco", (m[1] ?? "").toUpperCase(), m[2] ? cap(m[2]) : ""].filter(Boolean).join(" ") })
+      },
+      {
+        brand: "xiaomi",
+        regex: /\b(?:xiaomi|mi)\s?(\d{1,2})\s?(t\s?pro|t|pro|ultra|lite)?\b/,
+        build: (m) => {
+          const v2 = (m[2] ?? "").replace(/\s+/g, " ");
+          return { model: [m[1], v2].filter(Boolean).join(" "), display: [m[1], v2 ? v2.toUpperCase().replace("PRO", "Pro").replace("ULTRA", "Ultra").replace("LITE", "Lite") : ""].filter(Boolean).join(" ") };
+        }
+      },
+      // ---- Huawei / Honor ----
+      {
+        brand: "huawei",
+        regex: /\bhuawei\s+(p|mate|nova)\s?(\d{1,2})\s?(pro\s?\+|pro|lite)?(?![a-z0-9])/,
+        build: (m) => ({ model: [`${m[1]}${m[2]}`, m[3]?.replace(/\s+/g, "")].filter(Boolean).join(" "), display: [`${(m[1] ?? "").toUpperCase()}${m[2]}`, m[3] ? cap(m[3]) : ""].filter(Boolean).join(" ") })
+      },
+      {
+        brand: "honor",
+        regex: /\bhonor\s+(magic|x)?\s?(\d{1,2})\s?(pro|lite)?\b/,
+        build: (m) => ({ model: [m[1], m[2], m[3]].filter(Boolean).join(" "), display: [m[1] ? cap(m[1]) : "", m[2], m[3] ? cap(m[3]) : ""].filter(Boolean).join(" ") })
+      },
+      // ---- OnePlus / Oppo ----
+      {
+        brand: "oneplus",
+        regex: /\boneplus\s?(nord\s?(?:ce\s?)?\d?|\d{1,2}[rt]?)\s?(pro)?\b/,
+        build: (m) => ({ model: [(m[1] ?? "").replace(/\s+/g, " ").trim(), m[2]].filter(Boolean).join(" "), display: [cap((m[1] ?? "").trim()), m[2] ? "Pro" : ""].filter(Boolean).join(" ") })
+      },
+      {
+        brand: "oppo",
+        regex: /\boppo\s+(reno|find|a)\s?(\d{1,2}|x\d?)\s?(pro|lite|neo)?\b/,
+        build: (m) => ({ model: [m[1], m[2], m[3]].filter(Boolean).join(" "), display: [cap(m[1] ?? ""), (m[2] ?? "").toUpperCase(), m[3] ? cap(m[3]) : ""].filter(Boolean).join(" ") })
+      },
+      // ---- Consoles ----
+      {
+        brand: "sony",
+        regex: /\b(?:playstation|ps)\s?(4|5)\s?(pro|slim|digital(?:\s?edition)?)?\b/,
+        build: (m) => ({ model: ["playstation", m[1], m[2]?.replace(/\s+/g, " ")].filter(Boolean).join(" "), display: ["PlayStation", m[1], m[2] ? cap(m[2]) : ""].filter(Boolean).join(" ") })
+      },
+      {
+        brand: "nintendo",
+        regex: /\b(?:nintendo\s?)?switch\s?(oled|lite|2)?\b/,
+        build: (m) => ({ model: ["nintendo switch", m[1]].filter(Boolean).join(" "), display: ["Nintendo Switch", m[1] === "oled" ? "OLED" : m[1] ? cap(m[1]) : ""].filter(Boolean).join(" ") })
+      },
+      {
+        brand: "microsoft",
+        regex: /\bxbox\s?(series\s?[xs]|one\s?[xs]?)\b/,
+        build: (m) => ({ model: `xbox ${(m[1] ?? "").replace(/\s+/g, " ")}`, display: `Xbox ${cap((m[1] ?? "").replace(/\s+/g, " ")).replace(/\b(X|S)$/, (c) => c.toUpperCase())}` })
+      },
+      {
+        brand: "microsoft",
+        regex: /\bsurface\s?(pro|laptop|go|book)\s?(\d{1,2})?\b/,
+        build: (m) => ({ model: ["surface", m[1], m[2]].filter(Boolean).join(" "), display: ["Surface", cap(m[1] ?? ""), m[2]].filter(Boolean).join(" ") })
+      },
+      // ---- Dyson ----
+      {
+        brand: "dyson",
+        regex: /\bdyson\s+(v\d{1,2}|airwrap|supersonic|gen\s?5)\s?(absolute|animal|detect|origin|complete|motorhead|fluffy)?\b/,
+        build: (m) => ({ model: [(m[1] ?? "").replace(/\s+/g, ""), m[2]].filter(Boolean).join(" "), display: [(m[1] ?? "").toUpperCase().replace("GEN", "Gen"), m[2] ? cap(m[2]) : ""].filter(Boolean).join(" ") })
+      }
+    ];
+    COLORS = [
+      { key: "gray", display: "Gray", aliases: ["space gray", "space grey", "gris sideral", "gris sid\xE9ral", "graphite", "graphit", "gris", "gray", "grey", "grau", "titanium gray", "gris titane"] },
+      { key: "black", display: "Black", aliases: ["jet black", "noir de jais", "noir", "black", "schwarz", "nero", "negro", "black titanium", "titane noir"] },
+      { key: "white", display: "White", aliases: ["blanc", "white", "weiss", "bianco", "blanco", "white titanium", "titane blanc"] },
+      { key: "midnight", display: "Midnight", aliases: ["midnight", "minuit"] },
+      { key: "starlight", display: "Starlight", aliases: ["starlight", "lumiere stellaire", "lumi\xE8re stellaire"] },
+      { key: "blue", display: "Blue", aliases: ["sierra blue", "bleu alpin", "alpine blue", "pacific blue", "bleu pacifique", "bleu nuit", "deep blue", "bleu", "blue", "blau", "azul", "blue titanium", "titane bleu"] },
+      { key: "red", display: "Red", aliases: ["product red", "rouge", "red", "rot", "rosso", "rojo"] },
+      { key: "green", display: "Green", aliases: ["alpine green", "vert alpin", "midnight green", "vert nuit", "vert", "green", "grun", "verde"] },
+      { key: "silver", display: "Silver", aliases: ["argent", "silver", "silber", "argento", "plata"] },
+      { key: "gold", display: "Gold", aliases: ["rose gold", "or rose", "dore", "dor\xE9", "gold", "golden", "or"] },
+      { key: "purple", display: "Purple", aliases: ["deep purple", "violet intense", "violet", "purple", "mauve", "lilas", "lilac", "lavande", "lavender"] },
+      { key: "pink", display: "Pink", aliases: ["rose", "pink", "rosa"] },
+      { key: "yellow", display: "Yellow", aliases: ["jaune", "yellow", "gelb"] },
+      { key: "orange", display: "Orange", aliases: ["orange", "corail", "coral"] },
+      { key: "titanium", display: "Titanium", aliases: ["natural titanium", "titane naturel", "titane", "titanium", "desert titanium", "titane desert"] },
+      { key: "brown", display: "Brown", aliases: ["marron", "brown", "bronze", "cuivre", "copper"] },
+      { key: "beige", display: "Beige", aliases: ["beige", "sable", "sand"] }
+    ];
+    CONDITION_WORDS = [
+      { condition: "new", aliases: ["brand new", "neuf", "neuve", "neufs", "new", "sealed", "scelle", "scell\xE9", "blister", "nuevo", "nuovo", "neu"] },
+      { condition: "refurbished", aliases: ["remis a neuf", "remis \xE0 neuf", "reconditionne", "reconditionn\xE9", "reconditionnee", "reconditionn\xE9e", "reconditionnes", "refurbished", "refurb", "recond", "renewed", "ricondizionato", "generaluberholt"] },
+      { condition: "used", aliases: ["second hand", "seconde main", "pre owned", "preowned", "d occasion", "occasion", "used", "usado", "usato", "gebraucht"] }
+    ];
+    NOISE_TOKENS = /* @__PURE__ */ new Set([
+      "smartphone",
+      "smartphones",
+      "telephone",
+      "t\xE9l\xE9phone",
+      "phone",
+      "mobile",
+      "portable",
+      "tablette",
+      "tablet",
+      "ordinateur",
+      "laptop",
+      "unlocked",
+      "debloque",
+      "d\xE9bloqu\xE9",
+      "desimlocke",
+      "d\xE9simlock\xE9",
+      "simfree",
+      "sim",
+      "free",
+      "dual",
+      "esim",
+      "5g",
+      "4g",
+      "lte",
+      "3g",
+      "garantie",
+      "warranty",
+      "mois",
+      "months",
+      "month",
+      "ans",
+      "an",
+      "year",
+      "years",
+      "lot",
+      "pcs",
+      "pieces",
+      "pi\xE8ces",
+      "units",
+      "unites",
+      "unit\xE9s",
+      "pack",
+      "bundle",
+      "x",
+      "original",
+      "originale",
+      "genuine",
+      "authentique",
+      "officiel",
+      "official",
+      "oem",
+      "de",
+      "du",
+      "des",
+      "le",
+      "la",
+      "les",
+      "et",
+      "avec",
+      "sans",
+      "pour",
+      "the",
+      "with",
+      "and",
+      "for",
+      "of",
+      "go",
+      "gb",
+      "tb",
+      "to"
+    ]);
+    VARIANT_TOKENS = [
+      { key: "wifi", aliases: ["wifi", "wi fi", "wlan"] },
+      { key: "cellular", aliases: ["cellular", "cellulaire", "4g cellular", "5g cellular", "lte cellular"] },
+      { key: "dual sim", aliases: ["dual sim", "dual sims", "double sim", "ds"] }
+    ];
+    MPN_STOPWORDS = /* @__PURE__ */ new Set(["note", "tab", "mate", "nova", "poco", "ipad", "se", "s", "a", "m", "x", "z", "v", "ps", "mi", "pro", "max", "gen", "iphone", "pixel", "redmi", "galaxy", "watch", "xbox"]);
+    ISO_4217 = /* @__PURE__ */ new Set([
+      "EUR",
+      "USD",
+      "GBP",
+      "CHF",
+      "JPY",
+      "CNY",
+      "HKD",
+      "SGD",
+      "AUD",
+      "CAD",
+      "NZD",
+      "SEK",
+      "NOK",
+      "DKK",
+      "PLN",
+      "CZK",
+      "HUF",
+      "RON",
+      "BGN",
+      "HRK",
+      "TRY",
+      "ILS",
+      "AED",
+      "SAR",
+      "QAR",
+      "KWD",
+      "INR",
+      "PKR",
+      "BDT",
+      "LKR",
+      "THB",
+      "VND",
+      "IDR",
+      "MYR",
+      "PHP",
+      "KRW",
+      "TWD",
+      "ZAR",
+      "NGN",
+      "EGP",
+      "MAD",
+      "TND",
+      "DZD",
+      "KES",
+      "BRL",
+      "MXN",
+      "ARS",
+      "CLP",
+      "COP",
+      "PEN",
+      "RUB",
+      "UAH",
+      "KZT",
+      "ISK",
+      "GEL",
+      "RSD",
+      "MKD",
+      "BAM",
+      "ALL",
+      "MDL"
+    ]);
+    STORAGE_SIZES_GB = /* @__PURE__ */ new Set([8, 16, 32, 64, 128, 256, 512, 1024, 2048]);
+  }
+});
+
+// src/domain/sourcing/normalizer.ts
+function normalizeText(input) {
+  if (!input) return "";
+  return input.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/['’`´]/g, " ").replace(/[^a-z0-9+/.,\s]/g, " ").replace(/(?<!\d)[.,]|[.,](?!\d)/g, " ").replace(/\s+/g, " ").trim();
+}
+function isValidGtin(digits2) {
+  if (!/^\d{8}$|^\d{12,14}$/.test(digits2)) return false;
+  const nums = digits2.split("").map(Number);
+  const check = nums.pop();
+  let sum = 0;
+  for (let i = nums.length - 1, w2 = 3; i >= 0; i--, w2 = w2 === 3 ? 1 : 3) sum += nums[i] * w2;
+  return (10 - sum % 10) % 10 === check;
+}
+function extractEan(text2) {
+  const m = text2.match(/(?<!\d)(\d{8}|\d{12,14})(?!\d)/);
+  if (!m || !m[1]) return null;
+  return { ean: m[1], valid: isValidGtin(m[1]) };
+}
+function looksLikeMpn(token) {
+  const t = token.trim();
+  if (t.length < 5 || t.length > 32) return false;
+  if (!/^[A-Z0-9][A-Z0-9\-/]*$/i.test(t)) return false;
+  if ((t.match(/[A-Z]/gi) ?? []).length < 2) return false;
+  if (!/\d/.test(t)) return false;
+  if (STORAGE_TOKEN.test(t)) return false;
+  if (/^\d/.test(t)) return false;
+  const prefix = t.match(/^([A-Z]+)/i)?.[1]?.toLowerCase() ?? "";
+  if (prefix && MPN_STOPWORDS.has(prefix)) return false;
+  return true;
+}
+function extractMpn(text2) {
+  for (const tok of text2.split(/\s+/)) {
+    const clean = tok.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9/]+$/g, "");
+    if (looksLikeMpn(clean)) return clean.toUpperCase();
+  }
+  return null;
+}
+function normalizeStorage(raw) {
+  if (!raw) return null;
+  const t = normalizeText(raw);
+  const m = t.match(/(\d{1,4})\s?(tb|to|gb|go|g)?(?![a-z])/);
+  if (!m || !m[1]) return null;
+  const n = Number(m[1]);
+  const unit = m[2];
+  if (unit === "tb" || unit === "to") return `${n}TB`;
+  if (unit) return `${n}GB`;
+  if (STORAGE_SIZES_GB.has(n)) return `${n}GB`;
+  return null;
+}
+function cutMatch(work, m) {
+  const idx = m.index ?? work.indexOf(m[0]);
+  return `${work.slice(0, idx)} ${work.slice(idx + m[0].length)}`;
+}
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+}
+function wordRegex(alias) {
+  return new RegExp(`(?<![a-z0-9])${escapeRegex(alias)}(?![a-z0-9])`);
+}
+function normalizeColor(raw) {
+  if (!raw) return null;
+  const t = normalizeText(raw);
+  for (const c of COLOR_ALIASES) {
+    if (wordRegex(c.alias).test(t)) return { key: c.key, display: c.display };
+  }
+  return null;
+}
+function normalizeGrade(raw) {
+  if (!raw) return null;
+  const t = normalizeText(raw);
+  const m = t.match(/(?<![a-z0-9])(?:grade|gr)?\s?([abc]\+?(?:\s?\/\s?[abc]\+?)?)(?:\s?grade)?(?![a-z0-9+])/);
+  if (!m || !m[1]) return null;
+  return m[1].replace(/\s+/g, "").toUpperCase();
+}
+function normalizeCondition(raw) {
+  if (!raw) return "unknown";
+  const t = normalizeText(raw);
+  if (t === "new" || t === "refurbished" || t === "used") return t;
+  for (const c of CONDITION_ALIASES) {
+    if (wordRegex(c.alias).test(t)) return c.condition;
+  }
+  return "unknown";
+}
+function normalizeBrand(raw) {
+  if (!raw) return null;
+  const t = normalizeText(raw);
+  if (!t) return null;
+  for (const b of BRANDS) {
+    if (b.key === t || b.aliases.some((a) => normalizeText(a) === t)) return { key: b.key, display: b.display };
+  }
+  return { key: t, display: raw.trim() };
+}
+function titleCase(s) {
+  return s.split(" ").map((w2) => w2 ? w2[0].toUpperCase() + w2.slice(1) : w2).join(" ");
+}
+function buildNormalizedKey(p) {
+  return [p.brand ?? UNKNOWN, p.model ?? UNKNOWN, p.storage?.toLowerCase() ?? UNKNOWN, p.color ?? UNKNOWN, p.condition, p.grade?.toLowerCase() ?? UNKNOWN].join("|");
+}
+function normalizeProduct(text2, hints = {}) {
+  const original = (text2 ?? "").trim();
+  let work = ` ${normalizeText(original)} `;
+  const inferred = [];
+  const eanFound = extractEan(original);
+  let ean = eanFound?.ean ?? null;
+  let eanValid = eanFound ? eanFound.valid : null;
+  if (ean) work = work.replace(wordRegex(ean), " ");
+  let mpn = extractMpn(original);
+  if (mpn) work = work.replace(wordRegex(normalizeText(mpn)), " ");
+  let brand = null;
+  let brandDisplay = null;
+  let model = null;
+  let modelDisplay = null;
+  for (const p of MODEL_PATTERNS) {
+    const m = work.match(p.regex);
+    if (!m) continue;
+    const built = p.build(m);
+    if (!built) continue;
+    model = built.model;
+    modelDisplay = built.display;
+    const entry = BRANDS.find((b) => b.key === p.brand);
+    brand = p.brand;
+    brandDisplay = entry?.display ?? p.brand;
+    work = cutMatch(work, m);
+    break;
+  }
+  for (const b of BRAND_ALIASES) {
+    const re = wordRegex(b.alias);
+    if (re.test(work)) {
+      if (!brand) {
+        brand = b.key;
+        brandDisplay = b.display;
+      }
+      work = work.replace(re, " ");
+      break;
+    }
+  }
+  const storages = [];
+  work = work.replace(/(?<![a-z0-9])(\d{1,4})\s?(tb|to|gb|go|g)(?![a-z0-9])/g, (full, n, unit) => {
+    const num = Number(n);
+    if (unit === "g" && !STORAGE_SIZES_GB.has(num)) return full;
+    const isTb = unit === "tb" || unit === "to";
+    storages.push({ value: isTb ? `${num}TB` : `${num}GB`, gb: isTb ? num * 1024 : num });
+    return " ";
+  });
+  if (storages.length === 0) {
+    work = work.replace(/(?<![a-z0-9.,])(\d{2,4})(?![a-z0-9.,])/g, (full, n) => {
+      const num = Number(n);
+      if (storages.length === 0 && STORAGE_SIZES_GB.has(num)) {
+        storages.push({ value: `${num}GB`, gb: num });
+        return " ";
+      }
+      return full;
+    });
+  }
+  storages.sort((a, b) => b.gb - a.gb);
+  let storage = storages[0]?.value ?? null;
+  const variantParts2 = storages.slice(1).map((s) => `${s.value.toLowerCase()} ram`);
+  let grade = null;
+  const gradePatterns = [/(?<![a-z0-9])grade\s?([abc]\+?(?:\s?\/\s?[abc]\+?)?)(?![a-z0-9+])/, /(?<![a-z0-9])gr\s?([abc]\+?)(?![a-z0-9+])/, /(?<![a-z0-9])([abc]\+?)\s?grade(?![a-z0-9])/];
+  for (const re of gradePatterns) {
+    const m = work.match(re);
+    if (m && m[1]) {
+      grade = m[1].replace(/\s+/g, "").toUpperCase();
+      work = cutMatch(work, m);
+      break;
+    }
+  }
+  let condition = "unknown";
+  for (const c of CONDITION_ALIASES) {
+    const re = wordRegex(c.alias);
+    if (re.test(work)) {
+      condition = c.condition;
+      work = work.replace(re, " ");
+      break;
+    }
+  }
+  let color = null;
+  let colorDisplay = null;
+  for (const c of COLOR_ALIASES) {
+    const re = wordRegex(c.alias);
+    if (re.test(work)) {
+      color = c.key;
+      colorDisplay = c.display;
+      work = work.replace(re, " ");
+      break;
+    }
+  }
+  if (!grade && model) {
+    const m = work.match(/(?<![a-z0-9+])([abc]\+?)(?![a-z0-9+])/);
+    if (m && m[1]) {
+      grade = m[1].toUpperCase();
+      work = cutMatch(work, m);
+    }
+  }
+  for (const v2 of VARIANT_ALIASES) {
+    const re = wordRegex(v2.alias);
+    if (re.test(work)) {
+      if (!variantParts2.includes(v2.key)) variantParts2.push(v2.key);
+      work = work.replace(re, " ");
+    }
+  }
+  if (hints.brand) {
+    const b = normalizeBrand(hints.brand);
+    if (b) {
+      brand = b.key;
+      brandDisplay = b.display;
+    }
+  }
+  if (hints.model) {
+    const parsed = normalizeProduct(hints.model);
+    if (parsed.model && !parsed.inferred.includes("model")) {
+      model = parsed.model;
+      modelDisplay = parsed.modelDisplay;
+      if (!hints.brand && parsed.brand) {
+        brand = parsed.brand;
+        brandDisplay = parsed.brandDisplay;
+      }
+    } else {
+      const m = normalizeText(hints.model);
+      if (m) {
+        model = m;
+        modelDisplay = hints.model.trim();
+      }
+    }
+  }
+  if (hints.storage) storage = normalizeStorage(hints.storage) ?? storage;
+  if (hints.color) {
+    const c = normalizeColor(hints.color);
+    if (c) {
+      color = c.key;
+      colorDisplay = c.display;
+    } else {
+      const raw = normalizeText(hints.color);
+      if (raw) {
+        color = raw;
+        colorDisplay = titleCase(raw);
+      }
+    }
+  }
+  if (hints.grade) grade = normalizeGrade(hints.grade) ?? grade;
+  if (hints.condition) {
+    const c = normalizeCondition(hints.condition);
+    if (c !== "unknown") condition = c;
+  }
+  if (hints.ean) {
+    const e = hints.ean.replace(/\D/g, "");
+    if (e.length >= 8) {
+      ean = e;
+      eanValid = isValidGtin(e);
+    }
+  }
+  if (hints.mpn && hints.mpn.trim()) mpn = hints.mpn.trim().toUpperCase();
+  if (condition === "unknown" && grade) {
+    condition = "refurbished";
+    inferred.push("condition");
+  }
+  const remainingTokens = work.split(/\s+/).map((t) => t.trim()).filter((t) => t.length > 0 && !NOISE_TOKENS.has(t) && !/^[+/.,]+$/.test(t));
+  const remainingText = remainingTokens.join(" ");
+  if (!model && remainingTokens.length > 0) {
+    model = remainingTokens.slice(0, 4).join(" ");
+    modelDisplay = null;
+    inferred.push("model");
+  }
+  const variant = variantParts2.length > 0 ? variantParts2.join(" ") : null;
+  const displayParts = [brandDisplay, modelDisplay ?? (model && inferred.includes("model") ? titleCase(model) : null), storage, colorDisplay, grade ? `Grade ${grade}` : null].filter((x) => Boolean(x));
+  const displayTitle = modelDisplay || brandDisplay ? displayParts.join(" ") : original || displayParts.join(" ");
+  let confidence = 0.2;
+  if (brand) confidence += 0.2;
+  if (model && !inferred.includes("model")) confidence += 0.5;
+  if (storage) confidence += 0.05;
+  if (color) confidence += 0.03;
+  if (ean && eanValid) confidence = Math.max(confidence, 0.99);
+  confidence = Math.min(0.99, Math.round(confidence * 100) / 100);
+  const result = {
+    brand,
+    brandDisplay,
+    model,
+    modelDisplay,
+    storage,
+    color,
+    colorDisplay,
+    condition,
+    grade,
+    variant,
+    ean,
+    eanValid,
+    mpn,
+    normalizedKey: "",
+    displayTitle,
+    remainingText,
+    inferred,
+    confidence
+  };
+  result.normalizedKey = buildNormalizedKey(result);
+  return result;
+}
+var UNKNOWN, STORAGE_TOKEN, COLOR_ALIASES, CONDITION_ALIASES, BRAND_ALIASES, VARIANT_ALIASES, CONDITION_LABEL_FR;
+var init_normalizer = __esm({
+  "src/domain/sourcing/normalizer.ts"() {
+    "use strict";
+    init_dictionaries();
+    UNKNOWN = "-";
+    STORAGE_TOKEN = /^\d{1,4}(gb|go|g|tb|to)$/i;
+    COLOR_ALIASES = COLORS.flatMap((c) => c.aliases.map((a) => ({ key: c.key, display: c.display, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
+    CONDITION_ALIASES = CONDITION_WORDS.flatMap((c) => c.aliases.map((a) => ({ condition: c.condition, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
+    BRAND_ALIASES = BRANDS.flatMap((b) => b.aliases.filter((a) => a.length > 2).map((a) => ({ key: b.key, display: b.display, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
+    VARIANT_ALIASES = VARIANT_TOKENS.flatMap((v2) => v2.aliases.map((a) => ({ key: v2.key, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
+    CONDITION_LABEL_FR = {
+      new: "Neuf",
+      refurbished: "Reconditionn\xE9",
+      used: "Occasion",
+      unknown: "Non communiqu\xE9"
+    };
+  }
+});
+
+// src/services/sourcing/http.ts
+import { isIP } from "node:net";
+import { lookup } from "node:dns/promises";
+function decodeBytes(buffer, encoding) {
+  const enc = (encoding ?? "utf-8").toLowerCase();
+  try {
+    return new TextDecoder(enc, { fatal: false }).decode(buffer);
+  } catch {
+    return new TextDecoder("utf-8").decode(buffer);
+  }
+}
+function isPrivateAddress(address) {
+  const a = address.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isIP(a) === 4) {
+    const parts = a.split(".").map(Number);
+    const [p0 = 0, p1 = 0] = parts;
+    if (p0 === 10 || p0 === 127 || p0 === 0) return true;
+    if (p0 === 169 && p1 === 254) return true;
+    if (p0 === 172 && p1 >= 16 && p1 <= 31) return true;
+    if (p0 === 192 && p1 === 168) return true;
+    if (p0 === 100 && p1 >= 64 && p1 <= 127) return true;
+    if (p0 >= 224) return true;
+    return false;
+  }
+  if (isIP(a) === 6) {
+    if (a === "::" || a === "::1") return true;
+    if (a.startsWith("fe80:") || a.startsWith("fc") || a.startsWith("fd")) return true;
+    const mapped = a.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped?.[1]) return isPrivateAddress(mapped[1]);
+    return false;
+  }
+  return false;
+}
+function isIpLiteralLike(host) {
+  if (isIP(host.replace(/^\[|\]$/g, ""))) return true;
+  return /^(0x[0-9a-f]+|\d+)$/i.test(host) || /^(0x[0-9a-f]+|\d+)(\.(0x[0-9a-f]+|\d+)){1,3}$/i.test(host);
+}
+function assertPublicHttpUrl(url) {
+  const u = new URL(url);
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(`URL non support\xE9e (${u.protocol}) : seuls http et https sont accept\xE9s.`);
+  if (u.username || u.password) throw new Error("Les identifiants dans l'URL ne sont pas accept\xE9s.");
+  const host = u.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
+    throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
+  }
+  if (isIpLiteralLike(host)) {
+    if (!isIP(host.replace(/^\[|\]$/g, "")) || isPrivateAddress(host)) throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
+  }
+  return u;
+}
+async function assertResolvesToPublicAddress(u, resolver = (h) => lookup(h, { all: true })) {
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host)) {
+    if (isPrivateAddress(host)) throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
+    return;
+  }
+  let addresses;
+  try {
+    addresses = await resolver(host);
+  } catch {
+    throw new Error(`Nom d'h\xF4te introuvable : ${host}.`);
+  }
+  if (addresses.length === 0) throw new Error(`Nom d'h\xF4te introuvable : ${host}.`);
+  if (addresses.some((a) => isPrivateAddress(a.address))) throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
+}
+async function readBounded(res, maxBytes) {
+  const declared = Number(res.headers.get("content-length") ?? "0");
+  if (declared > maxBytes) throw new Error(`R\xE9ponse trop volumineuse (${declared} octets, maximum ${maxBytes}).`);
+  if (!res.body) return new ArrayBuffer(0);
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => void 0);
+        throw new Error(`R\xE9ponse trop volumineuse (plus de ${maxBytes} octets).`);
+      }
+      chunks.push(value);
+    }
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out.buffer;
+}
+async function fetchText(url, options) {
+  let target = assertPublicHttpUrl(url);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
+  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+  const doFetch = options.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let res = null;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      await assertResolvesToPublicAddress(target, options.resolver);
+      res = await doFetch(target.toString(), {
+        method: options.method ?? "GET",
+        redirect: "manual",
+        headers: { "User-Agent": options.userAgent, Accept: options.accept ?? "text/html,application/xhtml+xml,application/xml,text/csv,application/json;q=0.9,*/*;q=0.8", ...options.headers ?? {} },
+        body: options.method === "POST" ? options.body ?? "" : void 0,
+        signal: controller.signal
+      });
+      const location = res.headers.get("location");
+      if (res.status >= 300 && res.status < 400 && location) {
+        if (hop === MAX_REDIRECTS) throw new Error("Trop de redirections.");
+        await res.body?.cancel().catch(() => void 0);
+        target = assertPublicHttpUrl(new URL(location, target).toString());
+        continue;
+      }
+      break;
+    }
+    if (!res) throw new Error("Aucune r\xE9ponse.");
+    const buffer = await readBounded(res, maxBytes);
+    const contentType = res.headers.get("content-type");
+    const charset = contentType?.match(/charset=([\w-]+)/i)?.[1] ?? null;
+    return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString() };
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") throw new Error(`D\xE9lai d\xE9pass\xE9 (${timeoutMs / 1e3} s) pour ${target.hostname}.`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var DEFAULT_TIMEOUT_MS2, DEFAULT_MAX_BYTES, MAX_REDIRECTS;
+var init_http = __esm({
+  "src/services/sourcing/http.ts"() {
+    "use strict";
+    DEFAULT_TIMEOUT_MS2 = 3e4;
+    DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
+    MAX_REDIRECTS = 5;
+  }
+});
+
+// src/domain/sourcing/types.ts
+var RAW_OFFER_FIELDS;
+var init_types = __esm({
+  "src/domain/sourcing/types.ts"() {
+    "use strict";
+    RAW_OFFER_FIELDS = [
+      "external_offer_id",
+      "title",
+      "price",
+      "currency",
+      "tax_type",
+      "moq",
+      "minimum_order_value",
+      "available_quantity",
+      "stock_status",
+      "shipping_cost",
+      "delivery_days",
+      "delivery_min_days",
+      "delivery_max_days",
+      "country",
+      "url",
+      "ean",
+      "mpn",
+      "brand",
+      "model",
+      "storage",
+      "color",
+      "grade",
+      "condition",
+      "supplier_sku"
+    ];
+  }
+});
+
+// src/services/sourcing/feed-parsers.ts
+import { parse as parseCsv } from "npm:csv-parse@7.0.3/sync";
+import { XMLParser as XMLParser2 } from "npm:fast-xml-parser@5.11.2";
+import { z as z13 } from "npm:zod@4.6.5";
+function getPath(obj2, path) {
+  if (!path) return obj2;
+  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".").filter((p) => p.length > 0);
+  let cur = obj2;
+  for (const p of parts) {
+    if (cur === null || cur === void 0) return void 0;
+    if (Array.isArray(cur)) {
+      const idx = Number(p);
+      cur = Number.isInteger(idx) ? cur[idx] : cur.map((x) => x && typeof x === "object" ? x[p] : void 0).find((v2) => v2 !== void 0);
+    } else if (typeof cur === "object") {
+      cur = cur[p];
+    } else return void 0;
+  }
+  return cur;
+}
+function findFirstArray(obj2, depth = 0, path = "") {
+  if (depth > 6 || obj2 === null || typeof obj2 !== "object") return null;
+  if (Array.isArray(obj2)) return obj2.length > 0 && typeof obj2[0] === "object" ? { path, items: obj2 } : null;
+  for (const [k, v2] of Object.entries(obj2)) {
+    const found = findFirstArray(v2, depth + 1, path ? `${path}.${k}` : k);
+    if (found) return found;
+  }
+  return null;
+}
+function detectDelimiter(sample) {
+  const candidates = [";", ",", "	", "|"];
+  const firstLine = sample.split(/\r?\n/)[0] ?? "";
+  let best = ",";
+  let bestCount = 0;
+  for (const c of candidates) {
+    const count = firstLine.split(c).length - 1;
+    if (count > bestCount) {
+      best = c;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+function flatten(obj2, prefix = "", out = {}, depth = 0) {
+  if (depth > 4 || obj2 === null || typeof obj2 !== "object" || Array.isArray(obj2)) {
+    if (prefix) out[prefix] = obj2;
+    return out;
+  }
+  for (const [k, v2] of Object.entries(obj2)) {
+    const key2 = prefix ? `${prefix}.${k}` : k;
+    if (v2 !== null && typeof v2 === "object" && !Array.isArray(v2)) flatten(v2, key2, out, depth + 1);
+    else out[key2] = v2;
+  }
+  return out;
+}
+function parseFeedContent(content, format, options = {}) {
+  const warnings = [];
+  let rows = [];
+  const text2 = content.replace(/^﻿/, "");
+  if (format === "csv") {
+    const delimiter = options.delimiter ?? detectDelimiter(text2.slice(0, 4e3));
+    const headerRow = options.header_row ?? true;
+    const parsed = parseCsv(text2, {
+      columns: headerRow ? true : options.columns ?? false,
+      delimiter,
+      bom: true,
+      trim: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+      relax_quotes: true,
+      to: MAX_FEED_ROWS + 1
+    });
+    if (!headerRow && !options.columns) {
+      rows = parsed.map((r) => Object.fromEntries(r.map((v2, i) => [`col${i + 1}`, v2])));
+    } else {
+      rows = parsed;
+    }
+    if (options.delimiter === void 0 || options.delimiter === null) warnings.push(`D\xE9limiteur d\xE9tect\xE9 automatiquement : \xAB ${delimiter} \xBB`);
+  } else {
+    let doc;
+    if (format === "xml") {
+      const parser3 = new XMLParser2({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: true, cdataPropName: false });
+      doc = parser3.parse(text2);
+    } else {
+      doc = JSON.parse(text2);
+    }
+    let items = null;
+    if (options.root_path) {
+      const found = getPath(doc, options.root_path);
+      if (Array.isArray(found)) items = found;
+      else if (found && typeof found === "object") items = [found];
+      else warnings.push(`Chemin racine \xAB ${options.root_path} \xBB introuvable dans le flux.`);
+    }
+    if (!items) {
+      if (Array.isArray(doc)) items = doc;
+      else {
+        const found = findFirstArray(doc);
+        if (found) {
+          items = found.items;
+          warnings.push(`Chemin racine d\xE9tect\xE9 automatiquement : \xAB ${found.path} \xBB`);
+        }
+      }
+    }
+    rows = (items ?? []).filter((x) => x !== null && typeof x === "object").map((x) => flatten(x));
+  }
+  if (rows.length > MAX_FEED_ROWS) {
+    warnings.push(`Flux tronqu\xE9 \xE0 ${MAX_FEED_ROWS} lignes.`);
+    rows = rows.slice(0, MAX_FEED_ROWS);
+  }
+  const columns = Array.from(new Set(rows.slice(0, 200).flatMap((r) => Object.keys(r))));
+  return { rows, columns, warnings };
+}
+function toNumber(v2) {
+  if (v2 === null || v2 === void 0) return null;
+  if (typeof v2 === "number") return Number.isFinite(v2) ? v2 : null;
+  const s = String(v2).trim().replace(/\s| /g, "").replace(/[€$£]/g, "");
+  if (!s) return null;
+  const normalized = /,\d{1,2}$/.test(s) && s.includes(".") ? s.replace(/\./g, "").replace(",", ".") : /\.\d{1,2}$/.test(s) && s.includes(",") ? s.replace(/,/g, "") : s.replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+function toInt(v2) {
+  const n = toNumber(v2);
+  return n === null ? null : Math.round(n);
+}
+function toTaxType(v2) {
+  const s = String(v2 ?? "").trim().toLowerCase();
+  if (!s) return "unknown";
+  if (/^(ht|hors[\s-]?taxes?|excl|exclusive|net|ex[\s-]?vat|without[\s-]?vat|false|0)$/.test(s)) return "ht";
+  if (/^(ttc|toutes[\s-]?taxes|incl|inclusive|inc[\s-]?vat|with[\s-]?vat|gross|true|1)$/.test(s)) return "ttc";
+  return "unknown";
+}
+function toStockStatus(v2) {
+  const s = String(v2 ?? "").trim().toLowerCase();
+  if (!s) return "unknown";
+  if (/^(in[\s_-]?stock|en[\s_-]?stock|disponible|available|yes|true|oui|1|instock|https?:\/\/schema\.org\/instock)$/.test(s)) return "in_stock";
+  if (/^(out[\s_-]?of[\s_-]?stock|rupture|indisponible|unavailable|no|false|non|0|outofstock|sold[\s_-]?out|https?:\/\/schema\.org\/outofstock)$/.test(s)) return "out_of_stock";
+  if (/^(low|faible|limited|limite|limitedavailability|https?:\/\/schema\.org\/limitedavailability)$/.test(s)) return "low";
+  return "unknown";
+}
+function toDeliveryRange(v2) {
+  if (v2 === null || v2 === void 0 || v2 === "") return { min: null, max: null };
+  const s = String(v2).trim();
+  const m = s.match(/(\d+)\s*(?:-|–|à|to|a)\s*(\d+)/i);
+  if (m) return { min: Number(m[1]), max: Number(m[2]) };
+  const n = toInt(s.replace(/[^\d.,]/g, ""));
+  return { min: n, max: n };
+}
+function str2(v2) {
+  if (v2 === null || v2 === void 0) return null;
+  const s = String(v2).trim();
+  return s.length > 0 ? s : null;
+}
+function mapRow(row, mapping, defaults = {}) {
+  const errors = [];
+  const read = (field2) => {
+    const m = mapping[field2];
+    if (m === void 0) return void 0;
+    if (typeof m === "string") {
+      const direct = row[m];
+      return direct !== void 0 ? direct : getPath(row, m);
+    }
+    return m.const;
+  };
+  const externalOfferId = str2(read("external_offer_id")) ?? str2(read("supplier_sku")) ?? str2(read("ean"));
+  const title = str2(read("title"));
+  const price = toNumber(read("price"));
+  const currency = str2(read("currency"))?.toUpperCase() ?? defaults.currency?.toUpperCase() ?? null;
+  if (!externalOfferId) errors.push("Identifiant d'offre manquant (external_offer_id, supplier_sku ou ean).");
+  if (!title) errors.push("Titre manquant.");
+  if (read("price") !== void 0 && price === null && str2(read("price")) !== null) errors.push(`Prix illisible : \xAB ${String(read("price")).slice(0, 30)} \xBB.`);
+  if (price === null) errors.push("Prix manquant.");
+  if (!currency) errors.push("Devise manquante (colonne ou devise par d\xE9faut de la source).");
+  if (errors.length > 0 || !externalOfferId || !title) return { offer: null, errors };
+  const deliveryBoth = toDeliveryRange(read("delivery_days"));
+  const dMin = toInt(read("delivery_min_days")) ?? deliveryBoth.min;
+  const dMax = toInt(read("delivery_max_days")) ?? deliveryBoth.max;
+  const taxRaw = read("tax_type");
+  const taxType = taxRaw !== void 0 ? toTaxType(taxRaw) : defaults.taxType ?? "unknown";
+  const stockRaw = read("stock_status");
+  const availableQuantity = toInt(read("available_quantity"));
+  const offer = {
+    externalOfferId,
+    externalProductId: str2(read("supplier_sku")),
+    title,
+    price,
+    currency,
+    taxType,
+    moq: toInt(read("moq")),
+    minimumOrderValue: toNumber(read("minimum_order_value")),
+    availableQuantity,
+    stockStatus: stockRaw !== void 0 ? toStockStatus(stockRaw) : availableQuantity === null ? "unknown" : availableQuantity > 0 ? "in_stock" : "out_of_stock",
+    shippingCost: toNumber(read("shipping_cost")),
+    shippingCurrency: currency,
+    deliveryMinDays: dMin,
+    deliveryMaxDays: dMax,
+    country: str2(read("country"))?.toUpperCase().slice(0, 2) ?? defaults.country ?? null,
+    url: str2(read("url")),
+    ean: str2(read("ean"))?.replace(/\D/g, "") || null,
+    mpn: str2(read("mpn")),
+    brand: str2(read("brand")),
+    model: str2(read("model")),
+    storage: str2(read("storage")),
+    color: str2(read("color")),
+    grade: str2(read("grade")),
+    condition: read("condition") !== void 0 ? normalizeCondition(str2(read("condition"))) : null,
+    supplierSku: str2(read("supplier_sku")),
+    raw: row
+  };
+  return { offer, errors };
+}
+function previewFeed(content, format, mapping, options = {}, defaults = {}, limit = 20) {
+  const parsed = parseFeedContent(content, format, options);
+  const sample = parsed.rows.slice(0, limit).map((row, index) => ({ index, row, ...mapRow(row, mapping, defaults) }));
+  let validCount = 0;
+  let invalidCount = 0;
+  for (const row of parsed.rows) {
+    if (mapRow(row, mapping, defaults).offer) validCount++;
+    else invalidCount++;
+  }
+  return { columns: parsed.columns, total: parsed.rows.length, warnings: parsed.warnings, sample, validCount, invalidCount };
+}
+function suggestMapping(columns) {
+  const candidates = {
+    external_offer_id: /^(id|offer[_\s-]?id|ref(erence)?|article|item[_\s-]?id|product[_\s-]?id)$/i,
+    supplier_sku: /^(sku|supplier[_\s-]?sku|ref(erence)?[_\s-]?fournisseur|code|g:id)$/i,
+    title: /^(title|titre|name|nom|designation|désignation|libelle|libellé|description|g:title)$/i,
+    price: /^(price|prix|prix[_\s-]?ht|price[_\s-]?ht|unit[_\s-]?price|prix[_\s-]?unitaire|g:price|tarif)$/i,
+    currency: /^(currency|devise|monnaie)$/i,
+    tax_type: /^(tax[_\s-]?type|tva|vat|taxe?s?)$/i,
+    moq: /^(moq|min[_\s-]?qty|minimum|qte[_\s-]?min|quantite[_\s-]?minimale)$/i,
+    minimum_order_value: /^(min[_\s-]?order[_\s-]?value|minimum[_\s-]?commande|mov)$/i,
+    available_quantity: /^(stock|qty|quantity|quantite|quantité|available|dispo|disponible|g:quantity)$/i,
+    stock_status: /^(availability|disponibilite|disponibilité|stock[_\s-]?status|g:availability)$/i,
+    shipping_cost: /^(shipping|port|frais[_\s-]?de[_\s-]?port|livraison[_\s-]?cout|g:shipping)$/i,
+    delivery_days: /^(delivery|delai|délai|lead[_\s-]?time|delivery[_\s-]?days)$/i,
+    delivery_min_days: /^(delivery[_\s-]?min|delai[_\s-]?min)$/i,
+    delivery_max_days: /^(delivery[_\s-]?max|delai[_\s-]?max)$/i,
+    country: /^(country|pays|origin|origine)$/i,
+    url: /^(url|link|lien|product[_\s-]?url|g:link)$/i,
+    ean: /^(ean|ean13|gtin|gtin13|barcode|code[_\s-]?barre|upc|g:gtin)$/i,
+    mpn: /^(mpn|part[_\s-]?number|ref[_\s-]?fabricant|g:mpn)$/i,
+    brand: /^(brand|marque|manufacturer|fabricant|g:brand)$/i,
+    model: /^(model|modele|modèle)$/i,
+    storage: /^(storage|stockage|capacite|capacité|memory|memoire|mémoire)$/i,
+    color: /^(color|colour|couleur|g:color)$/i,
+    grade: /^(grade|classe)$/i,
+    condition: /^(condition|etat|état|g:condition)$/i
+  };
+  const out = {};
+  const used = /* @__PURE__ */ new Set();
+  for (const field2 of RAW_OFFER_FIELDS) {
+    const col = columns.find((c) => candidates[field2].test(c.trim()));
+    if (col) {
+      out[field2] = col;
+      used.add(col);
+    }
+  }
+  for (const [field2, patterns] of LOOSE_HEADER_PATTERNS) {
+    if (out[field2]) continue;
+    const col = columns.find((c) => !used.has(c) && patterns.some((re) => re.test(looseHeader(c))));
+    if (col) {
+      out[field2] = col;
+      used.add(col);
+    }
+  }
+  return out;
+}
+function looseHeader(h) {
+  return ` ${h.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[€$£%()[\]{}.,:;/\\_\-#°*'"’]/g, " ").replace(/\s+/g, " ").trim()} `;
+}
+var feedOptionsSchema, fieldMappingSchema, MAX_FEED_ROWS, LOOSE_HEADER_PATTERNS;
+var init_feed_parsers = __esm({
+  "src/services/sourcing/feed-parsers.ts"() {
+    "use strict";
+    init_types();
+    init_normalizer();
+    feedOptionsSchema = z13.object({
+      delimiter: z13.string().min(1).max(3).optional(),
+      encoding: z13.string().min(1).max(30).optional(),
+      root_path: z13.string().max(200).optional(),
+      header_row: z13.boolean().optional(),
+      columns: z13.array(z13.string()).optional()
+    });
+    fieldMappingSchema = z13.partialRecord(
+      z13.enum(RAW_OFFER_FIELDS),
+      z13.union([z13.string().min(1).max(200), z13.object({ const: z13.string().max(200) })])
+    );
+    MAX_FEED_ROWS = 5e4;
+    LOOSE_HEADER_PATTERNS = [
+      ["ean", [/ (ean|gtin|ean13|upc|code barre|barcode) /]],
+      ["mpn", [/ (mpn|part number|ref fabricant|reference fabricant) /]],
+      ["supplier_sku", [/ (ref|reference|sku|code article|code produit|article no|art nr|item no|part no|ref fournisseur|ref fourn) /]],
+      ["title", [/ (designation|libelle|description|product name|nom produit|nom article|article|produit|titre|title|name) /]],
+      ["price", [/ (prix|price|tarif|cost|cout|pu|unit price|net price|prix net|prix achat|prix revendeur|prix pro) /]],
+      ["currency", [/ (devise|currency|monnaie) /]],
+      ["tax_type", [/ (ht|ttc|tva|vat) incl /, / (type de prix|tax) /]],
+      ["available_quantity", [/ (qte|qty|quantite|quantity|stock|dispo|disponible|available|en stock) /]],
+      ["moq", [/ (moq|minimum|min qty|qte min|quantite minimum) /]],
+      ["brand", [/ (marque|brand|fabricant|manufacturer|constructeur) /]],
+      ["model", [/ (modele|model) /]],
+      ["storage", [/ (capacite|stockage|storage|memoire|memory|rom) /]],
+      ["color", [/ (couleur|color|colour|coloris) /]],
+      ["grade", [/ (grade|classe|qualite esthetique) /]],
+      ["condition", [/ (etat|condition|state) /]],
+      ["url", [/ (url|lien|link) /]],
+      ["shipping_cost", [/ (port|livraison|shipping|transport) /]],
+      ["delivery_days", [/ (delai|lead time|delivery) /]]
+    ];
+  }
+});
+
+// src/services/sourcing/offer-query.ts
+function baseOfferQuery(client2, organizationId, filters, skuIdsForCategory) {
+  let q = client2.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");
+  if (filters.brand) q = q.ilike("brand", escapeLike(filters.brand));
+  if (filters.model) q = q.ilike("model", `%${escapeLike(filters.model)}%`);
+  if (filters.storage) q = q.ilike("storage", escapeLike(filters.storage));
+  if (filters.color) q = q.ilike("color", escapeLike(filters.color));
+  if (filters.condition) q = q.eq("condition", filters.condition);
+  if (filters.grade) q = q.ilike("grade", escapeLike(filters.grade));
+  if (filters.grades && filters.grades.length > 0) q = q.in("grade", filters.grades.map((g) => g.toUpperCase()));
+  if (filters.maxPrice !== void 0) q = q.lte("normalized_price", filters.maxPrice);
+  if (filters.countries && filters.countries.length > 0) q = q.in("country", filters.countries.map((c) => c.toUpperCase()));
+  if (filters.maxDeliveryDays !== void 0) q = q.lte("delivery_max_days", filters.maxDeliveryDays);
+  if (filters.maxMoq !== void 0) q = q.or(`moq.lte.${filters.maxMoq},moq.is.null`);
+  if (filters.minQuantity !== void 0) q = q.gte("available_quantity", filters.minQuantity);
+  if (filters.taxType) q = q.eq("tax_type", filters.taxType);
+  if (filters.supplierId) q = q.eq("supplier_id", filters.supplierId);
+  if (filters.sourceType) q = q.eq("source_type", filters.sourceType);
+  if (filters.availability === "in_stock") q = q.in("stock_status", ["in_stock", "low"]);
+  if (skuIdsForCategory) q = skuIdsForCategory.length > 0 ? q.in("sku_id", skuIdsForCategory.slice(0, 1e3)) : q.eq("id", "00000000-0000-0000-0000-000000000000");
+  return q;
+}
+async function findOffers(client2, organizationId, parsed, filters, options = {}) {
+  const skuIds = options.skuIdsForCategory ?? null;
+  const build = () => baseOfferQuery(client2, organizationId, filters, skuIds);
+  const run = async (q) => {
+    const { data, error } = await q.order("normalized_price", { ascending: true, nullsFirst: false }).limit(OFFER_FETCH_LIMIT);
+    if (error) throw error;
+    return data ?? [];
+  };
+  let offers = [];
+  let stage = "none";
+  if (parsed.ean) {
+    offers = await run(build().eq("ean", parsed.ean));
+    stage = "identifier";
+  }
+  if (offers.length === 0 && parsed.mpn && parsed.kind === "mpn") {
+    offers = await run(build().ilike("mpn", escapeLike(parsed.mpn)));
+    stage = "identifier";
+  }
+  if (offers.length === 0 && parsed.criteria.model && parsed.criteria.brand) {
+    let q = build().eq("brand", parsed.criteria.brand).eq("model", parsed.criteria.model);
+    if (parsed.criteria.storage && !filters.storage) q = q.eq("storage", parsed.criteria.storage);
+    if (parsed.criteria.color && !filters.color) q = q.eq("color", parsed.criteria.color);
+    if (parsed.criteria.grade && !filters.grade) q = q.eq("grade", parsed.criteria.grade);
+    if (parsed.criteria.condition !== "unknown" && !filters.condition) q = q.eq("condition", parsed.criteria.condition);
+    offers = await run(q);
+    stage = "structured";
+  }
+  if (offers.length === 0 && parsed.tokens.length > 0) {
+    let q = build();
+    for (const t of parsed.tokens.slice(0, 8)) q = q.ilike("title_original", `%${escapeLike(t)}%`);
+    offers = await run(q);
+    stage = "text";
+  }
+  const hasFilters = Object.entries(filters).some(([k, v2]) => !["sort", "page"].includes(k) && v2 !== void 0 && v2 !== "" && !(Array.isArray(v2) && v2.length === 0));
+  if (offers.length === 0 && parsed.kind === "empty" && hasFilters) {
+    offers = await run(build());
+    stage = "filters_only";
+  }
+  if (options.includeSkuId) {
+    const linked = await run(build().eq("sku_id", options.includeSkuId));
+    const ids = new Set(offers.map((o) => o.id));
+    for (const o of linked) if (!ids.has(o.id)) offers.push(o);
+    if (stage === "none" && linked.length > 0) stage = "identifier";
+  }
+  return { offers, stage };
+}
+var OFFER_SELECT, OFFER_FETCH_LIMIT;
+var init_offer_query = __esm({
+  "src/services/sourcing/offer-query.ts"() {
+    "use strict";
+    init_empty();
+    init_postgrest();
+    OFFER_SELECT = "*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, currency), source:supplier_sources(id, name, source_type, status, last_successful_sync_at, automated_access_confirmed, config)";
+    OFFER_FETCH_LIMIT = 500;
+  }
+});
+
+// src/domain/sourcing/validation.ts
+function median(values) {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
+}
+function isValidHttpUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+function validateOffer(offer, history = { previousPrice: null, prices30d: [] }) {
+  const anomalies = [];
+  const add = (code, severity, extra) => anomalies.push({ code, severity, message: extra ? `${ANOMALY_LABEL[code]} : ${extra}` : ANOMALY_LABEL[code] });
+  if (!offer.title || offer.title.trim().length === 0) add("title_missing", "blocking");
+  const currency = offer.currency?.trim().toUpperCase() ?? "";
+  if (!currency || !ISO_4217.has(currency)) add("currency_unknown", "blocking", currency ? `\xAB ${currency} \xBB n'est pas un code ISO 4217 connu` : "aucune devise fournie");
+  let effectivePrice = null;
+  let priceRejected = false;
+  if (offer.price === null || !Number.isFinite(offer.price)) {
+    if (history.previousPrice !== null) {
+      effectivePrice = history.previousPrice;
+      priceRejected = true;
+      add("price_missing", "warning", "prix pr\xE9c\xE9dent conserv\xE9");
+    } else {
+      add("price_missing", "blocking");
+    }
+  } else if (offer.price < 0) {
+    add("price_negative", history.previousPrice !== null ? "warning" : "blocking");
+    effectivePrice = history.previousPrice;
+    priceRejected = true;
+  } else if (offer.price === 0) {
+    add("price_zero", history.previousPrice !== null ? "warning" : "blocking");
+    effectivePrice = history.previousPrice;
+    priceRejected = true;
+  } else {
+    effectivePrice = offer.price;
+    const med = median(history.prices30d);
+    if (med !== null && med > 0 && history.prices30d.length >= 2) {
+      if (offer.price < med * PRICE_LOW_RATIO) add("price_too_low", "warning", `${offer.price} contre une m\xE9diane de ${med.toFixed(2)} sur 30 jours`);
+      else if (offer.price > med * PRICE_HIGH_RATIO) add("price_too_high", "warning", `${offer.price} contre une m\xE9diane de ${med.toFixed(2)} sur 30 jours`);
+    }
+  }
+  let effectiveQuantity = offer.availableQuantity;
+  if (offer.availableQuantity !== null && (offer.availableQuantity < 0 || !Number.isFinite(offer.availableQuantity))) {
+    add("negative_stock", "warning", String(offer.availableQuantity));
+    effectiveQuantity = null;
+  } else if (effectiveQuantity !== null) {
+    effectiveQuantity = Math.floor(effectiveQuantity);
+  }
+  let effectiveMoq = offer.moq;
+  if (offer.moq !== null && (!Number.isFinite(offer.moq) || offer.moq < 1 || offer.moq > MOQ_MAX || !Number.isInteger(offer.moq))) {
+    add("moq_invalid", "warning", String(offer.moq));
+    effectiveMoq = null;
+  }
+  let effectiveUrl = offer.sourceUrl?.trim() || null;
+  if (effectiveUrl && !isValidHttpUrl(effectiveUrl)) {
+    add("url_invalid", "warning", effectiveUrl.slice(0, 80));
+    effectiveUrl = null;
+  }
+  const blocking = anomalies.some((a) => a.severity === "blocking");
+  const valid = !blocking && effectivePrice !== null;
+  const status = anomalies.length > 0 ? "suspicious" : "active";
+  return {
+    valid,
+    anomalies,
+    anomalyCodes: anomalies.map((a) => a.code),
+    status,
+    effectivePrice,
+    priceRejected,
+    effectiveQuantity,
+    effectiveMoq,
+    effectiveUrl
+  };
+}
+var ANOMALY_LABEL, PRICE_LOW_RATIO, PRICE_HIGH_RATIO, MOQ_MAX;
+var init_validation = __esm({
+  "src/domain/sourcing/validation.ts"() {
+    "use strict";
+    init_dictionaries();
+    ANOMALY_LABEL = {
+      title_missing: "Titre manquant",
+      price_missing: "Prix manquant",
+      price_zero: "Prix \xE0 0 (ignor\xE9, prix pr\xE9c\xE9dent conserv\xE9)",
+      price_negative: "Prix n\xE9gatif",
+      price_too_low: "Prix anormalement bas par rapport \xE0 l'historique",
+      price_too_high: "Prix anormalement \xE9lev\xE9 par rapport \xE0 l'historique",
+      negative_stock: "Stock n\xE9gatif",
+      moq_invalid: "MOQ incoh\xE9rent",
+      currency_unknown: "Devise inconnue",
+      url_invalid: "URL invalide"
+    };
+    PRICE_LOW_RATIO = 0.3;
+    PRICE_HIGH_RATIO = 3;
+    MOQ_MAX = 1e6;
+  }
+});
+
+// src/services/sourcing/ecb-parser.ts
+import { XMLParser as XMLParser4 } from "npm:fast-xml-parser@5.11.2";
+import { z as z22 } from "npm:zod@4.6.5";
+function parseEcbXml(xml) {
+  const parser3 = new XMLParser4({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true });
+  const doc = parser3.parse(xml);
+  const envelope = doc.Envelope ?? doc;
+  const outer = envelope.Cube;
+  const dated = outer?.Cube;
+  const day = Array.isArray(dated) ? dated[0] : dated;
+  if (!day || typeof day !== "object") throw new Error("Flux BCE illisible : structure Cube absente.");
+  const date = String(day["@_time"] ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Flux BCE illisible : date absente.");
+  const inner = day.Cube;
+  const list = Array.isArray(inner) ? inner : inner ? [inner] : [];
+  const rates = { EUR: 1 };
+  for (const c of list) {
+    const parsed = cubeSchema.safeParse(c);
+    if (parsed.success) rates[parsed.data["@_currency"].toUpperCase()] = parsed.data["@_rate"];
+  }
+  if (Object.keys(rates).length <= 1) throw new Error("Flux BCE illisible : aucun taux.");
+  return { date, rates };
+}
+function crossRate(rates, from, to) {
+  const f = rates[from.toUpperCase()];
+  const t = rates[to.toUpperCase()];
+  if (!f || !t) return null;
+  return Math.round(t / f * 1e6) / 1e6;
+}
+var cubeSchema;
+var init_ecb_parser = __esm({
+  "src/services/sourcing/ecb-parser.ts"() {
+    "use strict";
+    cubeSchema = z22.object({ "@_currency": z22.string().length(3), "@_rate": z22.coerce.number().positive() });
+  }
+});
+
+// src/services/sourcing/fx-rates.ts
+async function refreshFxRates(options = {}) {
+  const doFetch = options.fetchImpl ?? fetch;
+  const res = await doFetch(ECB_DAILY_URL, { headers: { Accept: "application/xml,text/xml", ...options.userAgent ? { "User-Agent": options.userAgent } : {} } });
+  if (!res.ok) throw new Error(`BCE : HTTP ${res.status}`);
+  const xml = await res.text();
+  const parsed = parseEcbXml(xml);
+  const admin = createAdminSupabaseClient();
+  const rows = Object.entries(parsed.rates).filter(([cur]) => cur !== "EUR").map(([cur, rate]) => ({ base_currency: "EUR", quote_currency: cur, rate, rate_date: parsed.date, source: "ecb", fetched_at: (/* @__PURE__ */ new Date()).toISOString() }));
+  const { error } = await admin.from("fx_rates").upsert(rows, { onConflict: "base_currency,quote_currency,rate_date" });
+  if (error) throw new Error(`fx_rates : ${error.message}`);
+  cache3 = { loadedAt: Date.now(), date: parsed.date, rates: parsed.rates };
+  log5.info("fx rates refreshed", { date: parsed.date, count: rows.length });
+  return { date: parsed.date, count: rows.length };
+}
+async function loadLatestRates() {
+  if (cache3 && Date.now() - cache3.loadedAt < CACHE_TTL_MS) return { date: cache3.date, rates: cache3.rates };
+  const admin = createAdminSupabaseClient();
+  const { data: latest } = await admin.from("fx_rates").select("rate_date").eq("base_currency", "EUR").order("rate_date", { ascending: false }).limit(1).maybeSingle();
+  if (!latest) return null;
+  const { data: rows } = await admin.from("fx_rates").select("quote_currency, rate").eq("base_currency", "EUR").eq("rate_date", latest.rate_date);
+  const rates = { EUR: 1 };
+  for (const r of rows ?? []) rates[r.quote_currency.toUpperCase()] = Number(r.rate);
+  cache3 = { loadedAt: Date.now(), date: latest.rate_date, rates };
+  return { date: latest.rate_date, rates };
+}
+async function getFxRate(from, to) {
+  const f = from.toUpperCase();
+  const t = to.toUpperCase();
+  if (f === t) return { rate: 1, date: null };
+  const latest = await loadLatestRates();
+  if (!latest) return null;
+  const rate = crossRate(latest.rates, f, t);
+  return rate === null ? null : { rate, date: latest.date };
+}
+var log5, ECB_DAILY_URL, CACHE_TTL_MS, cache3;
+var init_fx_rates = __esm({
+  "src/services/sourcing/fx-rates.ts"() {
+    "use strict";
+    init_empty();
+    init_admin();
+    init_logger();
+    init_ecb_parser();
+    log5 = createLogger("FX_RATES");
+    ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
+    CACHE_TTL_MS = 60 * 60 * 1e3;
+    cache3 = null;
+  }
+});
+
+// src/domain/sourcing/matching.ts
+function cleanId2(s) {
+  return (s ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+}
+function levelOf(confidence) {
+  if (confidence >= MATCH_HIGH_THRESHOLD) return "high";
+  if (confidence >= MATCH_AMBIGUOUS_THRESHOLD) return "ambiguous";
+  return null;
+}
+function tokenSet(s) {
+  return new Set(
+    normalizeText(s).split(" ").filter((t) => t.length >= 2 && !NOISE_TOKENS.has(t))
+  );
+}
+function jaccard(a, b) {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+function normalizeCandidate(c) {
+  return normalizeProduct(`${c.brand ?? ""} ${c.productName} ${c.variantName ?? ""}`, {
+    brand: c.brand,
+    storage: c.attributes.storage ?? null,
+    color: c.attributes.color ?? null,
+    grade: c.attributes.grade ?? c.grade ?? null,
+    condition: c.condition,
+    ean: c.ean,
+    mpn: c.mpn
+  });
+}
+function compareAttributes(o, c) {
+  let score = 0;
+  let cap2 = 0.95;
+  const reasons = [];
+  const UNKNOWN_CAP = MATCH_HIGH_THRESHOLD - 0.01;
+  const cmp = (label, a, b, equalPts, unknownPts, mismatchCap, unknownCap) => {
+    if (a && b) {
+      if (a === b) {
+        score += equalPts;
+        reasons.push(`${label} identique (${a})`);
+      } else {
+        cap2 = Math.min(cap2, mismatchCap);
+        reasons.push(`${label} diff\xE9rent (${a} vs ${b})`);
+      }
+    } else {
+      score += unknownPts;
+      cap2 = Math.min(cap2, unknownCap);
+      reasons.push(`${label} non renseign\xE9${!a && !b ? " des deux c\xF4t\xE9s" : !a ? " c\xF4t\xE9 offre" : " c\xF4t\xE9 SKU"}`);
+    }
+  };
+  cmp("Marque", o.brand, c.brand, 0.2, 0.1, 0.2, UNKNOWN_CAP);
+  const oModel = o.inferred.includes("model") ? null : o.model;
+  const cModel = c.inferred.includes("model") ? null : c.model;
+  cmp("Mod\xE8le", oModel, cModel, 0.45, 0.15, 0.2, 0.55);
+  cmp("Stockage", o.storage, c.storage, 0.15, 0.07, 0.5, UNKNOWN_CAP);
+  cmp("Couleur", o.color, c.color, 0.1, 0.05, 0.75, UNKNOWN_CAP);
+  cmp("Grade", o.grade, c.grade, 0.07, 0.035, 0.8, UNKNOWN_CAP);
+  const oCond = o.condition === "unknown" ? null : o.condition;
+  const cCond = c.condition === "unknown" ? null : c.condition;
+  cmp("\xC9tat", oCond, cCond, 0.03, 0.015, 0.8, 0.95);
+  return { score: Math.min(score, cap2), cap: cap2, reasons };
+}
+function matchOfferToSkus(offer, candidates) {
+  const normalizedOffer = offer.normalized ?? normalizeProduct(offer.title, { ean: offer.ean, mpn: offer.mpn });
+  const offerEan = cleanId2(offer.ean ?? normalizedOffer.ean);
+  const offerMpn = cleanId2(offer.mpn ?? normalizedOffer.mpn);
+  const offerSku = cleanId2(offer.supplierSku);
+  const offerTokens = tokenSet(offer.title);
+  const results = [];
+  for (const c of candidates) {
+    let best = null;
+    const push = (r) => {
+      if (!best || r.confidence > best.confidence) best = r;
+    };
+    if (offerEan && (cleanId2(c.ean) === offerEan || cleanId2(c.barcode) === offerEan)) {
+      push({ skuId: c.skuId, code: c.code, confidence: 1, method: "ean", level: "high", reasons: [`EAN identique (${offer.ean ?? normalizedOffer.ean})`], autoConfirmable: true });
+    }
+    if (offerMpn && cleanId2(c.mpn) === offerMpn) {
+      push({ skuId: c.skuId, code: c.code, confidence: 0.97, method: "mpn", level: "high", reasons: [`R\xE9f\xE9rence fabricant identique (${offer.mpn ?? normalizedOffer.mpn})`], autoConfirmable: true });
+    }
+    if (offerSku && (cleanId2(c.code) === offerSku || c.barcode && cleanId2(c.barcode) === offerSku)) {
+      push({ skuId: c.skuId, code: c.code, confidence: 0.95, method: "supplier_sku", level: "high", reasons: [`R\xE9f\xE9rence fournisseur identique au code SKU (${c.code})`], autoConfirmable: true });
+    }
+    if (!best) {
+      const normalizedCandidate = normalizeCandidate(c);
+      const attr2 = compareAttributes(normalizedOffer, normalizedCandidate);
+      const attrLevel = levelOf(attr2.score);
+      if (attrLevel) {
+        push({ skuId: c.skuId, code: c.code, confidence: round3(attr2.score), method: "attributes", level: attrLevel, reasons: attr2.reasons, autoConfirmable: false });
+      }
+      const sim = jaccard(offerTokens, tokenSet(`${c.brand ?? ""} ${c.productName} ${c.variantName ?? ""}`));
+      const textScore = round3(sim * 0.8);
+      const textLevel = levelOf(textScore);
+      if (textLevel && (!best || textScore > best.confidence)) {
+        push({ skuId: c.skuId, code: c.code, confidence: textScore, method: "text", level: textLevel, reasons: [`Similarit\xE9 textuelle ${(sim * 100).toFixed(0)} %`], autoConfirmable: false });
+      }
+    }
+    if (best) results.push(best);
+  }
+  return results.sort((a, b) => b.confidence - a.confidence);
+}
+function round3(n) {
+  return Math.round(n * 1e3) / 1e3;
+}
+var MATCH_HIGH_THRESHOLD, MATCH_AMBIGUOUS_THRESHOLD;
+var init_matching = __esm({
+  "src/domain/sourcing/matching.ts"() {
+    "use strict";
+    init_normalizer();
+    init_dictionaries();
+    MATCH_HIGH_THRESHOLD = 0.9;
+    MATCH_AMBIGUOUS_THRESHOLD = 0.6;
+  }
+});
+
+// src/services/sourcing/matching-service.ts
+function toCandidate(r) {
+  if (!r.product || !r.variant) return null;
+  const attrs = r.variant.attributes ?? {};
+  const s = (k) => typeof attrs[k] === "string" ? attrs[k] : null;
+  return {
+    skuId: r.id,
+    code: r.code,
+    productName: r.product.name,
+    brand: r.product.brand,
+    variantName: r.variant.name,
+    attributes: { storage: s("storage"), color: s("color"), grade: s("grade") },
+    condition: r.variant.condition,
+    grade: r.variant.grade,
+    ean: r.variant.ean,
+    mpn: r.variant.mpn,
+    barcode: r.barcode
+  };
+}
+async function loadMatchCandidates(client2, organizationId, hints, limit = MATCH_CANDIDATE_LIMIT) {
+  const out = /* @__PURE__ */ new Map();
+  const add = (rows) => {
+    for (const r of rows ?? []) {
+      const c = toCandidate(r);
+      if (c && !out.has(c.skuId)) out.set(c.skuId, c);
+    }
+  };
+  const base = () => client2.from("skus").select(SELECT).eq("organization_id", organizationId).eq("is_active", true);
+  if (hints.ean) {
+    const [{ data: byEan }, { data: byBarcode }] = await Promise.all([base().eq("variant.ean", hints.ean).limit(20), base().eq("barcode", hints.ean).limit(20)]);
+    add(byEan);
+    add(byBarcode);
+  }
+  if (hints.mpn) {
+    const { data } = await base().ilike("variant.mpn", escapeLike(hints.mpn)).limit(20);
+    add(data);
+  }
+  if (hints.supplierSku) {
+    const { data } = await base().ilike("code", escapeLike(hints.supplierSku)).limit(5);
+    add(data);
+  }
+  if (hints.brand && out.size < limit) {
+    const { data } = await base().ilike("product.brand", escapeLike(hints.brand)).limit(limit);
+    add(data);
+  }
+  if (out.size === 0 && hints.text) {
+    const term = hints.text.split(" ").filter((t) => t.length >= 3)[0];
+    if (term) {
+      const { data } = await base().ilike("product.name", `%${escapeLike(term)}%`).limit(limit);
+      add(data);
+    }
+  }
+  return Array.from(out.values()).slice(0, limit);
+}
+async function suggestMatchesForOffer(client2, organizationId, offer, options = {}) {
+  const normalized = normalizeProduct(offer.title_original, { ean: offer.ean, mpn: offer.mpn, brand: offer.brand });
+  const candidates = await loadMatchCandidates(client2, organizationId, { ean: normalized.ean, mpn: normalized.mpn, supplierSku: offer.external_product_id, brand: normalized.brandDisplay ?? normalized.brand, text: normalized.remainingText || offer.title_original });
+  if (candidates.length === 0) return { suggestions: [], confirmedSkuId: null };
+  const matches = matchOfferToSkus({ title: offer.title_original, normalized, ean: offer.ean, mpn: offer.mpn, supplierSku: offer.external_product_id }, candidates);
+  const top = matches.slice(0, 3);
+  if (top.length === 0) return { suggestions: [], confirmedSkuId: null };
+  const { data: existing } = await client2.from("product_matches").select("id, sku_id, status").eq("organization_id", organizationId).eq("offer_id", offer.id);
+  const existingBySku = new Map((existing ?? []).map((m) => [m.sku_id, m]));
+  let confirmedSkuId = null;
+  for (const m of top) {
+    const prior = existingBySku.get(m.skuId);
+    const autoConfirm = Boolean(options.autoConfirmExact) && m.autoConfirmable && !offer.sku_id && !confirmedSkuId;
+    if (prior) {
+      if (prior.status === "rejected") continue;
+      if (autoConfirm && prior.status === "suggested") {
+        await client2.from("product_matches").update({ status: "confirmed", decided_at: (/* @__PURE__ */ new Date()).toISOString(), confidence: m.confidence, method: m.method, reasons: m.reasons }).eq("id", prior.id);
+        confirmedSkuId = m.skuId;
+      }
+      continue;
+    }
+    const { error } = await client2.from("product_matches").insert({
+      organization_id: organizationId,
+      offer_id: offer.id,
+      sourcing_product_id: offer.normalized_product_id,
+      sku_id: m.skuId,
+      confidence: m.confidence,
+      method: m.method,
+      reasons: m.reasons,
+      status: autoConfirm ? "confirmed" : "suggested",
+      created_by: options.createdBy ?? null,
+      decided_at: autoConfirm ? (/* @__PURE__ */ new Date()).toISOString() : null
+    });
+    if (error) {
+      log6.warn("product match not recorded", { offerId: offer.id, skuId: m.skuId, error: error.message });
+      continue;
+    }
+    if (autoConfirm) confirmedSkuId = m.skuId;
+  }
+  if (confirmedSkuId) await applyConfirmedMatch(client2, organizationId, { offerId: offer.id, skuId: confirmedSkuId, sourcingProductId: offer.normalized_product_id });
+  return { suggestions: top, confirmedSkuId };
+}
+async function applyConfirmedMatch(client2, organizationId, link) {
+  if (link.offerId) await client2.from("sourcing_offers").update({ sku_id: link.skuId }).eq("id", link.offerId).eq("organization_id", organizationId);
+  if (link.sourcingProductId) {
+    await client2.from("sourcing_products").update({ sku_id: link.skuId }).eq("id", link.sourcingProductId).eq("organization_id", organizationId).is("sku_id", null);
+  }
+}
+var log6, MATCH_CANDIDATE_LIMIT, SELECT;
+var init_matching_service = __esm({
+  "src/services/sourcing/matching-service.ts"() {
+    "use strict";
+    init_empty();
+    init_offer_query();
+    init_matching();
+    init_normalizer();
+    init_logger();
+    log6 = createLogger("SOURCING_MATCHING");
+    MATCH_CANDIDATE_LIMIT = 300;
+    SELECT = "id, code, barcode, product:products!inner(name, brand), variant:product_variants!inner(name, attributes, condition, grade, ean, mpn)";
+  }
+});
+
+// src/services/sourcing/offer-storage.ts
+function stockStatusOf(raw, quantity) {
+  if (raw.stockStatus && raw.stockStatus !== "unknown") return raw.stockStatus;
+  if (quantity === null) return raw.stockStatus ?? "unknown";
+  return quantity > 0 ? "in_stock" : "out_of_stock";
+}
+function conditionOf(raw, normalized) {
+  if (raw.condition === "new" || raw.condition === "refurbished" || raw.condition === "used") return raw.condition;
+  return normalized.condition;
+}
+async function getOrCreateSourcingProduct(ctx, normalized) {
+  const { supabase, organizationId } = ctx;
+  const { data: existing } = await supabase.from("sourcing_products").select("id, sku_id").eq("organization_id", organizationId).eq("normalized_key", normalized.normalizedKey).maybeSingle();
+  if (existing) return { id: existing.id, skuId: existing.sku_id };
+  const { data: inserted, error } = await supabase.from("sourcing_products").insert({
+    organization_id: organizationId,
+    normalized_key: normalized.normalizedKey,
+    brand: normalized.brand,
+    model: normalized.model,
+    storage: normalized.storage,
+    color: normalized.color,
+    condition: normalized.condition,
+    grade: normalized.grade,
+    variant: normalized.variant,
+    ean: normalized.ean,
+    mpn: normalized.mpn,
+    title_display: normalized.displayTitle.slice(0, 300),
+    attributes: { inferred: normalized.inferred, confidence: normalized.confidence }
+  }).select("id, sku_id").single();
+  if (inserted) return { id: inserted.id, skuId: inserted.sku_id };
+  const { data: again } = await supabase.from("sourcing_products").select("id, sku_id").eq("organization_id", organizationId).eq("normalized_key", normalized.normalizedKey).maybeSingle();
+  if (again) return { id: again.id, skuId: again.sku_id };
+  throw new Error(`Produit normalis\xE9 non enregistrable : ${error?.message ?? "inconnu"}`);
+}
+async function storeOffer(ctx, raw) {
+  const { supabase, organizationId } = ctx;
+  const now = ctx.now ?? /* @__PURE__ */ new Date();
+  const nowIso = now.toISOString();
+  const currency = (raw.currency ?? ctx.defaultCurrency ?? "").toUpperCase() || null;
+  const normalized = normalizeProduct(raw.title, { brand: raw.brand, model: raw.model, storage: raw.storage, color: raw.color, grade: raw.grade, condition: typeof raw.condition === "string" ? raw.condition : null, ean: raw.ean, mpn: raw.mpn });
+  const { data: existing } = await supabase.from("sourcing_offers").select("id, original_price, original_currency, sku_id, normalized_product_id, status").eq("organization_id", organizationId).eq("source_id", ctx.sourceId).eq("external_offer_id", raw.externalOfferId).maybeSingle();
+  let prices30d = [];
+  if (existing && currency && existing.original_currency === currency) {
+    const since2 = new Date(now.getTime() - 30 * 864e5).toISOString();
+    const { data: hist } = await supabase.from("supplier_price_history").select("original_price").eq("offer_id", existing.id).eq("original_currency", currency).gte("recorded_at", since2).order("recorded_at", { ascending: false }).limit(200);
+    prices30d = (hist ?? []).map((h) => Number(h.original_price)).filter((n) => Number.isFinite(n) && n > 0);
+  }
+  const previousPrice = existing && currency && existing.original_currency === currency ? Number(existing.original_price) : null;
+  const validation = validateOffer(
+    { title: raw.title, price: raw.price, currency, moq: raw.moq ?? null, availableQuantity: raw.availableQuantity ?? null, sourceUrl: raw.url ?? null },
+    { previousPrice, prices30d }
+  );
+  if (!validation.valid || validation.effectivePrice === null || !currency) {
+    if (existing) {
+      await supabase.from("sourcing_offers").update({ status: "suspicious", anomalies: validation.anomalyCodes, last_seen_at: nowIso }).eq("id", existing.id);
+    }
+    return { outcome: "rejected", offerId: existing?.id ?? null, created: false, validation, normalized, fxUnavailable: false, matchedSkuId: null };
+  }
+  const fx = await getFxRate(currency, ctx.organizationCurrency);
+  const fxUnavailable = fx === null;
+  const normalizedPrice = fx ? Math.round(validation.effectivePrice * fx.rate * 1e4) / 1e4 : null;
+  const product = await getOrCreateSourcingProduct(ctx, normalized);
+  const quantity = validation.effectiveQuantity;
+  const stockStatus = stockStatusOf(raw, quantity);
+  const condition = conditionOf(raw, normalized);
+  const taxType = raw.taxType && raw.taxType !== "unknown" ? raw.taxType : ctx.defaultTaxType ?? "unknown";
+  const confidence = {
+    product: normalized.confidence,
+    price: validation.priceRejected ? 0.3 : validation.anomalyCodes.includes("price_too_low") || validation.anomalyCodes.includes("price_too_high") ? 0.5 : 1,
+    stock: quantity !== null ? 0.9 : stockStatus !== "unknown" ? 0.6 : 0,
+    grade: raw.grade ? 1 : normalized.grade ? 0.8 : 0,
+    condition: raw.condition === "new" || raw.condition === "refurbished" || raw.condition === "used" ? 1 : normalized.inferred.includes("condition") ? 0.6 : condition !== "unknown" ? 0.9 : 0,
+    delivery: raw.deliveryMaxDays !== null && raw.deliveryMaxDays !== void 0 ? 0.9 : 0,
+    tax: taxType === "unknown" ? 0 : raw.taxType && raw.taxType !== "unknown" ? 1 : 0.7
+  };
+  const row = {
+    organization_id: organizationId,
+    supplier_id: ctx.supplierId,
+    source_id: ctx.sourceId,
+    feed_id: ctx.feedId ?? null,
+    source_type: ctx.sourceType,
+    external_product_id: raw.externalProductId ?? raw.supplierSku ?? null,
+    external_offer_id: raw.externalOfferId,
+    title_original: raw.title.slice(0, 500),
+    normalized_product_id: product.id,
+    sku_id: existing?.sku_id ?? product.skuId ?? null,
+    brand: normalized.brand,
+    model: normalized.model,
+    storage: normalized.storage,
+    color: normalized.color,
+    condition,
+    grade: normalized.grade,
+    ean: normalized.ean,
+    mpn: normalized.mpn,
+    original_price: validation.effectivePrice,
+    original_currency: currency,
+    normalized_price: normalizedPrice,
+    normalized_currency: fx ? ctx.organizationCurrency.toUpperCase() : null,
+    fx_rate: fx?.rate ?? null,
+    fx_rate_date: fx?.date ?? null,
+    tax_type: taxType,
+    vat_rate: raw.vatRate ?? null,
+    moq: validation.effectiveMoq,
+    minimum_order_value: raw.minimumOrderValue ?? null,
+    available_quantity: quantity,
+    stock_status: stockStatus,
+    shipping_cost: raw.shippingCost ?? null,
+    shipping_currency: raw.shippingCost !== null && raw.shippingCost !== void 0 ? (raw.shippingCurrency ?? currency).toUpperCase() : null,
+    delivery_min_days: raw.deliveryMinDays ?? null,
+    delivery_max_days: raw.deliveryMaxDays ?? null,
+    country: raw.country?.toUpperCase().slice(0, 2) ?? ctx.defaultCountry ?? null,
+    source_url: validation.effectiveUrl,
+    confidence,
+    anomalies: validation.anomalyCodes,
+    status: validation.status,
+    last_seen_at: nowIso,
+    expired_at: null,
+    raw: raw.raw ?? null
+  };
+  if (!existing) {
+    row.first_seen_at = nowIso;
+    row.last_price_at = nowIso;
+    row.last_stock_at = quantity !== null || stockStatus !== "unknown" ? nowIso : null;
+  }
+  const { data: saved, error } = await supabase.from("sourcing_offers").upsert(row, { onConflict: "organization_id,source_id,external_offer_id" }).select("id, sku_id").single();
+  if (error || !saved) {
+    log7.error("offer upsert failed", { externalOfferId: raw.externalOfferId, error: error?.message });
+    throw new Error(`Offre non enregistr\xE9e (${raw.externalOfferId}) : ${error?.message ?? "inconnu"}`);
+  }
+  let matchedSkuId = saved.sku_id;
+  if (ctx.suggestMatches !== false && !saved.sku_id) {
+    try {
+      const r = await suggestMatchesForOffer(supabase, organizationId, { id: saved.id, title_original: raw.title, ean: normalized.ean, mpn: normalized.mpn, external_product_id: row.external_product_id ?? null, brand: normalized.brand, normalized_product_id: product.id, sku_id: null }, { autoConfirmExact: true, createdBy: ctx.createdBy ?? null });
+      matchedSkuId = r.confirmedSkuId;
+    } catch (e) {
+      log7.warn("match suggestion failed", { offerId: saved.id, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { outcome: "stored", offerId: saved.id, created: !existing, validation, normalized, fxUnavailable, matchedSkuId };
+}
+async function expireUnseenOffers(ctx, since2) {
+  const { data, error } = await ctx.supabase.from("sourcing_offers").update({ status: "expired", expired_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", ctx.organizationId).eq("source_id", ctx.sourceId).in("status", ["active", "suspicious"]).lt("last_seen_at", since2.toISOString()).select("id");
+  if (error) {
+    log7.warn("expire unseen offers failed", { sourceId: ctx.sourceId, error: error.message });
+    return 0;
+  }
+  return data?.length ?? 0;
+}
+var log7;
+var init_offer_storage = __esm({
+  "src/services/sourcing/offer-storage.ts"() {
+    "use strict";
+    init_empty();
+    init_normalizer();
+    init_validation();
+    init_fx_rates();
+    init_matching_service();
+    init_logger();
+    log7 = createLogger("OFFER_STORAGE");
+  }
+});
+
+// src/services/sourcing/sync-runs.ts
+async function failStaleRuns(admin, sourceRef) {
+  const threshold = new Date(Date.now() - RUNNING_STALE_MINUTES * 6e4).toISOString();
+  const { error } = await admin.from("sync_runs").update({ status: "failed", finished_at: (/* @__PURE__ */ new Date()).toISOString(), error_summary: `Run interrompu (aucune fin enregistr\xE9e apr\xE8s ${RUNNING_STALE_MINUTES} min).` }).eq("source_ref", sourceRef).eq("status", "running").lt("started_at", threshold);
+  if (error) log8.warn("stale runs not cleaned", { sourceRef, error: error.message });
+}
+async function startSyncRun(admin, input) {
+  const startedAt = /* @__PURE__ */ new Date();
+  if (input.sourceRef) await failStaleRuns(admin, input.sourceRef);
+  const { data, error } = await admin.from("sync_runs").insert({ organization_id: input.organizationId, source_kind: input.sourceKind, source_ref: input.sourceRef ?? null, provider: input.provider, trigger: input.trigger, status: "running", started_at: startedAt.toISOString(), created_by: input.createdBy ?? null }).select("id").single();
+  if (error?.code === "23505") throw new Error("Une synchronisation est d\xE9j\xE0 en cours pour cette source. Patientez avant d'en relancer une.");
+  if (error || !data) throw new Error(`Impossible d'ouvrir le journal de synchronisation : ${error?.message ?? "inconnu"}`);
+  return { id: data.id, organizationId: input.organizationId, startedAt };
+}
+async function finishSyncRun(admin, run, result) {
+  const finishedAt = /* @__PURE__ */ new Date();
+  const { error } = await admin.from("sync_runs").update({
+    status: result.status,
+    finished_at: finishedAt.toISOString(),
+    duration_ms: finishedAt.getTime() - run.startedAt.getTime(),
+    records_processed: result.recordsProcessed,
+    error_count: result.errorCount,
+    stats: result.stats ?? {},
+    error_summary: result.errorSummary ?? null
+  }).eq("id", run.id);
+  if (error) log8.warn("sync run not closed", { runId: run.id, error: error.message });
+}
+async function recordSyncErrors(admin, run, errors) {
+  if (errors.length === 0) return;
+  const rows = errors.slice(0, MAX_SYNC_ERRORS_RECORDED).map((e) => ({
+    organization_id: run.organizationId,
+    sync_run_id: run.id,
+    code: e.code,
+    message: e.message.slice(0, 2e3),
+    entity_type: e.entityType ?? null,
+    entity_ref: e.entityRef ?? null,
+    details: e.details ?? {}
+  }));
+  const { error } = await admin.from("sync_errors").insert(rows);
+  if (error) log8.warn("sync errors not recorded", { runId: run.id, error: error.message });
+}
+function isDue(frequency, lastSyncAt, now) {
+  const interval = FREQUENCY_MS[frequency];
+  if (interval === null) return false;
+  if (!lastSyncAt) return true;
+  return now.getTime() - new Date(lastSyncAt).getTime() >= interval;
+}
+async function recordCompletedSyncRun(admin, input) {
+  const { data, error } = await admin.from("sync_runs").insert({
+    organization_id: input.organizationId,
+    source_kind: input.sourceKind,
+    source_ref: input.sourceRef,
+    provider: input.provider,
+    trigger: input.trigger,
+    status: input.status,
+    started_at: input.startedAt.toISOString(),
+    finished_at: input.finishedAt.toISOString(),
+    duration_ms: Math.max(0, input.finishedAt.getTime() - input.startedAt.getTime()),
+    records_processed: input.recordsProcessed,
+    error_count: input.errorCount,
+    stats: input.stats ?? {},
+    error_summary: input.errorSummary ?? null,
+    created_by: input.createdBy ?? null
+  }).select("id").single();
+  if (error || !data) {
+    log8.warn("completed sync run not recorded", { sourceRef: input.sourceRef, error: error?.message });
+    return null;
+  }
+  return data.id;
+}
+var log8, MAX_SYNC_ERRORS_RECORDED, RUNNING_STALE_MINUTES, FREQUENCY_MS;
+var init_sync_runs = __esm({
+  "src/services/sourcing/sync-runs.ts"() {
+    "use strict";
+    init_empty();
+    init_logger();
+    log8 = createLogger("SYNC_RUNS");
+    MAX_SYNC_ERRORS_RECORDED = 200;
+    RUNNING_STALE_MINUTES = 30;
+    FREQUENCY_MS = {
+      manual: null,
+      hourly: 36e5,
+      every_6_hours: 6 * 36e5,
+      daily: 24 * 36e5
+    };
+  }
+});
+
+// src/services/sourcing/feed-ingestion.ts
+function parseFeedConfig(feed) {
+  const mapping = fieldMappingSchema.safeParse(feed.field_mapping ?? {});
+  const options = feedOptionsSchema.safeParse(feed.options ?? {});
+  return { mapping: mapping.success ? mapping.data : {}, options: options.success ? options.data : {} };
+}
+async function fetchFeedContent(url, format, encoding, fetchImpl) {
+  const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], encoding, fetchImpl });
+  if (!res.ok) throw new Error(`Le flux a r\xE9pondu HTTP ${res.status}.`);
+  return res.text;
+}
+async function ingestFeed(feedId, options = { trigger: "manual" }) {
+  const admin = options.admin ?? createAdminSupabaseClient();
+  const { data: feed, error: feedErr } = await admin.from("supplier_feeds").select("*, source:supplier_sources(id, source_type, default_currency, default_tax_type, country, status), organization:organizations(default_currency)").eq("id", feedId).maybeSingle();
+  if (feedErr || !feed) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Flux introuvable." };
+  const source = feed.source;
+  const organizationCurrency = feed.organization?.default_currency ?? "EUR";
+  if (!source) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Source du flux introuvable." };
+  const run = await startSyncRun(admin, { organizationId: feed.organization_id, sourceKind: "supplier_feed", sourceRef: feed.id, provider: feed.format, trigger: options.trigger, createdBy: options.createdBy ?? null });
+  const { mapping, options: feedOptions } = parseFeedConfig(feed);
+  const defaults = { currency: source.default_currency, taxType: source.default_tax_type, country: source.country };
+  const errors = [];
+  let processed = 0;
+  let stored = 0;
+  let rejected = 0;
+  let invalidRows = 0;
+  let fxUnavailable = 0;
+  let expired2 = 0;
+  try {
+    let content = options.content ?? null;
+    if (!content) {
+      if (!feed.url) throw new Error("Ce flux n'a pas d'URL : importez un fichier manuellement.");
+      content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl);
+    }
+    const parsed = parseFeedContent(content, feed.format, feedOptions);
+    for (const w2 of parsed.warnings) log18.info("feed warning", { feedId, warning: w2 });
+    const ctx = {
+      supabase: admin,
+      organizationId: feed.organization_id,
+      organizationCurrency,
+      supplierId: feed.supplier_id,
+      sourceId: source.id,
+      sourceType: source.source_type,
+      feedId: feed.id,
+      defaultCurrency: source.default_currency,
+      defaultTaxType: source.default_tax_type,
+      defaultCountry: source.country,
+      createdBy: options.createdBy ?? null,
+      now: run.startedAt
+    };
+    const truncated = parsed.rows.length > MAX_ROWS_PER_RUN;
+    if (truncated) {
+      errors.push({ code: "FEED_TRUNCATED", message: `Le flux contient ${parsed.rows.length} lignes : seules les ${MAX_ROWS_PER_RUN} premi\xE8res ont \xE9t\xE9 trait\xE9es lors de ce run. Scindez le flux ou filtrez-le c\xF4t\xE9 fournisseur.`, entityType: "feed", entityRef: feed.id });
+    }
+    for (const [index, row] of parsed.rows.slice(0, MAX_ROWS_PER_RUN).entries()) {
+      processed++;
+      const mapped = mapRow(row, mapping, defaults);
+      if (!mapped.offer) {
+        invalidRows++;
+        errors.push({ code: "ROW_INVALID", message: mapped.errors.join(" "), entityType: "feed_row", entityRef: String(index + 1) });
+        continue;
+      }
+      try {
+        const result = await storeOffer(ctx, mapped.offer);
+        if (result.outcome === "stored") {
+          stored++;
+          if (result.fxUnavailable) fxUnavailable++;
+        } else {
+          rejected++;
+          errors.push({ code: "OFFER_REJECTED", message: result.validation.anomalies.map((a) => a.message).join(" ; "), entityType: "offer", entityRef: mapped.offer.externalOfferId });
+        }
+      } catch (e) {
+        rejected++;
+        errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: mapped.offer.externalOfferId });
+      }
+    }
+    if (stored > 0 && !truncated) expired2 = await expireUnseenOffers(ctx, run.startedAt);
+    const status = stored === 0 && processed > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
+    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistr\xE9e(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejet\xE9e(s), ${expired2} offre(s) expir\xE9e(s).`;
+    await recordSyncErrors(admin, run, errors);
+    await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, rejected, invalidRows, expired: expired2, fxUnavailable, truncated, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) }, errorSummary: status === "failed" ? message : null });
+    await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : feed.last_successful_sync_at, last_record_count: processed, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" }).eq("id", feed.id);
+    if (status !== "failed") await admin.from("supplier_sources").update({ status: "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: (/* @__PURE__ */ new Date()).toISOString(), last_error: null }).eq("id", source.id);
+    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Erreur inconnue.";
+    log18.error("feed ingestion failed", { feedId, error: message });
+    await recordSyncErrors(admin, run, [...errors, { code: "FEED_FAILED", message }]);
+    await finishSyncRun(admin, run, { status: "failed", recordsProcessed: processed, errorCount: errors.length + 1, errorSummary: message });
+    await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message, status: "error" }).eq("id", feed.id);
+    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
+    return { feedId, runId: run.id, status: "failed", processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message };
+  }
+}
+async function runDueFeeds(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient()) {
+  const { data: feeds } = await admin.from("supplier_feeds").select("id, sync_frequency, last_sync_at, status, url").not("url", "is", null).neq("sync_frequency", "manual").neq("status", "paused").limit(500);
+  const due = (feeds ?? []).filter((f) => isDue(f.sync_frequency, f.last_sync_at, now));
+  const results = [];
+  for (const f of due) results.push(await ingestFeed(f.id, { trigger: "scheduled", admin }));
+  return results;
+}
+var MAX_ROWS_PER_RUN, log18, FEED_ACCEPT;
+var init_feed_ingestion = __esm({
+  "src/services/sourcing/feed-ingestion.ts"() {
+    "use strict";
+    init_empty();
+    init_admin();
+    init_env();
+    init_logger();
+    init_http();
+    init_feed_parsers();
+    init_offer_storage();
+    init_sync_runs();
+    MAX_ROWS_PER_RUN = 5e3;
+    log18 = createLogger("FEED_INGESTION");
+    FEED_ACCEPT = {
+      csv: "text/csv,text/plain,application/csv;q=0.9,*/*;q=0.5",
+      xml: "application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.5",
+      json: "application/json,text/json;q=0.9,*/*;q=0.5"
+    };
+  }
+});
+
+// src/services/sourcing/xlsx.ts
+import { unzipSync, strFromU8 } from "npm:fflate@0.8.2";
+import { XMLParser as XMLParser5 } from "npm:fast-xml-parser@5.11.2";
+function asArray(v2) {
+  if (v2 === void 0 || v2 === null) return [];
+  return Array.isArray(v2) ? v2 : [v2];
+}
+function textOf2(node2) {
+  if (node2 === null || node2 === void 0) return "";
+  if (typeof node2 === "string" || typeof node2 === "number" || typeof node2 === "boolean") return String(node2);
+  if (Array.isArray(node2)) return node2.map(textOf2).join("");
+  if (typeof node2 === "object") {
+    const o = node2;
+    if ("#text" in o) return textOf2(o["#text"]);
+    if ("t" in o) return textOf2(o.t);
+    if ("r" in o) return asArray(o.r).map(textOf2).join("");
+  }
+  return "";
+}
+function columnIndex(ref) {
+  const letters = /^[A-Z]+/i.exec(ref)?.[0]?.toUpperCase() ?? "A";
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+function readZip(bytes) {
+  if (bytes.byteLength > MAX_XLSX_BYTES) throw new XlsxError("Fichier Excel trop volumineux (15 Mo maximum).");
+  if (bytes[0] !== 80 || bytes[1] !== 75) throw new XlsxError("Ce fichier n'est pas un classeur Excel .xlsx (les anciens fichiers .xls ne sont pas pris en charge : enregistrez-le en .xlsx ou .csv).");
+  let total = 0;
+  try {
+    return unzipSync(bytes, {
+      filter: (f) => {
+        total += f.originalSize;
+        if (total > MAX_UNZIPPED_BYTES) throw new XlsxError("Classeur trop volumineux une fois d\xE9compress\xE9.");
+        return f.name.startsWith("xl/") && (f.name.endsWith(".xml") || f.name.endsWith(".rels"));
+      }
+    });
+  } catch (e) {
+    if (e instanceof XlsxError) throw e;
+    throw new XlsxError("Classeur Excel illisible (archive corrompue ou prot\xE9g\xE9e par mot de passe).");
+  }
+}
+function readXlsx(bytes, sheetName) {
+  const files = readZip(bytes);
+  const workbook = files["xl/workbook.xml"];
+  if (!workbook) throw new XlsxError("Classeur Excel invalide (xl/workbook.xml absent).");
+  const wb = parser2.parse(strFromU8(workbook));
+  const sheets = asArray(wb.workbook?.sheets?.sheet);
+  if (sheets.length === 0) throw new XlsxError("Le classeur ne contient aucune feuille.");
+  const sheet = (sheetName ? sheets.find((s) => s["@_name"] === sheetName) : void 0) ?? sheets[0];
+  const relId = sheet["@_id"];
+  let target = "worksheets/sheet1.xml";
+  const relsFile = files["xl/_rels/workbook.xml.rels"];
+  if (relsFile && relId) {
+    const rels = parser2.parse(strFromU8(relsFile));
+    const rel = asArray(rels.Relationships?.Relationship).find((r) => r["@_Id"] === relId);
+    if (rel?.["@_Target"]) target = rel["@_Target"].replace(/^\/?xl\//, "").replace(/^\//, "");
+  }
+  const sheetFile = files[`xl/${target}`];
+  if (!sheetFile) throw new XlsxError(`Feuille \xAB ${sheet["@_name"] ?? "1"} \xBB introuvable dans le classeur.`);
+  const shared = [];
+  const sst = files["xl/sharedStrings.xml"];
+  if (sst) {
+    const doc2 = parser2.parse(strFromU8(sst));
+    for (const si of asArray(doc2.sst?.si)) shared.push(textOf2(si));
+  }
+  const doc = parser2.parse(strFromU8(sheetFile));
+  const rows = [];
+  for (const row of asArray(doc.worksheet?.sheetData?.row)) {
+    const out = [];
+    for (const c of asArray(row.c)) {
+      const ref = String(c["@_r"] ?? "");
+      const idx = ref ? columnIndex(ref) : out.length;
+      const type = String(c["@_t"] ?? "n");
+      let value = "";
+      if (type === "s") value = shared[Number(textOf2(c.v))] ?? "";
+      else if (type === "inlineStr") value = textOf2(c.is);
+      else if (type === "b") value = textOf2(c.v) === "1" ? "true" : "false";
+      else if (type === "e") value = "";
+      else value = textOf2(c.v);
+      while (out.length < idx) out.push("");
+      out[idx] = value.trim();
+    }
+    if (out.some((v2) => v2 !== "")) rows.push(out);
+  }
+  return { name: sheet["@_name"] ?? "Feuille 1", rows };
+}
+function csvCell(v2) {
+  return /[;"\n\r]/.test(v2) ? `"${v2.replace(/"/g, '""')}"` : v2;
+}
+function sheetToCsv(sheet) {
+  const width = Math.max(0, ...sheet.rows.map((r) => r.length));
+  return sheet.rows.map((r) => Array.from({ length: width }, (_, i) => csvCell(r[i] ?? "")).join(";")).join("\n");
+}
+var MAX_XLSX_BYTES, MAX_UNZIPPED_BYTES, parser2, XlsxError;
+var init_xlsx = __esm({
+  "src/services/sourcing/xlsx.ts"() {
+    "use strict";
+    MAX_XLSX_BYTES = 15 * 1024 * 1024;
+    MAX_UNZIPPED_BYTES = 120 * 1024 * 1024;
+    parser2 = new XMLParser5({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: false, textNodeName: "#text" });
+    XlsxError = class extends Error {
+    };
+  }
+});
+
+// src/services/sourcing/catalog-import.ts
+var catalog_import_exports = {};
+__export(catalog_import_exports, {
+  CATALOG_IMPORT_KIND: () => CATALOG_IMPORT_KIND,
+  MAX_CATALOG_BYTES: () => MAX_CATALOG_BYTES,
+  catalogDefaultsSchema: () => catalogDefaultsSchema,
+  catalogFileSchema: () => catalogFileSchema,
+  catalogImportSchema: () => catalogImportSchema,
+  catalogPreviewSchema: () => catalogPreviewSchema,
+  decodeText: () => decodeText,
+  decodeWindows1252: () => decodeWindows1252,
+  detectCatalogFormat: () => detectCatalogFormat,
+  importCatalogFile: () => importCatalogFile,
+  loadCatalogFile: () => loadCatalogFile,
+  previewCatalogFile: () => previewCatalogFile,
+  suggestCatalogMapping: () => suggestCatalogMapping
+});
+import { z as z28 } from "npm:zod@4.6.5";
+function decodeBase64(b64) {
+  const clean = b64.replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) throw new AppError("VALIDATION", "Fichier illisible (encodage invalide).");
+  const bin = atob(clean);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  if (out.byteLength > MAX_CATALOG_BYTES) throw new AppError("VALIDATION", "Fichier trop volumineux (15 Mo maximum).");
+  if (out.byteLength === 0) throw new AppError("VALIDATION", "Le fichier est vide.");
+  return out;
+}
+function detectCatalogFormat(fileName, bytes) {
+  const ext = /\.([a-z0-9]+)$/i.exec(fileName)?.[1]?.toLowerCase();
+  if (ext === "xlsx" || ext === "xlsm") return "xlsx";
+  if (ext === "xls") throw new AppError("VALIDATION", "Les anciens fichiers Excel .xls ne sont pas pris en charge : enregistrez-le en .xlsx ou .csv.");
+  if (ext === "csv" || ext === "txt" || ext === "tsv") return "csv";
+  if (ext === "xml") return "xml";
+  if (ext === "json") return "json";
+  if (bytes[0] === 80 && bytes[1] === 75) return "xlsx";
+  const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 200)).replace(/^﻿/, "").trimStart();
+  if (head.startsWith("<")) return "xml";
+  if (head.startsWith("{") || head.startsWith("[")) return "json";
+  return "csv";
+}
+function decodeText(bytes) {
+  try {
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^﻿/, ""), encoding: "utf-8" };
+  } catch {
+    return { text: decodeWindows1252(bytes), encoding: "windows-1252" };
+  }
+}
+function decodeWindows1252(bytes) {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 8192) {
+    const chunk3 = bytes.subarray(i, i + 8192);
+    out += String.fromCharCode(...Array.from(chunk3, (b) => b >= 128 && b <= 159 ? CP1252_HIGH[b - 128] : b));
+  }
+  return out.replace(/^\uFEFF/, "");
+}
+function loadCatalogFile(file) {
+  const bytes = decodeBase64(file.contentBase64);
+  const format = file.format ?? detectCatalogFormat(file.fileName, bytes);
+  const notes = [];
+  if (format === "xlsx") {
+    try {
+      const sheet = readXlsx(bytes, file.sheet);
+      notes.push(`Feuille lue : \xAB ${sheet.name} \xBB (${sheet.rows.length} lignes, en-t\xEAtes en premi\xE8re ligne).`);
+      return { format, feedFormat: "csv", content: sheetToCsv(sheet), options: { delimiter: ";" }, notes };
+    } catch (e) {
+      if (e instanceof XlsxError) throw new AppError("VALIDATION", e.message);
+      throw e;
+    }
+  }
+  const { text: text2, encoding } = decodeText(bytes);
+  if (encoding !== "utf-8") notes.push("Fichier encod\xE9 en Windows-1252 (export Excel) : converti en UTF-8.");
+  return { format, feedFormat: format, content: text2, options: {}, notes };
+}
+function suggestCatalogMapping(columns) {
+  const mapping = suggestMapping(columns);
+  const priceCol = typeof mapping.price === "string" ? looseHeader(mapping.price) : "";
+  if (!mapping.tax_type && priceCol) {
+    if (/ (ht|hors taxes?|excl|ex vat|net) /.test(priceCol)) mapping.tax_type = { const: "ht" };
+    else if (/ (ttc|toutes taxes|incl|inc vat) /.test(priceCol)) mapping.tax_type = { const: "ttc" };
+  }
+  return mapping;
+}
+function previewCatalogFile(input, organizationCurrency) {
+  const loaded = loadCatalogFile(input.file);
+  const first = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1);
+  const suggested = suggestCatalogMapping(first.columns);
+  const mapping = input.mapping && Object.keys(input.mapping).length > 0 ? input.mapping : suggested;
+  const defaults = { currency: input.defaults?.currency ?? organizationCurrency, taxType: input.defaults?.taxType ?? "unknown", country: input.defaults?.country ?? null };
+  const preview = previewFeed(loaded.content, loaded.feedFormat, mapping, loaded.options, defaults, 10);
+  return {
+    format: loaded.format,
+    columns: preview.columns,
+    suggestedMapping: suggested,
+    mapping,
+    total: preview.total,
+    validCount: preview.validCount,
+    invalidCount: preview.invalidCount,
+    warnings: [...loaded.notes, ...preview.warnings],
+    sample: preview.sample.map((s) => ({
+      line: s.index + 2,
+      title: s.offer?.title ?? null,
+      reference: s.offer?.supplierSku ?? s.offer?.externalOfferId ?? null,
+      price: s.offer?.price ?? null,
+      currency: s.offer?.currency ?? null,
+      taxType: s.offer?.taxType ?? null,
+      quantity: s.offer?.availableQuantity ?? null,
+      ean: s.offer?.ean ?? null,
+      errors: s.errors
+    })),
+    fields: RAW_OFFER_FIELDS
+  };
+}
+async function importCatalogFile(ctx, input) {
+  const orgId = ctx.organization.id;
+  const loaded = loadCatalogFile(input.file);
+  let supplierId = input.supplierId ?? null;
+  let supplierName = input.supplierName ?? "";
+  if (supplierId) {
+    const { data, error } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("id", supplierId).maybeSingle();
+    if (error) throw fromPostgrestError(error);
+    if (!data) throw new AppError("NOT_FOUND", "Fournisseur introuvable dans cette organisation.");
+    supplierName = data.name;
+  } else {
+    const { data: existing } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).ilike("name", supplierName).limit(1).maybeSingle();
+    if (existing) supplierId = existing.id;
+    else {
+      const { data, error } = await ctx.supabase.from("suppliers").insert({ organization_id: orgId, name: supplierName, currency: input.defaults.currency, country: input.defaults.country ?? null }).select("id").single();
+      if (error || !data) throw fromPostgrestError(error ?? { message: "Fournisseur non cr\xE9\xE9" });
+      supplierId = data.id;
+    }
+  }
+  const sourceType = loaded.feedFormat.toUpperCase();
+  const { data: sources, error: srcErr } = await ctx.supabase.from("supplier_sources").select("id, config").eq("organization_id", orgId).eq("supplier_id", supplierId).eq("source_type", sourceType).limit(20);
+  if (srcErr) throw fromPostgrestError(srcErr);
+  let sourceId = (sources ?? []).find((s) => s.config?.kind === CATALOG_IMPORT_KIND)?.id ?? null;
+  if (!sourceId) {
+    const { data, error } = await ctx.supabase.from("supplier_sources").insert({
+      organization_id: orgId,
+      supplier_id: supplierId,
+      name: `Import de catalogue \u2014 ${supplierName}`,
+      source_type: sourceType,
+      default_currency: input.defaults.currency,
+      default_tax_type: input.defaults.taxType,
+      country: input.defaults.country ?? null,
+      automated_access_confirmed: true,
+      access_conditions: "Fichier transmis par le fournisseur et import\xE9 manuellement par l'utilisateur.",
+      sync_frequency: "manual",
+      status: "not_connected",
+      config: { kind: CATALOG_IMPORT_KIND }
+    }).select("id").single();
+    if (error || !data) throw fromPostgrestError(error ?? { message: "Source non cr\xE9\xE9e" });
+    sourceId = data.id;
+  } else {
+    await ctx.supabase.from("supplier_sources").update({ default_currency: input.defaults.currency, default_tax_type: input.defaults.taxType }).eq("id", sourceId).eq("organization_id", orgId);
+  }
+  const { data: feeds, error: feedErr } = await ctx.supabase.from("supplier_feeds").select("id").eq("organization_id", orgId).eq("source_id", sourceId).is("url", null).limit(1);
+  if (feedErr) throw fromPostgrestError(feedErr);
+  let feedId = feeds?.[0]?.id ?? null;
+  const feedPatch = { format: loaded.feedFormat, field_mapping: input.mapping, options: loaded.options, sync_frequency: "manual" };
+  if (!feedId) {
+    const { data, error } = await ctx.supabase.from("supplier_feeds").insert({ organization_id: orgId, supplier_id: supplierId, source_id: sourceId, type: "catalog", url: null, status: "not_connected", ...feedPatch }).select("id").single();
+    if (error || !data) throw fromPostgrestError(error ?? { message: "Flux non cr\xE9\xE9" });
+    feedId = data.id;
+  } else {
+    const { error } = await ctx.supabase.from("supplier_feeds").update(feedPatch).eq("id", feedId).eq("organization_id", orgId);
+    if (error) throw fromPostgrestError(error);
+  }
+  const result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content });
+  const { feedId: _ignored, ...rest } = result;
+  return { supplierId, sourceId, feedId, result: rest };
+}
+var MAX_CATALOG_BYTES, CATALOG_IMPORT_KIND, catalogFileSchema, catalogDefaultsSchema, catalogPreviewSchema, catalogImportSchema, CP1252_HIGH;
+var init_catalog_import = __esm({
+  "src/services/sourcing/catalog-import.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_types();
+    init_feed_parsers();
+    init_feed_ingestion();
+    init_xlsx();
+    MAX_CATALOG_BYTES = 15 * 1024 * 1024;
+    CATALOG_IMPORT_KIND = "catalog_file_import";
+    catalogFileSchema = z28.object({
+      fileName: z28.string().trim().min(1).max(200),
+      /** contenu du fichier encodé en base64 */
+      contentBase64: z28.string().min(4).max(Math.ceil(MAX_CATALOG_BYTES * 4 / 3) + 8, "Fichier trop volumineux (15 Mo maximum)."),
+      format: z28.enum(["csv", "xlsx", "xml", "json"]).optional(),
+      sheet: z28.string().max(100).optional()
+    });
+    catalogDefaultsSchema = z28.object({
+      currency: z28.string().trim().regex(/^[A-Za-z]{3}$/, "Devise sur 3 lettres (EUR, USD\u2026).").transform((s) => s.toUpperCase()),
+      taxType: z28.enum(["ht", "ttc", "unknown"]).default("unknown"),
+      country: z28.string().trim().regex(/^[A-Za-z]{2}$/).transform((s) => s.toUpperCase()).nullish()
+    });
+    catalogPreviewSchema = z28.object({
+      file: catalogFileSchema,
+      mapping: fieldMappingSchema.optional(),
+      defaults: catalogDefaultsSchema.partial({ currency: true }).optional()
+    });
+    catalogImportSchema = z28.object({
+      file: catalogFileSchema,
+      mapping: fieldMappingSchema,
+      defaults: catalogDefaultsSchema,
+      supplierId: z28.string().uuid().optional(),
+      supplierName: z28.string().trim().min(2).max(160).optional()
+    }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), {
+      message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix."
+    });
+    CP1252_HIGH = [
+      8364,
+      65533,
+      8218,
+      402,
+      8222,
+      8230,
+      8224,
+      8225,
+      710,
+      8240,
+      352,
+      8249,
+      338,
+      65533,
+      381,
+      65533,
+      65533,
+      8216,
+      8217,
+      8220,
+      8221,
+      8226,
+      8211,
+      8212,
+      732,
+      8482,
+      353,
+      8250,
+      339,
+      65533,
+      382,
+      376
+    ];
+  }
+});
+
+// server/edge/api.ts
+init_errors();
+init_logger();
+import { z as z33 } from "npm:zod@4.6.5";
 
 // src/lib/crypto.ts
+init_empty();
+init_env();
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 var VERSION = "v1";
 function key() {
   const raw = serverEnv().TOKEN_ENCRYPTION_KEY;
@@ -331,18 +2876,9 @@ function randomToken(bytes = 24) {
   return randomBytes(bytes).toString("hex");
 }
 
-// src/lib/supabase/admin.ts
-import { createClient } from "npm:@supabase/supabase-js@2.117.3";
-var cached = null;
-function createAdminSupabaseClient() {
-  if (cached) return cached;
-  const pub = publicEnv();
-  const srv = serverEnv();
-  cached = createClient(pub.NEXT_PUBLIC_SUPABASE_URL, srv.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  });
-  return cached;
-}
+// server/edge/api.ts
+init_admin();
+init_env();
 
 // src/lib/cron-auth.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
@@ -380,9 +2916,14 @@ function authorizeCron(request) {
 }
 
 // src/features/mobile-api/http.ts
+init_empty();
+init_errors();
+init_logger();
+init_sanitize();
 import { z as z2 } from "npm:zod@4.6.5";
 
 // src/integrations/core/errors.ts
+init_errors();
 var ConnectorError = class extends Error {
   code;
   provider;
@@ -466,13 +3007,13 @@ function parseQuery(request, schema) {
   if (!parsed.success) throw new AppError("VALIDATION", parsed.error.issues[0]?.message ?? "Param\xE8tres invalides.");
   return parsed.data;
 }
-async function parseBody(request, schema) {
+async function parseBody(request, schema, maxBytes = 64e3) {
   const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > 64e3) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
+  if (length > maxBytes) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
   let body;
   try {
     const text2 = await request.text();
-    if (text2.length > 64e3) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
+    if (text2.length > maxBytes) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
     body = text2 ? JSON.parse(text2) : {};
   } catch (e) {
     if (isAppError(e)) throw e;
@@ -485,9 +3026,13 @@ async function parseBody(request, schema) {
 var uuidParam = z2.string().uuid("Identifiant invalide.");
 
 // src/features/mobile-api/context.ts
+init_empty();
+init_errors();
 import { z as z4 } from "npm:zod@4.6.5";
 
 // src/lib/supabase/bearer.ts
+init_empty();
+init_env();
 import { createClient as createClient2 } from "npm:@supabase/supabase-js@2.117.3";
 function createBearerSupabaseClient(accessToken2) {
   const env = publicEnv();
@@ -496,6 +3041,9 @@ function createBearerSupabaseClient(accessToken2) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
 }
+
+// src/features/auth/dal.ts
+init_empty();
 
 // server/edge/shims/react.ts
 function cache(fn) {
@@ -507,12 +3055,16 @@ async function cookies() {
   throw new Error("cookies() indisponible hors Next.js");
 }
 
+// src/lib/supabase/server.ts
+init_empty();
+
 // server/edge/shims/supabase-ssr.ts
 function createServerClient() {
   throw new Error("@supabase/ssr indisponible dans l'Edge Function");
 }
 
 // src/lib/supabase/server.ts
+init_env();
 async function createServerSupabaseClient() {
   const cookieStore = await cookies();
   const env = publicEnv();
@@ -534,6 +3086,7 @@ async function createServerSupabaseClient() {
 }
 
 // src/features/auth/dal.ts
+init_errors();
 var getCurrentUser = cache(async () => {
   const supabase = await createServerSupabaseClient();
   const {
@@ -683,6 +3236,10 @@ async function requireMobileOrgContext(request, options = {}, factory = createBe
   }
   return ctx;
 }
+
+// src/features/mobile-api/service.ts
+init_empty();
+init_errors();
 
 // src/domain/inventory/velocity.ts
 var DAY_MS = 864e5;
@@ -905,6 +3462,9 @@ function marginContextFromChannels(channels, orgSettings) {
   };
 }
 
+// src/features/stock/queries.ts
+init_empty();
+
 // src/lib/supabase/paginate.ts
 var DB_PAGE_SIZE = 1e3;
 async function fetchRowsUpTo(page2, limit, options = {}) {
@@ -927,12 +3487,8 @@ async function fetchAllRows(page2, options = {}) {
   return rows;
 }
 
-// src/lib/postgrest.ts
-function escapeLike(s) {
-  return s.replace(/[%_\\]/g, (m) => `\\${m}`);
-}
-
 // src/features/stock/queries.ts
+init_postgrest();
 async function getMarginContext(ctx) {
   const { data } = await ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost").eq("organization_id", ctx.organization.id).eq("is_active", true);
   return marginContextFromChannels(data ?? [], ctx.organization.settings);
@@ -1039,6 +3595,13 @@ var stockListParamsSchema = z5.object({
   archived: z5.enum(["1"]).optional()
 });
 
+// src/features/analytics/dashboard.ts
+init_empty();
+
+// src/features/analytics/stock-analytics.ts
+init_empty();
+init_errors();
+
 // src/features/analytics/util.pure.ts
 function daysSince(value, now) {
   if (!value) return null;
@@ -1130,8 +3693,21 @@ var getStockAnalytics = cache(async (ctx) => {
   return groupStockViews(bundle.views, bundle.now, { truncated: bundle.truncated, currency: ctx.organization.default_currency });
 });
 
+// src/features/analytics/replenishment.ts
+init_empty();
+init_errors();
+
+// src/features/analytics/opportunities.ts
+init_empty();
+init_errors();
+
 // src/features/analytics/margins.pure.ts
 var MARGIN_SORTS = ["profit_total", "net_margin", "gross_margin", "units", "name"];
+
+// src/features/analytics/sales.ts
+init_empty();
+init_errors();
+init_postgrest();
 
 // src/features/analytics/series.pure.ts
 var DAY_MS2 = 864e5;
@@ -1162,6 +3738,10 @@ var loadDailySales = cache(async (ctx, days) => {
   if (error) throw fromPostgrestError(error);
   return data ?? [];
 });
+
+// src/features/analytics/margins.ts
+init_empty();
+init_errors();
 
 // src/features/analytics/schemas.ts
 import { z as z6 } from "npm:zod@4.6.5";
@@ -1211,6 +3791,13 @@ var getOperationalCounts = cache(async (ctx) => {
     suppliersCount: suppliers.count ?? 0
   };
 });
+
+// src/features/analytics/alerts.ts
+init_empty();
+init_errors();
+
+// src/features/suppliers/queries.ts
+init_empty();
 
 // src/domain/sourcing/scoring.ts
 var SCORE_MAX = { price: 30, moq: 20, delivery: 20, supplier: 20, data: 10 };
@@ -1312,6 +3899,13 @@ function computeDataCompleteness(fields) {
   return Math.round(known2 / keys.length * 100) / 100;
 }
 
+// src/features/integrations/queries.ts
+init_empty();
+
+// src/integrations/ebay/connector.ts
+init_logger();
+init_env();
+
 // src/integrations/ebay/config.ts
 var EBAY_PROVIDER = "ebay";
 var EBAY_TRADING_COMPATIBILITY_LEVEL = "1225";
@@ -1344,6 +3938,7 @@ function createEbayConfig(env) {
 import { z as z7 } from "npm:zod@4.6.5";
 
 // src/integrations/core/http.ts
+init_logger();
 var log3 = createLogger("HTTP");
 var DEFAULT_TIMEOUT_MS = 3e4;
 var DEFAULT_RETRIES = 3;
@@ -2386,6 +4981,8 @@ function listConnectorCatalog() {
 }
 
 // src/features/integrations/queries.ts
+init_errors();
+init_postgrest();
 async function getIntegrationsOverview(ctx) {
   const ebay2 = getEbayConnector();
   const config = ebay2.config();
@@ -2419,6 +5016,9 @@ async function getIntegrationsOverview(ctx) {
   }
   return base;
 }
+
+// src/features/sourcing/status-queries.ts
+init_empty();
 
 // src/integrations/sourcing/catalog.ts
 var VERIFIED_FROM_SNIPPETS = {
@@ -3161,871 +5761,9 @@ function listCatalogSources() {
   return SOURCING_CATALOG;
 }
 
-// src/domain/sourcing/dictionaries.ts
-var BRANDS = [
-  { key: "apple", display: "Apple", aliases: ["apple"] },
-  { key: "samsung", display: "Samsung", aliases: ["samsung"] },
-  { key: "google", display: "Google", aliases: ["google"] },
-  { key: "xiaomi", display: "Xiaomi", aliases: ["xiaomi", "mi"] },
-  { key: "huawei", display: "Huawei", aliases: ["huawei"] },
-  { key: "honor", display: "Honor", aliases: ["honor"] },
-  { key: "oneplus", display: "OnePlus", aliases: ["oneplus", "one plus"] },
-  { key: "oppo", display: "Oppo", aliases: ["oppo"] },
-  { key: "realme", display: "Realme", aliases: ["realme"] },
-  { key: "sony", display: "Sony", aliases: ["sony"] },
-  { key: "nintendo", display: "Nintendo", aliases: ["nintendo"] },
-  { key: "microsoft", display: "Microsoft", aliases: ["microsoft"] },
-  { key: "dyson", display: "Dyson", aliases: ["dyson"] },
-  { key: "lenovo", display: "Lenovo", aliases: ["lenovo"] },
-  { key: "dell", display: "Dell", aliases: ["dell"] },
-  { key: "hp", display: "HP", aliases: ["hp", "hewlett packard"] },
-  { key: "asus", display: "Asus", aliases: ["asus"] },
-  { key: "acer", display: "Acer", aliases: ["acer"] },
-  { key: "motorola", display: "Motorola", aliases: ["motorola", "moto"] },
-  { key: "nokia", display: "Nokia", aliases: ["nokia"] },
-  { key: "jbl", display: "JBL", aliases: ["jbl"] },
-  { key: "bose", display: "Bose", aliases: ["bose"] },
-  { key: "garmin", display: "Garmin", aliases: ["garmin"] },
-  { key: "gopro", display: "GoPro", aliases: ["gopro", "go pro"] },
-  { key: "dji", display: "DJI", aliases: ["dji"] },
-  { key: "logitech", display: "Logitech", aliases: ["logitech"] },
-  { key: "philips", display: "Philips", aliases: ["philips"] },
-  { key: "bosch", display: "Bosch", aliases: ["bosch"] },
-  { key: "lg", display: "LG", aliases: ["lg"] }
-];
-function variantWord(v2) {
-  if (!v2) return "";
-  const x = v2.replace(/\s+/g, " ").trim();
-  if (x === "promax" || x === "pro max") return "pro max";
-  if (x === "+" || x === "plus") return "plus";
-  return x;
-}
-function cap(s) {
-  return s.split(" ").map((w2) => w2.length === 0 ? w2 : w2[0].toUpperCase() + w2.slice(1)).join(" ");
-}
-var MODEL_PATTERNS = [
-  // ---- Apple ----
-  {
-    brand: "apple",
-    regex: /\biphone\s?(xs\s?max|xs|xr|x)\b/,
-    build: (m) => {
-      const v2 = (m[1] ?? "").replace(/\s+/g, " ");
-      return { model: `iphone ${v2}`, display: `iPhone ${v2.toUpperCase()}` };
-    }
-  },
-  {
-    brand: "apple",
-    regex: /\biphone\s?se\b\s?(?:\(?\s?(20(?:16|20|22))\s?\)?|(2|3)(?:nd|rd|e|eme|ème)?(?:\s?gen(?:eration)?)?)?/,
-    build: (m) => {
-      const year = m[1] ?? (m[2] === "2" ? "2020" : m[2] === "3" ? "2022" : void 0);
-      return { model: year ? `iphone se ${year}` : "iphone se", display: year ? `iPhone SE (${year})` : "iPhone SE" };
-    }
-  },
-  {
-    brand: "apple",
-    regex: /\biphone\s?(\d{1,2})\s?(pro\s?max|promax|pro|plus|mini|max)?\b/,
-    build: (m) => {
-      const n = Number(m[1]);
-      if (n < 3 || n > 30) return null;
-      const v2 = variantWord(m[2]);
-      return { model: `iphone ${n}${v2 ? ` ${v2}` : ""}`, display: `iPhone ${n}${v2 ? ` ${cap(v2)}` : ""}` };
-    }
-  },
-  {
-    brand: "apple",
-    // taille (décimale, ou 11 / 12 / 13 pouces), génération (1–10, « 9e gén. », « 9th generation »), année.
-    // Chaque nombre est borné (?![a-z0-9]) : « iPad Air 2022 » ne donne jamais « ipad air 20 ».
-    regex: /\bipad\s?(pro|air|mini)?(?:\s?(\d{1,2}[.,]\d|1[1-3])(?![a-z0-9])(?:\s?(?:pouces?|inch))?)?(?:\s?(\d{1,2})(?:\s?(?:e|eme|th|nd|rd|st))?(?:\s?gen(?:eration)?)?(?![a-z0-9]))?(?:\s?(20[12]\d)(?![a-z0-9]))?/,
-    build: (m) => {
-      const v2 = m[1] ?? "";
-      const size = m[2]?.replace(",", ".") ?? "";
-      const gen = m[3] && Number(m[3]) >= 1 && Number(m[3]) <= 10 ? String(Number(m[3])) : "";
-      if (m[3] && !gen) return null;
-      const year = m[4] ?? "";
-      const model = ["ipad", v2, size, gen, year].filter(Boolean).join(" ");
-      const display = ["iPad", v2 ? cap(v2) : "", size ? `${size}"` : "", gen, year].filter(Boolean).join(" ");
-      return { model, display };
-    }
-  },
-  {
-    brand: "apple",
-    // puce Apple Silicon (M1–M4, Pro / Max / Ultra) conservée dans le modèle : « MacBook Air M2 » ≠ « MacBook Air M1 ».
-    // L'année n'entre dans le modèle qu'en l'absence de puce (générations Intel).
-    regex: /\bmacbook\s?(air|pro)?(?:\s?(1[3-6](?:[.,]\d)?)(?![a-z0-9])(?:\s?(?:pouces?|inch))?)?(?:\s?(m[1-4](?:\s?(?:pro|max|ultra))?)(?![a-z0-9]))?(?:\s?(20[012]\d)(?![a-z0-9]))?(?![a-z0-9])/,
-    build: (m) => {
-      const v2 = m[1] ?? "";
-      const size = m[2]?.replace(",", ".") ?? "";
-      const chip = m[3]?.replace(/\s+/g, " ") ?? "";
-      const year = !chip && m[4] ? m[4] : "";
-      return {
-        model: ["macbook", v2, size, chip, year].filter(Boolean).join(" "),
-        display: ["MacBook", v2 ? cap(v2) : "", size ? `${size}"` : "", chip ? chip.toUpperCase().replace(/ (PRO|MAX|ULTRA)$/, (x) => cap(x.toLowerCase())) : "", year].filter(Boolean).join(" ")
-      };
-    }
-  },
-  {
-    brand: "apple",
-    regex: /\bairpods\s?(pro|max)?\s?(\d)?\b/,
-    build: (m) => {
-      const v2 = m[1] ?? "";
-      const gen = m[2] ?? "";
-      return { model: ["airpods", v2, gen].filter(Boolean).join(" "), display: ["AirPods", v2 ? cap(v2) : "", gen].filter(Boolean).join(" ") };
-    }
-  },
-  {
-    brand: "apple",
-    regex: /\b(?:apple\s?)?watch\s?(ultra|se|series)?\s?(\d{1,2})?\b/,
-    build: (m) => {
-      if (!m[1] && !m[2]) return null;
-      const v2 = m[1] ?? "series";
-      const n = m[2] ?? "";
-      return { model: ["apple watch", v2, n].filter(Boolean).join(" "), display: ["Apple Watch", cap(v2), n].filter(Boolean).join(" ") };
-    }
-  },
-  { brand: "apple", regex: /\bmac\s?mini\b/, build: () => ({ model: "mac mini", display: "Mac mini" }) },
-  { brand: "apple", regex: /\bimac\b/, build: () => ({ model: "imac", display: "iMac" }) },
-  // ---- Samsung ----
-  {
-    brand: "samsung",
-    regex: /\bgalaxy\s?s(\d{2})\s?(ultra|plus|\+|fe|edge)?(?![a-z0-9])/,
-    build: (m) => {
-      const v2 = variantWord(m[2]);
-      return { model: `galaxy s${m[1]}${v2 ? ` ${v2}` : ""}`, display: `Galaxy S${m[1]}${v2 ? ` ${v2 === "fe" ? "FE" : cap(v2)}` : ""}` };
-    }
-  },
-  {
-    brand: "samsung",
-    regex: /\bgalaxy\s?note\s?(\d{1,2})\s?(ultra|plus|\+)?(?![a-z0-9])/,
-    build: (m) => {
-      const v2 = variantWord(m[2]);
-      return { model: `galaxy note ${m[1]}${v2 ? ` ${v2}` : ""}`, display: `Galaxy Note ${m[1]}${v2 ? ` ${cap(v2)}` : ""}` };
-    }
-  },
-  {
-    brand: "samsung",
-    regex: /\bgalaxy\s?z\s?(fold|flip)\s?(\d)?\b/,
-    build: (m) => ({ model: ["galaxy z", m[1], m[2]].filter(Boolean).join(" "), display: ["Galaxy Z", cap(m[1] ?? ""), m[2]].filter(Boolean).join(" ") })
-  },
-  {
-    brand: "samsung",
-    regex: /\bgalaxy\s?tab\s?(s|a)\s?(\d{1,2})\s?(ultra|plus|\+|fe|lite)?(?![a-z0-9])/,
-    build: (m) => {
-      const v2 = variantWord(m[3]);
-      return { model: `galaxy tab ${m[1]}${m[2]}${v2 ? ` ${v2}` : ""}`, display: `Galaxy Tab ${(m[1] ?? "").toUpperCase()}${m[2]}${v2 ? ` ${v2 === "fe" ? "FE" : cap(v2)}` : ""}` };
-    }
-  },
-  {
-    brand: "samsung",
-    regex: /\bgalaxy\s?a(\d{2})\s?(s|e)?\b/,
-    build: (m) => ({ model: `galaxy a${m[1]}${m[2] ?? ""}`, display: `Galaxy A${m[1]}${m[2] ?? ""}` })
-  },
-  { brand: "samsung", regex: /\bgalaxy\s?m(\d{2})\b/, build: (m) => ({ model: `galaxy m${m[1]}`, display: `Galaxy M${m[1]}` }) },
-  {
-    brand: "samsung",
-    regex: /\bgalaxy\s?xcover\s?(\d)?\s?(pro)?\b/,
-    build: (m) => ({ model: ["galaxy xcover", m[1], m[2]].filter(Boolean).join(" "), display: ["Galaxy XCover", m[1], m[2] ? "Pro" : ""].filter(Boolean).join(" ") })
-  },
-  {
-    brand: "samsung",
-    regex: /\bgalaxy\s?(buds|watch)\s?(\d)?\s?(pro|ultra|fe|classic|live)?\b/,
-    build: (m) => ({
-      model: ["galaxy", m[1], m[2], m[3]].filter(Boolean).join(" "),
-      display: ["Galaxy", cap(m[1] ?? ""), m[2], m[3] ? m[3] === "fe" ? "FE" : cap(m[3]) : ""].filter(Boolean).join(" ")
-    })
-  },
-  // ---- Google ----
-  {
-    brand: "google",
-    regex: /\bpixel\s?(\d{1,2})\s?(a|pro\s?xl|pro|xl|fold)?\b/,
-    build: (m) => {
-      const v2 = (m[2] ?? "").replace(/\s+/g, " ");
-      if (v2 === "a") return { model: `pixel ${m[1]}a`, display: `Pixel ${m[1]}a` };
-      return { model: `pixel ${m[1]}${v2 ? ` ${v2}` : ""}`, display: `Pixel ${m[1]}${v2 ? ` ${v2 === "xl" ? "XL" : v2 === "pro xl" ? "Pro XL" : cap(v2)}` : ""}` };
-    }
-  },
-  // ---- Xiaomi ----
-  {
-    brand: "xiaomi",
-    regex: /\bredmi\s?(note)?\s?(\d{1,2})\s?(pro\s?\+|pro\s?plus|pro|s|t|c|lite|ultra)?(?![a-z0-9])/,
-    build: (m) => {
-      const v2 = (m[3] ?? "").replace(/\s+/g, " ").replace("pro +", "pro plus");
-      return { model: ["redmi", m[1], m[2], v2].filter(Boolean).join(" "), display: ["Redmi", m[1] ? "Note" : "", m[2], v2 ? cap(v2) : ""].filter(Boolean).join(" ") };
-    }
-  },
-  {
-    brand: "xiaomi",
-    regex: /\bpoco\s?([xfmc]\d{1,2})\s?(pro|gt)?\b/,
-    build: (m) => ({ model: ["poco", m[1], m[2]].filter(Boolean).join(" "), display: ["Poco", (m[1] ?? "").toUpperCase(), m[2] ? cap(m[2]) : ""].filter(Boolean).join(" ") })
-  },
-  {
-    brand: "xiaomi",
-    regex: /\b(?:xiaomi|mi)\s?(\d{1,2})\s?(t\s?pro|t|pro|ultra|lite)?\b/,
-    build: (m) => {
-      const v2 = (m[2] ?? "").replace(/\s+/g, " ");
-      return { model: [m[1], v2].filter(Boolean).join(" "), display: [m[1], v2 ? v2.toUpperCase().replace("PRO", "Pro").replace("ULTRA", "Ultra").replace("LITE", "Lite") : ""].filter(Boolean).join(" ") };
-    }
-  },
-  // ---- Huawei / Honor ----
-  {
-    brand: "huawei",
-    regex: /\bhuawei\s+(p|mate|nova)\s?(\d{1,2})\s?(pro\s?\+|pro|lite)?(?![a-z0-9])/,
-    build: (m) => ({ model: [`${m[1]}${m[2]}`, m[3]?.replace(/\s+/g, "")].filter(Boolean).join(" "), display: [`${(m[1] ?? "").toUpperCase()}${m[2]}`, m[3] ? cap(m[3]) : ""].filter(Boolean).join(" ") })
-  },
-  {
-    brand: "honor",
-    regex: /\bhonor\s+(magic|x)?\s?(\d{1,2})\s?(pro|lite)?\b/,
-    build: (m) => ({ model: [m[1], m[2], m[3]].filter(Boolean).join(" "), display: [m[1] ? cap(m[1]) : "", m[2], m[3] ? cap(m[3]) : ""].filter(Boolean).join(" ") })
-  },
-  // ---- OnePlus / Oppo ----
-  {
-    brand: "oneplus",
-    regex: /\boneplus\s?(nord\s?(?:ce\s?)?\d?|\d{1,2}[rt]?)\s?(pro)?\b/,
-    build: (m) => ({ model: [(m[1] ?? "").replace(/\s+/g, " ").trim(), m[2]].filter(Boolean).join(" "), display: [cap((m[1] ?? "").trim()), m[2] ? "Pro" : ""].filter(Boolean).join(" ") })
-  },
-  {
-    brand: "oppo",
-    regex: /\boppo\s+(reno|find|a)\s?(\d{1,2}|x\d?)\s?(pro|lite|neo)?\b/,
-    build: (m) => ({ model: [m[1], m[2], m[3]].filter(Boolean).join(" "), display: [cap(m[1] ?? ""), (m[2] ?? "").toUpperCase(), m[3] ? cap(m[3]) : ""].filter(Boolean).join(" ") })
-  },
-  // ---- Consoles ----
-  {
-    brand: "sony",
-    regex: /\b(?:playstation|ps)\s?(4|5)\s?(pro|slim|digital(?:\s?edition)?)?\b/,
-    build: (m) => ({ model: ["playstation", m[1], m[2]?.replace(/\s+/g, " ")].filter(Boolean).join(" "), display: ["PlayStation", m[1], m[2] ? cap(m[2]) : ""].filter(Boolean).join(" ") })
-  },
-  {
-    brand: "nintendo",
-    regex: /\b(?:nintendo\s?)?switch\s?(oled|lite|2)?\b/,
-    build: (m) => ({ model: ["nintendo switch", m[1]].filter(Boolean).join(" "), display: ["Nintendo Switch", m[1] === "oled" ? "OLED" : m[1] ? cap(m[1]) : ""].filter(Boolean).join(" ") })
-  },
-  {
-    brand: "microsoft",
-    regex: /\bxbox\s?(series\s?[xs]|one\s?[xs]?)\b/,
-    build: (m) => ({ model: `xbox ${(m[1] ?? "").replace(/\s+/g, " ")}`, display: `Xbox ${cap((m[1] ?? "").replace(/\s+/g, " ")).replace(/\b(X|S)$/, (c) => c.toUpperCase())}` })
-  },
-  {
-    brand: "microsoft",
-    regex: /\bsurface\s?(pro|laptop|go|book)\s?(\d{1,2})?\b/,
-    build: (m) => ({ model: ["surface", m[1], m[2]].filter(Boolean).join(" "), display: ["Surface", cap(m[1] ?? ""), m[2]].filter(Boolean).join(" ") })
-  },
-  // ---- Dyson ----
-  {
-    brand: "dyson",
-    regex: /\bdyson\s+(v\d{1,2}|airwrap|supersonic|gen\s?5)\s?(absolute|animal|detect|origin|complete|motorhead|fluffy)?\b/,
-    build: (m) => ({ model: [(m[1] ?? "").replace(/\s+/g, ""), m[2]].filter(Boolean).join(" "), display: [(m[1] ?? "").toUpperCase().replace("GEN", "Gen"), m[2] ? cap(m[2]) : ""].filter(Boolean).join(" ") })
-  }
-];
-var COLORS = [
-  { key: "gray", display: "Gray", aliases: ["space gray", "space grey", "gris sideral", "gris sid\xE9ral", "graphite", "graphit", "gris", "gray", "grey", "grau", "titanium gray", "gris titane"] },
-  { key: "black", display: "Black", aliases: ["jet black", "noir de jais", "noir", "black", "schwarz", "nero", "negro", "black titanium", "titane noir"] },
-  { key: "white", display: "White", aliases: ["blanc", "white", "weiss", "bianco", "blanco", "white titanium", "titane blanc"] },
-  { key: "midnight", display: "Midnight", aliases: ["midnight", "minuit"] },
-  { key: "starlight", display: "Starlight", aliases: ["starlight", "lumiere stellaire", "lumi\xE8re stellaire"] },
-  { key: "blue", display: "Blue", aliases: ["sierra blue", "bleu alpin", "alpine blue", "pacific blue", "bleu pacifique", "bleu nuit", "deep blue", "bleu", "blue", "blau", "azul", "blue titanium", "titane bleu"] },
-  { key: "red", display: "Red", aliases: ["product red", "rouge", "red", "rot", "rosso", "rojo"] },
-  { key: "green", display: "Green", aliases: ["alpine green", "vert alpin", "midnight green", "vert nuit", "vert", "green", "grun", "verde"] },
-  { key: "silver", display: "Silver", aliases: ["argent", "silver", "silber", "argento", "plata"] },
-  { key: "gold", display: "Gold", aliases: ["rose gold", "or rose", "dore", "dor\xE9", "gold", "golden", "or"] },
-  { key: "purple", display: "Purple", aliases: ["deep purple", "violet intense", "violet", "purple", "mauve", "lilas", "lilac", "lavande", "lavender"] },
-  { key: "pink", display: "Pink", aliases: ["rose", "pink", "rosa"] },
-  { key: "yellow", display: "Yellow", aliases: ["jaune", "yellow", "gelb"] },
-  { key: "orange", display: "Orange", aliases: ["orange", "corail", "coral"] },
-  { key: "titanium", display: "Titanium", aliases: ["natural titanium", "titane naturel", "titane", "titanium", "desert titanium", "titane desert"] },
-  { key: "brown", display: "Brown", aliases: ["marron", "brown", "bronze", "cuivre", "copper"] },
-  { key: "beige", display: "Beige", aliases: ["beige", "sable", "sand"] }
-];
-var CONDITION_WORDS = [
-  { condition: "new", aliases: ["brand new", "neuf", "neuve", "neufs", "new", "sealed", "scelle", "scell\xE9", "blister", "nuevo", "nuovo", "neu"] },
-  { condition: "refurbished", aliases: ["remis a neuf", "remis \xE0 neuf", "reconditionne", "reconditionn\xE9", "reconditionnee", "reconditionn\xE9e", "reconditionnes", "refurbished", "refurb", "recond", "renewed", "ricondizionato", "generaluberholt"] },
-  { condition: "used", aliases: ["second hand", "seconde main", "pre owned", "preowned", "d occasion", "occasion", "used", "usado", "usato", "gebraucht"] }
-];
-var NOISE_TOKENS = /* @__PURE__ */ new Set([
-  "smartphone",
-  "smartphones",
-  "telephone",
-  "t\xE9l\xE9phone",
-  "phone",
-  "mobile",
-  "portable",
-  "tablette",
-  "tablet",
-  "ordinateur",
-  "laptop",
-  "unlocked",
-  "debloque",
-  "d\xE9bloqu\xE9",
-  "desimlocke",
-  "d\xE9simlock\xE9",
-  "simfree",
-  "sim",
-  "free",
-  "dual",
-  "esim",
-  "5g",
-  "4g",
-  "lte",
-  "3g",
-  "garantie",
-  "warranty",
-  "mois",
-  "months",
-  "month",
-  "ans",
-  "an",
-  "year",
-  "years",
-  "lot",
-  "pcs",
-  "pieces",
-  "pi\xE8ces",
-  "units",
-  "unites",
-  "unit\xE9s",
-  "pack",
-  "bundle",
-  "x",
-  "original",
-  "originale",
-  "genuine",
-  "authentique",
-  "officiel",
-  "official",
-  "oem",
-  "de",
-  "du",
-  "des",
-  "le",
-  "la",
-  "les",
-  "et",
-  "avec",
-  "sans",
-  "pour",
-  "the",
-  "with",
-  "and",
-  "for",
-  "of",
-  "go",
-  "gb",
-  "tb",
-  "to"
-]);
-var VARIANT_TOKENS = [
-  { key: "wifi", aliases: ["wifi", "wi fi", "wlan"] },
-  { key: "cellular", aliases: ["cellular", "cellulaire", "4g cellular", "5g cellular", "lte cellular"] },
-  { key: "dual sim", aliases: ["dual sim", "dual sims", "double sim", "ds"] }
-];
-var MPN_STOPWORDS = /* @__PURE__ */ new Set(["note", "tab", "mate", "nova", "poco", "ipad", "se", "s", "a", "m", "x", "z", "v", "ps", "mi", "pro", "max", "gen", "iphone", "pixel", "redmi", "galaxy", "watch", "xbox"]);
-var ISO_4217 = /* @__PURE__ */ new Set([
-  "EUR",
-  "USD",
-  "GBP",
-  "CHF",
-  "JPY",
-  "CNY",
-  "HKD",
-  "SGD",
-  "AUD",
-  "CAD",
-  "NZD",
-  "SEK",
-  "NOK",
-  "DKK",
-  "PLN",
-  "CZK",
-  "HUF",
-  "RON",
-  "BGN",
-  "HRK",
-  "TRY",
-  "ILS",
-  "AED",
-  "SAR",
-  "QAR",
-  "KWD",
-  "INR",
-  "PKR",
-  "BDT",
-  "LKR",
-  "THB",
-  "VND",
-  "IDR",
-  "MYR",
-  "PHP",
-  "KRW",
-  "TWD",
-  "ZAR",
-  "NGN",
-  "EGP",
-  "MAD",
-  "TND",
-  "DZD",
-  "KES",
-  "BRL",
-  "MXN",
-  "ARS",
-  "CLP",
-  "COP",
-  "PEN",
-  "RUB",
-  "UAH",
-  "KZT",
-  "ISK",
-  "GEL",
-  "RSD",
-  "MKD",
-  "BAM",
-  "ALL",
-  "MDL"
-]);
-var STORAGE_SIZES_GB = /* @__PURE__ */ new Set([8, 16, 32, 64, 128, 256, 512, 1024, 2048]);
-
-// src/domain/sourcing/normalizer.ts
-var UNKNOWN = "-";
-function normalizeText(input) {
-  if (!input) return "";
-  return input.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/['’`´]/g, " ").replace(/[^a-z0-9+/.,\s]/g, " ").replace(/(?<!\d)[.,]|[.,](?!\d)/g, " ").replace(/\s+/g, " ").trim();
-}
-function isValidGtin(digits2) {
-  if (!/^\d{8}$|^\d{12,14}$/.test(digits2)) return false;
-  const nums = digits2.split("").map(Number);
-  const check = nums.pop();
-  let sum = 0;
-  for (let i = nums.length - 1, w2 = 3; i >= 0; i--, w2 = w2 === 3 ? 1 : 3) sum += nums[i] * w2;
-  return (10 - sum % 10) % 10 === check;
-}
-function extractEan(text2) {
-  const m = text2.match(/(?<!\d)(\d{8}|\d{12,14})(?!\d)/);
-  if (!m || !m[1]) return null;
-  return { ean: m[1], valid: isValidGtin(m[1]) };
-}
-var STORAGE_TOKEN = /^\d{1,4}(gb|go|g|tb|to)$/i;
-function looksLikeMpn(token) {
-  const t = token.trim();
-  if (t.length < 5 || t.length > 32) return false;
-  if (!/^[A-Z0-9][A-Z0-9\-/]*$/i.test(t)) return false;
-  if ((t.match(/[A-Z]/gi) ?? []).length < 2) return false;
-  if (!/\d/.test(t)) return false;
-  if (STORAGE_TOKEN.test(t)) return false;
-  if (/^\d/.test(t)) return false;
-  const prefix = t.match(/^([A-Z]+)/i)?.[1]?.toLowerCase() ?? "";
-  if (prefix && MPN_STOPWORDS.has(prefix)) return false;
-  return true;
-}
-function extractMpn(text2) {
-  for (const tok of text2.split(/\s+/)) {
-    const clean = tok.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9/]+$/g, "");
-    if (looksLikeMpn(clean)) return clean.toUpperCase();
-  }
-  return null;
-}
-function normalizeStorage(raw) {
-  if (!raw) return null;
-  const t = normalizeText(raw);
-  const m = t.match(/(\d{1,4})\s?(tb|to|gb|go|g)?(?![a-z])/);
-  if (!m || !m[1]) return null;
-  const n = Number(m[1]);
-  const unit = m[2];
-  if (unit === "tb" || unit === "to") return `${n}TB`;
-  if (unit) return `${n}GB`;
-  if (STORAGE_SIZES_GB.has(n)) return `${n}GB`;
-  return null;
-}
-function cutMatch(work, m) {
-  const idx = m.index ?? work.indexOf(m[0]);
-  return `${work.slice(0, idx)} ${work.slice(idx + m[0].length)}`;
-}
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-}
-var COLOR_ALIASES = COLORS.flatMap((c) => c.aliases.map((a) => ({ key: c.key, display: c.display, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
-var CONDITION_ALIASES = CONDITION_WORDS.flatMap((c) => c.aliases.map((a) => ({ condition: c.condition, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
-var BRAND_ALIASES = BRANDS.flatMap((b) => b.aliases.filter((a) => a.length > 2).map((a) => ({ key: b.key, display: b.display, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
-var VARIANT_ALIASES = VARIANT_TOKENS.flatMap((v2) => v2.aliases.map((a) => ({ key: v2.key, alias: normalizeText(a) }))).sort((a, b) => b.alias.length - a.alias.length);
-function wordRegex(alias) {
-  return new RegExp(`(?<![a-z0-9])${escapeRegex(alias)}(?![a-z0-9])`);
-}
-function normalizeColor(raw) {
-  if (!raw) return null;
-  const t = normalizeText(raw);
-  for (const c of COLOR_ALIASES) {
-    if (wordRegex(c.alias).test(t)) return { key: c.key, display: c.display };
-  }
-  return null;
-}
-function normalizeGrade(raw) {
-  if (!raw) return null;
-  const t = normalizeText(raw);
-  const m = t.match(/(?<![a-z0-9])(?:grade|gr)?\s?([abc]\+?(?:\s?\/\s?[abc]\+?)?)(?:\s?grade)?(?![a-z0-9+])/);
-  if (!m || !m[1]) return null;
-  return m[1].replace(/\s+/g, "").toUpperCase();
-}
-function normalizeCondition(raw) {
-  if (!raw) return "unknown";
-  const t = normalizeText(raw);
-  if (t === "new" || t === "refurbished" || t === "used") return t;
-  for (const c of CONDITION_ALIASES) {
-    if (wordRegex(c.alias).test(t)) return c.condition;
-  }
-  return "unknown";
-}
-function normalizeBrand(raw) {
-  if (!raw) return null;
-  const t = normalizeText(raw);
-  if (!t) return null;
-  for (const b of BRANDS) {
-    if (b.key === t || b.aliases.some((a) => normalizeText(a) === t)) return { key: b.key, display: b.display };
-  }
-  return { key: t, display: raw.trim() };
-}
-function titleCase(s) {
-  return s.split(" ").map((w2) => w2 ? w2[0].toUpperCase() + w2.slice(1) : w2).join(" ");
-}
-function buildNormalizedKey(p) {
-  return [p.brand ?? UNKNOWN, p.model ?? UNKNOWN, p.storage?.toLowerCase() ?? UNKNOWN, p.color ?? UNKNOWN, p.condition, p.grade?.toLowerCase() ?? UNKNOWN].join("|");
-}
-function normalizeProduct(text2, hints = {}) {
-  const original = (text2 ?? "").trim();
-  let work = ` ${normalizeText(original)} `;
-  const inferred = [];
-  const eanFound = extractEan(original);
-  let ean = eanFound?.ean ?? null;
-  let eanValid = eanFound ? eanFound.valid : null;
-  if (ean) work = work.replace(wordRegex(ean), " ");
-  let mpn = extractMpn(original);
-  if (mpn) work = work.replace(wordRegex(normalizeText(mpn)), " ");
-  let brand = null;
-  let brandDisplay = null;
-  let model = null;
-  let modelDisplay = null;
-  for (const p of MODEL_PATTERNS) {
-    const m = work.match(p.regex);
-    if (!m) continue;
-    const built = p.build(m);
-    if (!built) continue;
-    model = built.model;
-    modelDisplay = built.display;
-    const entry = BRANDS.find((b) => b.key === p.brand);
-    brand = p.brand;
-    brandDisplay = entry?.display ?? p.brand;
-    work = cutMatch(work, m);
-    break;
-  }
-  for (const b of BRAND_ALIASES) {
-    const re = wordRegex(b.alias);
-    if (re.test(work)) {
-      if (!brand) {
-        brand = b.key;
-        brandDisplay = b.display;
-      }
-      work = work.replace(re, " ");
-      break;
-    }
-  }
-  const storages = [];
-  work = work.replace(/(?<![a-z0-9])(\d{1,4})\s?(tb|to|gb|go|g)(?![a-z0-9])/g, (full, n, unit) => {
-    const num = Number(n);
-    if (unit === "g" && !STORAGE_SIZES_GB.has(num)) return full;
-    const isTb = unit === "tb" || unit === "to";
-    storages.push({ value: isTb ? `${num}TB` : `${num}GB`, gb: isTb ? num * 1024 : num });
-    return " ";
-  });
-  if (storages.length === 0) {
-    work = work.replace(/(?<![a-z0-9.,])(\d{2,4})(?![a-z0-9.,])/g, (full, n) => {
-      const num = Number(n);
-      if (storages.length === 0 && STORAGE_SIZES_GB.has(num)) {
-        storages.push({ value: `${num}GB`, gb: num });
-        return " ";
-      }
-      return full;
-    });
-  }
-  storages.sort((a, b) => b.gb - a.gb);
-  let storage = storages[0]?.value ?? null;
-  const variantParts2 = storages.slice(1).map((s) => `${s.value.toLowerCase()} ram`);
-  let grade = null;
-  const gradePatterns = [/(?<![a-z0-9])grade\s?([abc]\+?(?:\s?\/\s?[abc]\+?)?)(?![a-z0-9+])/, /(?<![a-z0-9])gr\s?([abc]\+?)(?![a-z0-9+])/, /(?<![a-z0-9])([abc]\+?)\s?grade(?![a-z0-9])/];
-  for (const re of gradePatterns) {
-    const m = work.match(re);
-    if (m && m[1]) {
-      grade = m[1].replace(/\s+/g, "").toUpperCase();
-      work = cutMatch(work, m);
-      break;
-    }
-  }
-  let condition = "unknown";
-  for (const c of CONDITION_ALIASES) {
-    const re = wordRegex(c.alias);
-    if (re.test(work)) {
-      condition = c.condition;
-      work = work.replace(re, " ");
-      break;
-    }
-  }
-  let color = null;
-  let colorDisplay = null;
-  for (const c of COLOR_ALIASES) {
-    const re = wordRegex(c.alias);
-    if (re.test(work)) {
-      color = c.key;
-      colorDisplay = c.display;
-      work = work.replace(re, " ");
-      break;
-    }
-  }
-  if (!grade && model) {
-    const m = work.match(/(?<![a-z0-9+])([abc]\+?)(?![a-z0-9+])/);
-    if (m && m[1]) {
-      grade = m[1].toUpperCase();
-      work = cutMatch(work, m);
-    }
-  }
-  for (const v2 of VARIANT_ALIASES) {
-    const re = wordRegex(v2.alias);
-    if (re.test(work)) {
-      if (!variantParts2.includes(v2.key)) variantParts2.push(v2.key);
-      work = work.replace(re, " ");
-    }
-  }
-  if (hints.brand) {
-    const b = normalizeBrand(hints.brand);
-    if (b) {
-      brand = b.key;
-      brandDisplay = b.display;
-    }
-  }
-  if (hints.model) {
-    const parsed = normalizeProduct(hints.model);
-    if (parsed.model && !parsed.inferred.includes("model")) {
-      model = parsed.model;
-      modelDisplay = parsed.modelDisplay;
-      if (!hints.brand && parsed.brand) {
-        brand = parsed.brand;
-        brandDisplay = parsed.brandDisplay;
-      }
-    } else {
-      const m = normalizeText(hints.model);
-      if (m) {
-        model = m;
-        modelDisplay = hints.model.trim();
-      }
-    }
-  }
-  if (hints.storage) storage = normalizeStorage(hints.storage) ?? storage;
-  if (hints.color) {
-    const c = normalizeColor(hints.color);
-    if (c) {
-      color = c.key;
-      colorDisplay = c.display;
-    } else {
-      const raw = normalizeText(hints.color);
-      if (raw) {
-        color = raw;
-        colorDisplay = titleCase(raw);
-      }
-    }
-  }
-  if (hints.grade) grade = normalizeGrade(hints.grade) ?? grade;
-  if (hints.condition) {
-    const c = normalizeCondition(hints.condition);
-    if (c !== "unknown") condition = c;
-  }
-  if (hints.ean) {
-    const e = hints.ean.replace(/\D/g, "");
-    if (e.length >= 8) {
-      ean = e;
-      eanValid = isValidGtin(e);
-    }
-  }
-  if (hints.mpn && hints.mpn.trim()) mpn = hints.mpn.trim().toUpperCase();
-  if (condition === "unknown" && grade) {
-    condition = "refurbished";
-    inferred.push("condition");
-  }
-  const remainingTokens = work.split(/\s+/).map((t) => t.trim()).filter((t) => t.length > 0 && !NOISE_TOKENS.has(t) && !/^[+/.,]+$/.test(t));
-  const remainingText = remainingTokens.join(" ");
-  if (!model && remainingTokens.length > 0) {
-    model = remainingTokens.slice(0, 4).join(" ");
-    modelDisplay = null;
-    inferred.push("model");
-  }
-  const variant = variantParts2.length > 0 ? variantParts2.join(" ") : null;
-  const displayParts = [brandDisplay, modelDisplay ?? (model && inferred.includes("model") ? titleCase(model) : null), storage, colorDisplay, grade ? `Grade ${grade}` : null].filter((x) => Boolean(x));
-  const displayTitle = modelDisplay || brandDisplay ? displayParts.join(" ") : original || displayParts.join(" ");
-  let confidence = 0.2;
-  if (brand) confidence += 0.2;
-  if (model && !inferred.includes("model")) confidence += 0.5;
-  if (storage) confidence += 0.05;
-  if (color) confidence += 0.03;
-  if (ean && eanValid) confidence = Math.max(confidence, 0.99);
-  confidence = Math.min(0.99, Math.round(confidence * 100) / 100);
-  const result = {
-    brand,
-    brandDisplay,
-    model,
-    modelDisplay,
-    storage,
-    color,
-    colorDisplay,
-    condition,
-    grade,
-    variant,
-    ean,
-    eanValid,
-    mpn,
-    normalizedKey: "",
-    displayTitle,
-    remainingText,
-    inferred,
-    confidence
-  };
-  result.normalizedKey = buildNormalizedKey(result);
-  return result;
-}
-var CONDITION_LABEL_FR = {
-  new: "Neuf",
-  refurbished: "Reconditionn\xE9",
-  used: "Occasion",
-  unknown: "Non communiqu\xE9"
-};
-
-// src/services/sourcing/http.ts
-import { isIP } from "node:net";
-import { lookup } from "node:dns/promises";
-var DEFAULT_TIMEOUT_MS2 = 3e4;
-var DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
-function decodeBytes(buffer, encoding) {
-  const enc = (encoding ?? "utf-8").toLowerCase();
-  try {
-    return new TextDecoder(enc, { fatal: false }).decode(buffer);
-  } catch {
-    return new TextDecoder("utf-8").decode(buffer);
-  }
-}
-function isPrivateAddress(address) {
-  const a = address.toLowerCase().replace(/^\[|\]$/g, "");
-  if (isIP(a) === 4) {
-    const parts = a.split(".").map(Number);
-    const [p0 = 0, p1 = 0] = parts;
-    if (p0 === 10 || p0 === 127 || p0 === 0) return true;
-    if (p0 === 169 && p1 === 254) return true;
-    if (p0 === 172 && p1 >= 16 && p1 <= 31) return true;
-    if (p0 === 192 && p1 === 168) return true;
-    if (p0 === 100 && p1 >= 64 && p1 <= 127) return true;
-    if (p0 >= 224) return true;
-    return false;
-  }
-  if (isIP(a) === 6) {
-    if (a === "::" || a === "::1") return true;
-    if (a.startsWith("fe80:") || a.startsWith("fc") || a.startsWith("fd")) return true;
-    const mapped = a.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped?.[1]) return isPrivateAddress(mapped[1]);
-    return false;
-  }
-  return false;
-}
-function isIpLiteralLike(host) {
-  if (isIP(host.replace(/^\[|\]$/g, ""))) return true;
-  return /^(0x[0-9a-f]+|\d+)$/i.test(host) || /^(0x[0-9a-f]+|\d+)(\.(0x[0-9a-f]+|\d+)){1,3}$/i.test(host);
-}
-function assertPublicHttpUrl(url) {
-  const u = new URL(url);
-  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(`URL non support\xE9e (${u.protocol}) : seuls http et https sont accept\xE9s.`);
-  if (u.username || u.password) throw new Error("Les identifiants dans l'URL ne sont pas accept\xE9s.");
-  const host = u.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
-    throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
-  }
-  if (isIpLiteralLike(host)) {
-    if (!isIP(host.replace(/^\[|\]$/g, "")) || isPrivateAddress(host)) throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
-  }
-  return u;
-}
-async function assertResolvesToPublicAddress(u, resolver = (h) => lookup(h, { all: true })) {
-  const host = u.hostname.replace(/^\[|\]$/g, "");
-  if (isIP(host)) {
-    if (isPrivateAddress(host)) throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
-    return;
-  }
-  let addresses;
-  try {
-    addresses = await resolver(host);
-  } catch {
-    throw new Error(`Nom d'h\xF4te introuvable : ${host}.`);
-  }
-  if (addresses.length === 0) throw new Error(`Nom d'h\xF4te introuvable : ${host}.`);
-  if (addresses.some((a) => isPrivateAddress(a.address))) throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
-}
-var MAX_REDIRECTS = 5;
-async function readBounded(res, maxBytes) {
-  const declared = Number(res.headers.get("content-length") ?? "0");
-  if (declared > maxBytes) throw new Error(`R\xE9ponse trop volumineuse (${declared} octets, maximum ${maxBytes}).`);
-  if (!res.body) return new ArrayBuffer(0);
-  const reader = res.body.getReader();
-  const chunks = [];
-  let total = 0;
-  for (; ; ) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) {
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => void 0);
-        throw new Error(`R\xE9ponse trop volumineuse (plus de ${maxBytes} octets).`);
-      }
-      chunks.push(value);
-    }
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    out.set(c, offset);
-    offset += c.byteLength;
-  }
-  return out.buffer;
-}
-async function fetchText(url, options) {
-  let target = assertPublicHttpUrl(url);
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
-  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
-  const doFetch = options.fetchImpl ?? fetch;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    let res = null;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      await assertResolvesToPublicAddress(target, options.resolver);
-      res = await doFetch(target.toString(), {
-        method: options.method ?? "GET",
-        redirect: "manual",
-        headers: { "User-Agent": options.userAgent, Accept: options.accept ?? "text/html,application/xhtml+xml,application/xml,text/csv,application/json;q=0.9,*/*;q=0.8", ...options.headers ?? {} },
-        body: options.method === "POST" ? options.body ?? "" : void 0,
-        signal: controller.signal
-      });
-      const location = res.headers.get("location");
-      if (res.status >= 300 && res.status < 400 && location) {
-        if (hop === MAX_REDIRECTS) throw new Error("Trop de redirections.");
-        await res.body?.cancel().catch(() => void 0);
-        target = assertPublicHttpUrl(new URL(location, target).toString());
-        continue;
-      }
-      break;
-    }
-    if (!res) throw new Error("Aucune r\xE9ponse.");
-    const buffer = await readBounded(res, maxBytes);
-    const contentType = res.headers.get("content-type");
-    const charset = contentType?.match(/charset=([\w-]+)/i)?.[1] ?? null;
-    return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString() };
-  } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") throw new Error(`D\xE9lai d\xE9pass\xE9 (${timeoutMs / 1e3} s) pour ${target.hostname}.`);
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 // src/integrations/sourcing/shared.ts
+init_normalizer();
+init_http();
 var DEFAULT_REQUEST_TIMEOUT_MS = 15e3;
 var defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function createAdapterHttp(ctx) {
@@ -4215,262 +5953,8 @@ function catalogUrls(config) {
 }
 
 // src/services/sourcing/crawler/parsers/jsonld-parser.ts
+init_feed_parsers();
 import { z as z14 } from "npm:zod@4.6.5";
-
-// src/services/sourcing/feed-parsers.ts
-import { parse as parseCsv } from "npm:csv-parse@7.0.3/sync";
-import { XMLParser as XMLParser2 } from "npm:fast-xml-parser@5.11.2";
-import { z as z13 } from "npm:zod@4.6.5";
-
-// src/domain/sourcing/types.ts
-var RAW_OFFER_FIELDS = [
-  "external_offer_id",
-  "title",
-  "price",
-  "currency",
-  "tax_type",
-  "moq",
-  "minimum_order_value",
-  "available_quantity",
-  "stock_status",
-  "shipping_cost",
-  "delivery_days",
-  "delivery_min_days",
-  "delivery_max_days",
-  "country",
-  "url",
-  "ean",
-  "mpn",
-  "brand",
-  "model",
-  "storage",
-  "color",
-  "grade",
-  "condition",
-  "supplier_sku"
-];
-
-// src/services/sourcing/feed-parsers.ts
-var feedOptionsSchema = z13.object({
-  delimiter: z13.string().min(1).max(3).optional(),
-  encoding: z13.string().min(1).max(30).optional(),
-  root_path: z13.string().max(200).optional(),
-  header_row: z13.boolean().optional(),
-  columns: z13.array(z13.string()).optional()
-});
-var fieldMappingSchema = z13.partialRecord(
-  z13.enum(RAW_OFFER_FIELDS),
-  z13.union([z13.string().min(1).max(200), z13.object({ const: z13.string().max(200) })])
-);
-var MAX_FEED_ROWS = 5e4;
-function getPath(obj2, path) {
-  if (!path) return obj2;
-  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".").filter((p) => p.length > 0);
-  let cur = obj2;
-  for (const p of parts) {
-    if (cur === null || cur === void 0) return void 0;
-    if (Array.isArray(cur)) {
-      const idx = Number(p);
-      cur = Number.isInteger(idx) ? cur[idx] : cur.map((x) => x && typeof x === "object" ? x[p] : void 0).find((v2) => v2 !== void 0);
-    } else if (typeof cur === "object") {
-      cur = cur[p];
-    } else return void 0;
-  }
-  return cur;
-}
-function findFirstArray(obj2, depth = 0, path = "") {
-  if (depth > 6 || obj2 === null || typeof obj2 !== "object") return null;
-  if (Array.isArray(obj2)) return obj2.length > 0 && typeof obj2[0] === "object" ? { path, items: obj2 } : null;
-  for (const [k, v2] of Object.entries(obj2)) {
-    const found = findFirstArray(v2, depth + 1, path ? `${path}.${k}` : k);
-    if (found) return found;
-  }
-  return null;
-}
-function detectDelimiter(sample) {
-  const candidates = [";", ",", "	", "|"];
-  const firstLine = sample.split(/\r?\n/)[0] ?? "";
-  let best = ",";
-  let bestCount = 0;
-  for (const c of candidates) {
-    const count = firstLine.split(c).length - 1;
-    if (count > bestCount) {
-      best = c;
-      bestCount = count;
-    }
-  }
-  return best;
-}
-function flatten(obj2, prefix = "", out = {}, depth = 0) {
-  if (depth > 4 || obj2 === null || typeof obj2 !== "object" || Array.isArray(obj2)) {
-    if (prefix) out[prefix] = obj2;
-    return out;
-  }
-  for (const [k, v2] of Object.entries(obj2)) {
-    const key2 = prefix ? `${prefix}.${k}` : k;
-    if (v2 !== null && typeof v2 === "object" && !Array.isArray(v2)) flatten(v2, key2, out, depth + 1);
-    else out[key2] = v2;
-  }
-  return out;
-}
-function parseFeedContent(content, format, options = {}) {
-  const warnings = [];
-  let rows = [];
-  const text2 = content.replace(/^﻿/, "");
-  if (format === "csv") {
-    const delimiter = options.delimiter ?? detectDelimiter(text2.slice(0, 4e3));
-    const headerRow = options.header_row ?? true;
-    const parsed = parseCsv(text2, {
-      columns: headerRow ? true : options.columns ?? false,
-      delimiter,
-      bom: true,
-      trim: true,
-      skip_empty_lines: true,
-      relax_column_count: true,
-      relax_quotes: true,
-      to: MAX_FEED_ROWS + 1
-    });
-    if (!headerRow && !options.columns) {
-      rows = parsed.map((r) => Object.fromEntries(r.map((v2, i) => [`col${i + 1}`, v2])));
-    } else {
-      rows = parsed;
-    }
-    if (options.delimiter === void 0 || options.delimiter === null) warnings.push(`D\xE9limiteur d\xE9tect\xE9 automatiquement : \xAB ${delimiter} \xBB`);
-  } else {
-    let doc;
-    if (format === "xml") {
-      const parser2 = new XMLParser2({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: true, cdataPropName: false });
-      doc = parser2.parse(text2);
-    } else {
-      doc = JSON.parse(text2);
-    }
-    let items = null;
-    if (options.root_path) {
-      const found = getPath(doc, options.root_path);
-      if (Array.isArray(found)) items = found;
-      else if (found && typeof found === "object") items = [found];
-      else warnings.push(`Chemin racine \xAB ${options.root_path} \xBB introuvable dans le flux.`);
-    }
-    if (!items) {
-      if (Array.isArray(doc)) items = doc;
-      else {
-        const found = findFirstArray(doc);
-        if (found) {
-          items = found.items;
-          warnings.push(`Chemin racine d\xE9tect\xE9 automatiquement : \xAB ${found.path} \xBB`);
-        }
-      }
-    }
-    rows = (items ?? []).filter((x) => x !== null && typeof x === "object").map((x) => flatten(x));
-  }
-  if (rows.length > MAX_FEED_ROWS) {
-    warnings.push(`Flux tronqu\xE9 \xE0 ${MAX_FEED_ROWS} lignes.`);
-    rows = rows.slice(0, MAX_FEED_ROWS);
-  }
-  const columns = Array.from(new Set(rows.slice(0, 200).flatMap((r) => Object.keys(r))));
-  return { rows, columns, warnings };
-}
-function toNumber(v2) {
-  if (v2 === null || v2 === void 0) return null;
-  if (typeof v2 === "number") return Number.isFinite(v2) ? v2 : null;
-  const s = String(v2).trim().replace(/\s| /g, "").replace(/[€$£]/g, "");
-  if (!s) return null;
-  const normalized = /,\d{1,2}$/.test(s) && s.includes(".") ? s.replace(/\./g, "").replace(",", ".") : /\.\d{1,2}$/.test(s) && s.includes(",") ? s.replace(/,/g, "") : s.replace(",", ".");
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
-}
-function toInt(v2) {
-  const n = toNumber(v2);
-  return n === null ? null : Math.round(n);
-}
-function toTaxType(v2) {
-  const s = String(v2 ?? "").trim().toLowerCase();
-  if (!s) return "unknown";
-  if (/^(ht|hors[\s-]?taxes?|excl|exclusive|net|ex[\s-]?vat|without[\s-]?vat|false|0)$/.test(s)) return "ht";
-  if (/^(ttc|toutes[\s-]?taxes|incl|inclusive|inc[\s-]?vat|with[\s-]?vat|gross|true|1)$/.test(s)) return "ttc";
-  return "unknown";
-}
-function toStockStatus(v2) {
-  const s = String(v2 ?? "").trim().toLowerCase();
-  if (!s) return "unknown";
-  if (/^(in[\s_-]?stock|en[\s_-]?stock|disponible|available|yes|true|oui|1|instock|https?:\/\/schema\.org\/instock)$/.test(s)) return "in_stock";
-  if (/^(out[\s_-]?of[\s_-]?stock|rupture|indisponible|unavailable|no|false|non|0|outofstock|sold[\s_-]?out|https?:\/\/schema\.org\/outofstock)$/.test(s)) return "out_of_stock";
-  if (/^(low|faible|limited|limite|limitedavailability|https?:\/\/schema\.org\/limitedavailability)$/.test(s)) return "low";
-  return "unknown";
-}
-function toDeliveryRange(v2) {
-  if (v2 === null || v2 === void 0 || v2 === "") return { min: null, max: null };
-  const s = String(v2).trim();
-  const m = s.match(/(\d+)\s*(?:-|–|à|to|a)\s*(\d+)/i);
-  if (m) return { min: Number(m[1]), max: Number(m[2]) };
-  const n = toInt(s.replace(/[^\d.,]/g, ""));
-  return { min: n, max: n };
-}
-function str2(v2) {
-  if (v2 === null || v2 === void 0) return null;
-  const s = String(v2).trim();
-  return s.length > 0 ? s : null;
-}
-function mapRow(row, mapping, defaults = {}) {
-  const errors = [];
-  const read = (field2) => {
-    const m = mapping[field2];
-    if (m === void 0) return void 0;
-    if (typeof m === "string") {
-      const direct = row[m];
-      return direct !== void 0 ? direct : getPath(row, m);
-    }
-    return m.const;
-  };
-  const externalOfferId = str2(read("external_offer_id")) ?? str2(read("supplier_sku")) ?? str2(read("ean"));
-  const title = str2(read("title"));
-  const price = toNumber(read("price"));
-  const currency = str2(read("currency"))?.toUpperCase() ?? defaults.currency?.toUpperCase() ?? null;
-  if (!externalOfferId) errors.push("Identifiant d'offre manquant (external_offer_id, supplier_sku ou ean).");
-  if (!title) errors.push("Titre manquant.");
-  if (read("price") !== void 0 && price === null && str2(read("price")) !== null) errors.push(`Prix illisible : \xAB ${String(read("price")).slice(0, 30)} \xBB.`);
-  if (price === null) errors.push("Prix manquant.");
-  if (!currency) errors.push("Devise manquante (colonne ou devise par d\xE9faut de la source).");
-  if (errors.length > 0 || !externalOfferId || !title) return { offer: null, errors };
-  const deliveryBoth = toDeliveryRange(read("delivery_days"));
-  const dMin = toInt(read("delivery_min_days")) ?? deliveryBoth.min;
-  const dMax = toInt(read("delivery_max_days")) ?? deliveryBoth.max;
-  const taxRaw = read("tax_type");
-  const taxType = taxRaw !== void 0 ? toTaxType(taxRaw) : defaults.taxType ?? "unknown";
-  const stockRaw = read("stock_status");
-  const availableQuantity = toInt(read("available_quantity"));
-  const offer = {
-    externalOfferId,
-    externalProductId: str2(read("supplier_sku")),
-    title,
-    price,
-    currency,
-    taxType,
-    moq: toInt(read("moq")),
-    minimumOrderValue: toNumber(read("minimum_order_value")),
-    availableQuantity,
-    stockStatus: stockRaw !== void 0 ? toStockStatus(stockRaw) : availableQuantity === null ? "unknown" : availableQuantity > 0 ? "in_stock" : "out_of_stock",
-    shippingCost: toNumber(read("shipping_cost")),
-    shippingCurrency: currency,
-    deliveryMinDays: dMin,
-    deliveryMaxDays: dMax,
-    country: str2(read("country"))?.toUpperCase().slice(0, 2) ?? defaults.country ?? null,
-    url: str2(read("url")),
-    ean: str2(read("ean"))?.replace(/\D/g, "") || null,
-    mpn: str2(read("mpn")),
-    brand: str2(read("brand")),
-    model: str2(read("model")),
-    storage: str2(read("storage")),
-    color: str2(read("color")),
-    grade: str2(read("grade")),
-    condition: read("condition") !== void 0 ? normalizeCondition(str2(read("condition"))) : null,
-    supplierSku: str2(read("supplier_sku")),
-    raw: row
-  };
-  return { offer, errors };
-}
-
-// src/services/sourcing/crawler/parsers/jsonld-parser.ts
 var SCRIPT_RE = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 var offerSchema = z14.object({
   "@type": z14.union([z14.string(), z14.array(z14.string())]).optional(),
@@ -4795,6 +6279,7 @@ function parseSuggestJson(text2) {
 }
 
 // src/integrations/sourcing/shopify-storefront/mapper.ts
+init_feed_parsers();
 var STORAGE_OPTION = /^(storage|stockage|capacit[ée]|m[ée]moire|memory|taille de stockage|capacity)$/i;
 var COLOR_OPTION = /^(color|colour|couleur|coloris)$/i;
 var CONDITION_OPTION = /^(condition|[ée]tat|grade|qualit[ée])$/i;
@@ -5255,8 +6740,8 @@ function toItem(record) {
   };
 }
 function parseGmcXml(text2) {
-  const parser2 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
-  const doc = parser2.parse(text2.replace(/^\uFEFF/, ""));
+  const parser3 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
+  const doc = parser3.parse(text2.replace(/^\uFEFF/, ""));
   const rss = doc.rss;
   const channel = rss?.channel;
   const feed = doc.feed;
@@ -5494,6 +6979,8 @@ var parseBigbuyStock = (text2) => parseList(text2, bigbuyStockSchema, "productss
 var parseBigbuyManufacturers = (text2) => parseList(text2, bigbuyManufacturerSchema, "manufacturers.json");
 
 // src/integrations/sourcing/bigbuy/mapper.ts
+init_normalizer();
+init_feed_parsers();
 var BIGBUY_CURRENCY = "EUR";
 function mapBigbuyProduct(product, info, stock, brandName, requestUrl) {
   const title = str(info?.name);
@@ -5792,6 +7279,7 @@ function parseIngramPriceAvailability(text2) {
 }
 
 // src/integrations/sourcing/ingram-micro/mapper.ts
+init_feed_parsers();
 function truthy(v2) {
   if (v2 === null || v2 === void 0) return null;
   if (typeof v2 === "boolean") return v2;
@@ -5978,8 +7466,11 @@ var ingramMicroAdapter = {
 
 // src/integrations/sourcing/ebay-browse/index.ts
 import { z as z20 } from "npm:zod@4.6.5";
+init_env();
 
 // src/domain/sourcing/query-parser.ts
+init_normalizer();
+init_dictionaries();
 function parseQuery2(input) {
   const raw = (input ?? "").trim();
   const normalized = normalizeProduct(raw);
@@ -6156,6 +7647,9 @@ var ebayBrowseAdapter = {
     return r.error ? { ok: false, message: r.error } : { ok: true, message: `API eBay joignable : ${r.offers.length} annonce(s) pour \xAB iphone \xBB.` };
   }
 };
+
+// src/integrations/sourcing/sitemap-jsonld/index.ts
+init_normalizer();
 
 // src/services/sourcing/crawler/robots.ts
 function parseRobotsTxt(text2) {
@@ -6739,76 +8233,10 @@ var matchDecisionSchema = z21.object({ match_id: z21.string().uuid(), decision: 
 var linkOfferSchema = z21.object({ offer_id: z21.string().uuid(), sku_id: z21.string().uuid("Choisissez un SKU.") });
 var offerStatusSchema = z21.object({ offer_id: z21.string().uuid(), status: z21.enum(["rejected", "active"]) });
 
-// src/services/sourcing/offer-query.ts
-var OFFER_SELECT = "*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, currency), source:supplier_sources(id, name, source_type, status, last_successful_sync_at, automated_access_confirmed, config)";
-var OFFER_FETCH_LIMIT = 500;
-function baseOfferQuery(client2, organizationId, filters, skuIdsForCategory) {
-  let q = client2.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");
-  if (filters.brand) q = q.ilike("brand", escapeLike(filters.brand));
-  if (filters.model) q = q.ilike("model", `%${escapeLike(filters.model)}%`);
-  if (filters.storage) q = q.ilike("storage", escapeLike(filters.storage));
-  if (filters.color) q = q.ilike("color", escapeLike(filters.color));
-  if (filters.condition) q = q.eq("condition", filters.condition);
-  if (filters.grade) q = q.ilike("grade", escapeLike(filters.grade));
-  if (filters.grades && filters.grades.length > 0) q = q.in("grade", filters.grades.map((g) => g.toUpperCase()));
-  if (filters.maxPrice !== void 0) q = q.lte("normalized_price", filters.maxPrice);
-  if (filters.countries && filters.countries.length > 0) q = q.in("country", filters.countries.map((c) => c.toUpperCase()));
-  if (filters.maxDeliveryDays !== void 0) q = q.lte("delivery_max_days", filters.maxDeliveryDays);
-  if (filters.maxMoq !== void 0) q = q.or(`moq.lte.${filters.maxMoq},moq.is.null`);
-  if (filters.minQuantity !== void 0) q = q.gte("available_quantity", filters.minQuantity);
-  if (filters.taxType) q = q.eq("tax_type", filters.taxType);
-  if (filters.supplierId) q = q.eq("supplier_id", filters.supplierId);
-  if (filters.sourceType) q = q.eq("source_type", filters.sourceType);
-  if (filters.availability === "in_stock") q = q.in("stock_status", ["in_stock", "low"]);
-  if (skuIdsForCategory) q = skuIdsForCategory.length > 0 ? q.in("sku_id", skuIdsForCategory.slice(0, 1e3)) : q.eq("id", "00000000-0000-0000-0000-000000000000");
-  return q;
-}
-async function findOffers(client2, organizationId, parsed, filters, options = {}) {
-  const skuIds = options.skuIdsForCategory ?? null;
-  const build = () => baseOfferQuery(client2, organizationId, filters, skuIds);
-  const run = async (q) => {
-    const { data, error } = await q.order("normalized_price", { ascending: true, nullsFirst: false }).limit(OFFER_FETCH_LIMIT);
-    if (error) throw error;
-    return data ?? [];
-  };
-  let offers = [];
-  let stage = "none";
-  if (parsed.ean) {
-    offers = await run(build().eq("ean", parsed.ean));
-    stage = "identifier";
-  }
-  if (offers.length === 0 && parsed.mpn && parsed.kind === "mpn") {
-    offers = await run(build().ilike("mpn", escapeLike(parsed.mpn)));
-    stage = "identifier";
-  }
-  if (offers.length === 0 && parsed.criteria.model && parsed.criteria.brand) {
-    let q = build().eq("brand", parsed.criteria.brand).eq("model", parsed.criteria.model);
-    if (parsed.criteria.storage && !filters.storage) q = q.eq("storage", parsed.criteria.storage);
-    if (parsed.criteria.color && !filters.color) q = q.eq("color", parsed.criteria.color);
-    if (parsed.criteria.grade && !filters.grade) q = q.eq("grade", parsed.criteria.grade);
-    if (parsed.criteria.condition !== "unknown" && !filters.condition) q = q.eq("condition", parsed.criteria.condition);
-    offers = await run(q);
-    stage = "structured";
-  }
-  if (offers.length === 0 && parsed.tokens.length > 0) {
-    let q = build();
-    for (const t of parsed.tokens.slice(0, 8)) q = q.ilike("title_original", `%${escapeLike(t)}%`);
-    offers = await run(q);
-    stage = "text";
-  }
-  const hasFilters = Object.entries(filters).some(([k, v2]) => !["sort", "page"].includes(k) && v2 !== void 0 && v2 !== "" && !(Array.isArray(v2) && v2.length === 0));
-  if (offers.length === 0 && parsed.kind === "empty" && hasFilters) {
-    offers = await run(build());
-    stage = "filters_only";
-  }
-  if (options.includeSkuId) {
-    const linked = await run(build().eq("sku_id", options.includeSkuId));
-    const ids = new Set(offers.map((o) => o.id));
-    for (const o of linked) if (!ids.has(o.id)) offers.push(o);
-    if (stage === "none" && linked.length > 0) stage = "identifier";
-  }
-  return { offers, stage };
-}
+// src/services/sourcing/search.ts
+init_empty();
+init_offer_query();
+init_normalizer();
 
 // src/domain/sourcing/pricing.ts
 function round22(n) {
@@ -6861,100 +8289,9 @@ function freshness(lastSeenAt, now = /* @__PURE__ */ new Date()) {
   return { label: `V\xE9rifi\xE9 ${rel}`, ageHours: Math.round(ageHours * 10) / 10, stale, veryStale, warning: veryStale ? "Prix potentiellement obsol\xE8te" : stale ? "Donn\xE9e potentiellement obsol\xE8te" : null };
 }
 
-// src/domain/sourcing/validation.ts
-var ANOMALY_LABEL = {
-  title_missing: "Titre manquant",
-  price_missing: "Prix manquant",
-  price_zero: "Prix \xE0 0 (ignor\xE9, prix pr\xE9c\xE9dent conserv\xE9)",
-  price_negative: "Prix n\xE9gatif",
-  price_too_low: "Prix anormalement bas par rapport \xE0 l'historique",
-  price_too_high: "Prix anormalement \xE9lev\xE9 par rapport \xE0 l'historique",
-  negative_stock: "Stock n\xE9gatif",
-  moq_invalid: "MOQ incoh\xE9rent",
-  currency_unknown: "Devise inconnue",
-  url_invalid: "URL invalide"
-};
-var PRICE_LOW_RATIO = 0.3;
-var PRICE_HIGH_RATIO = 3;
-var MOQ_MAX = 1e6;
-function median(values) {
-  if (values.length === 0) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
-}
-function isValidHttpUrl(url) {
-  try {
-    const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-function validateOffer(offer, history = { previousPrice: null, prices30d: [] }) {
-  const anomalies = [];
-  const add = (code, severity, extra) => anomalies.push({ code, severity, message: extra ? `${ANOMALY_LABEL[code]} : ${extra}` : ANOMALY_LABEL[code] });
-  if (!offer.title || offer.title.trim().length === 0) add("title_missing", "blocking");
-  const currency = offer.currency?.trim().toUpperCase() ?? "";
-  if (!currency || !ISO_4217.has(currency)) add("currency_unknown", "blocking", currency ? `\xAB ${currency} \xBB n'est pas un code ISO 4217 connu` : "aucune devise fournie");
-  let effectivePrice = null;
-  let priceRejected = false;
-  if (offer.price === null || !Number.isFinite(offer.price)) {
-    if (history.previousPrice !== null) {
-      effectivePrice = history.previousPrice;
-      priceRejected = true;
-      add("price_missing", "warning", "prix pr\xE9c\xE9dent conserv\xE9");
-    } else {
-      add("price_missing", "blocking");
-    }
-  } else if (offer.price < 0) {
-    add("price_negative", history.previousPrice !== null ? "warning" : "blocking");
-    effectivePrice = history.previousPrice;
-    priceRejected = true;
-  } else if (offer.price === 0) {
-    add("price_zero", history.previousPrice !== null ? "warning" : "blocking");
-    effectivePrice = history.previousPrice;
-    priceRejected = true;
-  } else {
-    effectivePrice = offer.price;
-    const med = median(history.prices30d);
-    if (med !== null && med > 0 && history.prices30d.length >= 2) {
-      if (offer.price < med * PRICE_LOW_RATIO) add("price_too_low", "warning", `${offer.price} contre une m\xE9diane de ${med.toFixed(2)} sur 30 jours`);
-      else if (offer.price > med * PRICE_HIGH_RATIO) add("price_too_high", "warning", `${offer.price} contre une m\xE9diane de ${med.toFixed(2)} sur 30 jours`);
-    }
-  }
-  let effectiveQuantity = offer.availableQuantity;
-  if (offer.availableQuantity !== null && (offer.availableQuantity < 0 || !Number.isFinite(offer.availableQuantity))) {
-    add("negative_stock", "warning", String(offer.availableQuantity));
-    effectiveQuantity = null;
-  } else if (effectiveQuantity !== null) {
-    effectiveQuantity = Math.floor(effectiveQuantity);
-  }
-  let effectiveMoq = offer.moq;
-  if (offer.moq !== null && (!Number.isFinite(offer.moq) || offer.moq < 1 || offer.moq > MOQ_MAX || !Number.isInteger(offer.moq))) {
-    add("moq_invalid", "warning", String(offer.moq));
-    effectiveMoq = null;
-  }
-  let effectiveUrl = offer.sourceUrl?.trim() || null;
-  if (effectiveUrl && !isValidHttpUrl(effectiveUrl)) {
-    add("url_invalid", "warning", effectiveUrl.slice(0, 80));
-    effectiveUrl = null;
-  }
-  const blocking = anomalies.some((a) => a.severity === "blocking");
-  const valid = !blocking && effectivePrice !== null;
-  const status = anomalies.length > 0 ? "suspicious" : "active";
-  return {
-    valid,
-    anomalies,
-    anomalyCodes: anomalies.map((a) => a.code),
-    status,
-    effectivePrice,
-    priceRejected,
-    effectiveQuantity,
-    effectiveMoq,
-    effectiveUrl
-  };
-}
+// src/services/sourcing/search.ts
+init_validation();
+init_offer_query();
 
 // src/domain/sourcing/dedupe.ts
 function better(a, b) {
@@ -7000,440 +8337,20 @@ function dedupeOffers(items) {
   return { kept, collapsed };
 }
 
-// src/services/sourcing/ecb-parser.ts
-import { XMLParser as XMLParser4 } from "npm:fast-xml-parser@5.11.2";
-import { z as z22 } from "npm:zod@4.6.5";
-var cubeSchema = z22.object({ "@_currency": z22.string().length(3), "@_rate": z22.coerce.number().positive() });
-function parseEcbXml(xml) {
-  const parser2 = new XMLParser4({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true });
-  const doc = parser2.parse(xml);
-  const envelope = doc.Envelope ?? doc;
-  const outer = envelope.Cube;
-  const dated = outer?.Cube;
-  const day = Array.isArray(dated) ? dated[0] : dated;
-  if (!day || typeof day !== "object") throw new Error("Flux BCE illisible : structure Cube absente.");
-  const date = String(day["@_time"] ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Flux BCE illisible : date absente.");
-  const inner = day.Cube;
-  const list = Array.isArray(inner) ? inner : inner ? [inner] : [];
-  const rates = { EUR: 1 };
-  for (const c of list) {
-    const parsed = cubeSchema.safeParse(c);
-    if (parsed.success) rates[parsed.data["@_currency"].toUpperCase()] = parsed.data["@_rate"];
-  }
-  if (Object.keys(rates).length <= 1) throw new Error("Flux BCE illisible : aucun taux.");
-  return { date, rates };
-}
-function crossRate(rates, from, to) {
-  const f = rates[from.toUpperCase()];
-  const t = rates[to.toUpperCase()];
-  if (!f || !t) return null;
-  return Math.round(t / f * 1e6) / 1e6;
-}
+// src/services/sourcing/live-search.ts
+init_empty();
+init_admin();
+init_env();
+init_logger();
+init_normalizer();
+init_offer_storage();
 
-// src/services/sourcing/fx-rates.ts
-var log5 = createLogger("FX_RATES");
-var ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
-var CACHE_TTL_MS = 60 * 60 * 1e3;
-var cache3 = null;
-async function refreshFxRates(options = {}) {
-  const doFetch = options.fetchImpl ?? fetch;
-  const res = await doFetch(ECB_DAILY_URL, { headers: { Accept: "application/xml,text/xml", ...options.userAgent ? { "User-Agent": options.userAgent } : {} } });
-  if (!res.ok) throw new Error(`BCE : HTTP ${res.status}`);
-  const xml = await res.text();
-  const parsed = parseEcbXml(xml);
-  const admin = createAdminSupabaseClient();
-  const rows = Object.entries(parsed.rates).filter(([cur]) => cur !== "EUR").map(([cur, rate]) => ({ base_currency: "EUR", quote_currency: cur, rate, rate_date: parsed.date, source: "ecb", fetched_at: (/* @__PURE__ */ new Date()).toISOString() }));
-  const { error } = await admin.from("fx_rates").upsert(rows, { onConflict: "base_currency,quote_currency,rate_date" });
-  if (error) throw new Error(`fx_rates : ${error.message}`);
-  cache3 = { loadedAt: Date.now(), date: parsed.date, rates: parsed.rates };
-  log5.info("fx rates refreshed", { date: parsed.date, count: rows.length });
-  return { date: parsed.date, count: rows.length };
-}
-async function loadLatestRates() {
-  if (cache3 && Date.now() - cache3.loadedAt < CACHE_TTL_MS) return { date: cache3.date, rates: cache3.rates };
-  const admin = createAdminSupabaseClient();
-  const { data: latest } = await admin.from("fx_rates").select("rate_date").eq("base_currency", "EUR").order("rate_date", { ascending: false }).limit(1).maybeSingle();
-  if (!latest) return null;
-  const { data: rows } = await admin.from("fx_rates").select("quote_currency, rate").eq("base_currency", "EUR").eq("rate_date", latest.rate_date);
-  const rates = { EUR: 1 };
-  for (const r of rows ?? []) rates[r.quote_currency.toUpperCase()] = Number(r.rate);
-  cache3 = { loadedAt: Date.now(), date: latest.rate_date, rates };
-  return { date: latest.rate_date, rates };
-}
-async function getFxRate(from, to) {
-  const f = from.toUpperCase();
-  const t = to.toUpperCase();
-  if (f === t) return { rate: 1, date: null };
-  const latest = await loadLatestRates();
-  if (!latest) return null;
-  const rate = crossRate(latest.rates, f, t);
-  return rate === null ? null : { rate, date: latest.date };
-}
-
-// src/domain/sourcing/matching.ts
-var MATCH_HIGH_THRESHOLD = 0.9;
-var MATCH_AMBIGUOUS_THRESHOLD = 0.6;
-function cleanId2(s) {
-  return (s ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
-}
-function levelOf(confidence) {
-  if (confidence >= MATCH_HIGH_THRESHOLD) return "high";
-  if (confidence >= MATCH_AMBIGUOUS_THRESHOLD) return "ambiguous";
-  return null;
-}
-function tokenSet(s) {
-  return new Set(
-    normalizeText(s).split(" ").filter((t) => t.length >= 2 && !NOISE_TOKENS.has(t))
-  );
-}
-function jaccard(a, b) {
-  if (a.size === 0 || b.size === 0) return 0;
-  let inter = 0;
-  for (const t of a) if (b.has(t)) inter++;
-  return inter / (a.size + b.size - inter);
-}
-function normalizeCandidate(c) {
-  return normalizeProduct(`${c.brand ?? ""} ${c.productName} ${c.variantName ?? ""}`, {
-    brand: c.brand,
-    storage: c.attributes.storage ?? null,
-    color: c.attributes.color ?? null,
-    grade: c.attributes.grade ?? c.grade ?? null,
-    condition: c.condition,
-    ean: c.ean,
-    mpn: c.mpn
-  });
-}
-function compareAttributes(o, c) {
-  let score = 0;
-  let cap2 = 0.95;
-  const reasons = [];
-  const UNKNOWN_CAP = MATCH_HIGH_THRESHOLD - 0.01;
-  const cmp = (label, a, b, equalPts, unknownPts, mismatchCap, unknownCap) => {
-    if (a && b) {
-      if (a === b) {
-        score += equalPts;
-        reasons.push(`${label} identique (${a})`);
-      } else {
-        cap2 = Math.min(cap2, mismatchCap);
-        reasons.push(`${label} diff\xE9rent (${a} vs ${b})`);
-      }
-    } else {
-      score += unknownPts;
-      cap2 = Math.min(cap2, unknownCap);
-      reasons.push(`${label} non renseign\xE9${!a && !b ? " des deux c\xF4t\xE9s" : !a ? " c\xF4t\xE9 offre" : " c\xF4t\xE9 SKU"}`);
-    }
-  };
-  cmp("Marque", o.brand, c.brand, 0.2, 0.1, 0.2, UNKNOWN_CAP);
-  const oModel = o.inferred.includes("model") ? null : o.model;
-  const cModel = c.inferred.includes("model") ? null : c.model;
-  cmp("Mod\xE8le", oModel, cModel, 0.45, 0.15, 0.2, 0.55);
-  cmp("Stockage", o.storage, c.storage, 0.15, 0.07, 0.5, UNKNOWN_CAP);
-  cmp("Couleur", o.color, c.color, 0.1, 0.05, 0.75, UNKNOWN_CAP);
-  cmp("Grade", o.grade, c.grade, 0.07, 0.035, 0.8, UNKNOWN_CAP);
-  const oCond = o.condition === "unknown" ? null : o.condition;
-  const cCond = c.condition === "unknown" ? null : c.condition;
-  cmp("\xC9tat", oCond, cCond, 0.03, 0.015, 0.8, 0.95);
-  return { score: Math.min(score, cap2), cap: cap2, reasons };
-}
-function matchOfferToSkus(offer, candidates) {
-  const normalizedOffer = offer.normalized ?? normalizeProduct(offer.title, { ean: offer.ean, mpn: offer.mpn });
-  const offerEan = cleanId2(offer.ean ?? normalizedOffer.ean);
-  const offerMpn = cleanId2(offer.mpn ?? normalizedOffer.mpn);
-  const offerSku = cleanId2(offer.supplierSku);
-  const offerTokens = tokenSet(offer.title);
-  const results = [];
-  for (const c of candidates) {
-    let best = null;
-    const push = (r) => {
-      if (!best || r.confidence > best.confidence) best = r;
-    };
-    if (offerEan && (cleanId2(c.ean) === offerEan || cleanId2(c.barcode) === offerEan)) {
-      push({ skuId: c.skuId, code: c.code, confidence: 1, method: "ean", level: "high", reasons: [`EAN identique (${offer.ean ?? normalizedOffer.ean})`], autoConfirmable: true });
-    }
-    if (offerMpn && cleanId2(c.mpn) === offerMpn) {
-      push({ skuId: c.skuId, code: c.code, confidence: 0.97, method: "mpn", level: "high", reasons: [`R\xE9f\xE9rence fabricant identique (${offer.mpn ?? normalizedOffer.mpn})`], autoConfirmable: true });
-    }
-    if (offerSku && (cleanId2(c.code) === offerSku || c.barcode && cleanId2(c.barcode) === offerSku)) {
-      push({ skuId: c.skuId, code: c.code, confidence: 0.95, method: "supplier_sku", level: "high", reasons: [`R\xE9f\xE9rence fournisseur identique au code SKU (${c.code})`], autoConfirmable: true });
-    }
-    if (!best) {
-      const normalizedCandidate = normalizeCandidate(c);
-      const attr2 = compareAttributes(normalizedOffer, normalizedCandidate);
-      const attrLevel = levelOf(attr2.score);
-      if (attrLevel) {
-        push({ skuId: c.skuId, code: c.code, confidence: round3(attr2.score), method: "attributes", level: attrLevel, reasons: attr2.reasons, autoConfirmable: false });
-      }
-      const sim = jaccard(offerTokens, tokenSet(`${c.brand ?? ""} ${c.productName} ${c.variantName ?? ""}`));
-      const textScore = round3(sim * 0.8);
-      const textLevel = levelOf(textScore);
-      if (textLevel && (!best || textScore > best.confidence)) {
-        push({ skuId: c.skuId, code: c.code, confidence: textScore, method: "text", level: textLevel, reasons: [`Similarit\xE9 textuelle ${(sim * 100).toFixed(0)} %`], autoConfirmable: false });
-      }
-    }
-    if (best) results.push(best);
-  }
-  return results.sort((a, b) => b.confidence - a.confidence);
-}
-function round3(n) {
-  return Math.round(n * 1e3) / 1e3;
-}
-
-// src/services/sourcing/matching-service.ts
-var log6 = createLogger("SOURCING_MATCHING");
-var MATCH_CANDIDATE_LIMIT = 300;
-function toCandidate(r) {
-  if (!r.product || !r.variant) return null;
-  const attrs = r.variant.attributes ?? {};
-  const s = (k) => typeof attrs[k] === "string" ? attrs[k] : null;
-  return {
-    skuId: r.id,
-    code: r.code,
-    productName: r.product.name,
-    brand: r.product.brand,
-    variantName: r.variant.name,
-    attributes: { storage: s("storage"), color: s("color"), grade: s("grade") },
-    condition: r.variant.condition,
-    grade: r.variant.grade,
-    ean: r.variant.ean,
-    mpn: r.variant.mpn,
-    barcode: r.barcode
-  };
-}
-var SELECT = "id, code, barcode, product:products!inner(name, brand), variant:product_variants!inner(name, attributes, condition, grade, ean, mpn)";
-async function loadMatchCandidates(client2, organizationId, hints, limit = MATCH_CANDIDATE_LIMIT) {
-  const out = /* @__PURE__ */ new Map();
-  const add = (rows) => {
-    for (const r of rows ?? []) {
-      const c = toCandidate(r);
-      if (c && !out.has(c.skuId)) out.set(c.skuId, c);
-    }
-  };
-  const base = () => client2.from("skus").select(SELECT).eq("organization_id", organizationId).eq("is_active", true);
-  if (hints.ean) {
-    const [{ data: byEan }, { data: byBarcode }] = await Promise.all([base().eq("variant.ean", hints.ean).limit(20), base().eq("barcode", hints.ean).limit(20)]);
-    add(byEan);
-    add(byBarcode);
-  }
-  if (hints.mpn) {
-    const { data } = await base().ilike("variant.mpn", escapeLike(hints.mpn)).limit(20);
-    add(data);
-  }
-  if (hints.supplierSku) {
-    const { data } = await base().ilike("code", escapeLike(hints.supplierSku)).limit(5);
-    add(data);
-  }
-  if (hints.brand && out.size < limit) {
-    const { data } = await base().ilike("product.brand", escapeLike(hints.brand)).limit(limit);
-    add(data);
-  }
-  if (out.size === 0 && hints.text) {
-    const term = hints.text.split(" ").filter((t) => t.length >= 3)[0];
-    if (term) {
-      const { data } = await base().ilike("product.name", `%${escapeLike(term)}%`).limit(limit);
-      add(data);
-    }
-  }
-  return Array.from(out.values()).slice(0, limit);
-}
-async function suggestMatchesForOffer(client2, organizationId, offer, options = {}) {
-  const normalized = normalizeProduct(offer.title_original, { ean: offer.ean, mpn: offer.mpn, brand: offer.brand });
-  const candidates = await loadMatchCandidates(client2, organizationId, { ean: normalized.ean, mpn: normalized.mpn, supplierSku: offer.external_product_id, brand: normalized.brandDisplay ?? normalized.brand, text: normalized.remainingText || offer.title_original });
-  if (candidates.length === 0) return { suggestions: [], confirmedSkuId: null };
-  const matches = matchOfferToSkus({ title: offer.title_original, normalized, ean: offer.ean, mpn: offer.mpn, supplierSku: offer.external_product_id }, candidates);
-  const top = matches.slice(0, 3);
-  if (top.length === 0) return { suggestions: [], confirmedSkuId: null };
-  const { data: existing } = await client2.from("product_matches").select("id, sku_id, status").eq("organization_id", organizationId).eq("offer_id", offer.id);
-  const existingBySku = new Map((existing ?? []).map((m) => [m.sku_id, m]));
-  let confirmedSkuId = null;
-  for (const m of top) {
-    const prior = existingBySku.get(m.skuId);
-    const autoConfirm = Boolean(options.autoConfirmExact) && m.autoConfirmable && !offer.sku_id && !confirmedSkuId;
-    if (prior) {
-      if (prior.status === "rejected") continue;
-      if (autoConfirm && prior.status === "suggested") {
-        await client2.from("product_matches").update({ status: "confirmed", decided_at: (/* @__PURE__ */ new Date()).toISOString(), confidence: m.confidence, method: m.method, reasons: m.reasons }).eq("id", prior.id);
-        confirmedSkuId = m.skuId;
-      }
-      continue;
-    }
-    const { error } = await client2.from("product_matches").insert({
-      organization_id: organizationId,
-      offer_id: offer.id,
-      sourcing_product_id: offer.normalized_product_id,
-      sku_id: m.skuId,
-      confidence: m.confidence,
-      method: m.method,
-      reasons: m.reasons,
-      status: autoConfirm ? "confirmed" : "suggested",
-      created_by: options.createdBy ?? null,
-      decided_at: autoConfirm ? (/* @__PURE__ */ new Date()).toISOString() : null
-    });
-    if (error) {
-      log6.warn("product match not recorded", { offerId: offer.id, skuId: m.skuId, error: error.message });
-      continue;
-    }
-    if (autoConfirm) confirmedSkuId = m.skuId;
-  }
-  if (confirmedSkuId) await applyConfirmedMatch(client2, organizationId, { offerId: offer.id, skuId: confirmedSkuId, sourcingProductId: offer.normalized_product_id });
-  return { suggestions: top, confirmedSkuId };
-}
-async function applyConfirmedMatch(client2, organizationId, link) {
-  if (link.offerId) await client2.from("sourcing_offers").update({ sku_id: link.skuId }).eq("id", link.offerId).eq("organization_id", organizationId);
-  if (link.sourcingProductId) {
-    await client2.from("sourcing_products").update({ sku_id: link.skuId }).eq("id", link.sourcingProductId).eq("organization_id", organizationId).is("sku_id", null);
-  }
-}
-
-// src/services/sourcing/offer-storage.ts
-var log7 = createLogger("OFFER_STORAGE");
-function stockStatusOf(raw, quantity) {
-  if (raw.stockStatus && raw.stockStatus !== "unknown") return raw.stockStatus;
-  if (quantity === null) return raw.stockStatus ?? "unknown";
-  return quantity > 0 ? "in_stock" : "out_of_stock";
-}
-function conditionOf(raw, normalized) {
-  if (raw.condition === "new" || raw.condition === "refurbished" || raw.condition === "used") return raw.condition;
-  return normalized.condition;
-}
-async function getOrCreateSourcingProduct(ctx, normalized) {
-  const { supabase, organizationId } = ctx;
-  const { data: existing } = await supabase.from("sourcing_products").select("id, sku_id").eq("organization_id", organizationId).eq("normalized_key", normalized.normalizedKey).maybeSingle();
-  if (existing) return { id: existing.id, skuId: existing.sku_id };
-  const { data: inserted, error } = await supabase.from("sourcing_products").insert({
-    organization_id: organizationId,
-    normalized_key: normalized.normalizedKey,
-    brand: normalized.brand,
-    model: normalized.model,
-    storage: normalized.storage,
-    color: normalized.color,
-    condition: normalized.condition,
-    grade: normalized.grade,
-    variant: normalized.variant,
-    ean: normalized.ean,
-    mpn: normalized.mpn,
-    title_display: normalized.displayTitle.slice(0, 300),
-    attributes: { inferred: normalized.inferred, confidence: normalized.confidence }
-  }).select("id, sku_id").single();
-  if (inserted) return { id: inserted.id, skuId: inserted.sku_id };
-  const { data: again } = await supabase.from("sourcing_products").select("id, sku_id").eq("organization_id", organizationId).eq("normalized_key", normalized.normalizedKey).maybeSingle();
-  if (again) return { id: again.id, skuId: again.sku_id };
-  throw new Error(`Produit normalis\xE9 non enregistrable : ${error?.message ?? "inconnu"}`);
-}
-async function storeOffer(ctx, raw) {
-  const { supabase, organizationId } = ctx;
-  const now = ctx.now ?? /* @__PURE__ */ new Date();
-  const nowIso = now.toISOString();
-  const currency = (raw.currency ?? ctx.defaultCurrency ?? "").toUpperCase() || null;
-  const normalized = normalizeProduct(raw.title, { brand: raw.brand, model: raw.model, storage: raw.storage, color: raw.color, grade: raw.grade, condition: typeof raw.condition === "string" ? raw.condition : null, ean: raw.ean, mpn: raw.mpn });
-  const { data: existing } = await supabase.from("sourcing_offers").select("id, original_price, original_currency, sku_id, normalized_product_id, status").eq("organization_id", organizationId).eq("source_id", ctx.sourceId).eq("external_offer_id", raw.externalOfferId).maybeSingle();
-  let prices30d = [];
-  if (existing && currency && existing.original_currency === currency) {
-    const since2 = new Date(now.getTime() - 30 * 864e5).toISOString();
-    const { data: hist } = await supabase.from("supplier_price_history").select("original_price").eq("offer_id", existing.id).eq("original_currency", currency).gte("recorded_at", since2).order("recorded_at", { ascending: false }).limit(200);
-    prices30d = (hist ?? []).map((h) => Number(h.original_price)).filter((n) => Number.isFinite(n) && n > 0);
-  }
-  const previousPrice = existing && currency && existing.original_currency === currency ? Number(existing.original_price) : null;
-  const validation = validateOffer(
-    { title: raw.title, price: raw.price, currency, moq: raw.moq ?? null, availableQuantity: raw.availableQuantity ?? null, sourceUrl: raw.url ?? null },
-    { previousPrice, prices30d }
-  );
-  if (!validation.valid || validation.effectivePrice === null || !currency) {
-    if (existing) {
-      await supabase.from("sourcing_offers").update({ status: "suspicious", anomalies: validation.anomalyCodes, last_seen_at: nowIso }).eq("id", existing.id);
-    }
-    return { outcome: "rejected", offerId: existing?.id ?? null, created: false, validation, normalized, fxUnavailable: false, matchedSkuId: null };
-  }
-  const fx = await getFxRate(currency, ctx.organizationCurrency);
-  const fxUnavailable = fx === null;
-  const normalizedPrice = fx ? Math.round(validation.effectivePrice * fx.rate * 1e4) / 1e4 : null;
-  const product = await getOrCreateSourcingProduct(ctx, normalized);
-  const quantity = validation.effectiveQuantity;
-  const stockStatus = stockStatusOf(raw, quantity);
-  const condition = conditionOf(raw, normalized);
-  const taxType = raw.taxType && raw.taxType !== "unknown" ? raw.taxType : ctx.defaultTaxType ?? "unknown";
-  const confidence = {
-    product: normalized.confidence,
-    price: validation.priceRejected ? 0.3 : validation.anomalyCodes.includes("price_too_low") || validation.anomalyCodes.includes("price_too_high") ? 0.5 : 1,
-    stock: quantity !== null ? 0.9 : stockStatus !== "unknown" ? 0.6 : 0,
-    grade: raw.grade ? 1 : normalized.grade ? 0.8 : 0,
-    condition: raw.condition === "new" || raw.condition === "refurbished" || raw.condition === "used" ? 1 : normalized.inferred.includes("condition") ? 0.6 : condition !== "unknown" ? 0.9 : 0,
-    delivery: raw.deliveryMaxDays !== null && raw.deliveryMaxDays !== void 0 ? 0.9 : 0,
-    tax: taxType === "unknown" ? 0 : raw.taxType && raw.taxType !== "unknown" ? 1 : 0.7
-  };
-  const row = {
-    organization_id: organizationId,
-    supplier_id: ctx.supplierId,
-    source_id: ctx.sourceId,
-    feed_id: ctx.feedId ?? null,
-    source_type: ctx.sourceType,
-    external_product_id: raw.externalProductId ?? raw.supplierSku ?? null,
-    external_offer_id: raw.externalOfferId,
-    title_original: raw.title.slice(0, 500),
-    normalized_product_id: product.id,
-    sku_id: existing?.sku_id ?? product.skuId ?? null,
-    brand: normalized.brand,
-    model: normalized.model,
-    storage: normalized.storage,
-    color: normalized.color,
-    condition,
-    grade: normalized.grade,
-    ean: normalized.ean,
-    mpn: normalized.mpn,
-    original_price: validation.effectivePrice,
-    original_currency: currency,
-    normalized_price: normalizedPrice,
-    normalized_currency: fx ? ctx.organizationCurrency.toUpperCase() : null,
-    fx_rate: fx?.rate ?? null,
-    fx_rate_date: fx?.date ?? null,
-    tax_type: taxType,
-    vat_rate: raw.vatRate ?? null,
-    moq: validation.effectiveMoq,
-    minimum_order_value: raw.minimumOrderValue ?? null,
-    available_quantity: quantity,
-    stock_status: stockStatus,
-    shipping_cost: raw.shippingCost ?? null,
-    shipping_currency: raw.shippingCost !== null && raw.shippingCost !== void 0 ? (raw.shippingCurrency ?? currency).toUpperCase() : null,
-    delivery_min_days: raw.deliveryMinDays ?? null,
-    delivery_max_days: raw.deliveryMaxDays ?? null,
-    country: raw.country?.toUpperCase().slice(0, 2) ?? ctx.defaultCountry ?? null,
-    source_url: validation.effectiveUrl,
-    confidence,
-    anomalies: validation.anomalyCodes,
-    status: validation.status,
-    last_seen_at: nowIso,
-    expired_at: null,
-    raw: raw.raw ?? null
-  };
-  if (!existing) {
-    row.first_seen_at = nowIso;
-    row.last_price_at = nowIso;
-    row.last_stock_at = quantity !== null || stockStatus !== "unknown" ? nowIso : null;
-  }
-  const { data: saved, error } = await supabase.from("sourcing_offers").upsert(row, { onConflict: "organization_id,source_id,external_offer_id" }).select("id, sku_id").single();
-  if (error || !saved) {
-    log7.error("offer upsert failed", { externalOfferId: raw.externalOfferId, error: error?.message });
-    throw new Error(`Offre non enregistr\xE9e (${raw.externalOfferId}) : ${error?.message ?? "inconnu"}`);
-  }
-  let matchedSkuId = saved.sku_id;
-  if (ctx.suggestMatches !== false && !saved.sku_id) {
-    try {
-      const r = await suggestMatchesForOffer(supabase, organizationId, { id: saved.id, title_original: raw.title, ean: normalized.ean, mpn: normalized.mpn, external_product_id: row.external_product_id ?? null, brand: normalized.brand, normalized_product_id: product.id, sku_id: null }, { autoConfirmExact: true, createdBy: ctx.createdBy ?? null });
-      matchedSkuId = r.confirmedSkuId;
-    } catch (e) {
-      log7.warn("match suggestion failed", { offerId: saved.id, error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-  return { outcome: "stored", offerId: saved.id, created: !existing, validation, normalized, fxUnavailable, matchedSkuId };
-}
-async function expireUnseenOffers(ctx, since2) {
-  const { data, error } = await ctx.supabase.from("sourcing_offers").update({ status: "expired", expired_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", ctx.organizationId).eq("source_id", ctx.sourceId).in("status", ["active", "suspicious"]).lt("last_seen_at", since2.toISOString()).select("id");
-  if (error) {
-    log7.warn("expire unseen offers failed", { sourceId: ctx.sourceId, error: error.message });
-    return 0;
-  }
-  return data?.length ?? 0;
-}
+// src/services/sourcing/supplier-connectors.ts
+init_empty();
+init_admin();
+init_env();
+init_errors();
+init_logger();
 
 // src/integrations/suppliers/core.ts
 var DEFAULT_CONFIG = { baseUrl: null, settings: {}, defaultCurrency: null, defaultTaxType: "unknown", defaultCountry: null };
@@ -7484,87 +8401,9 @@ function toDescriptor(adapter) {
 }
 var SUPPLIER_CONNECTORS = listAccountAdapters().map(toDescriptor);
 
-// src/services/sourcing/sync-runs.ts
-var log8 = createLogger("SYNC_RUNS");
-var MAX_SYNC_ERRORS_RECORDED = 200;
-var RUNNING_STALE_MINUTES = 30;
-async function failStaleRuns(admin, sourceRef) {
-  const threshold = new Date(Date.now() - RUNNING_STALE_MINUTES * 6e4).toISOString();
-  const { error } = await admin.from("sync_runs").update({ status: "failed", finished_at: (/* @__PURE__ */ new Date()).toISOString(), error_summary: `Run interrompu (aucune fin enregistr\xE9e apr\xE8s ${RUNNING_STALE_MINUTES} min).` }).eq("source_ref", sourceRef).eq("status", "running").lt("started_at", threshold);
-  if (error) log8.warn("stale runs not cleaned", { sourceRef, error: error.message });
-}
-async function startSyncRun(admin, input) {
-  const startedAt = /* @__PURE__ */ new Date();
-  if (input.sourceRef) await failStaleRuns(admin, input.sourceRef);
-  const { data, error } = await admin.from("sync_runs").insert({ organization_id: input.organizationId, source_kind: input.sourceKind, source_ref: input.sourceRef ?? null, provider: input.provider, trigger: input.trigger, status: "running", started_at: startedAt.toISOString(), created_by: input.createdBy ?? null }).select("id").single();
-  if (error?.code === "23505") throw new Error("Une synchronisation est d\xE9j\xE0 en cours pour cette source. Patientez avant d'en relancer une.");
-  if (error || !data) throw new Error(`Impossible d'ouvrir le journal de synchronisation : ${error?.message ?? "inconnu"}`);
-  return { id: data.id, organizationId: input.organizationId, startedAt };
-}
-async function finishSyncRun(admin, run, result) {
-  const finishedAt = /* @__PURE__ */ new Date();
-  const { error } = await admin.from("sync_runs").update({
-    status: result.status,
-    finished_at: finishedAt.toISOString(),
-    duration_ms: finishedAt.getTime() - run.startedAt.getTime(),
-    records_processed: result.recordsProcessed,
-    error_count: result.errorCount,
-    stats: result.stats ?? {},
-    error_summary: result.errorSummary ?? null
-  }).eq("id", run.id);
-  if (error) log8.warn("sync run not closed", { runId: run.id, error: error.message });
-}
-async function recordSyncErrors(admin, run, errors) {
-  if (errors.length === 0) return;
-  const rows = errors.slice(0, MAX_SYNC_ERRORS_RECORDED).map((e) => ({
-    organization_id: run.organizationId,
-    sync_run_id: run.id,
-    code: e.code,
-    message: e.message.slice(0, 2e3),
-    entity_type: e.entityType ?? null,
-    entity_ref: e.entityRef ?? null,
-    details: e.details ?? {}
-  }));
-  const { error } = await admin.from("sync_errors").insert(rows);
-  if (error) log8.warn("sync errors not recorded", { runId: run.id, error: error.message });
-}
-var FREQUENCY_MS = {
-  manual: null,
-  hourly: 36e5,
-  every_6_hours: 6 * 36e5,
-  daily: 24 * 36e5
-};
-function isDue(frequency, lastSyncAt, now) {
-  const interval = FREQUENCY_MS[frequency];
-  if (interval === null) return false;
-  if (!lastSyncAt) return true;
-  return now.getTime() - new Date(lastSyncAt).getTime() >= interval;
-}
-async function recordCompletedSyncRun(admin, input) {
-  const { data, error } = await admin.from("sync_runs").insert({
-    organization_id: input.organizationId,
-    source_kind: input.sourceKind,
-    source_ref: input.sourceRef,
-    provider: input.provider,
-    trigger: input.trigger,
-    status: input.status,
-    started_at: input.startedAt.toISOString(),
-    finished_at: input.finishedAt.toISOString(),
-    duration_ms: Math.max(0, input.finishedAt.getTime() - input.startedAt.getTime()),
-    records_processed: input.recordsProcessed,
-    error_count: input.errorCount,
-    stats: input.stats ?? {},
-    error_summary: input.errorSummary ?? null,
-    created_by: input.createdBy ?? null
-  }).select("id").single();
-  if (error || !data) {
-    log8.warn("completed sync run not recorded", { sourceRef: input.sourceRef, error: error?.message });
-    return null;
-  }
-  return data.id;
-}
-
 // src/services/sourcing/supplier-connectors.ts
+init_offer_storage();
+init_sync_runs();
 var log9 = createLogger("SUPPLIER_CONNECTORS");
 async function loadConnectionCredentials(connectionId) {
   const admin = createAdminSupabaseClient();
@@ -7574,6 +8413,7 @@ async function loadConnectionCredentials(connectionId) {
 }
 
 // src/services/sourcing/live-search.ts
+init_sync_runs();
 var log10 = createLogger("LIVE_SEARCH");
 var LIVE_SEARCH_SOURCE_TYPES = ["PUBLIC_WEB", "API", "JSON", "XML", "CSV", "SUPPLIER_ACCOUNT"];
 var LIVE_SEARCH_CACHE_TTL_MS = 10 * 6e4;
@@ -7972,7 +8812,11 @@ async function runLiveSearch(ctx, input, overrides = {}) {
   return summary;
 }
 
+// src/services/sourcing/search.ts
+init_logger();
+
 // src/domain/sourcing/query-expansion.ts
+init_normalizer();
 var DEFAULT_MAX_EXPANSIONS = 6;
 var DEFAULT_MAX_DISCOVERY = 3;
 var MIN_DISCOVERY_SLOTS = 2;
@@ -8159,6 +9003,8 @@ function queriesFor(expanded, use) {
 }
 
 // src/domain/sourcing/offer-filter.ts
+init_normalizer();
+init_validation();
 var STALE_OFFER_DAYS = 30;
 var LOW_PRICE_RATIO = 0.4;
 var HIGH_PRICE_RATIO = 2.5;
@@ -8363,6 +9209,9 @@ var FILTER_REASON_LABEL = {
   price_high: "Prix anormalement \xE9lev\xE9",
   confirmed_link: "Associ\xE9e manuellement au SKU"
 };
+
+// src/domain/sourcing/search-pipeline.ts
+init_normalizer();
 
 // src/domain/sourcing/ranking.ts
 var RANKING_WEIGHTS = { price: 30, quality: 15, moq: 15, reliability: 15, delivery: 10, stock: 5, freshness: 5, data: 5 };
@@ -8620,6 +9469,7 @@ function rankOpportunities(offers, context) {
 }
 
 // src/domain/sourcing/search-pipeline.ts
+init_validation();
 var CONFIRMED_LINK_OVERRIDABLE = /* @__PURE__ */ new Set(["brand_mismatch", "model_mismatch", "storage_mismatch"]);
 function filterWithConfirmedLinks(criteria, offers, options = {}) {
   const base = filterOffers(criteria, offers, options);
@@ -8845,6 +9695,7 @@ function groupPriceHistory(rows, orgCurrency) {
 }
 
 // src/services/sourcing/price-history-query.ts
+init_empty();
 var PRICE_HISTORY_POINTS_PER_OFFER = 200;
 var POSTGREST_MAX_ROWS = 1e3;
 var PRICE_HISTORY_CONCURRENCY = 8;
@@ -8872,7 +9723,13 @@ async function loadRecentPriceHistory(supabase, organizationId, offerIds, since2
   return out;
 }
 
+// src/services/sourcing/discovery/discovery-service.ts
+init_empty();
+init_admin();
+init_env();
+
 // src/services/sourcing/discovery/candidate-analyzer.ts
+init_http();
 var SUPPLIER_TYPE_LABEL = {
   wholesaler: "Grossiste",
   distributor: "Distributeur",
@@ -9304,6 +10161,7 @@ async function probeCandidate(candidate, deps) {
 }
 
 // src/services/sourcing/discovery/web-search-providers.ts
+init_http();
 import { z as z23 } from "npm:zod@4.6.5";
 var DISCOVERY_DISABLED_MESSAGE = "D\xE9couverte d\xE9sactiv\xE9e : aucune API de recherche configur\xE9e";
 var MAX_DISCOVERY_QUERIES = 6;
@@ -9442,6 +10300,7 @@ async function runDiscoverySearches(provider, queries, options = {}) {
 }
 
 // src/services/sourcing/discovery/discovery-service.ts
+init_logger();
 var log11 = createLogger("SOURCING_DISCOVERY");
 var MAX_PROBED_CANDIDATES = 10;
 function domainsFrom(values) {
@@ -10096,6 +10955,16 @@ async function integrations(ctx) {
   };
 }
 
+// src/features/integrations/sync-service.ts
+init_empty();
+init_errors();
+
+// src/services/sync/engine.ts
+init_empty();
+init_admin();
+init_errors();
+init_logger();
+
 // src/integrations/ebay/cursor.ts
 var ORDERS_OVERLAP_HOURS = 3;
 var ORDERS_INITIAL_LOOKBACK_DAYS = 90;
@@ -10140,7 +11009,15 @@ function resolveOrdersCursor(window, progress, previousCursor) {
   return candidate;
 }
 
+// src/services/channels/connection-store.ts
+init_empty();
+init_admin();
+init_errors();
+init_logger();
+
 // src/services/sync/alerts.ts
+init_empty();
+init_logger();
 var log13 = createLogger("ALERTS");
 async function upsertAlert(admin, input) {
   const { data: existing } = await admin.from("alerts").select("id").eq("organization_id", input.organizationId).eq("dedupe_key", input.dedupeKey).neq("status", "resolved").maybeSingle();
@@ -10172,6 +11049,8 @@ var connectionExpiredKey = (connectionId) => `connection_expired:${connectionId}
 var syncFailedKey = (connectionId) => `sync_failed:${connectionId}`;
 
 // src/services/sync/context.ts
+init_empty();
+init_sanitize();
 function sanitizeDetails(details) {
   if (!details) return {};
   const cleaned = scrubDeep(details);
@@ -10402,6 +11281,10 @@ async function safeDecrypt(connectionId, payload) {
 function connectorAuthFor(connectionId) {
   return { getAccessToken: (options) => getValidAccessToken(connectionId, options) };
 }
+
+// src/services/sync/listings.ts
+init_empty();
+init_errors();
 
 // src/services/sync/matching.ts
 var STOPWORDS = /* @__PURE__ */ new Set(["de", "la", "le", "les", "et", "en", "pour", "avec", "du", "des", "un", "une", "the", "and", "with", "for", "of", "a", "an", "neuf", "new", "lot"]);
@@ -10735,6 +11618,7 @@ async function computeSuggestions(ctx) {
 }
 
 // src/services/sync/orders.ts
+init_empty();
 import { z as z24 } from "npm:zod@4.6.5";
 function emptyOrdersResult() {
   return {
@@ -10922,6 +11806,9 @@ async function ingestOrdersPage(ctx, page2, result, seen) {
 }
 
 // src/services/sync/inventory-push.ts
+init_empty();
+init_errors();
+init_logger();
 var log15 = createLogger("SYNC");
 var MAX_PUSH_PER_RUN = 200;
 function listingRefOf(row) {
@@ -11268,6 +12155,9 @@ function oauthErrorCodeFor(e) {
 }
 var OAUTH_STATE_TTL_SECONDS = 15 * 60;
 
+// server/edge/api.ts
+init_sanitize();
+
 // src/integrations/ebay/webhook-verify.ts
 import { createHash as createHash6, createVerify } from "node:crypto";
 import { z as z25 } from "npm:zod@4.6.5";
@@ -11415,6 +12305,9 @@ var EbayNotificationKeyStore = class {
 };
 
 // src/services/sync/ebay-webhook.ts
+init_empty();
+init_errors();
+init_logger();
 var log17 = createLogger("EBAY_WEBHOOK");
 var WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 var WEBHOOK_STALE_RECEIVED_MS = 5 * 6e4;
@@ -11676,114 +12569,17 @@ async function handleAccountDeletion(admin, account, connections) {
   return { ordersAnonymized, eventsPurged, connectionsDisconnected: connections.length };
 }
 
-// src/services/sourcing/feed-ingestion.ts
-var MAX_ROWS_PER_RUN = 5e3;
-var log18 = createLogger("FEED_INGESTION");
-var FEED_ACCEPT = {
-  csv: "text/csv,text/plain,application/csv;q=0.9,*/*;q=0.5",
-  xml: "application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.5",
-  json: "application/json,text/json;q=0.9,*/*;q=0.5"
-};
-function parseFeedConfig(feed) {
-  const mapping = fieldMappingSchema.safeParse(feed.field_mapping ?? {});
-  const options = feedOptionsSchema.safeParse(feed.options ?? {});
-  return { mapping: mapping.success ? mapping.data : {}, options: options.success ? options.data : {} };
-}
-async function fetchFeedContent(url, format, encoding, fetchImpl) {
-  const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], encoding, fetchImpl });
-  if (!res.ok) throw new Error(`Le flux a r\xE9pondu HTTP ${res.status}.`);
-  return res.text;
-}
-async function ingestFeed(feedId, options = { trigger: "manual" }) {
-  const admin = options.admin ?? createAdminSupabaseClient();
-  const { data: feed, error: feedErr } = await admin.from("supplier_feeds").select("*, source:supplier_sources(id, source_type, default_currency, default_tax_type, country, status), organization:organizations(default_currency)").eq("id", feedId).maybeSingle();
-  if (feedErr || !feed) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Flux introuvable." };
-  const source = feed.source;
-  const organizationCurrency = feed.organization?.default_currency ?? "EUR";
-  if (!source) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Source du flux introuvable." };
-  const run = await startSyncRun(admin, { organizationId: feed.organization_id, sourceKind: "supplier_feed", sourceRef: feed.id, provider: feed.format, trigger: options.trigger, createdBy: options.createdBy ?? null });
-  const { mapping, options: feedOptions } = parseFeedConfig(feed);
-  const defaults = { currency: source.default_currency, taxType: source.default_tax_type, country: source.country };
-  const errors = [];
-  let processed = 0;
-  let stored = 0;
-  let rejected = 0;
-  let invalidRows = 0;
-  let fxUnavailable = 0;
-  let expired2 = 0;
-  try {
-    let content = options.content ?? null;
-    if (!content) {
-      if (!feed.url) throw new Error("Ce flux n'a pas d'URL : importez un fichier manuellement.");
-      content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl);
-    }
-    const parsed = parseFeedContent(content, feed.format, feedOptions);
-    for (const w2 of parsed.warnings) log18.info("feed warning", { feedId, warning: w2 });
-    const ctx = {
-      supabase: admin,
-      organizationId: feed.organization_id,
-      organizationCurrency,
-      supplierId: feed.supplier_id,
-      sourceId: source.id,
-      sourceType: source.source_type,
-      feedId: feed.id,
-      defaultCurrency: source.default_currency,
-      defaultTaxType: source.default_tax_type,
-      defaultCountry: source.country,
-      createdBy: options.createdBy ?? null,
-      now: run.startedAt
-    };
-    const truncated = parsed.rows.length > MAX_ROWS_PER_RUN;
-    if (truncated) {
-      errors.push({ code: "FEED_TRUNCATED", message: `Le flux contient ${parsed.rows.length} lignes : seules les ${MAX_ROWS_PER_RUN} premi\xE8res ont \xE9t\xE9 trait\xE9es lors de ce run. Scindez le flux ou filtrez-le c\xF4t\xE9 fournisseur.`, entityType: "feed", entityRef: feed.id });
-    }
-    for (const [index, row] of parsed.rows.slice(0, MAX_ROWS_PER_RUN).entries()) {
-      processed++;
-      const mapped = mapRow(row, mapping, defaults);
-      if (!mapped.offer) {
-        invalidRows++;
-        errors.push({ code: "ROW_INVALID", message: mapped.errors.join(" "), entityType: "feed_row", entityRef: String(index + 1) });
-        continue;
-      }
-      try {
-        const result = await storeOffer(ctx, mapped.offer);
-        if (result.outcome === "stored") {
-          stored++;
-          if (result.fxUnavailable) fxUnavailable++;
-        } else {
-          rejected++;
-          errors.push({ code: "OFFER_REJECTED", message: result.validation.anomalies.map((a) => a.message).join(" ; "), entityType: "offer", entityRef: mapped.offer.externalOfferId });
-        }
-      } catch (e) {
-        rejected++;
-        errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: mapped.offer.externalOfferId });
-      }
-    }
-    if (stored > 0 && !truncated) expired2 = await expireUnseenOffers(ctx, run.startedAt);
-    const status = stored === 0 && processed > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
-    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistr\xE9e(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejet\xE9e(s), ${expired2} offre(s) expir\xE9e(s).`;
-    await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, rejected, invalidRows, expired: expired2, fxUnavailable, truncated, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) }, errorSummary: status === "failed" ? message : null });
-    await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : feed.last_successful_sync_at, last_record_count: processed, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" }).eq("id", feed.id);
-    if (status !== "failed") await admin.from("supplier_sources").update({ status: "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: (/* @__PURE__ */ new Date()).toISOString(), last_error: null }).eq("id", source.id);
-    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Erreur inconnue.";
-    log18.error("feed ingestion failed", { feedId, error: message });
-    await recordSyncErrors(admin, run, [...errors, { code: "FEED_FAILED", message }]);
-    await finishSyncRun(admin, run, { status: "failed", recordsProcessed: processed, errorCount: errors.length + 1, errorSummary: message });
-    await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message, status: "error" }).eq("id", feed.id);
-    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
-    return { feedId, runId: run.id, status: "failed", processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message };
-  }
-}
-async function runDueFeeds(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient()) {
-  const { data: feeds } = await admin.from("supplier_feeds").select("id, sync_frequency, last_sync_at, status, url").not("url", "is", null).neq("sync_frequency", "manual").neq("status", "paused").limit(500);
-  const due = (feeds ?? []).filter((f) => isDue(f.sync_frequency, f.last_sync_at, now));
-  const results = [];
-  for (const f of due) results.push(await ingestFeed(f.id, { trigger: "scheduled", admin }));
-  return results;
-}
+// src/services/sourcing/sync.ts
+init_empty();
+init_logger();
+init_fx_rates();
+init_feed_ingestion();
+
+// src/services/sourcing/crawler/crawler-manager.ts
+init_empty();
+init_admin();
+init_env();
+init_logger();
 
 // src/services/sourcing/crawler/parsers/registry.ts
 var DEFAULT_PARSER_KEY = jsonLdParser.key;
@@ -11798,6 +12594,7 @@ function getParser(key2) {
 }
 
 // src/services/sourcing/crawler/source-crawler.ts
+init_http();
 import { z as z26 } from "npm:zod@4.6.5";
 var crawlConfigSchema = z26.object({
   urls: z26.array(z26.string().url()).max(50).default([]),
@@ -11872,6 +12669,8 @@ async function crawlSource(params) {
 }
 
 // src/services/sourcing/crawler/crawler-manager.ts
+init_offer_storage();
+init_sync_runs();
 var log19 = createLogger("CRAWLER");
 async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
   const admin = options.admin ?? createAdminSupabaseClient();
@@ -11890,8 +12689,8 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
   const useAdapterCatalog = Boolean(adapter && adapterConfig2 && adapter.capabilities.catalog && adapter.fetchCatalog);
   const robotsUrls = Array.from(/* @__PURE__ */ new Set([...adapter && adapterConfig2 && useAdapterCatalog ? adapter.urlsForCatalog?.(adapterConfig2) ?? [] : [], ...config.urls]));
   if (robotsUrls.length === 0) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Aucune URL configur\xE9e pour cette source." };
-  const parser2 = useAdapterCatalog ? null : adapter?.htmlParser ?? getParser(config.parser);
-  if (!useAdapterCatalog && !parser2) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser \xAB ${config.parser} \xBB inconnu.` };
+  const parser3 = useAdapterCatalog ? null : adapter?.htmlParser ?? getParser(config.parser);
+  if (!useAdapterCatalog && !parser3) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser \xAB ${config.parser} \xBB inconnu.` };
   const run = await startSyncRun(admin, { organizationId: source.organization_id, sourceKind: "supplier_source", sourceRef: source.id, provider: adapter?.key ?? "public_web", trigger: options.trigger, createdBy: options.createdBy ?? null });
   const errors = [];
   try {
@@ -11904,7 +12703,7 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
       await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message2 }).eq("id", source.id);
       return { sourceId, runId: run.id, status: "refused", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: message2 };
     }
-    const crawl = useAdapterCatalog && adapter && adapterConfig2 ? await crawlWithAdapter(adapter, adapterConfig2, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls }) : await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser2, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls });
+    const crawl = useAdapterCatalog && adapter && adapterConfig2 ? await crawlWithAdapter(adapter, adapterConfig2, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls }) : await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser3, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls });
     for (const p of crawl.pages) if (p.error) errors.push({ code: "PAGE_FAILED", message: p.error, entityType: "page", entityRef: p.url });
     for (const u of crawl.skippedUrls) errors.push({ code: "URL_SKIPPED", message: "URL ignor\xE9e (h\xF4te diff\xE9rent, interdite ou au-del\xE0 de la limite de pages).", entityType: "page", entityRef: u });
     const ctx = {
@@ -11940,7 +12739,7 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
     const status = okPages === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
     const message = `${okPages}/${crawl.pages.length} page(s) lue(s), ${crawl.offers.length} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s), ${expired2} expir\xE9e(s).`;
     await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired: expired2, delaySeconds: crawl.delaySeconds, parser: parser2?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" }, errorSummary: status === "failed" ? message : null });
+    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired: expired2, delaySeconds: crawl.delaySeconds, parser: parser3?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" }, errorSummary: status === "failed" ? message : null });
     await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source.id);
     return { sourceId, runId: run.id, status, pages: crawl.pages.length, found: crawl.offers.length, stored, rejected, expired: expired2, message };
   } catch (e) {
@@ -11997,9 +12796,13 @@ async function runDueCrawls(now = /* @__PURE__ */ new Date(), admin = createAdmi
 }
 
 // src/services/sourcing/alerts.ts
+init_empty();
+init_admin();
+init_logger();
 import { z as z27 } from "npm:zod@4.6.5";
 
 // src/domain/sourcing/opportunities.ts
+init_validation();
 var ABNORMAL_LOW_RATIO = 0.8;
 var PRICE_DROP_MIN_PERCENT = 10;
 var LOW_STOCK_DROP_RATIO = 0.5;
@@ -12052,6 +12855,8 @@ function detectOpportunities(offer, priceHistory, stockHistory, now = /* @__PURE
 }
 
 // src/services/sourcing/alerts.ts
+init_offer_query();
+init_sync_runs();
 var log20 = createLogger("SOURCING_ALERTS");
 var alertCriteriaSchema = z27.object({
   max_price: z27.number().positive().optional(),
@@ -12194,6 +12999,12 @@ async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
 }
 
 // src/services/sourcing/source-library.ts
+init_empty();
+init_errors();
+init_env();
+init_logger();
+init_admin();
+init_env();
 var log22 = createLogger("SOURCE_LIBRARY");
 var shopifyTerms = (base) => `${base}/policies/terms-of-service`;
 var SOURCE_LIBRARY = [
@@ -12494,6 +13305,8 @@ async function activateLibrarySource(ctx, key2) {
 }
 
 // src/services/sourcing/source-scout.ts
+init_empty();
+init_http();
 var UA = () => process.env.SOURCING_USER_AGENT || "MonStockBot/0.1";
 function detectPlatform(html) {
   if (/cdn\.shopify\.com|Shopify\.theme|shopify-section/i.test(html)) return "shopify";
@@ -12570,6 +13383,8 @@ async function scoutHosts(hosts, query) {
 }
 
 // src/services/sourcing/e2e-check.ts
+init_empty();
+init_admin();
 async function runSearchSelfTest(query, libraryKey) {
   const admin = createAdminSupabaseClient();
   const entry = getLibrarySource(libraryKey);
@@ -12618,8 +13433,41 @@ async function runSearchSelfTest(query, libraryKey) {
     return !error;
   }
 }
+async function runImportSelfTest() {
+  const admin = createAdminSupabaseClient();
+  const { data: anyMember } = await admin.from("organization_members").select("user_id").limit(1).maybeSingle();
+  const slug = `verif-import-${Date.now().toString(36)}`;
+  const { data: org, error: orgErr } = await admin.from("organizations").insert({ name: "V\xE9rification import (temporaire)", slug, default_currency: "EUR", country: "FR" }).select("*").single();
+  if (orgErr || !org) return { ok: false, result: null, offers: 0, runStatus: null, error: orgErr?.message ?? "organisation non cr\xE9\xE9e", cleaned: true };
+  const cleanup = async () => !(await admin.from("organizations").delete().eq("id", org.id)).error;
+  try {
+    const csv = ["R\xE9f.;D\xE9signation article;Prix HT (\u20AC);Qt\xE9 dispo", "TEST-IMPORT-1;Article de contr\xF4le A (test serveur);10,50;3", "TEST-IMPORT-2;Article de contr\xF4le B (test serveur);1 249,00;1", "TEST-IMPORT-3;Article sans prix (test serveur);;0"].join("\r\n");
+    const ctx = {
+      supabase: admin,
+      user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" },
+      profile: null,
+      organization: org,
+      role: "owner",
+      memberships: []
+    };
+    const file = { fileName: "controle.csv", contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
+    const { previewCatalogFile: previewCatalogFile2, importCatalogFile: importCatalogFile2 } = await Promise.resolve().then(() => (init_catalog_import(), catalog_import_exports));
+    const preview = previewCatalogFile2({ file }, "EUR");
+    const r = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)" });
+    const { count } = await admin.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
+    const { data: run } = await admin.from("sync_runs").select("status").eq("organization_id", org.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
+    return { ok: r.result.stored === 2 && r.result.invalidRows === 1, result: { preview: { validCount: preview.validCount, invalidCount: preview.invalidCount, mapping: preview.mapping }, import: r.result }, offers: count ?? 0, runStatus: run?.status ?? null, error: null, cleaned: await cleanup() };
+  } catch (e) {
+    return { ok: false, result: null, offers: 0, runStatus: null, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup() };
+  }
+}
+
+// server/edge/api.ts
+init_catalog_import();
 
 // src/services/ai/claude.ts
+init_empty();
+init_errors();
 import Anthropic from "npm:@anthropic-ai/sdk@0.133.0";
 var AI_MODEL = "claude-opus-5-5";
 var AI_BETAS = ["server-side-fallback-2026-07-01"];
@@ -12644,43 +13492,44 @@ function aiError(e) {
 }
 
 // src/services/ai/product-draft.ts
-import { z as z29 } from "npm:zod@4.6.5";
+init_empty();
+import { z as z30 } from "npm:zod@4.6.5";
 
 // src/features/stock/product-form.ts
-import { z as z28 } from "npm:zod@4.6.5";
+import { z as z29 } from "npm:zod@4.6.5";
 var MAX_VARIANTS = 50;
 var PRODUCT_GRADES = ["A", "B", "C"];
 var PRODUCT_CATEGORIES = ["Smartphone", "Tablette", "Ordinateur", "Montre connect\xE9e", "Console", "Audio", "Accessoire", "Pi\xE8ce d\xE9tach\xE9e"];
 var CONDITION_LABEL = { new: "Neuf", refurbished: "Reconditionn\xE9", used: "Occasion", unknown: "Non pr\xE9cis\xE9" };
 var productFields = {
-  name: z28.string().trim().max(300).optional().or(z28.literal("")),
-  brand: z28.string().trim().max(120).optional().or(z28.literal("")),
-  model: z28.string().trim().max(160).optional().or(z28.literal("")),
-  category: z28.string().trim().max(120).optional().or(z28.literal("")),
-  description: z28.string().trim().max(5e3).optional().or(z28.literal(""))
+  name: z29.string().trim().max(300).optional().or(z29.literal("")),
+  brand: z29.string().trim().max(120).optional().or(z29.literal("")),
+  model: z29.string().trim().max(160).optional().or(z29.literal("")),
+  category: z29.string().trim().max(120).optional().or(z29.literal("")),
+  description: z29.string().trim().max(5e3).optional().or(z29.literal(""))
 };
 function blankToUndefined(v2) {
   if (typeof v2 !== "string") return v2;
   const t = v2.trim().replace(/\s/g, "").replace(",", ".");
   return t === "" ? void 0 : t;
 }
-var moneyInput = z28.preprocess(
+var moneyInput = z29.preprocess(
   blankToUndefined,
-  z28.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
+  z29.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
 );
-var quantityInput = z28.preprocess(
+var quantityInput = z29.preprocess(
   blankToUndefined,
-  z28.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
+  z29.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
 );
-var variantInputSchema = z28.object({
+var variantInputSchema = z29.object({
   ...variantFields,
-  grade: z28.union([z28.enum(PRODUCT_GRADES), z28.literal("")], { error: "Grade A, B ou C." }).optional(),
+  grade: z29.union([z29.enum(PRODUCT_GRADES), z29.literal("")], { error: "Grade A, B ou C." }).optional(),
   ...skuFields,
   cost_price: moneyInput,
   sale_price: moneyInput,
   initial_quantity: quantityInput
 });
-var variantsArraySchema = z28.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
+var variantsArraySchema = z29.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
   for (const [i, message] of duplicateCodes(variants)) ctx.addIssue({ code: "custom", path: [i, "code"], message });
 });
 function duplicateCodes(variants) {
@@ -12695,10 +13544,10 @@ function duplicateCodes(variants) {
   });
   return out;
 }
-var productWithVariantsSchema = z28.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
+var productWithVariantsSchema = z29.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
   if (!productDisplayName(d)) ctx.addIssue({ code: "custom", path: ["name"], message: "Indiquez le nom du produit, ou au moins la marque et le mod\xE8le." });
 });
-var addVariantsSchema = z28.object({ product_id: z28.string().uuid(), variants: variantsArraySchema });
+var addVariantsSchema = z29.object({ product_id: z29.string().uuid(), variants: variantsArraySchema });
 function productDisplayName(d) {
   const name = d.name?.trim();
   if (name) return name;
@@ -12709,6 +13558,7 @@ function productDisplayName(d) {
 }
 
 // src/services/ai/product-draft.ts
+init_errors();
 var CONDITIONS = Object.keys(CONDITION_LABEL);
 var nullable = (schema) => ({ anyOf: [schema, { type: "null" }] });
 var PRODUCT_DRAFT_JSON_SCHEMA = {
@@ -12741,25 +13591,25 @@ var PRODUCT_DRAFT_JSON_SCHEMA = {
     notes: { type: "array", items: { type: "string" } }
   }
 };
-var money4 = z29.number().finite().min(0).max(1e6).nullable();
-var draftSchema = z29.object({
-  understood: z29.boolean(),
-  brand: z29.string().max(120).nullable(),
-  model: z29.string().max(160).nullable(),
-  name: z29.string().max(300).nullable(),
-  category: z29.string().max(120).nullable(),
-  variants: z29.array(
-    z29.object({
-      storage: z29.string().max(60).nullable(),
-      color: z29.string().max(60).nullable(),
-      grade: z29.enum(PRODUCT_GRADES).nullable(),
-      condition: z29.enum(CONDITIONS),
+var money4 = z30.number().finite().min(0).max(1e6).nullable();
+var draftSchema = z30.object({
+  understood: z30.boolean(),
+  brand: z30.string().max(120).nullable(),
+  model: z30.string().max(160).nullable(),
+  name: z30.string().max(300).nullable(),
+  category: z30.string().max(120).nullable(),
+  variants: z30.array(
+    z30.object({
+      storage: z30.string().max(60).nullable(),
+      color: z30.string().max(60).nullable(),
+      grade: z30.enum(PRODUCT_GRADES).nullable(),
+      condition: z30.enum(CONDITIONS),
       cost_price: money4,
       sale_price: money4,
-      initial_quantity: z29.number().int().min(0).max(1e6).nullable()
+      initial_quantity: z30.number().int().min(0).max(1e6).nullable()
     })
   ).max(MAX_VARIANTS),
-  notes: z29.array(z29.string().max(300)).max(10)
+  notes: z30.array(z30.string().max(300)).max(10)
 });
 function productDraftSystemPrompt(currency) {
   return [
@@ -12841,17 +13691,21 @@ function parseProductDraft(raw, transcript) {
 }
 
 // src/services/ai/assistant.ts
-import { z as z31 } from "npm:zod@4.6.5";
+init_empty();
+init_errors();
+init_logger();
+import { z as z32 } from "npm:zod@4.6.5";
 
 // src/services/ai/assistant-tools.ts
-import { z as z30 } from "npm:zod@4.6.5";
+init_empty();
+import { z as z31 } from "npm:zod@4.6.5";
 var DAY = 864e5;
 var PAGE = 1e3;
 var MAX_ROWS = 5e3;
 var EXCLUDED_STATUSES = "(cancelled,refunded)";
-var daysSchema = z30.coerce.number().int().min(1).max(730).default(30);
-var limitSchema = (max, def) => z30.coerce.number().int().min(1).max(max).default(def);
-var textQuery = z30.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
+var daysSchema = z31.coerce.number().int().min(1).max(730).default(30);
+var limitSchema = (max, def) => z31.coerce.number().int().min(1).max(max).default(def);
+var textQuery = z31.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
 function since(ctx, days) {
   return new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime() - days * DAY).toISOString();
 }
@@ -12873,11 +13727,11 @@ async function fetchAll(page2) {
   }
   return { rows, truncated: true };
 }
-var salesRankingInput = z30.object({
+var salesRankingInput = z31.object({
   days: daysSchema,
-  by: z30.enum(["units", "revenue"]).default("units"),
+  by: z31.enum(["units", "revenue"]).default("units"),
   limit: limitSchema(25, 10),
-  channel: z30.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
+  channel: z31.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
   query: textQuery
 });
 async function salesRanking(ctx, raw) {
@@ -12933,7 +13787,7 @@ async function salesRanking(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues. revenue = montant des lignes de commande (hors frais de port), par devise."
   };
 }
-var salesSummaryInput = z30.object({ days: daysSchema });
+var salesSummaryInput = z31.object({ days: daysSchema });
 async function salesSummary(ctx, raw) {
   const input = salesSummaryInput.parse(raw);
   const from = since(ctx, input.days * 2).slice(0, 10);
@@ -12963,9 +13817,9 @@ async function salesSummary(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues ; jours sans vente non compt\xE9s dans activeDays."
   };
 }
-var stockInput = z30.object({
+var stockInput = z31.object({
   query: textQuery,
-  filter: z30.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
+  filter: z31.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
   limit: limitSchema(40, 15)
 });
 async function stockSearch(ctx, raw) {
@@ -13006,7 +13860,7 @@ async function stockSearch(ctx, raw) {
     note: "stock_value = quantit\xE9 en stock \xD7 prix d'achat (null si prix d'achat inconnu). unit_margin = prix de vente \u2212 prix d'achat."
   };
 }
-var ordersInput = z30.object({ days: daysSchema, limit: limitSchema(30, 10), status: z30.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
+var ordersInput = z31.object({ days: daysSchema, limit: limitSchema(30, 10), status: z31.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
 async function recentOrders(ctx, raw) {
   const input = ordersInput.parse(raw);
   let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
@@ -13039,11 +13893,11 @@ async function ebayAccount(ctx) {
     recentSyncErrors: errors.data ?? []
   };
 }
-var listingsInput = z30.object({
+var listingsInput = z31.object({
   query: textQuery,
-  status: z30.enum(["active", "ended", "unsold", "unknown"]).optional(),
-  onlyNotLinkedToStock: z30.boolean().default(false),
-  sort: z30.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
+  status: z31.enum(["active", "ended", "unsold", "unknown"]).optional(),
+  onlyNotLinkedToStock: z31.boolean().default(false),
+  sort: z31.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
   limit: limitSchema(30, 10)
 });
 async function listingsSearch(ctx, raw) {
@@ -13144,15 +13998,15 @@ async function runAssistantTool(ctx, name, input) {
     const json2 = JSON.stringify(result);
     return { content: json2.length > MAX_RESULT_CHARS ? `${json2.slice(0, MAX_RESULT_CHARS)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false };
   } catch (e) {
-    if (e instanceof z30.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
+    if (e instanceof z31.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true };
   }
 }
 
 // src/services/ai/assistant.ts
 var log23 = createLogger("AI_ASSISTANT");
-var assistantRequestSchema = z31.object({
-  messages: z31.array(z31.object({ role: z31.enum(["user", "assistant"]), content: z31.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
+var assistantRequestSchema = z32.object({
+  messages: z32.array(z32.object({ role: z32.enum(["user", "assistant"]), content: z32.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
 var MAX_STEPS = 8;
 function assistantSystemPrompt(org, today) {
@@ -13224,6 +14078,8 @@ async function askAssistant(ctx, request) {
 }
 
 // src/services/ai/tools-check.ts
+init_empty();
+init_admin();
 async function checkAssistantTools(organizationId) {
   const admin = createAdminSupabaseClient();
   let orgId = organizationId ?? null;
@@ -13327,11 +14183,12 @@ var CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z32.object({ code: z32.string().min(1).max(2048), state: z32.string().min(16).max(200) });
-var syncSchema = z32.object({ connectionId: uuidParam, scope: z32.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z32.object({ hosts: z32.array(z32.string().min(3).max(120)).min(1).max(25), query: z32.string().min(2).max(80).optional() });
-var productDraftSchema = z32.object({ text: z32.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z32.object({ key: z32.string().min(1).max(80), attest: z32.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var ebayFinalizeSchema = z33.object({ code: z33.string().min(1).max(2048), state: z33.string().min(16).max(200) });
+var syncSchema = z33.object({ connectionId: uuidParam, scope: z33.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z33.object({ hosts: z33.array(z33.string().min(3).max(120)).min(1).max(25), query: z33.string().min(2).max(80).optional() });
+var CATALOG_BODY_LIMIT = 21e6;
+var productDraftSchema = z33.object({ text: z33.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z33.object({ key: z33.string().min(1).max(80), attest: z33.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -13468,13 +14325,14 @@ async function route(request) {
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z32.object({ query: z32.string().min(2).max(120), source: z32.string().min(1).max(80) }));
+          const body = await parseBody(request, z33.object({ query: z33.string().min(2).max(120), source: z33.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
+      if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z32.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request, z33.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
@@ -13493,6 +14351,20 @@ async function route(request) {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, activateSchema);
         return activateLibrarySource(ctx, body.key);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/import/preview") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, catalogPreviewSchema, CATALOG_BODY_LIMIT);
+        return previewCatalogFile(body, ctx.organization.default_currency);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/import") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, catalogImportSchema, CATALOG_BODY_LIMIT);
+        return importCatalogFile(ctx, body);
       });
     }
     if (m === "POST" && path === "/ai/product-draft") {

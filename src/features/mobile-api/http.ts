@@ -63,13 +63,13 @@ export function parseQuery<S extends z.ZodTypeAny>(request: Request, schema: S):
 }
 
 /** Corps JSON (64 Ko max) validé par un schéma Zod. */
-export async function parseBody<S extends z.ZodTypeAny>(request: Request, schema: S): Promise<z.infer<S>> {
+export async function parseBody<S extends z.ZodTypeAny>(request: Request, schema: S, maxBytes = 64_000): Promise<z.infer<S>> {
   const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > 64_000) throw new AppError("VALIDATION", "Requête trop volumineuse.");
+  if (length > maxBytes) throw new AppError("VALIDATION", "Requête trop volumineuse.");
   let body: unknown;
   try {
     const text = await request.text();
-    if (text.length > 64_000) throw new AppError("VALIDATION", "Requête trop volumineuse.");
+    if (text.length > maxBytes) throw new AppError("VALIDATION", "Requête trop volumineuse.");
     body = text ? JSON.parse(text) : {};
   } catch (e) {
     if (isAppError(e)) throw e;

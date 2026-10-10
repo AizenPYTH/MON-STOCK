@@ -12,6 +12,8 @@
  *   GET  /api/sourcing/status             état des sources de l'organisation
  *   GET  /api/sourcing/library            bibliothèque de sources (catalogue + état d'activation)
  *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (attestation de l'utilisateur)
+ *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
+ *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
  *   POST /api/ebay/connect                URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur)
  *   GET|POST /api/ebay/webhook            notifications eBay (suppression de compte, commandes) — signées par eBay
@@ -53,7 +55,8 @@ import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
-import { runSearchSelfTest } from "@/services/sourcing/e2e-check";
+import { runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
+import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
 import { aiConfigured } from "@/services/ai/claude";
 import { draftProductFromText } from "@/services/ai/product-draft";
 import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
@@ -73,6 +76,8 @@ const CORS = {
 const ebayFinalizeSchema = z.object({ code: z.string().min(1).max(2048), state: z.string().min(16).max(200) });
 const syncSchema = z.object({ connectionId: uuidParam, scope: z.enum(["full", "listings", "orders"]).default("full") });
 const scoutSchema = z.object({ hosts: z.array(z.string().min(3).max(120)).min(1).max(25), query: z.string().min(2).max(80).optional() });
+/** Fichier de 15 Mo en base64 (+ mapping) : seule route qui accepte un corps volumineux. */
+const CATALOG_BODY_LIMIT = 21_000_000;
 const productDraftSchema = z.object({ text: z.string().trim().min(3, "Dites ou écrivez le produit à ajouter.").max(2000, "Texte trop long (2000 caractères maximum).") });
 const activateSchema = z.object({ key: z.string().min(1).max(80), attest: z.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 
@@ -239,6 +244,7 @@ export async function route(request: Request): Promise<Response> {
           return runSearchSelfTest(body.query, body.source);
         });
       }
+      if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
           const body = await parseBody(request, z.object({ organizationId: uuidParam.optional() }));
@@ -260,6 +266,20 @@ export async function route(request: Request): Promise<Response> {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, activateSchema);
         return activateLibrarySource(ctx, body.key);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/import/preview") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, catalogPreviewSchema, CATALOG_BODY_LIMIT);
+        return previewCatalogFile(body, ctx.organization.default_currency);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/import") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, catalogImportSchema, CATALOG_BODY_LIMIT);
+        return importCatalogFile(ctx, body);
       });
     }
     if (m === "POST" && path === "/ai/product-draft") {

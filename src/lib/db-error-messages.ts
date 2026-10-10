@@ -46,6 +46,7 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   SKU_CODE_EXISTS: { code: "CONFLICT", message: "Ce code SKU existe déjà dans votre organisation." },
   SKU_CODE_REQUIRED: { code: "VALIDATION", message: "Le code SKU est requis." },
   SKU_CODE_DUPLICATE_IN_REQUEST: { code: "VALIDATION", message: "Deux variantes utilisent le même code SKU : chaque variante doit avoir un code unique." },
+  SAVED_OFFER_IMMUTABLE: { code: "FORBIDDEN", message: "Le prix relevé lors de l'enregistrement d'une offre ne peut pas être modifié." },
   VARIANTS_REQUIRED: { code: "VALIDATION", message: "Ajoutez au moins une variante." },
   VARIANTS_TOO_MANY: { code: "VALIDATION", message: "50 variantes maximum par envoi." },
   PRODUCT_NAME_REQUIRED: { code: "VALIDATION", message: "Le nom du produit est requis." },

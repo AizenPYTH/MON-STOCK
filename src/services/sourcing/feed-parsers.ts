@@ -330,9 +330,56 @@ export function suggestMapping(columns: string[]): FieldMapping {
     condition: /^(condition|etat|état|g:condition)$/i,
   };
   const out: FieldMapping = {};
+  const used = new Set<string>();
   for (const field of RAW_OFFER_FIELDS) {
     const col = columns.find((c) => candidates[field].test(c.trim()));
-    if (col) out[field] = col;
+    if (col) {
+      out[field] = col;
+      used.add(col);
+    }
+  }
+  // Second passage : en-têtes réels des grilles fournisseurs (« Prix HT (€) », « Désignation
+  // article », « Qté dispo », « Réf. fournisseur »…), comparés sans accents ni ponctuation.
+  // Une colonne n'est jamais attribuée à deux champs ; rien n'est appliqué sans validation.
+  for (const [field, patterns] of LOOSE_HEADER_PATTERNS) {
+    if (out[field]) continue;
+    const col = columns.find((c) => !used.has(c) && patterns.some((re) => re.test(looseHeader(c))));
+    if (col) {
+      out[field] = col;
+      used.add(col);
+    }
   }
   return out;
 }
+
+/** En-tête normalisé : minuscules, sans accents, ponctuation et unités remplacées par des espaces. */
+export function looseHeader(h: string): string {
+  return ` ${h
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[€$£%()[\]{}.,:;/\\_\-#°*'"’]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()} `;
+}
+
+const LOOSE_HEADER_PATTERNS: Array<[RawOfferField, RegExp[]]> = [
+  ["ean", [/ (ean|gtin|ean13|upc|code barre|barcode) /]],
+  ["mpn", [/ (mpn|part number|ref fabricant|reference fabricant) /]],
+  ["supplier_sku", [/ (ref|reference|sku|code article|code produit|article no|art nr|item no|part no|ref fournisseur|ref fourn) /]],
+  ["title", [/ (designation|libelle|description|product name|nom produit|nom article|article|produit|titre|title|name) /]],
+  ["price", [/ (prix|price|tarif|cost|cout|pu|unit price|net price|prix net|prix achat|prix revendeur|prix pro) /]],
+  ["currency", [/ (devise|currency|monnaie) /]],
+  ["tax_type", [/ (ht|ttc|tva|vat) incl /, / (type de prix|tax) /]],
+  ["available_quantity", [/ (qte|qty|quantite|quantity|stock|dispo|disponible|available|en stock) /]],
+  ["moq", [/ (moq|minimum|min qty|qte min|quantite minimum) /]],
+  ["brand", [/ (marque|brand|fabricant|manufacturer|constructeur) /]],
+  ["model", [/ (modele|model) /]],
+  ["storage", [/ (capacite|stockage|storage|memoire|memory|rom) /]],
+  ["color", [/ (couleur|color|colour|coloris) /]],
+  ["grade", [/ (grade|classe|qualite esthetique) /]],
+  ["condition", [/ (etat|condition|state) /]],
+  ["url", [/ (url|lien|link) /]],
+  ["shipping_cost", [/ (port|livraison|shipping|transport) /]],
+  ["delivery_days", [/ (delai|lead time|delivery) /]],
+];

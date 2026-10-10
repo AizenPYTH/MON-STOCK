@@ -27,6 +27,7 @@
     "clsx": "^2.1.1",
     "csv-parse": "^7.0.3",
     "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.2",
     "geist": "^1.7.2",
     "lucide-react": "^1.52.0",
     "next": "16.4.0",
