@@ -170,7 +170,18 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | **eBay** | Connexion OAuth (page officielle eBay dans une session système), finalisation liée à l'utilisateur, première synchronisation, « Synchroniser maintenant », dernière synchro réussie, dernier passage, erreurs, reconnexion ; annonces → association à un SKU ; déduction des ventes en attente | Edge Function (tokens chiffrés côté serveur) + `map_listing_to_sku`, `apply_pending_sales_for_sku` |
 | Ventes | Commandes par jour, à expédier, annonces eBay | `orders`, `channel_listings` |
 | Intelligence | Aujourd'hui / Analyse 7-30-90 j | vues analytiques |
+| **Produit à la voix (IA)** | « Dites ou écrivez le produit » : dictée iOS en français, phrase comprise par Claude (marque, modèle, variantes, prix d'achat/vente, quantités, ambiguïtés signalées) → formulaire pré-rempli, création après vérification | Edge Function `/ai/product-draft` (clé `ANTHROPIC_API_KEY` serveur) |
+| **Assistant (IA)** | Intelligence → « Demandez à l'assistant » : questions écrites ou dictées (« quel est le produit que j'ai le plus vendu ? ») ; réponses calculées sur les vraies ventes / commandes / stock / annonces eBay, données consultées affichées | Edge Function `/ai/assistant` (lecture seule sous la session de l'utilisateur) |
 | Commande fournisseur | Brouillon depuis la comparaison | `purchase_orders` |
+
+### 4.2 bis Correctif TestFlight build 4
+
+- **« Voir » une offre fermait l'application** : l'écran de comparaison affichait « vérifiée il y a
+  … » avec `Intl.RelativeTimeFormat`, absent du moteur JavaScript d'iOS (Hermes) → exception →
+  fermeture. Remplacé par un calcul sans Intl ; un test interdit désormais ces API dans le code
+  partagé et mobile, et un test rend l'écran avec de vraies offres sans cette API.
+- Les offres de pièces d'un même appareil (écran / batterie iPhone 13) ne sont plus comparées
+  entre elles.
 
 ### 4.3 Toujours désactivé (affiché comme tel, jamais simulé)
 
@@ -235,10 +246,18 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
 4. **eBay** (après configuration des clés, docs/SERVER.md §4) : Réglages → Intégrations → eBay →
    « Connecter mon compte eBay » → autoriser chez eBay → retour automatique → synchronisation ;
    Ventes → Annonces → associer chaque annonce à son SKU.
-5. Mode avion : bannière hors ligne, écritures refusées avec message clair.
+5. **Produit à la voix** (après ajout de `ANTHROPIC_API_KEY`, docs/SERVER.md §3) : Stock → « + » →
+   micro → dire « trois iPhone 13 128 gigas noir grade A achetés 310 euros revendus 429 » → ■ → le
+   formulaire se remplit (Apple, iPhone 13, 128 Go, Noir, A, 310, 429, 3) → vérifier → Créer.
+6. **Assistant** : Intelligence → « Demandez à l'assistant » → micro ou texte « quel est le
+   produit que j'ai le plus vendu ? » → réponse chiffrée + « Données consultées : Ventes par
+   produit ». Sans vente synchronisée, l'assistant le dit (il n'invente rien).
+7. Mode avion : bannière hors ligne, écritures refusées avec message clair.
 
 ## 8. Problèmes restants
 
+- **IA** : clé `ANTHROPIC_API_KEY` à ajouter dans Supabase → Edge Functions → Secrets ; sans elle,
+  la dictée transcrit mais le remplissage et l'assistant affichent « non activé ».
 - **eBay** : clés d'application eBay à fournir (App ID, Cert ID, RuName) et URL de retour à
   déclarer chez eBay — seule action manuelle bloquante (docs/SERVER.md §4).
 - **Sources fournisseurs** : la plupart des fournisseurs spécialisés testés n'exposent pas leur

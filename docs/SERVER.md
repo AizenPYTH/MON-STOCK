@@ -39,7 +39,9 @@ signature eBay pour `/ebay/webhook`.
 | `POST /api/ebay/finalize` | administrateur | échange du code — **refusé si l'état n'a pas été créé par ce même utilisateur** |
 | `POST /api/ebay/sync` | rédacteur | synchronisation immédiate (annonces, commandes, stock) |
 | `GET/POST /api/ebay/webhook` | eBay (signé) | challenge + notifications (suppression de compte, commandes) |
-| `POST /api/cron/sync` · `/cron/sourcing` · `/cron/library-checks` · `/cron/scout` | `CRON_SECRET` | tâches planifiées / outil d'exploration de sources |
+| `POST /api/ai/product-draft` | rédacteur | phrase dictée → brouillon du formulaire produit (Claude, sortie structurée) ; rien n'est créé |
+| `POST /api/ai/assistant` | membre | questions sur les ventes, le stock, eBay : Claude appelle des outils de LECTURE (ventes par produit, synthèse, stock, commandes, compte eBay, annonces) exécutés avec la session de l'utilisateur (RLS) |
+| `POST /api/cron/sync` · `/cron/sourcing` · `/cron/library-checks` · `/cron/scout` · `/cron/ai-tools-check` | `CRON_SECRET` | tâches planifiées / outils de vérification serveur |
 
 ## 3. Secrets
 
@@ -53,6 +55,7 @@ Vault** via `server_runtime_secrets()` (exécutable par `service_role` uniquemen
 | `CRON_SECRET` | généré dans la base (Vault) ; lu par `call_monstock_cron()` à chaque exécution |
 | `EBAY_WEBHOOK_VERIFICATION_TOKEN` | généré dans la base (Vault, migration `20261009000500`) — à recopier chez eBay |
 | `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | **à fournir** (voir §4) |
+| `ANTHROPIC_API_KEY` | **à fournir** : clé de l'API Claude (console.anthropic.com → API Keys) dans Edge Functions → Secrets. Sans elle, `/api/ai/*` répond « non configuré » (jamais de réponse simulée) ; `/api/health` → `aiConfigured` |
 
 Tâches planifiées (pg_cron, `supabase/ops/schedule-edge-cron.sql`) : synchronisation eBay toutes les
 15 min (connexions dues uniquement), moteur de sourcing toutes les 6 h (taux BCE, flux, alertes),
@@ -116,3 +119,18 @@ activation, sinon les appels échouent :
 
 Le bouton « Mise en vente eBay » reste désactivé tant que ce flux n'est pas implémenté et testé sur
 un compte réel.
+
+## 7. IA (Claude)
+
+- Modèle `claude-opus-5-5`, repli serveur par défaut d'Anthropic si une requête est déclinée.
+- **Produit dicté** : la transcription (reconnaissance vocale d'iOS, sur le téléphone) est envoyée
+  au serveur ; Claude renvoie un JSON imposé par schéma (marque, modèle, catégorie, variantes,
+  prix, quantités, notes d'ambiguïté), revalidé par Zod. Consigne : rien d'inventé, valeurs non
+  dites laissées vides. Le formulaire est pré-rempli ; la création reste confirmée par l'utilisateur.
+- **Assistant** : boucle d'outils (8 étapes max), outils en lecture seule filtrés sur
+  l'organisation active et exécutés avec le client Supabase de l'utilisateur (RLS). Les erreurs de
+  lecture sont renvoyées au modèle comme erreurs ; la consigne impose que chaque chiffre provienne
+  d'un résultat d'outil. La réponse liste les données consultées.
+- Vérifié sur TEST (`/cron/ai-tools-check`, 10 octobre 2026) : les 6 outils s'exécutent sur le
+  schéma réel (ventes, synthèse, stock, commandes, compte eBay, annonces). Appel à Claude non
+  exécuté ici : clé non encore configurée.
