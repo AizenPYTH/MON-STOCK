@@ -31,6 +31,8 @@ export const assistantRequestSchema = z.object({
 export type AssistantRequest = z.infer<typeof assistantRequestSchema>;
 
 const MAX_STEPS = 8;
+/** Délai global de la boucle (la fonction serveur est interrompue au-delà d'environ 150 s). */
+export const ASSISTANT_DEADLINE_MS = 110_000;
 
 export function assistantSystemPrompt(org: { name: string; currency: string }, today: string): string {
   return [
@@ -63,8 +65,10 @@ export async function askAssistant(ctx: ToolContext & { organizationName: string
   const used: { tool: string; label: string }[] = [];
   let model = AI_MODEL;
 
+  const started = Date.now();
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
+      if (Date.now() - started > ASSISTANT_DEADLINE_MS) throw new AppError("EXTERNAL_API", "La réponse prend trop de temps : posez une question plus précise.");
       const response = await client.beta.messages.create({
         model: AI_MODEL,
         max_tokens: 8000,

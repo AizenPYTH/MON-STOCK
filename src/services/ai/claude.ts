@@ -24,7 +24,8 @@ let client: Anthropic | null = null;
 
 export function claudeClient(): Anthropic {
   if (!aiConfigured()) throw new AppError("NOT_CONFIGURED", AI_NOT_CONFIGURED);
-  client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 90_000 });
+  // Délais compatibles avec la limite d'exécution de l'Edge Function (≈ 150 s).
+  client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 55_000 });
   return client;
 }
 

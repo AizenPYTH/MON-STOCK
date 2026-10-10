@@ -98,3 +98,64 @@ export async function runImportSelfTest(): Promise<{ ok: boolean; result: unknow
     return { ok: false, result: null, offers: 0, runStatus: null, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup() };
   }
 }
+
+/**
+ * Chaîne complète sur la vraie base (outil serveur, CRON_SECRET), dans une organisation
+ * TEMPORAIRE supprimée à la fin : SKU (EAN connu, prix de vente) → import d'une grille fournisseur
+ * contenant le même EAN → rapprochement automatique → radar → pré-remplissage + contrôle d'une
+ * annonce eBay (simulation, rien n'est envoyé à eBay). Seuls des résumés sont renvoyés.
+ */
+export async function runChainSelfTest(): Promise<{ ok: boolean; steps: Record<string, unknown>; error: string | null; cleaned: boolean }> {
+  const admin = createAdminSupabaseClient();
+  const steps: Record<string, unknown> = {};
+  const { data: anyMember } = await admin.from("organization_members").select("user_id").limit(1).maybeSingle();
+  const slug = `verif-chaine-${Date.now().toString(36)}`;
+  const { data: org, error: orgErr } = await admin
+    .from("organizations")
+    .insert({ name: "Vérification chaîne (temporaire)", slug, default_currency: "EUR", country: "FR", settings: { radar: { vatRegime: "normal", vatRate: 20, vatRecoverable: true, marketplaceFeePercent: 12, paymentFeePercent: 0, paymentFeeFixed: 0.35, shippingToCustomer: 8, packagingCost: 1.5, returnProvisionPercent: 2 } } })
+    .select("*")
+    .single();
+  if (orgErr || !org) return { ok: false, steps, error: orgErr?.message ?? "organisation non créée", cleaned: true };
+  const cleanup = async () => !(await admin.from("organizations").delete().eq("id", org.id)).error;
+  try {
+    const { data: created, error: skuErr } = await admin.rpc("create_sku", {
+      p_organization_id: org.id,
+      p_variant: { name: "128 Go / Noir / Grade A", condition: "refurbished", grade: "A", attributes: { storage: "128 Go", color: "Noir", grade: "A" } },
+      p_sku: { code: "TEST-CHAINE-IP13", cost_price: 330, sale_price: 600, currency: "EUR", barcode: "0194252707323" },
+      p_product_id: null,
+      p_product: { name: "Article de contrôle (test serveur)", brand: "Apple", category: "Smartphone", attributes: { model: "iPhone 13" } },
+      p_initial_quantity: 1,
+    } as never);
+    if (skuErr) throw new Error(`SKU : ${skuErr.message}`);
+    const skuId = (created as { sku_id?: string } | null)?.sku_id ?? null;
+    steps.sku = Boolean(skuId);
+    // le code-barres passé dans p_sku n'étant pas forcément repris par create_sku, il est fixé explicitement
+    if (skuId) await admin.from("skus").update({ barcode: "0194252707323" }).eq("id", skuId);
+
+    const ctx = { supabase: admin, user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" } as User, profile: null, organization: org, role: "owner", memberships: [] } as unknown as OrgContext;
+    const csv = ["Réf.;Désignation article;EAN;Prix HT (€);Qté dispo", "CTRL-1;iPhone 13 128 Go Noir Grade A (test serveur);0194252707323;300,00;5"].join("\r\n");
+    const { importCatalogFile, previewCatalogFile } = await import("@/services/sourcing/catalog-import");
+    const file = { fileName: "controle.csv", contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
+    const preview = previewCatalogFile({ file }, "EUR");
+    const imported = await importCatalogFile(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contrôle (test serveur)" });
+    steps.import = { stored: imported.result.stored, status: imported.result.status };
+    const { data: offer } = await admin.from("sourcing_offers").select("sku_id").eq("organization_id", org.id).maybeSingle();
+    steps.autoMatched = offer?.sku_id === skuId;
+
+    const { buildRadar } = await import("@/services/radar/radar");
+    const radar = await buildRadar(ctx);
+    const item = radar.items[0];
+    steps.radar = item ? { status: item.evaluation.status, profit: item.evaluation.estimatedProfit, missing: item.evaluation.missing, priceOrigin: item.offer.priceOrigin, reasons: item.evaluation.reasons.length } : { items: 0, unlinked: radar.counts.unlinkedOffers };
+
+    if (skuId) {
+      const { prefillListing, checkListing } = await import("@/services/channels/ebay-listing-service");
+      const p = await prefillListing(ctx, skuId);
+      const c = await checkListing(ctx, { draft: { ...p.draft, categoryId: "9355", condition: "SELLER_REFURBISHED", description: "Article de contrôle — test serveur, jamais publié.", imageUrls: ["https://example.com/controle.jpg"] }, confirm: false });
+      steps.ebayCheck = { title: p.draft.title, aspects: Object.keys(p.draft.aspects), errors: c.errors, publicationAllowed: c.publication.allowed, blockers: c.publication.blockers.length };
+    }
+    const ok = steps.sku === true && steps.autoMatched === true && Boolean(item) && (steps.ebayCheck as { publicationAllowed?: boolean } | undefined)?.publicationAllowed === false;
+    return { ok, steps, error: null, cleaned: await cleanup() };
+  } catch (e) {
+    return { ok: false, steps, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup() };
+  }
+}

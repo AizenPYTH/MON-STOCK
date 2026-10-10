@@ -62,13 +62,14 @@ import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
-import { runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
+import { runChainSelfTest, runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
 import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listingRequestSchema, prefillListing, publishListingForOrg } from "@/services/channels/ebay-listing-service";
 import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/services/sourcing/offer-linking";
 import { buildRadar, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
-import { aiConfigured } from "@/services/ai/claude";
+import { aiConfigured, claudeClient } from "@/services/ai/claude";
+import { enforceAiQuota } from "@/services/ai/quota";
 import { draftProductFromText } from "@/services/ai/product-draft";
 import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
 import { checkAssistantTools, checkReadOnlyRoutes } from "@/services/ai/tools-check";
@@ -261,6 +262,7 @@ export async function route(request: Request): Promise<Response> {
           return runDirectoryChecks({ keys: body.keys });
         });
       }
+      if (m === "POST" && path === "/cron/chain-selftest") return handle(() => runChainSelfTest());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
         return handle(async () => checkReadOnlyRoutes((await parseBody(request, z.object({ organizationId: uuidParam.optional() }))).organizationId));
@@ -327,6 +329,8 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, productDraftSchema);
+        claudeClient(); // « non configuré » avant de consommer le quota
+        await enforceAiQuota(ctx, "product_draft");
         return draftProductFromText(body.text, ctx.organization.default_currency);
       });
     }
@@ -334,6 +338,8 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
         const body = await parseBody(request, assistantRequestSchema);
+        claudeClient();
+        await enforceAiQuota(ctx, "assistant");
         return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
       });
     }

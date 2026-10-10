@@ -7181,365 +7181,6 @@ var init_catalog_import = __esm({
   }
 });
 
-// src/integrations/ebay/listing.ts
-import { z as z29 } from "npm:zod@4.6.5";
-function checkListingDraft(input) {
-  const parsed = listingDraftSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "annonce"} : ${i.message}`), warnings: [], draft: null };
-  const d = parsed.data;
-  const errors = [];
-  const warnings = [];
-  if (!d.policies) errors.push("Politiques m\xE9tier eBay (paiement, retour, exp\xE9dition) non choisies.");
-  if (!d.merchantLocationKey) errors.push("Emplacement d'inventaire eBay (merchantLocationKey) non choisi.");
-  const aspectNames = Object.keys(d.aspects).map((a) => a.toLowerCase());
-  if (!d.brand && !aspectNames.includes("marque") && !aspectNames.includes("brand")) warnings.push("Marque non renseign\xE9e : souvent obligatoire.");
-  if (!aspectNames.includes("mod\xE8le") && !aspectNames.includes("model")) warnings.push("Caract\xE9ristique \xAB Mod\xE8le \xBB absente : souvent obligatoire pour les t\xE9l\xE9phones.");
-  if (/[<>]/.test(d.title)) errors.push("Le titre ne doit pas contenir de balises.");
-  if (d.title === d.title.toUpperCase() && /[A-Z]{6,}/.test(d.title)) warnings.push("Titre enti\xE8rement en majuscules : d\xE9conseill\xE9 par eBay.");
-  if (d.condition.endsWith("_REFURBISHED") && d.condition !== "SELLER_REFURBISHED") warnings.push("\xC9tat \xAB reconditionn\xE9 \xBB du programme eBay : v\xE9rifiez votre agr\xE9ment pour cette cat\xE9gorie.");
-  warnings.push("Caract\xE9ristiques obligatoires et \xE9tats autoris\xE9s de la cat\xE9gorie v\xE9rifi\xE9s par eBay au moment de la publication.");
-  return { ok: errors.length === 0, errors, warnings, draft: d };
-}
-function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-function descriptionHtml(text2) {
-  return text2.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
-}
-function buildInventoryItem(d) {
-  const aspects = { ...d.aspects };
-  if (d.brand && !aspects.Marque) aspects.Marque = [d.brand];
-  return {
-    availability: { shipToLocationAvailability: { quantity: d.quantity } },
-    condition: d.condition,
-    ...d.conditionDescription ? { conditionDescription: d.conditionDescription } : {},
-    product: {
-      title: d.title,
-      description: descriptionHtml(d.description),
-      aspects,
-      imageUrls: d.imageUrls,
-      ...d.brand ? { brand: d.brand } : {},
-      ...d.mpn ? { mpn: d.mpn } : {},
-      ...d.ean ? { ean: [d.ean] } : {}
-    }
-  };
-}
-function buildOffer(d) {
-  return {
-    sku: d.sku,
-    marketplaceId: d.marketplaceId,
-    format: "FIXED_PRICE",
-    availableQuantity: d.quantity,
-    categoryId: d.categoryId,
-    listingDescription: descriptionHtml(d.description),
-    ...d.policies ? { listingPolicies: d.policies } : {},
-    ...d.merchantLocationKey ? { merchantLocationKey: d.merchantLocationKey } : {},
-    pricingSummary: { price: { value: d.price.toFixed(2), currency: d.currency } }
-  };
-}
-async function ebayRestSend(auth, method, url, label, body) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
-    const res = await fetchWithRetry(
-      url,
-      {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Accept-Language": "fr-FR",
-          "Content-Language": "fr-FR",
-          ...body !== void 0 ? { "Content-Type": "application/json" } : {}
-        },
-        body: body === void 0 ? void 0 : JSON.stringify(body)
-      },
-      // POST non idempotent (création d'offre, publication) : jamais rejoué automatiquement (anti-doublon).
-      { provider: EBAY_PROVIDER, label, retries: method === "POST" ? 0 : void 0 }
-    );
-    const json2 = res.status === 204 ? null : await readJson(res, EBAY_PROVIDER);
-    if (res.status === 401 && attempt === 0) continue;
-    return { status: res.status, json: json2 };
-  }
-  throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Autorisation eBay expir\xE9e : reconnectez votre compte.", { retryable: false });
-}
-function fail(step, status, json2) {
-  const { message, errorIds } = summarizeRestErrors(json2);
-  const auth = status === 401 || status === 403;
-  throw new ConnectorError(auth ? "AUTH_EXPIRED" : "API_ERROR", EBAY_PROVIDER, `${step} refus\xE9 par eBay (HTTP ${status})${message ? ` : ${message}` : ""}.`, {
-    httpStatus: status,
-    details: { step, errorIds },
-    retryable: status >= 500
-  });
-}
-async function publishListing(auth, apiBase2, d) {
-  const base = `${apiBase2.replace(/\/+$/, "")}/sell/inventory/v1`;
-  const sku = encodeURIComponent(d.sku);
-  const item = await ebayRestSend(auth, "PUT", `${base}/inventory_item/${sku}`, "createOrReplaceInventoryItem", buildInventoryItem(d));
-  if (item.status >= 300) fail("Enregistrement de l'article", item.status, item.json);
-  const existing = await ebayRestSend(auth, "GET", `${base}/offer?sku=${sku}&marketplace_id=${d.marketplaceId}`, "getOffers");
-  let offerId = null;
-  if (existing.status === 200) {
-    const offers = existing.json?.offers ?? [];
-    offerId = offers.find((o) => o.marketplaceId === d.marketplaceId && (o.format ?? "FIXED_PRICE") === "FIXED_PRICE")?.offerId ?? null;
-  } else if (existing.status !== 404) fail("Lecture des offres existantes", existing.status, existing.json);
-  let created = false;
-  if (offerId) {
-    const upd = await ebayRestSend(auth, "PUT", `${base}/offer/${encodeURIComponent(offerId)}`, "updateOffer", buildOffer(d));
-    if (upd.status >= 300) fail("Mise \xE0 jour de l'offre", upd.status, upd.json);
-  } else {
-    const cre = await ebayRestSend(auth, "POST", `${base}/offer`, "createOffer", buildOffer(d));
-    if (cre.status >= 300) fail("Cr\xE9ation de l'offre", cre.status, cre.json);
-    offerId = cre.json?.offerId ?? null;
-    if (!offerId) throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "eBay n'a pas renvoy\xE9 d'identifiant d'offre.", { retryable: false });
-    created = true;
-  }
-  const pub = await ebayRestSend(auth, "POST", `${base}/offer/${encodeURIComponent(offerId)}/publish`, "publishOffer");
-  if (pub.status >= 300) fail("Publication", pub.status, pub.json);
-  return { sku: d.sku, offerId, listingId: pub.json?.listingId ?? null, createdOffer: created };
-}
-function publicationGate(input) {
-  const reasons = [];
-  if (input.enabledFlag !== "true") reasons.push("Publication eBay d\xE9sactiv\xE9e sur le serveur (EBAY_LISTING_ENABLED \u2260 true).");
-  if (!input.isAdmin) reasons.push("Seul un administrateur peut publier une annonce.");
-  if (!input.confirm) reasons.push("Confirmation explicite requise.");
-  if (!input.connected) reasons.push("Aucun compte eBay connect\xE9.");
-  return { allowed: reasons.length === 0, reasons };
-}
-var EBAY_CONDITIONS, SKU_RE, listingDraftSchema;
-var init_listing = __esm({
-  "src/integrations/ebay/listing.ts"() {
-    "use strict";
-    init_errors2();
-    init_http();
-    init_config();
-    init_rest();
-    EBAY_CONDITIONS = [
-      "NEW",
-      "LIKE_NEW",
-      "NEW_OTHER",
-      "NEW_WITH_DEFECTS",
-      "CERTIFIED_REFURBISHED",
-      "EXCELLENT_REFURBISHED",
-      "VERY_GOOD_REFURBISHED",
-      "GOOD_REFURBISHED",
-      "SELLER_REFURBISHED",
-      "USED_EXCELLENT",
-      "USED_VERY_GOOD",
-      "USED_GOOD",
-      "USED_ACCEPTABLE",
-      "FOR_PARTS_OR_NOT_WORKING"
-    ];
-    SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
-    listingDraftSchema = z29.object({
-      sku: z29.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
-      marketplaceId: z29.literal("EBAY_FR").default("EBAY_FR"),
-      title: z29.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
-      description: z29.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
-      categoryId: z29.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
-      condition: z29.enum(EBAY_CONDITIONS),
-      conditionDescription: z29.string().trim().max(1e3).optional(),
-      price: z29.number().finite().positive("Prix positif requis.").max(1e6),
-      currency: z29.literal("EUR").default("EUR"),
-      quantity: z29.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
-      imageUrls: z29.array(z29.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
-      aspects: z29.record(z29.string().min(1).max(65), z29.array(z29.string().min(1).max(65)).min(1)).default({}),
-      brand: z29.string().trim().max(65).optional(),
-      mpn: z29.string().trim().max(65).optional(),
-      ean: z29.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
-      policies: z29.object({ fulfillmentPolicyId: z29.string().min(1), paymentPolicyId: z29.string().min(1), returnPolicyId: z29.string().min(1) }).optional(),
-      merchantLocationKey: z29.string().trim().min(1).max(36).optional()
-    });
-  }
-});
-
-// src/services/channels/ebay-listing-service.ts
-var ebay_listing_service_exports = {};
-__export(ebay_listing_service_exports, {
-  checkListing: () => checkListing,
-  disconnectEbay: () => disconnectEbay,
-  disconnectSchema: () => disconnectSchema,
-  ebayAccountSetup: () => ebayAccountSetup,
-  listingRequestSchema: () => listingRequestSchema,
-  prefillListing: () => prefillListing,
-  publishListingForOrg: () => publishListingForOrg
-});
-import { z as z30 } from "npm:zod@4.6.5";
-async function connectedEbay(ctx) {
-  const { data, error } = await ctx.supabase.from("channel_connections").select("id, status").eq("organization_id", ctx.organization.id).eq("provider", "ebay").eq("status", "connected").limit(1).maybeSingle();
-  if (error) throw fromPostgrestError(error);
-  return data ? { id: data.id } : null;
-}
-async function prefillListing(ctx, skuId) {
-  const { data: sku, error } = await ctx.supabase.from("skus").select("id, code, barcode, sale_price, currency, product:products(name, brand, attributes, description), variant:product_variants(name, condition, grade, attributes)").eq("organization_id", ctx.organization.id).eq("id", skuId).maybeSingle();
-  if (error) throw fromPostgrestError(error);
-  if (!sku) throw new AppError("NOT_FOUND", "SKU introuvable.");
-  const { data: inv } = await ctx.supabase.from("v_stock_overview").select("quantity_available").eq("organization_id", ctx.organization.id).eq("sku_id", skuId).maybeSingle();
-  const product = Array.isArray(sku.product) ? sku.product[0] : sku.product;
-  const variant = Array.isArray(sku.variant) ? sku.variant[0] : sku.variant;
-  const attrs = { ...product?.attributes ?? {}, ...variant?.attributes ?? {} };
-  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : null;
-  const model = str3(attrs.model);
-  const storage = str3(attrs.storage);
-  const color = str3(attrs.color);
-  const aspects = {};
-  if (product?.brand) aspects.Marque = [product.brand];
-  if (model) aspects["Mod\xE8le"] = [model];
-  if (storage) aspects["Capacit\xE9 de stockage"] = [storage];
-  if (color) aspects.Couleur = [color];
-  const title = [product?.name, variant?.name && variant.name !== "Standard" ? variant.name : null].filter(Boolean).join(" ").replace(/\s+/g, " ").slice(0, 80);
-  return {
-    draft: {
-      sku: sku.code,
-      marketplaceId: "EBAY_FR",
-      title,
-      description: product?.description ?? "",
-      categoryId: "",
-      condition: null,
-      price: sku.sale_price,
-      currency: "EUR",
-      quantity: Math.max(0, inv?.quantity_available ?? 0),
-      imageUrls: [],
-      aspects,
-      brand: product?.brand ?? void 0,
-      ean: sku.barcode && /^\d{8,14}$/.test(sku.barcode) ? sku.barcode : void 0
-    },
-    notes: [
-      "Choisissez la cat\xE9gorie eBay et l'\xE9tat : MON STOCK ne convertit pas les grades A/B/C en \xE9tats eBay (aucune \xE9quivalence officielle).",
-      "Ajoutez au moins une photo (URL HTTPS).",
-      ...variant?.grade ? [`Grade MON STOCK : ${variant.grade} \u2014 \xE0 d\xE9crire dans la description de l'\xE9tat.`] : []
-    ]
-  };
-}
-async function ebayAccountSetup(ctx) {
-  const env = ebayEnv();
-  if (!env) return { configured: false, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Cl\xE9s eBay non configur\xE9es sur le serveur."] };
-  const conn = await connectedEbay(ctx);
-  if (!conn) return { configured: true, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Aucun compte eBay connect\xE9."] };
-  const cfg = createEbayConfig(env);
-  const auth = connectorAuthFor(conn.id);
-  const errors = [];
-  const read = async (path, key2, map) => {
-    try {
-      const json2 = await ebayRestGet(auth, `${cfg.apiBase}${path}`, key2, { marketplaceId: "EBAY_FR" });
-      return (json2[key2] ?? []).map(map);
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e));
-      return [];
-    }
-  };
-  const policy = (idKey) => (x) => ({ id: String(x[idKey] ?? ""), name: String(x.name ?? "") });
-  const [fulfillment, payment, ret, locations] = await Promise.all([
-    read("/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_FR", "fulfillmentPolicies", policy("fulfillmentPolicyId")),
-    read("/sell/account/v1/payment_policy?marketplace_id=EBAY_FR", "paymentPolicies", policy("paymentPolicyId")),
-    read("/sell/account/v1/return_policy?marketplace_id=EBAY_FR", "returnPolicies", policy("returnPolicyId")),
-    read("/sell/inventory/v1/location?limit=100", "locations", (x) => ({ id: String(x.merchantLocationKey ?? ""), name: String(x.name ?? x.merchantLocationKey ?? "") }))
-  ]);
-  return { configured: true, connected: true, fulfillment, payment, return: ret, locations, errors: [...new Set(errors)] };
-}
-async function checkListing(ctx, input) {
-  const check = checkListingDraft(input.draft);
-  const conn = ebayEnv() ? await connectedEbay(ctx) : null;
-  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: true, connected: Boolean(conn) });
-  return {
-    ok: check.ok,
-    errors: check.errors,
-    warnings: check.warnings,
-    payload: check.draft ? { inventoryItem: buildInventoryItem(check.draft), offer: buildOffer(check.draft) } : null,
-    publication: { allowed: check.ok && gate.allowed, blockers: gate.reasons }
-  };
-}
-async function publishListingForOrg(ctx, input) {
-  const check = checkListingDraft(input.draft);
-  if (!check.ok || !check.draft) throw new AppError("VALIDATION", check.errors[0] ?? "Annonce invalide.");
-  const env = ebayEnv();
-  const conn = env ? await connectedEbay(ctx) : null;
-  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: input.confirm, connected: Boolean(conn) });
-  if (!gate.allowed || !env || !conn) throw new AppError("FORBIDDEN", gate.reasons.join(" "));
-  return publishListing(connectorAuthFor(conn.id), createEbayConfig(env).apiBase, check.draft);
-}
-async function disconnectEbay(ctx, connectionId) {
-  const { data } = await ctx.supabase.from("channel_connections").select("id").eq("organization_id", ctx.organization.id).eq("id", connectionId).maybeSingle();
-  if (!data) throw new AppError("NOT_FOUND", "Connexion introuvable dans cette organisation.");
-  return disconnectConnection(connectionId, ctx.organization.id);
-}
-var listingRequestSchema, disconnectSchema;
-var init_ebay_listing_service = __esm({
-  "src/services/channels/ebay-listing-service.ts"() {
-    "use strict";
-    init_empty();
-    init_errors();
-    init_env();
-    init_config();
-    init_rest();
-    init_listing();
-    init_connection_store();
-    listingRequestSchema = z30.object({ draft: z30.unknown(), confirm: z30.boolean().default(false) });
-    disconnectSchema = z30.object({ connectionId: z30.string().uuid() });
-  }
-});
-
-// src/services/sourcing/offer-linking.ts
-var offer_linking_exports = {};
-__export(offer_linking_exports, {
-  confirmOfferLink: () => confirmOfferLink,
-  decideMatch: () => decideMatch,
-  listMatchSuggestions: () => listMatchSuggestions,
-  matchDecisionSchema: () => matchDecisionSchema2
-});
-import { z as z31 } from "npm:zod@4.6.5";
-async function confirmOfferLink(orgId, supabase, userId, offerId, skuId, sourcingProductId) {
-  const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", orgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  if (existing) await supabase.from("product_matches").update({ status: "confirmed", decided_by: userId, decided_at: now }).eq("id", existing.id);
-  else await supabase.from("product_matches").insert({ organization_id: orgId, offer_id: offerId, sourcing_product_id: sourcingProductId, sku_id: skuId, confidence: 1, method: "supplier_sku", reasons: ["Association confirm\xE9e manuellement"], status: "confirmed", created_by: userId, decided_by: userId, decided_at: now });
-  await supabase.from("product_matches").update({ status: "rejected", decided_by: userId, decided_at: now }).eq("organization_id", orgId).eq("offer_id", offerId).neq("sku_id", skuId).eq("status", "suggested");
-  await applyConfirmedMatch(supabase, orgId, { offerId, skuId, sourcingProductId });
-}
-async function listMatchSuggestions(ctx, limit = 100) {
-  const { data, error } = await ctx.supabase.from("product_matches").select("id, confidence, method, reasons, offer:sourcing_offers(id, title_original, normalized_price, normalized_currency, supplier:suppliers(name)), sku:skus(id, code, product:products(name), variant:product_variants(name))").eq("organization_id", ctx.organization.id).eq("status", "suggested").not("offer_id", "is", null).order("confidence", { ascending: false }).limit(limit);
-  if (error) throw fromPostgrestError(error);
-  const one2 = (v2) => Array.isArray(v2) ? v2[0] ?? null : v2 ?? null;
-  return (data ?? []).flatMap((m) => {
-    const offer = one2(m.offer);
-    const sku = one2(m.sku);
-    if (!offer || !sku) return [];
-    return [
-      {
-        matchId: m.id,
-        confidence: m.confidence,
-        method: m.method,
-        reasons: Array.isArray(m.reasons) ? m.reasons : [],
-        offer: { id: offer.id, title: offer.title_original, price: offer.normalized_price, currency: offer.normalized_currency, supplierName: one2(offer.supplier)?.name ?? "Fournisseur" },
-        sku: { id: sku.id, code: sku.code, name: [one2(sku.product)?.name, one2(sku.variant)?.name].filter(Boolean).join(" \xB7 ") }
-      }
-    ];
-  });
-}
-async function decideMatch(ctx, input) {
-  const orgId = ctx.organization.id;
-  const { data: match } = await ctx.supabase.from("product_matches").select("id, offer_id, sku_id, sourcing_product_id, status").eq("organization_id", orgId).eq("id", input.matchId).maybeSingle();
-  if (!match) throw new AppError("NOT_FOUND", "Correspondance introuvable.");
-  if (match.status !== "suggested") throw new AppError("CONFLICT", "Cette correspondance a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
-  if (input.decision === "reject") {
-    const { error } = await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", orgId).eq("id", match.id);
-    if (error) throw fromPostgrestError(error);
-    return { status: "rejected" };
-  }
-  if (!match.offer_id) throw new AppError("VALIDATION", "Correspondance sans offre.");
-  await confirmOfferLink(orgId, ctx.supabase, ctx.user.id, match.offer_id, match.sku_id, match.sourcing_product_id);
-  return { status: "confirmed" };
-}
-var matchDecisionSchema2;
-var init_offer_linking = __esm({
-  "src/services/sourcing/offer-linking.ts"() {
-    "use strict";
-    init_empty();
-    init_errors();
-    init_matching_service();
-    matchDecisionSchema2 = z31.object({ matchId: z31.string().uuid(), decision: z31.enum(["confirm", "reject"]) });
-  }
-});
-
 // src/domain/sourcing/radar.ts
 function freshnessOf(lastSeenAt, now) {
   if (!lastSeenAt) return { freshness: "unknown", ageDays: null };
@@ -7743,7 +7384,7 @@ __export(radar_exports, {
   readCostSettings: () => readCostSettings,
   saveCostSettings: () => saveCostSettings
 });
-import { z as z32 } from "npm:zod@4.6.5";
+import { z as z29 } from "npm:zod@4.6.5";
 function readCostSettings(orgSettings, channel) {
   const raw = orgSettings?.radar ?? {};
   const s = { ...EMPTY_COST_SETTINGS };
@@ -7909,11 +7550,11 @@ var init_radar2 = __esm({
     init_empty();
     init_errors();
     init_radar();
-    nullableNumber2 = (min, max) => z32.number().finite().min(min).max(max).nullable();
-    radarSettingsSchema = z32.object({
-      vatRegime: z32.enum(["normal", "margin", "franchise"]).nullable(),
+    nullableNumber2 = (min, max) => z29.number().finite().min(min).max(max).nullable();
+    radarSettingsSchema = z29.object({
+      vatRegime: z29.enum(["normal", "margin", "franchise"]).nullable(),
       vatRate: nullableNumber2(0, 30),
-      vatRecoverable: z32.boolean().nullable(),
+      vatRecoverable: z29.boolean().nullable(),
       marketplaceFeePercent: nullableNumber2(0, 50),
       paymentFeePercent: nullableNumber2(0, 20),
       paymentFeeFixed: nullableNumber2(0, 50),
@@ -7923,6 +7564,365 @@ var init_radar2 = __esm({
       importDutyPercent: nullableNumber2(0, 100)
     });
     OFFER_SELECT2 = "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, tax_type, shipping_cost, moq, available_quantity, stock_status, last_seen_at, country, supplier:suppliers(name, country), source:supplier_sources(source_type, config)";
+  }
+});
+
+// src/integrations/ebay/listing.ts
+import { z as z30 } from "npm:zod@4.6.5";
+function checkListingDraft(input) {
+  const parsed = listingDraftSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "annonce"} : ${i.message}`), warnings: [], draft: null };
+  const d = parsed.data;
+  const errors = [];
+  const warnings = [];
+  if (!d.policies) errors.push("Politiques m\xE9tier eBay (paiement, retour, exp\xE9dition) non choisies.");
+  if (!d.merchantLocationKey) errors.push("Emplacement d'inventaire eBay (merchantLocationKey) non choisi.");
+  const aspectNames = Object.keys(d.aspects).map((a) => a.toLowerCase());
+  if (!d.brand && !aspectNames.includes("marque") && !aspectNames.includes("brand")) warnings.push("Marque non renseign\xE9e : souvent obligatoire.");
+  if (!aspectNames.includes("mod\xE8le") && !aspectNames.includes("model")) warnings.push("Caract\xE9ristique \xAB Mod\xE8le \xBB absente : souvent obligatoire pour les t\xE9l\xE9phones.");
+  if (/[<>]/.test(d.title)) errors.push("Le titre ne doit pas contenir de balises.");
+  if (d.title === d.title.toUpperCase() && /[A-Z]{6,}/.test(d.title)) warnings.push("Titre enti\xE8rement en majuscules : d\xE9conseill\xE9 par eBay.");
+  if (d.condition.endsWith("_REFURBISHED") && d.condition !== "SELLER_REFURBISHED") warnings.push("\xC9tat \xAB reconditionn\xE9 \xBB du programme eBay : v\xE9rifiez votre agr\xE9ment pour cette cat\xE9gorie.");
+  warnings.push("Caract\xE9ristiques obligatoires et \xE9tats autoris\xE9s de la cat\xE9gorie v\xE9rifi\xE9s par eBay au moment de la publication.");
+  return { ok: errors.length === 0, errors, warnings, draft: d };
+}
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function descriptionHtml(text2) {
+  return text2.split(/\n{2,}/).map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
+}
+function buildInventoryItem(d) {
+  const aspects = { ...d.aspects };
+  if (d.brand && !aspects.Marque) aspects.Marque = [d.brand];
+  return {
+    availability: { shipToLocationAvailability: { quantity: d.quantity } },
+    condition: d.condition,
+    ...d.conditionDescription ? { conditionDescription: d.conditionDescription } : {},
+    product: {
+      title: d.title,
+      description: descriptionHtml(d.description),
+      aspects,
+      imageUrls: d.imageUrls,
+      ...d.brand ? { brand: d.brand } : {},
+      ...d.mpn ? { mpn: d.mpn } : {},
+      ...d.ean ? { ean: [d.ean] } : {}
+    }
+  };
+}
+function buildOffer(d) {
+  return {
+    sku: d.sku,
+    marketplaceId: d.marketplaceId,
+    format: "FIXED_PRICE",
+    availableQuantity: d.quantity,
+    categoryId: d.categoryId,
+    listingDescription: descriptionHtml(d.description),
+    ...d.policies ? { listingPolicies: d.policies } : {},
+    ...d.merchantLocationKey ? { merchantLocationKey: d.merchantLocationKey } : {},
+    pricingSummary: { price: { value: d.price.toFixed(2), currency: d.currency } }
+  };
+}
+async function ebayRestSend(auth, method, url, label, body) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
+    const res = await fetchWithRetry(
+      url,
+      {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Accept-Language": "fr-FR",
+          "Content-Language": "fr-FR",
+          ...body !== void 0 ? { "Content-Type": "application/json" } : {}
+        },
+        body: body === void 0 ? void 0 : JSON.stringify(body)
+      },
+      // POST non idempotent (création d'offre, publication) : jamais rejoué automatiquement (anti-doublon).
+      { provider: EBAY_PROVIDER, label, retries: method === "POST" ? 0 : void 0 }
+    );
+    const json2 = res.status === 204 ? null : await readJson(res, EBAY_PROVIDER);
+    if (res.status === 401 && attempt === 0) continue;
+    return { status: res.status, json: json2 };
+  }
+  throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Autorisation eBay expir\xE9e : reconnectez votre compte.", { retryable: false });
+}
+function fail(step, status, json2) {
+  const { message, errorIds } = summarizeRestErrors(json2);
+  const auth = status === 401 || status === 403;
+  throw new ConnectorError(auth ? "AUTH_EXPIRED" : "API_ERROR", EBAY_PROVIDER, `${step} refus\xE9 par eBay (HTTP ${status})${message ? ` : ${message}` : ""}.`, {
+    httpStatus: status,
+    details: { step, errorIds },
+    retryable: status >= 500
+  });
+}
+async function publishListing(auth, apiBase2, d) {
+  const base = `${apiBase2.replace(/\/+$/, "")}/sell/inventory/v1`;
+  const sku = encodeURIComponent(d.sku);
+  const item = await ebayRestSend(auth, "PUT", `${base}/inventory_item/${sku}`, "createOrReplaceInventoryItem", buildInventoryItem(d));
+  if (item.status >= 300) fail("Enregistrement de l'article", item.status, item.json);
+  const existing = await ebayRestSend(auth, "GET", `${base}/offer?sku=${sku}&marketplace_id=${d.marketplaceId}`, "getOffers");
+  let offerId = null;
+  if (existing.status === 200) {
+    const offers = existing.json?.offers ?? [];
+    offerId = offers.find((o) => o.marketplaceId === d.marketplaceId && (o.format ?? "FIXED_PRICE") === "FIXED_PRICE")?.offerId ?? null;
+  } else if (existing.status !== 404) fail("Lecture des offres existantes", existing.status, existing.json);
+  let created = false;
+  if (offerId) {
+    const upd = await ebayRestSend(auth, "PUT", `${base}/offer/${encodeURIComponent(offerId)}`, "updateOffer", buildOffer(d));
+    if (upd.status >= 300) fail("Mise \xE0 jour de l'offre", upd.status, upd.json);
+  } else {
+    const cre = await ebayRestSend(auth, "POST", `${base}/offer`, "createOffer", buildOffer(d));
+    if (cre.status >= 300) fail("Cr\xE9ation de l'offre", cre.status, cre.json);
+    offerId = cre.json?.offerId ?? null;
+    if (!offerId) throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "eBay n'a pas renvoy\xE9 d'identifiant d'offre.", { retryable: false });
+    created = true;
+  }
+  const pub = await ebayRestSend(auth, "POST", `${base}/offer/${encodeURIComponent(offerId)}/publish`, "publishOffer");
+  if (pub.status >= 300) fail("Publication", pub.status, pub.json);
+  return { sku: d.sku, offerId, listingId: pub.json?.listingId ?? null, createdOffer: created };
+}
+function publicationGate(input) {
+  const reasons = [];
+  if (input.enabledFlag !== "true") reasons.push("Publication eBay d\xE9sactiv\xE9e sur le serveur (EBAY_LISTING_ENABLED \u2260 true).");
+  if (!input.isAdmin) reasons.push("Seul un administrateur peut publier une annonce.");
+  if (!input.confirm) reasons.push("Confirmation explicite requise.");
+  if (!input.connected) reasons.push("Aucun compte eBay connect\xE9.");
+  return { allowed: reasons.length === 0, reasons };
+}
+var EBAY_CONDITIONS, SKU_RE, listingDraftSchema;
+var init_listing = __esm({
+  "src/integrations/ebay/listing.ts"() {
+    "use strict";
+    init_errors2();
+    init_http();
+    init_config();
+    init_rest();
+    EBAY_CONDITIONS = [
+      "NEW",
+      "LIKE_NEW",
+      "NEW_OTHER",
+      "NEW_WITH_DEFECTS",
+      "CERTIFIED_REFURBISHED",
+      "EXCELLENT_REFURBISHED",
+      "VERY_GOOD_REFURBISHED",
+      "GOOD_REFURBISHED",
+      "SELLER_REFURBISHED",
+      "USED_EXCELLENT",
+      "USED_VERY_GOOD",
+      "USED_GOOD",
+      "USED_ACCEPTABLE",
+      "FOR_PARTS_OR_NOT_WORKING"
+    ];
+    SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
+    listingDraftSchema = z30.object({
+      sku: z30.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
+      marketplaceId: z30.literal("EBAY_FR").default("EBAY_FR"),
+      title: z30.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
+      description: z30.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
+      categoryId: z30.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
+      condition: z30.enum(EBAY_CONDITIONS),
+      conditionDescription: z30.string().trim().max(1e3).optional(),
+      price: z30.number().finite().positive("Prix positif requis.").max(1e6),
+      currency: z30.literal("EUR").default("EUR"),
+      quantity: z30.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
+      imageUrls: z30.array(z30.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
+      aspects: z30.record(z30.string().min(1).max(65), z30.array(z30.string().min(1).max(65)).min(1)).default({}),
+      brand: z30.string().trim().max(65).optional(),
+      mpn: z30.string().trim().max(65).optional(),
+      ean: z30.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
+      policies: z30.object({ fulfillmentPolicyId: z30.string().min(1), paymentPolicyId: z30.string().min(1), returnPolicyId: z30.string().min(1) }).optional(),
+      merchantLocationKey: z30.string().trim().min(1).max(36).optional()
+    });
+  }
+});
+
+// src/services/channels/ebay-listing-service.ts
+var ebay_listing_service_exports = {};
+__export(ebay_listing_service_exports, {
+  checkListing: () => checkListing,
+  disconnectEbay: () => disconnectEbay,
+  disconnectSchema: () => disconnectSchema,
+  ebayAccountSetup: () => ebayAccountSetup,
+  listingRequestSchema: () => listingRequestSchema,
+  prefillListing: () => prefillListing,
+  publishListingForOrg: () => publishListingForOrg
+});
+import { z as z31 } from "npm:zod@4.6.5";
+async function connectedEbay(ctx) {
+  const { data, error } = await ctx.supabase.from("channel_connections").select("id, status").eq("organization_id", ctx.organization.id).eq("provider", "ebay").eq("status", "connected").limit(1).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  return data ? { id: data.id } : null;
+}
+async function prefillListing(ctx, skuId) {
+  const { data: sku, error } = await ctx.supabase.from("skus").select("id, code, barcode, sale_price, currency, product:products(name, brand, attributes, description), variant:product_variants(name, condition, grade, attributes)").eq("organization_id", ctx.organization.id).eq("id", skuId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!sku) throw new AppError("NOT_FOUND", "SKU introuvable.");
+  const { data: inv } = await ctx.supabase.from("v_stock_overview").select("quantity_available").eq("organization_id", ctx.organization.id).eq("sku_id", skuId).maybeSingle();
+  const product = Array.isArray(sku.product) ? sku.product[0] : sku.product;
+  const variant = Array.isArray(sku.variant) ? sku.variant[0] : sku.variant;
+  const attrs = { ...product?.attributes ?? {}, ...variant?.attributes ?? {} };
+  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : null;
+  const model = str3(attrs.model);
+  const storage = str3(attrs.storage);
+  const color = str3(attrs.color);
+  const aspects = {};
+  if (product?.brand) aspects.Marque = [product.brand];
+  if (model) aspects["Mod\xE8le"] = [model];
+  if (storage) aspects["Capacit\xE9 de stockage"] = [storage];
+  if (color) aspects.Couleur = [color];
+  const title = [product?.name, variant?.name && variant.name !== "Standard" ? variant.name : null].filter(Boolean).join(" ").replace(/\s+/g, " ").slice(0, 80);
+  return {
+    draft: {
+      sku: sku.code,
+      marketplaceId: "EBAY_FR",
+      title,
+      description: product?.description ?? "",
+      categoryId: "",
+      condition: null,
+      price: sku.sale_price,
+      currency: "EUR",
+      quantity: Math.max(0, inv?.quantity_available ?? 0),
+      imageUrls: [],
+      aspects,
+      brand: product?.brand ?? void 0,
+      ean: sku.barcode && /^\d{8,14}$/.test(sku.barcode) ? sku.barcode : void 0
+    },
+    notes: [
+      "Choisissez la cat\xE9gorie eBay et l'\xE9tat : MON STOCK ne convertit pas les grades A/B/C en \xE9tats eBay (aucune \xE9quivalence officielle).",
+      "Ajoutez au moins une photo (URL HTTPS).",
+      ...variant?.grade ? [`Grade MON STOCK : ${variant.grade} \u2014 \xE0 d\xE9crire dans la description de l'\xE9tat.`] : []
+    ]
+  };
+}
+async function ebayAccountSetup(ctx) {
+  const env = ebayEnv();
+  if (!env) return { configured: false, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Cl\xE9s eBay non configur\xE9es sur le serveur."] };
+  const conn = await connectedEbay(ctx);
+  if (!conn) return { configured: true, connected: false, fulfillment: [], payment: [], return: [], locations: [], errors: ["Aucun compte eBay connect\xE9."] };
+  const cfg = createEbayConfig(env);
+  const auth = connectorAuthFor(conn.id);
+  const errors = [];
+  const read = async (path, key2, map) => {
+    try {
+      const json2 = await ebayRestGet(auth, `${cfg.apiBase}${path}`, key2, { marketplaceId: "EBAY_FR" });
+      return (json2[key2] ?? []).map(map);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+      return [];
+    }
+  };
+  const policy = (idKey) => (x) => ({ id: String(x[idKey] ?? ""), name: String(x.name ?? "") });
+  const [fulfillment, payment, ret, locations] = await Promise.all([
+    read("/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_FR", "fulfillmentPolicies", policy("fulfillmentPolicyId")),
+    read("/sell/account/v1/payment_policy?marketplace_id=EBAY_FR", "paymentPolicies", policy("paymentPolicyId")),
+    read("/sell/account/v1/return_policy?marketplace_id=EBAY_FR", "returnPolicies", policy("returnPolicyId")),
+    read("/sell/inventory/v1/location?limit=100", "locations", (x) => ({ id: String(x.merchantLocationKey ?? ""), name: String(x.name ?? x.merchantLocationKey ?? "") }))
+  ]);
+  return { configured: true, connected: true, fulfillment, payment, return: ret, locations, errors: [...new Set(errors)] };
+}
+async function checkListing(ctx, input) {
+  const check = checkListingDraft(input.draft);
+  const conn = ebayEnv() ? await connectedEbay(ctx) : null;
+  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: true, connected: Boolean(conn) });
+  return {
+    ok: check.ok,
+    errors: check.errors,
+    warnings: check.warnings,
+    payload: check.draft ? { inventoryItem: buildInventoryItem(check.draft), offer: buildOffer(check.draft) } : null,
+    publication: { allowed: check.ok && gate.allowed, blockers: gate.reasons }
+  };
+}
+async function publishListingForOrg(ctx, input) {
+  const check = checkListingDraft(input.draft);
+  if (!check.ok || !check.draft) throw new AppError("VALIDATION", check.errors[0] ?? "Annonce invalide.");
+  const env = ebayEnv();
+  const conn = env ? await connectedEbay(ctx) : null;
+  const gate = publicationGate({ enabledFlag: process.env.EBAY_LISTING_ENABLED, isAdmin: ctx.role === "owner" || ctx.role === "admin", confirm: input.confirm, connected: Boolean(conn) });
+  if (!gate.allowed || !env || !conn) throw new AppError("FORBIDDEN", gate.reasons.join(" "));
+  return publishListing(connectorAuthFor(conn.id), createEbayConfig(env).apiBase, check.draft);
+}
+async function disconnectEbay(ctx, connectionId) {
+  const { data } = await ctx.supabase.from("channel_connections").select("id").eq("organization_id", ctx.organization.id).eq("id", connectionId).maybeSingle();
+  if (!data) throw new AppError("NOT_FOUND", "Connexion introuvable dans cette organisation.");
+  return disconnectConnection(connectionId, ctx.organization.id);
+}
+var listingRequestSchema, disconnectSchema;
+var init_ebay_listing_service = __esm({
+  "src/services/channels/ebay-listing-service.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_env();
+    init_config();
+    init_rest();
+    init_listing();
+    init_connection_store();
+    listingRequestSchema = z31.object({ draft: z31.unknown(), confirm: z31.boolean().default(false) });
+    disconnectSchema = z31.object({ connectionId: z31.string().uuid() });
+  }
+});
+
+// src/services/sourcing/offer-linking.ts
+var offer_linking_exports = {};
+__export(offer_linking_exports, {
+  confirmOfferLink: () => confirmOfferLink,
+  decideMatch: () => decideMatch,
+  listMatchSuggestions: () => listMatchSuggestions,
+  matchDecisionSchema: () => matchDecisionSchema2
+});
+import { z as z32 } from "npm:zod@4.6.5";
+async function confirmOfferLink(orgId, supabase, userId, offerId, skuId, sourcingProductId) {
+  const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", orgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (existing) await supabase.from("product_matches").update({ status: "confirmed", decided_by: userId, decided_at: now }).eq("id", existing.id);
+  else await supabase.from("product_matches").insert({ organization_id: orgId, offer_id: offerId, sourcing_product_id: sourcingProductId, sku_id: skuId, confidence: 1, method: "supplier_sku", reasons: ["Association confirm\xE9e manuellement"], status: "confirmed", created_by: userId, decided_by: userId, decided_at: now });
+  await supabase.from("product_matches").update({ status: "rejected", decided_by: userId, decided_at: now }).eq("organization_id", orgId).eq("offer_id", offerId).neq("sku_id", skuId).eq("status", "suggested");
+  await applyConfirmedMatch(supabase, orgId, { offerId, skuId, sourcingProductId });
+}
+async function listMatchSuggestions(ctx, limit = 100) {
+  const { data, error } = await ctx.supabase.from("product_matches").select("id, confidence, method, reasons, offer:sourcing_offers(id, title_original, normalized_price, normalized_currency, supplier:suppliers(name)), sku:skus(id, code, product:products(name), variant:product_variants(name))").eq("organization_id", ctx.organization.id).eq("status", "suggested").not("offer_id", "is", null).order("confidence", { ascending: false }).limit(limit);
+  if (error) throw fromPostgrestError(error);
+  const one2 = (v2) => Array.isArray(v2) ? v2[0] ?? null : v2 ?? null;
+  return (data ?? []).flatMap((m) => {
+    const offer = one2(m.offer);
+    const sku = one2(m.sku);
+    if (!offer || !sku) return [];
+    return [
+      {
+        matchId: m.id,
+        confidence: m.confidence,
+        method: m.method,
+        reasons: Array.isArray(m.reasons) ? m.reasons : [],
+        offer: { id: offer.id, title: offer.title_original, price: offer.normalized_price, currency: offer.normalized_currency, supplierName: one2(offer.supplier)?.name ?? "Fournisseur" },
+        sku: { id: sku.id, code: sku.code, name: [one2(sku.product)?.name, one2(sku.variant)?.name].filter(Boolean).join(" \xB7 ") }
+      }
+    ];
+  });
+}
+async function decideMatch(ctx, input) {
+  const orgId = ctx.organization.id;
+  const { data: match } = await ctx.supabase.from("product_matches").select("id, offer_id, sku_id, sourcing_product_id, status").eq("organization_id", orgId).eq("id", input.matchId).maybeSingle();
+  if (!match) throw new AppError("NOT_FOUND", "Correspondance introuvable.");
+  if (match.status !== "suggested") throw new AppError("CONFLICT", "Cette correspondance a d\xE9j\xE0 \xE9t\xE9 trait\xE9e.");
+  if (input.decision === "reject") {
+    const { error } = await ctx.supabase.from("product_matches").update({ status: "rejected", decided_by: ctx.user.id, decided_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", orgId).eq("id", match.id);
+    if (error) throw fromPostgrestError(error);
+    return { status: "rejected" };
+  }
+  if (!match.offer_id) throw new AppError("VALIDATION", "Correspondance sans offre.");
+  await confirmOfferLink(orgId, ctx.supabase, ctx.user.id, match.offer_id, match.sku_id, match.sourcing_product_id);
+  return { status: "confirmed" };
+}
+var matchDecisionSchema2;
+var init_offer_linking = __esm({
+  "src/services/sourcing/offer-linking.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_matching_service();
+    matchDecisionSchema2 = z32.object({ matchId: z32.string().uuid(), decision: z32.enum(["confirm", "reject"]) });
   }
 });
 
@@ -17836,6 +17836,52 @@ async function runImportSelfTest() {
     return { ok: false, result: null, offers: 0, runStatus: null, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup() };
   }
 }
+async function runChainSelfTest() {
+  const admin = createAdminSupabaseClient();
+  const steps = {};
+  const { data: anyMember } = await admin.from("organization_members").select("user_id").limit(1).maybeSingle();
+  const slug = `verif-chaine-${Date.now().toString(36)}`;
+  const { data: org, error: orgErr } = await admin.from("organizations").insert({ name: "V\xE9rification cha\xEEne (temporaire)", slug, default_currency: "EUR", country: "FR", settings: { radar: { vatRegime: "normal", vatRate: 20, vatRecoverable: true, marketplaceFeePercent: 12, paymentFeePercent: 0, paymentFeeFixed: 0.35, shippingToCustomer: 8, packagingCost: 1.5, returnProvisionPercent: 2 } } }).select("*").single();
+  if (orgErr || !org) return { ok: false, steps, error: orgErr?.message ?? "organisation non cr\xE9\xE9e", cleaned: true };
+  const cleanup = async () => !(await admin.from("organizations").delete().eq("id", org.id)).error;
+  try {
+    const { data: created, error: skuErr } = await admin.rpc("create_sku", {
+      p_organization_id: org.id,
+      p_variant: { name: "128 Go / Noir / Grade A", condition: "refurbished", grade: "A", attributes: { storage: "128 Go", color: "Noir", grade: "A" } },
+      p_sku: { code: "TEST-CHAINE-IP13", cost_price: 330, sale_price: 600, currency: "EUR", barcode: "0194252707323" },
+      p_product_id: null,
+      p_product: { name: "Article de contr\xF4le (test serveur)", brand: "Apple", category: "Smartphone", attributes: { model: "iPhone 13" } },
+      p_initial_quantity: 1
+    });
+    if (skuErr) throw new Error(`SKU : ${skuErr.message}`);
+    const skuId = created?.sku_id ?? null;
+    steps.sku = Boolean(skuId);
+    if (skuId) await admin.from("skus").update({ barcode: "0194252707323" }).eq("id", skuId);
+    const ctx = { supabase: admin, user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" }, profile: null, organization: org, role: "owner", memberships: [] };
+    const csv = ["R\xE9f.;D\xE9signation article;EAN;Prix HT (\u20AC);Qt\xE9 dispo", "CTRL-1;iPhone 13 128 Go Noir Grade A (test serveur);0194252707323;300,00;5"].join("\r\n");
+    const { importCatalogFile: importCatalogFile2, previewCatalogFile: previewCatalogFile2 } = await Promise.resolve().then(() => (init_catalog_import(), catalog_import_exports));
+    const file = { fileName: "controle.csv", contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
+    const preview = previewCatalogFile2({ file }, "EUR");
+    const imported = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)" });
+    steps.import = { stored: imported.result.stored, status: imported.result.status };
+    const { data: offer } = await admin.from("sourcing_offers").select("sku_id").eq("organization_id", org.id).maybeSingle();
+    steps.autoMatched = offer?.sku_id === skuId;
+    const { buildRadar: buildRadar2 } = await Promise.resolve().then(() => (init_radar2(), radar_exports));
+    const radar = await buildRadar2(ctx);
+    const item = radar.items[0];
+    steps.radar = item ? { status: item.evaluation.status, profit: item.evaluation.estimatedProfit, missing: item.evaluation.missing, priceOrigin: item.offer.priceOrigin, reasons: item.evaluation.reasons.length } : { items: 0, unlinked: radar.counts.unlinkedOffers };
+    if (skuId) {
+      const { prefillListing: prefillListing2, checkListing: checkListing2 } = await Promise.resolve().then(() => (init_ebay_listing_service(), ebay_listing_service_exports));
+      const p = await prefillListing2(ctx, skuId);
+      const c = await checkListing2(ctx, { draft: { ...p.draft, categoryId: "9355", condition: "SELLER_REFURBISHED", description: "Article de contr\xF4le \u2014 test serveur, jamais publi\xE9.", imageUrls: ["https://example.com/controle.jpg"] }, confirm: false });
+      steps.ebayCheck = { title: p.draft.title, aspects: Object.keys(p.draft.aspects), errors: c.errors, publicationAllowed: c.publication.allowed, blockers: c.publication.blockers.length };
+    }
+    const ok = steps.sku === true && steps.autoMatched === true && Boolean(item) && steps.ebayCheck?.publicationAllowed === false;
+    return { ok, steps, error: null, cleaned: await cleanup() };
+  } catch (e) {
+    return { ok: false, steps, error: e instanceof Error ? e.message : String(e), cleaned: await cleanup() };
+  }
+}
 
 // server/edge/api.ts
 init_ebay_listing_service();
@@ -17857,7 +17903,7 @@ function aiConfigured(env = process.env) {
 var client = null;
 function claudeClient() {
   if (!aiConfigured()) throw new AppError("NOT_CONFIGURED", AI_NOT_CONFIGURED);
-  client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 9e4 });
+  client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 55e3 });
   return client;
 }
 function aiError(e) {
@@ -17868,6 +17914,25 @@ function aiError(e) {
   if (e instanceof Anthropic.APIConnectionError) return new AppError("EXTERNAL_API", "L'assistant IA est injoignable pour le moment. R\xE9essayez.");
   if (e instanceof Anthropic.APIError) return new AppError("EXTERNAL_API", "L'assistant IA est momentan\xE9ment indisponible. R\xE9essayez.");
   return new AppError("INTERNAL", "L'assistant IA a rencontr\xE9 une erreur inattendue.");
+}
+
+// src/services/ai/quota.ts
+init_empty();
+init_errors();
+init_admin();
+var AI_LIMITS = { assistantPerHour: 40, productDraftPerHour: 60, orgPerDay: 400 };
+async function enforceAiQuota(ctx, kind, now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient()) {
+  const hourAgo = new Date(now.getTime() - 36e5).toISOString();
+  const dayAgo = new Date(now.getTime() - 864e5).toISOString();
+  const [mine, org] = await Promise.all([
+    ctx.supabase.from("ai_usage_events").select("id", { count: "exact", head: true }).eq("user_id", ctx.user.id).eq("kind", kind).gte("created_at", hourAgo),
+    admin.from("ai_usage_events").select("id", { count: "exact", head: true }).eq("organization_id", ctx.organization.id).gte("created_at", dayAgo)
+  ]);
+  const perHour = kind === "assistant" ? AI_LIMITS.assistantPerHour : AI_LIMITS.productDraftPerHour;
+  if ((mine.count ?? 0) >= perHour) throw new AppError("RATE_LIMITED", `Limite atteinte : ${perHour} demandes \xE0 l'IA par heure. R\xE9essayez plus tard.`);
+  if ((org.count ?? 0) >= AI_LIMITS.orgPerDay) throw new AppError("RATE_LIMITED", `Limite quotidienne de l'organisation atteinte (${AI_LIMITS.orgPerDay} demandes \xE0 l'IA). R\xE9essayez demain.`);
+  const { error } = await ctx.supabase.from("ai_usage_events").insert({ organization_id: ctx.organization.id, user_id: ctx.user.id, kind });
+  if (error) throw new AppError("FORBIDDEN", "Utilisation de l'IA non autoris\xE9e pour ce compte.");
 }
 
 // src/services/ai/product-draft.ts
@@ -18388,6 +18453,7 @@ var assistantRequestSchema = z36.object({
   messages: z36.array(z36.object({ role: z36.enum(["user", "assistant"]), content: z36.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
 var MAX_STEPS = 8;
+var ASSISTANT_DEADLINE_MS = 11e4;
 function assistantSystemPrompt(org, today) {
   return [
     `Tu es l'assistant \xAB Intelligence \xBB de MON STOCK, le logiciel de gestion de stock et de ventes de l'organisation \xAB ${org.name} \xBB (revendeur d'appareils \xE9lectroniques ; devise principale ${org.currency}).`,
@@ -18417,8 +18483,10 @@ async function askAssistant(ctx, request) {
   const messages = request.messages.map((m) => ({ role: m.role, content: m.content }));
   const used = [];
   let model = AI_MODEL;
+  const started = Date.now();
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
+      if (Date.now() - started > ASSISTANT_DEADLINE_MS) throw new AppError("EXTERNAL_API", "La r\xE9ponse prend trop de temps : posez une question plus pr\xE9cise.");
       const response = await client2.beta.messages.create({
         model: AI_MODEL,
         max_tokens: 8e3,
@@ -18751,6 +18819,7 @@ async function route(request) {
           return runDirectoryChecks({ keys: body.keys });
         });
       }
+      if (m === "POST" && path === "/cron/chain-selftest") return handle(() => runChainSelfTest());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
         return handle(async () => checkReadOnlyRoutes((await parseBody(request, z37.object({ organizationId: uuidParam.optional() }))).organizationId));
@@ -18817,6 +18886,8 @@ async function route(request) {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, productDraftSchema);
+        claudeClient();
+        await enforceAiQuota(ctx, "product_draft");
         return draftProductFromText(body.text, ctx.organization.default_currency);
       });
     }
@@ -18824,6 +18895,8 @@ async function route(request) {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
         const body = await parseBody(request, assistantRequestSchema);
+        claudeClient();
+        await enforceAiQuota(ctx, "assistant");
         return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
       });
     }
