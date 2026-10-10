@@ -21,6 +21,7 @@
     "edge:build": "node scripts/build-edge.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "clsx": "^2.1.1",

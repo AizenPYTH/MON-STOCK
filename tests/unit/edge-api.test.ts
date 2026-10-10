@@ -3,7 +3,7 @@ import { parseQuery } from "@/domain/sourcing/query-parser";
 import { clearEbayAppTokenCache, ebayBrowseAdapter, ebayCondition, mapEbayItem } from "@/integrations/sourcing/ebay-browse";
 import { checkLibrarySource, checkLibrarySourceDetect, getLibrarySource, SOURCE_LIBRARY } from "@/services/sourcing/source-library";
 import { ebayCallbackTarget } from "../../server/edge/ebay-callback";
-import { routeOf } from "../../server/edge/api";
+import { route, routeOf } from "../../server/edge/api";
 import { mockFetch, runCtx, sourceConfig } from "./helpers/sourcing-adapters";
 
 const ENV_KEYS = ["EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET", "EBAY_RU_NAME", "EBAY_ENV", "SUPABASE_SERVICE_ROLE_KEY", "TOKEN_ENCRYPTION_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"] as const;
@@ -155,6 +155,14 @@ describe("Edge Function api : routage et retour OAuth eBay", () => {
     expect(routeOf(new URL("https://x.supabase.co/functions/v1/api/sourcing/search?q=a"))).toBe("/sourcing/search");
     expect(routeOf(new URL("http://localhost/api/health/"))).toBe("/health");
     expect(routeOf(new URL("http://localhost/api"))).toBe("/");
+  });
+
+  it("routes IA : jeton utilisateur exigé avant tout appel à Claude", async () => {
+    for (const p of ["/ai/assistant", "/ai/product-draft"]) {
+      const res = await route(new Request(`https://x.supabase.co/functions/v1/api${p}`, { method: "POST", body: JSON.stringify({ text: "iPhone 13" }) }));
+      expect(res.status).toBe(401);
+      expect((await res.json()).error.code).toBe("AUTH_REQUIRED");
+    }
   });
 
   it("retour eBay : seuls code/state au format attendu sont relayés vers l'application", () => {

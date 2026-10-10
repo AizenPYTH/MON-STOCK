@@ -42,6 +42,7 @@ export default function AppLayout() {
       <Stack.Screen name="product/edit/[productId]" options={{ presentation: "modal" }} />
       <Stack.Screen name="product/add-variant/[productId]" options={{ presentation: "modal" }} />
       <Stack.Screen name="sku/edit/[skuId]" options={{ presentation: "modal" }} />
+      <Stack.Screen name="assistant" />
     </Stack>
   );
 }

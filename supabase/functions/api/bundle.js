@@ -5,7 +5,7 @@ const process = { env: { NODE_ENV: "production", ...__denoEnv, NEXT_PUBLIC_SUPAB
 const Buffer = globalThis.Buffer ?? __Buffer;
 
 // server/edge/api.ts
-import { z as z28 } from "npm:zod@4.6.5";
+import { z as z32 } from "npm:zod@4.6.5";
 
 // src/lib/logger.ts
 var SENSITIVE = /token|secret|password|authorization|credential|api[_-]?key|cookie/i;
@@ -1063,8 +1063,8 @@ function urgencyComparator(a, b) {
 }
 function isDeadStock(view, now, days = DEAD_STOCK_DAYS) {
   if ((view.row.quantity_available ?? 0) <= 0) return false;
-  const since = daysSince(view.row.last_sale_at, now);
-  return since === null || since >= days;
+  const since2 = daysSince(view.row.last_sale_at, now);
+  return since2 === null || since2 >= days;
 }
 function groupStockViews(views, now = /* @__PURE__ */ new Date(), opts = {}) {
   const byLevel = { out_of_stock: [], at_risk: [], low: [], normal: [] };
@@ -1157,8 +1157,8 @@ function shiftDayKey(key2, delta) {
 
 // src/features/analytics/sales.ts
 var loadDailySales = cache(async (ctx, days) => {
-  const since = shiftDayKey(dayKey(/* @__PURE__ */ new Date()), -days);
-  const { data, error } = await ctx.supabase.from("v_daily_sales").select("*").eq("organization_id", ctx.organization.id).gte("day", since).order("day", { ascending: true });
+  const since2 = shiftDayKey(dayKey(/* @__PURE__ */ new Date()), -days);
+  const { data, error } = await ctx.supabase.from("v_daily_sales").select("*").eq("organization_id", ctx.organization.id).gte("day", since2).order("day", { ascending: true });
   if (error) throw fromPostgrestError(error);
   return data ?? [];
 });
@@ -1857,8 +1857,8 @@ function normalizeEbayOrder(raw) {
   };
   return normalizedOrderSchema.parse(order);
 }
-function buildLastModifiedFilter(since, until) {
-  const from = since.toISOString();
+function buildLastModifiedFilter(since2, until) {
+  const from = since2.toISOString();
   return until ? `lastmodifieddate:[${from}..${until.toISOString()}]` : `lastmodifieddate:[${from}..]`;
 }
 var EBAY_ORDERS_PAGE_SIZE = 100;
@@ -4263,10 +4263,10 @@ var fieldMappingSchema = z13.partialRecord(
   z13.union([z13.string().min(1).max(200), z13.object({ const: z13.string().max(200) })])
 );
 var MAX_FEED_ROWS = 5e4;
-function getPath(obj, path) {
-  if (!path) return obj;
+function getPath(obj2, path) {
+  if (!path) return obj2;
   const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".").filter((p) => p.length > 0);
-  let cur = obj;
+  let cur = obj2;
   for (const p of parts) {
     if (cur === null || cur === void 0) return void 0;
     if (Array.isArray(cur)) {
@@ -4278,10 +4278,10 @@ function getPath(obj, path) {
   }
   return cur;
 }
-function findFirstArray(obj, depth = 0, path = "") {
-  if (depth > 6 || obj === null || typeof obj !== "object") return null;
-  if (Array.isArray(obj)) return obj.length > 0 && typeof obj[0] === "object" ? { path, items: obj } : null;
-  for (const [k, v2] of Object.entries(obj)) {
+function findFirstArray(obj2, depth = 0, path = "") {
+  if (depth > 6 || obj2 === null || typeof obj2 !== "object") return null;
+  if (Array.isArray(obj2)) return obj2.length > 0 && typeof obj2[0] === "object" ? { path, items: obj2 } : null;
+  for (const [k, v2] of Object.entries(obj2)) {
     const found = findFirstArray(v2, depth + 1, path ? `${path}.${k}` : k);
     if (found) return found;
   }
@@ -4301,12 +4301,12 @@ function detectDelimiter(sample) {
   }
   return best;
 }
-function flatten(obj, prefix = "", out = {}, depth = 0) {
-  if (depth > 4 || obj === null || typeof obj !== "object" || Array.isArray(obj)) {
-    if (prefix) out[prefix] = obj;
+function flatten(obj2, prefix = "", out = {}, depth = 0) {
+  if (depth > 4 || obj2 === null || typeof obj2 !== "object" || Array.isArray(obj2)) {
+    if (prefix) out[prefix] = obj2;
     return out;
   }
-  for (const [k, v2] of Object.entries(obj)) {
+  for (const [k, v2] of Object.entries(obj2)) {
     const key2 = prefix ? `${prefix}.${k}` : k;
     if (v2 !== null && typeof v2 === "object" && !Array.isArray(v2)) flatten(v2, key2, out, depth + 1);
     else out[key2] = v2;
@@ -4517,10 +4517,10 @@ function collectNodes(node2, out, depth = 0) {
     for (const n of node2) collectNodes(n, out, depth + 1);
     return;
   }
-  const obj = node2;
-  out.push(obj);
+  const obj2 = node2;
+  out.push(obj2);
   for (const key2 of ["@graph", "itemListElement", "mainEntity", "item", "hasVariant", "isVariantOf"]) {
-    if (obj[key2] !== void 0) collectNodes(obj[key2], out, depth + 1);
+    if (obj2[key2] !== void 0) collectNodes(obj2[key2], out, depth + 1);
   }
 }
 function extractJsonLdBlocks(html) {
@@ -6742,8 +6742,8 @@ var offerStatusSchema = z21.object({ offer_id: z21.string().uuid(), status: z21.
 // src/services/sourcing/offer-query.ts
 var OFFER_SELECT = "*, supplier:suppliers(id, name, country, internal_score, average_lead_time_days, currency), source:supplier_sources(id, name, source_type, status, last_successful_sync_at, automated_access_confirmed, config)";
 var OFFER_FETCH_LIMIT = 500;
-function baseOfferQuery(client, organizationId, filters, skuIdsForCategory) {
-  let q = client.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");
+function baseOfferQuery(client2, organizationId, filters, skuIdsForCategory) {
+  let q = client2.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");
   if (filters.brand) q = q.ilike("brand", escapeLike(filters.brand));
   if (filters.model) q = q.ilike("model", `%${escapeLike(filters.model)}%`);
   if (filters.storage) q = q.ilike("storage", escapeLike(filters.storage));
@@ -6763,9 +6763,9 @@ function baseOfferQuery(client, organizationId, filters, skuIdsForCategory) {
   if (skuIdsForCategory) q = skuIdsForCategory.length > 0 ? q.in("sku_id", skuIdsForCategory.slice(0, 1e3)) : q.eq("id", "00000000-0000-0000-0000-000000000000");
   return q;
 }
-async function findOffers(client, organizationId, parsed, filters, options = {}) {
+async function findOffers(client2, organizationId, parsed, filters, options = {}) {
   const skuIds = options.skuIdsForCategory ?? null;
-  const build = () => baseOfferQuery(client, organizationId, filters, skuIds);
+  const build = () => baseOfferQuery(client2, organizationId, filters, skuIds);
   const run = async (q) => {
     const { data, error } = await q.order("normalized_price", { ascending: true, nullsFirst: false }).limit(OFFER_FETCH_LIMIT);
     if (error) throw error;
@@ -7201,7 +7201,7 @@ function toCandidate(r) {
   };
 }
 var SELECT = "id, code, barcode, product:products!inner(name, brand), variant:product_variants!inner(name, attributes, condition, grade, ean, mpn)";
-async function loadMatchCandidates(client, organizationId, hints, limit = MATCH_CANDIDATE_LIMIT) {
+async function loadMatchCandidates(client2, organizationId, hints, limit = MATCH_CANDIDATE_LIMIT) {
   const out = /* @__PURE__ */ new Map();
   const add = (rows) => {
     for (const r of rows ?? []) {
@@ -7209,7 +7209,7 @@ async function loadMatchCandidates(client, organizationId, hints, limit = MATCH_
       if (c && !out.has(c.skuId)) out.set(c.skuId, c);
     }
   };
-  const base = () => client.from("skus").select(SELECT).eq("organization_id", organizationId).eq("is_active", true);
+  const base = () => client2.from("skus").select(SELECT).eq("organization_id", organizationId).eq("is_active", true);
   if (hints.ean) {
     const [{ data: byEan }, { data: byBarcode }] = await Promise.all([base().eq("variant.ean", hints.ean).limit(20), base().eq("barcode", hints.ean).limit(20)]);
     add(byEan);
@@ -7236,14 +7236,14 @@ async function loadMatchCandidates(client, organizationId, hints, limit = MATCH_
   }
   return Array.from(out.values()).slice(0, limit);
 }
-async function suggestMatchesForOffer(client, organizationId, offer, options = {}) {
+async function suggestMatchesForOffer(client2, organizationId, offer, options = {}) {
   const normalized = normalizeProduct(offer.title_original, { ean: offer.ean, mpn: offer.mpn, brand: offer.brand });
-  const candidates = await loadMatchCandidates(client, organizationId, { ean: normalized.ean, mpn: normalized.mpn, supplierSku: offer.external_product_id, brand: normalized.brandDisplay ?? normalized.brand, text: normalized.remainingText || offer.title_original });
+  const candidates = await loadMatchCandidates(client2, organizationId, { ean: normalized.ean, mpn: normalized.mpn, supplierSku: offer.external_product_id, brand: normalized.brandDisplay ?? normalized.brand, text: normalized.remainingText || offer.title_original });
   if (candidates.length === 0) return { suggestions: [], confirmedSkuId: null };
   const matches = matchOfferToSkus({ title: offer.title_original, normalized, ean: offer.ean, mpn: offer.mpn, supplierSku: offer.external_product_id }, candidates);
   const top = matches.slice(0, 3);
   if (top.length === 0) return { suggestions: [], confirmedSkuId: null };
-  const { data: existing } = await client.from("product_matches").select("id, sku_id, status").eq("organization_id", organizationId).eq("offer_id", offer.id);
+  const { data: existing } = await client2.from("product_matches").select("id, sku_id, status").eq("organization_id", organizationId).eq("offer_id", offer.id);
   const existingBySku = new Map((existing ?? []).map((m) => [m.sku_id, m]));
   let confirmedSkuId = null;
   for (const m of top) {
@@ -7252,12 +7252,12 @@ async function suggestMatchesForOffer(client, organizationId, offer, options = {
     if (prior) {
       if (prior.status === "rejected") continue;
       if (autoConfirm && prior.status === "suggested") {
-        await client.from("product_matches").update({ status: "confirmed", decided_at: (/* @__PURE__ */ new Date()).toISOString(), confidence: m.confidence, method: m.method, reasons: m.reasons }).eq("id", prior.id);
+        await client2.from("product_matches").update({ status: "confirmed", decided_at: (/* @__PURE__ */ new Date()).toISOString(), confidence: m.confidence, method: m.method, reasons: m.reasons }).eq("id", prior.id);
         confirmedSkuId = m.skuId;
       }
       continue;
     }
-    const { error } = await client.from("product_matches").insert({
+    const { error } = await client2.from("product_matches").insert({
       organization_id: organizationId,
       offer_id: offer.id,
       sourcing_product_id: offer.normalized_product_id,
@@ -7275,13 +7275,13 @@ async function suggestMatchesForOffer(client, organizationId, offer, options = {
     }
     if (autoConfirm) confirmedSkuId = m.skuId;
   }
-  if (confirmedSkuId) await applyConfirmedMatch(client, organizationId, { offerId: offer.id, skuId: confirmedSkuId, sourcingProductId: offer.normalized_product_id });
+  if (confirmedSkuId) await applyConfirmedMatch(client2, organizationId, { offerId: offer.id, skuId: confirmedSkuId, sourcingProductId: offer.normalized_product_id });
   return { suggestions: top, confirmedSkuId };
 }
-async function applyConfirmedMatch(client, organizationId, link) {
-  if (link.offerId) await client.from("sourcing_offers").update({ sku_id: link.skuId }).eq("id", link.offerId).eq("organization_id", organizationId);
+async function applyConfirmedMatch(client2, organizationId, link) {
+  if (link.offerId) await client2.from("sourcing_offers").update({ sku_id: link.skuId }).eq("id", link.offerId).eq("organization_id", organizationId);
   if (link.sourcingProductId) {
-    await client.from("sourcing_products").update({ sku_id: link.skuId }).eq("id", link.sourcingProductId).eq("organization_id", organizationId).is("sku_id", null);
+    await client2.from("sourcing_products").update({ sku_id: link.skuId }).eq("id", link.sourcingProductId).eq("organization_id", organizationId).is("sku_id", null);
   }
 }
 
@@ -7329,8 +7329,8 @@ async function storeOffer(ctx, raw) {
   const { data: existing } = await supabase.from("sourcing_offers").select("id, original_price, original_currency, sku_id, normalized_product_id, status").eq("organization_id", organizationId).eq("source_id", ctx.sourceId).eq("external_offer_id", raw.externalOfferId).maybeSingle();
   let prices30d = [];
   if (existing && currency && existing.original_currency === currency) {
-    const since = new Date(now.getTime() - 30 * 864e5).toISOString();
-    const { data: hist } = await supabase.from("supplier_price_history").select("original_price").eq("offer_id", existing.id).eq("original_currency", currency).gte("recorded_at", since).order("recorded_at", { ascending: false }).limit(200);
+    const since2 = new Date(now.getTime() - 30 * 864e5).toISOString();
+    const { data: hist } = await supabase.from("supplier_price_history").select("original_price").eq("offer_id", existing.id).eq("original_currency", currency).gte("recorded_at", since2).order("recorded_at", { ascending: false }).limit(200);
     prices30d = (hist ?? []).map((h) => Number(h.original_price)).filter((n) => Number.isFinite(n) && n > 0);
   }
   const previousPrice = existing && currency && existing.original_currency === currency ? Number(existing.original_price) : null;
@@ -7426,8 +7426,8 @@ async function storeOffer(ctx, raw) {
   }
   return { outcome: "stored", offerId: saved.id, created: !existing, validation, normalized, fxUnavailable, matchedSkuId };
 }
-async function expireUnseenOffers(ctx, since) {
-  const { data, error } = await ctx.supabase.from("sourcing_offers").update({ status: "expired", expired_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", ctx.organizationId).eq("source_id", ctx.sourceId).in("status", ["active", "suspicious"]).lt("last_seen_at", since.toISOString()).select("id");
+async function expireUnseenOffers(ctx, since2) {
+  const { data, error } = await ctx.supabase.from("sourcing_offers").update({ status: "expired", expired_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", ctx.organizationId).eq("source_id", ctx.sourceId).in("status", ["active", "suspicious"]).lt("last_seen_at", since2.toISOString()).select("id");
   if (error) {
     log7.warn("expire unseen offers failed", { sourceId: ctx.sourceId, error: error.message });
     return 0;
@@ -8849,7 +8849,7 @@ var PRICE_HISTORY_POINTS_PER_OFFER = 200;
 var POSTGREST_MAX_ROWS = 1e3;
 var PRICE_HISTORY_CONCURRENCY = 8;
 var PRICE_HISTORY_COLUMNS = "offer_id, original_price, original_currency, normalized_price, normalized_currency, recorded_at";
-async function loadRecentPriceHistory(supabase, organizationId, offerIds, since, options = {}) {
+async function loadRecentPriceHistory(supabase, organizationId, offerIds, since2, options = {}) {
   const perOffer = Math.max(1, Math.min(options.perOffer ?? PRICE_HISTORY_POINTS_PER_OFFER, POSTGREST_MAX_ROWS - 1));
   const concurrency = Math.max(1, options.concurrency ?? PRICE_HISTORY_CONCURRENCY);
   const ids = [...new Set(offerIds)];
@@ -8858,7 +8858,7 @@ async function loadRecentPriceHistory(supabase, organizationId, offerIds, since,
   const worker = async () => {
     while (next < ids.length) {
       const offerId = ids[next++];
-      const { data, error } = await supabase.from("supplier_price_history").select(PRICE_HISTORY_COLUMNS).eq("organization_id", organizationId).eq("offer_id", offerId).gte("recorded_at", since).order("recorded_at", { ascending: false }).limit(perOffer);
+      const { data, error } = await supabase.from("supplier_price_history").select(PRICE_HISTORY_COLUMNS).eq("organization_id", organizationId).eq("offer_id", offerId).gte("recorded_at", since2).order("recorded_at", { ascending: false }).limit(perOffer);
       if (error) {
         out.failedOfferIds.push(offerId);
         continue;
@@ -9143,18 +9143,18 @@ function hasJsonLdProduct(html) {
       for (const n of node2) visit(n, depth + 1);
       return;
     }
-    const obj = node2;
-    const t = obj["@type"];
+    const obj2 = node2;
+    const t = obj2["@type"];
     const types = Array.isArray(t) ? t : [t];
     if (types.some((x) => x === "Product" || x === "ProductGroup")) {
       product = true;
-      const offers = obj.offers;
+      const offers = obj2.offers;
       const list = Array.isArray(offers) ? offers : offers ? [offers] : [];
       for (const o of list) {
         if (o && typeof o === "object" && ("price" in o || "lowPrice" in o || "priceSpecification" in o)) price = true;
       }
     }
-    for (const v2 of Object.values(obj)) if (v2 && typeof v2 === "object") visit(v2, depth + 1);
+    for (const v2 of Object.values(obj2)) if (v2 && typeof v2 === "object") visit(v2, depth + 1);
   };
   for (const block of extractJsonLdBlocks(html)) visit(block, 0);
   return { product, price };
@@ -9984,8 +9984,8 @@ var PRICE_INSIGHT_WINDOW_DAYS = 90;
 async function loadPriceInsights(ctx, offers, orgCurrency, now) {
   const out = /* @__PURE__ */ new Map();
   if (offers.length === 0) return out;
-  const since = new Date(now.getTime() - PRICE_INSIGHT_WINDOW_DAYS * 864e5).toISOString();
-  const history = await loadRecentPriceHistory(ctx.supabase, ctx.organization.id, offers.map((o) => o.id), since);
+  const since2 = new Date(now.getTime() - PRICE_INSIGHT_WINDOW_DAYS * 864e5).toISOString();
+  const history = await loadRecentPriceHistory(ctx.supabase, ctx.organization.id, offers.map((o) => o.id), since2);
   if (history.failedOfferIds.length > 0) log12.debug("price history not loaded", { offers: history.failedOfferIds.length });
   const failed = new Set(history.failedOfferIds);
   const byOffer = groupPriceHistory(history.rows, orgCurrency);
@@ -10106,8 +10106,8 @@ function computeOrdersWindow(lastCursor, now = /* @__PURE__ */ new Date(), optio
   if (!cursor || Number.isNaN(cursor.getTime())) {
     return { since: new Date(now.getTime() - lookbackMs), until: now, initial: true };
   }
-  const since = new Date(Math.min(cursor.getTime() - overlapMs, now.getTime()));
-  return { since, until: now, initial: false };
+  const since2 = new Date(Math.min(cursor.getTime() - overlapMs, now.getTime()));
+  return { since: since2, until: now, initial: false };
 }
 function nextOrdersCursor(window, maxModifiedSeen) {
   if (!maxModifiedSeen) return window.until;
@@ -10617,7 +10617,7 @@ function emptyListingsResult() {
   return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
 }
 async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log24 } = ctx;
+  const { admin, log: log25 } = ctx;
   const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   const seen = /* @__PURE__ */ new Set();
   let truncated = false;
@@ -10625,7 +10625,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     result.fetched += page2.listings.length;
     result.invalid += page2.invalid.length;
     for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log24.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+    for (const w2 of page2.warnings) log25.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
@@ -10638,7 +10638,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
   result.complete = !truncated;
   if (truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log24.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log25.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
   const active = result.complete ? await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
@@ -12080,7 +12080,7 @@ async function evaluateAlert(admin, alert, orgCurrency, now) {
   const parsed = parseQuery2(alert.query_text);
   const { offers } = await findOffers(admin, alert.organization_id, parsed, criteriaToFilters(c), { includeSkuId: alert.sku_id });
   const events = [];
-  const since = alert.last_checked_at ?? alert.created_at;
+  const since2 = alert.last_checked_at ?? alert.created_at;
   const considered = offers.slice(0, 200);
   const offerIds = considered.map((o) => o.id);
   const historySince = new Date(now.getTime() - 60 * 864e5).toISOString();
@@ -12106,7 +12106,7 @@ async function evaluateAlert(admin, alert, orgCurrency, now) {
     const price = o.normalized_price ?? (o.original_currency.toUpperCase() === orgCurrency.toUpperCase() ? Number(o.original_price) : null);
     if (c.max_price !== void 0 && price !== null && price <= c.max_price) {
       events.push({ offer_id: o.id, kind: "price_below_threshold", message: `Prix inf\xE9rieur \xE0 votre seuil de ${money3(c.max_price, orgCurrency)} : ${money3(price, orgCurrency)} chez ${o.supplier?.name ?? "un fournisseur"}` });
-    } else if (new Date(o.first_seen_at).getTime() >= new Date(since).getTime()) {
+    } else if (new Date(o.first_seen_at).getTime() >= new Date(since2).getTime()) {
       events.push({ offer_id: o.id, kind: "new_offer", message: `Nouvelle offre correspondant \xE0 votre alerte${price !== null ? ` : ${money3(price, orgCurrency)}` : ""} chez ${o.supplier?.name ?? "un fournisseur"}` });
     }
     const priceHistory = priceByOffer.get(o.id) ?? [];
@@ -12619,6 +12619,634 @@ async function runSearchSelfTest(query, libraryKey) {
   }
 }
 
+// src/services/ai/claude.ts
+import Anthropic from "npm:@anthropic-ai/sdk@0.133.0";
+var AI_MODEL = "claude-opus-5-5";
+var AI_BETAS = ["server-side-fallback-2026-07-01"];
+var AI_NOT_CONFIGURED = "L'assistant IA n'est pas encore activ\xE9 sur le serveur (cl\xE9 ANTHROPIC_API_KEY absente des secrets de l'Edge Function).";
+function aiConfigured(env = process.env) {
+  return Boolean(env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.length > 20);
+}
+var client = null;
+function claudeClient() {
+  if (!aiConfigured()) throw new AppError("NOT_CONFIGURED", AI_NOT_CONFIGURED);
+  client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 9e4 });
+  return client;
+}
+function aiError(e) {
+  if (e instanceof AppError) return e;
+  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return new AppError("NOT_CONFIGURED", "La cl\xE9 de l'API Claude configur\xE9e sur le serveur est refus\xE9e par Anthropic.");
+  if (e instanceof Anthropic.RateLimitError) return new AppError("RATE_LIMITED", "L'assistant IA est tr\xE8s sollicit\xE9 : r\xE9essayez dans un instant.");
+  if (e instanceof Anthropic.BadRequestError) return new AppError("EXTERNAL_API", "La requ\xEAte \xE0 l'assistant IA a \xE9t\xE9 refus\xE9e. Reformulez ou r\xE9essayez.");
+  if (e instanceof Anthropic.APIConnectionError) return new AppError("EXTERNAL_API", "L'assistant IA est injoignable pour le moment. R\xE9essayez.");
+  if (e instanceof Anthropic.APIError) return new AppError("EXTERNAL_API", "L'assistant IA est momentan\xE9ment indisponible. R\xE9essayez.");
+  return new AppError("INTERNAL", "L'assistant IA a rencontr\xE9 une erreur inattendue.");
+}
+
+// src/services/ai/product-draft.ts
+import { z as z29 } from "npm:zod@4.6.5";
+
+// src/features/stock/product-form.ts
+import { z as z28 } from "npm:zod@4.6.5";
+var MAX_VARIANTS = 50;
+var PRODUCT_GRADES = ["A", "B", "C"];
+var PRODUCT_CATEGORIES = ["Smartphone", "Tablette", "Ordinateur", "Montre connect\xE9e", "Console", "Audio", "Accessoire", "Pi\xE8ce d\xE9tach\xE9e"];
+var CONDITION_LABEL = { new: "Neuf", refurbished: "Reconditionn\xE9", used: "Occasion", unknown: "Non pr\xE9cis\xE9" };
+var productFields = {
+  name: z28.string().trim().max(300).optional().or(z28.literal("")),
+  brand: z28.string().trim().max(120).optional().or(z28.literal("")),
+  model: z28.string().trim().max(160).optional().or(z28.literal("")),
+  category: z28.string().trim().max(120).optional().or(z28.literal("")),
+  description: z28.string().trim().max(5e3).optional().or(z28.literal(""))
+};
+function blankToUndefined(v2) {
+  if (typeof v2 !== "string") return v2;
+  const t = v2.trim().replace(/\s/g, "").replace(",", ".");
+  return t === "" ? void 0 : t;
+}
+var moneyInput = z28.preprocess(
+  blankToUndefined,
+  z28.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
+);
+var quantityInput = z28.preprocess(
+  blankToUndefined,
+  z28.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
+);
+var variantInputSchema = z28.object({
+  ...variantFields,
+  grade: z28.union([z28.enum(PRODUCT_GRADES), z28.literal("")], { error: "Grade A, B ou C." }).optional(),
+  ...skuFields,
+  cost_price: moneyInput,
+  sale_price: moneyInput,
+  initial_quantity: quantityInput
+});
+var variantsArraySchema = z28.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
+  for (const [i, message] of duplicateCodes(variants)) ctx.addIssue({ code: "custom", path: [i, "code"], message });
+});
+function duplicateCodes(variants) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Map();
+  variants.forEach((v2, i) => {
+    const key2 = String(v2.code ?? "").trim().toUpperCase();
+    if (!key2) return;
+    const first = seen.get(key2);
+    if (first !== void 0) out.push([i, `M\xEAme code SKU que la variante ${first + 1}.`]);
+    else seen.set(key2, i);
+  });
+  return out;
+}
+var productWithVariantsSchema = z28.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
+  if (!productDisplayName(d)) ctx.addIssue({ code: "custom", path: ["name"], message: "Indiquez le nom du produit, ou au moins la marque et le mod\xE8le." });
+});
+var addVariantsSchema = z28.object({ product_id: z28.string().uuid(), variants: variantsArraySchema });
+function productDisplayName(d) {
+  const name = d.name?.trim();
+  if (name) return name;
+  const brand = d.brand?.trim() ?? "";
+  const model = d.model?.trim() ?? "";
+  if (!model) return "";
+  return brand && !model.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${model}` : model;
+}
+
+// src/services/ai/product-draft.ts
+var CONDITIONS = Object.keys(CONDITION_LABEL);
+var nullable = (schema) => ({ anyOf: [schema, { type: "null" }] });
+var PRODUCT_DRAFT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["understood", "brand", "model", "name", "category", "variants", "notes"],
+  properties: {
+    understood: { type: "boolean", description: "false si la phrase ne d\xE9crit pas un produit \xE0 ajouter au stock" },
+    brand: nullable({ type: "string" }),
+    model: nullable({ type: "string" }),
+    name: nullable({ type: "string" }),
+    category: nullable({ type: "string" }),
+    variants: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["storage", "color", "grade", "condition", "cost_price", "sale_price", "initial_quantity"],
+        properties: {
+          storage: nullable({ type: "string" }),
+          color: nullable({ type: "string" }),
+          grade: nullable({ type: "string", enum: [...PRODUCT_GRADES] }),
+          condition: { type: "string", enum: CONDITIONS },
+          cost_price: nullable({ type: "number" }),
+          sale_price: nullable({ type: "number" }),
+          initial_quantity: nullable({ type: "integer" })
+        }
+      }
+    },
+    notes: { type: "array", items: { type: "string" } }
+  }
+};
+var money4 = z29.number().finite().min(0).max(1e6).nullable();
+var draftSchema = z29.object({
+  understood: z29.boolean(),
+  brand: z29.string().max(120).nullable(),
+  model: z29.string().max(160).nullable(),
+  name: z29.string().max(300).nullable(),
+  category: z29.string().max(120).nullable(),
+  variants: z29.array(
+    z29.object({
+      storage: z29.string().max(60).nullable(),
+      color: z29.string().max(60).nullable(),
+      grade: z29.enum(PRODUCT_GRADES).nullable(),
+      condition: z29.enum(CONDITIONS),
+      cost_price: money4,
+      sale_price: money4,
+      initial_quantity: z29.number().int().min(0).max(1e6).nullable()
+    })
+  ).max(MAX_VARIANTS),
+  notes: z29.array(z29.string().max(300)).max(10)
+});
+function productDraftSystemPrompt(currency) {
+  return [
+    "Tu es l'assistant de saisie de MON STOCK, un logiciel de gestion de stock pour revendeurs d'appareils \xE9lectroniques (smartphones, tablettes, ordinateurs, consoles, pi\xE8ces d\xE9tach\xE9es).",
+    "L'utilisateur DICTE \xE0 voix haute le produit qu'il veut ajouter \xE0 son stock. Le texte vient d'une reconnaissance vocale : il peut contenir des fautes, des nombres \xE9crits en lettres, des h\xE9sitations ou des mots mal reconnus (\xAB gigas \xBB = Go, \xAB IPhone \xBB = iPhone, \xAB tera \xBB = To). Comprends l'intention, ne recopie pas mot \xE0 mot.",
+    "",
+    "Remplis le formulaire :",
+    "- brand : la marque (Apple, Samsung, Google, Xiaomi, Sony, Nintendo\u2026). D\xE9duis-la du mod\xE8le seulement quand elle est sans ambigu\xEFt\xE9 (iPhone \u2192 Apple, Galaxy \u2192 Samsung, Pixel \u2192 Google, PlayStation \u2192 Sony, Switch \u2192 Nintendo).",
+    "- model : le mod\xE8le exact avec sa graphie officielle (\xAB iPhone 13 Pro Max \xBB, \xAB Galaxy S23 Ultra \xBB), sans capacit\xE9 ni couleur.",
+    "- name : null sauf si l'utilisateur donne explicitement un nom de produit diff\xE9rent de \xAB marque + mod\xE8le \xBB.",
+    `- category : une de ${PRODUCT_CATEGORIES.map((c) => `\xAB ${c} \xBB`).join(", ")} ; une autre cat\xE9gorie courte seulement si aucune ne convient ; null si impossible \xE0 d\xE9terminer.`,
+    "- variants : une entr\xE9e par combinaison distincte (capacit\xE9, couleur, grade, \xE9tat). \xAB 3 iPhone 13 128 Go noir grade A et 2 en 256 Go bleu grade B \xBB = 2 variantes (quantit\xE9s 3 et 2). Un prix ou un \xE9tat \xE9nonc\xE9 pour l'ensemble s'applique \xE0 chaque variante concern\xE9e.",
+    "  - storage : format \xAB 128 Go \xBB, \xAB 1 To \xBB ; null si non dit.",
+    "  - color : en fran\xE7ais, premi\xE8re lettre en majuscule (\xAB Noir \xBB, \xAB Bleu nuit \xBB, \xAB Lumi\xE8re stellaire \xBB) ; null si non dit.",
+    `  - grade : ${PRODUCT_GRADES.join(", ")} uniquement si un grade est EXPLICITEMENT \xE9nonc\xE9 (\xAB grade A \xBB, \xAB class\xE9 B \xBB) ; une simple appr\xE9ciation (\xAB tr\xE8s bon \xE9tat \xBB) ne devient pas un grade : mets null et ajoute une note.`,
+    "  - condition : new (neuf, scell\xE9), refurbished (reconditionn\xE9), used (occasion), unknown si non dit.",
+    `  - cost_price : prix d'achat unitaire en ${currency} (\xAB achet\xE9 300 \xBB, \xAB je l'ai pay\xE9 300 \xBB, \xAB co\xFBt 300 \xBB).`,
+    `  - sale_price : prix de vente unitaire en ${currency} (\xAB je le vends 400 \xBB, \xAB prix de vente 400 \xBB, \xAB \xE0 revendre 400 \xBB).`,
+    "  - Un montant dont on ne sait pas s'il est d'achat ou de vente (\xAB \xE0 350 \xBB) : laisse les deux \xE0 null et ajoute une note qui cite le montant. Un prix \xAB pour le lot \xBB : divise par la quantit\xE9 seulement si la quantit\xE9 est dite, et signale-le dans une note.",
+    "  - initial_quantity : nombre d'unit\xE9s en stock ; null si non dit (ne suppose jamais 1).",
+    "- notes : phrases courtes en fran\xE7ais pour ce que tu n'as pas pu d\xE9terminer ou ce qui est ambigu (au plus 5). Liste vide si tout est clair.",
+    "- understood : false si le texte ne d\xE9crit pas un produit \xE0 ajouter (dans ce cas variants peut \xEAtre vide et une note explique pourquoi).",
+    "",
+    "R\xE8gle absolue : n'invente AUCUNE valeur (prix, quantit\xE9, capacit\xE9, couleur, grade). Ce qui n'est pas dit reste null."
+  ].join("\n");
+}
+async function draftProductFromText(text2, currency) {
+  const transcript = text2.trim();
+  if (transcript.length < 3) throw new AppError("VALIDATION", "Dites ou \xE9crivez le produit \xE0 ajouter.");
+  let raw;
+  try {
+    const response = await claudeClient().beta.messages.create({
+      model: AI_MODEL,
+      max_tokens: 4096,
+      betas: AI_BETAS,
+      fallbacks: "default",
+      output_config: { effort: "low", format: { type: "json_schema", schema: PRODUCT_DRAFT_JSON_SCHEMA } },
+      system: productDraftSystemPrompt(currency),
+      messages: [{ role: "user", content: `Texte dict\xE9 :
+"""${transcript}"""` }]
+    });
+    if (response.stop_reason === "refusal") throw new AppError("VALIDATION", "Cette demande n'a pas pu \xEAtre trait\xE9e par l'assistant IA. Reformulez.");
+    if (response.stop_reason === "max_tokens") throw new AppError("VALIDATION", "Description trop longue : dictez moins de variantes \xE0 la fois.");
+    raw = response.content.map((b) => b.type === "text" ? b.text : "").join("");
+  } catch (e) {
+    throw aiError(e);
+  }
+  return parseProductDraft(raw, transcript);
+}
+function parseProductDraft(raw, transcript) {
+  let json2;
+  try {
+    json2 = JSON.parse(raw);
+  } catch {
+    throw new AppError("EXTERNAL_API", "R\xE9ponse de l'assistant IA illisible. R\xE9essayez.");
+  }
+  const parsed = draftSchema.safeParse(json2);
+  if (!parsed.success) throw new AppError("EXTERNAL_API", "R\xE9ponse de l'assistant IA incompl\xE8te. R\xE9essayez ou saisissez le produit \xE0 la main.");
+  const d = parsed.data;
+  const clean = (s) => s && s.trim() ? s.trim() : null;
+  return {
+    transcript,
+    understood: d.understood,
+    brand: clean(d.brand),
+    model: clean(d.model),
+    name: clean(d.name),
+    category: clean(d.category),
+    variants: d.variants.map((v2) => ({
+      storage: clean(v2.storage),
+      color: clean(v2.color),
+      grade: v2.grade,
+      condition: v2.condition,
+      costPrice: v2.cost_price,
+      salePrice: v2.sale_price,
+      initialQuantity: v2.initial_quantity
+    })),
+    notes: d.notes.map((n) => n.trim()).filter(Boolean).slice(0, 5)
+  };
+}
+
+// src/services/ai/assistant.ts
+import { z as z31 } from "npm:zod@4.6.5";
+
+// src/services/ai/assistant-tools.ts
+import { z as z30 } from "npm:zod@4.6.5";
+var DAY = 864e5;
+var PAGE = 1e3;
+var MAX_ROWS = 5e3;
+var EXCLUDED_STATUSES = "(cancelled,refunded)";
+var daysSchema = z30.coerce.number().int().min(1).max(730).default(30);
+var limitSchema = (max, def) => z30.coerce.number().int().min(1).max(max).default(def);
+var textQuery = z30.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
+function since(ctx, days) {
+  return new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime() - days * DAY).toISOString();
+}
+function round26(n) {
+  return Math.round(n * 100) / 100;
+}
+function addMoney(map, currency, amount) {
+  if (amount === null || amount === void 0 || !Number.isFinite(amount)) return;
+  const c = currency || "?";
+  map[c] = round26((map[c] ?? 0) + amount);
+}
+async function fetchAll(page2) {
+  const rows = [];
+  for (let from = 0; from < MAX_ROWS; from += PAGE) {
+    const { data, error } = await page2(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...data ?? []);
+    if (!data || data.length < PAGE) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
+}
+var salesRankingInput = z30.object({
+  days: daysSchema,
+  by: z30.enum(["units", "revenue"]).default("units"),
+  limit: limitSchema(25, 10),
+  channel: z30.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
+  query: textQuery
+});
+async function salesRanking(ctx, raw) {
+  const input = salesRankingInput.parse(raw);
+  const { rows, truncated } = await fetchAll((from, to) => {
+    let q = ctx.supabase.from("order_items").select("sku_id, title, quantity, unit_price, total, currency, orders!inner(placed_at, status, provider, currency, order_number)").eq("organization_id", ctx.organizationId).gte("orders.placed_at", since(ctx, input.days)).not("orders.status", "in", EXCLUDED_STATUSES);
+    if (input.channel) q = q.eq("orders.provider", input.channel);
+    if (input.query) q = q.ilike("title", `%${input.query}%`);
+    return q.order("id").range(from, to);
+  });
+  const groups = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const key2 = r.sku_id ? `sku:${r.sku_id}` : `title:${r.title.trim().toLowerCase()}`;
+    const g = groups.get(key2) ?? { skuId: r.sku_id, title: r.title, units: 0, revenue: {}, orders: /* @__PURE__ */ new Set(), lastSaleAt: r.orders.placed_at, channels: /* @__PURE__ */ new Set() };
+    g.units += r.quantity;
+    addMoney(g.revenue, r.currency ?? r.orders.currency, r.total ?? (r.unit_price !== null ? r.unit_price * r.quantity : null));
+    g.orders.add(`${r.orders.provider}:${r.orders.order_number ?? r.orders.placed_at}`);
+    if (r.orders.placed_at > g.lastSaleAt) g.lastSaleAt = r.orders.placed_at;
+    g.channels.add(r.orders.provider);
+    groups.set(key2, g);
+  }
+  const skuIds = [...groups.values()].map((g) => g.skuId).filter((x) => Boolean(x));
+  const labels = /* @__PURE__ */ new Map();
+  if (skuIds.length) {
+    const { data } = await ctx.supabase.from("v_stock_overview").select("sku_id, code, product_name, variant_name, quantity_available").eq("organization_id", ctx.organizationId).in("sku_id", skuIds.slice(0, 300));
+    for (const s of data ?? []) if (s.sku_id) labels.set(s.sku_id, { code: s.code, product: s.product_name, variant: s.variant_name, available: s.quantity_available });
+  }
+  const primary = (rev) => rev[ctx.currency] ?? Object.values(rev)[0] ?? 0;
+  const ranked = [...groups.values()].sort((a, b) => input.by === "units" ? b.units - a.units || primary(b.revenue) - primary(a.revenue) : primary(b.revenue) - primary(a.revenue) || b.units - a.units).slice(0, input.limit).map((g, i) => {
+    const l = g.skuId ? labels.get(g.skuId) : void 0;
+    return {
+      rank: i + 1,
+      product: l ? [l.product, l.variant].filter(Boolean).join(" \u2014 ") : g.title,
+      sku: l?.code ?? null,
+      mappedToStock: Boolean(g.skuId),
+      listingTitle: g.title,
+      unitsSold: g.units,
+      revenue: g.revenue,
+      orders: g.orders.size,
+      lastSaleAt: g.lastSaleAt,
+      channels: [...g.channels],
+      stockAvailableNow: l?.available ?? null
+    };
+  });
+  const totalRevenue = {};
+  for (const g of groups.values()) for (const [c, v2] of Object.entries(g.revenue)) addMoney(totalRevenue, c, v2);
+  return {
+    period: { days: input.days, from: since(ctx, input.days).slice(0, 10), channel: input.channel ?? "tous", filter: input.query ?? null },
+    rankedBy: input.by,
+    totals: { distinctProducts: groups.size, unitsSold: [...groups.values()].reduce((s, g) => s + g.units, 0), revenue: totalRevenue, lineItems: rows.length },
+    products: ranked,
+    truncated,
+    note: "Commandes annul\xE9es ou rembours\xE9es exclues. revenue = montant des lignes de commande (hors frais de port), par devise."
+  };
+}
+var salesSummaryInput = z30.object({ days: daysSchema });
+async function salesSummary(ctx, raw) {
+  const input = salesSummaryInput.parse(raw);
+  const from = since(ctx, input.days * 2).slice(0, 10);
+  const { data, error } = await ctx.supabase.from("v_daily_sales").select("day, orders_count, units, revenue, currency").eq("organization_id", ctx.organizationId).gte("day", from).order("day", { ascending: true }).limit(2e3);
+  if (error) throw new Error(error.message);
+  const split = since(ctx, input.days).slice(0, 10);
+  const agg = () => ({ orders: 0, units: 0, revenue: {}, activeDays: 0 });
+  const cur = agg();
+  const prev = agg();
+  let best = null;
+  for (const r of data ?? []) {
+    if (!r.day) continue;
+    const target = r.day >= split ? cur : prev;
+    target.orders += r.orders_count ?? 0;
+    target.units += r.units ?? 0;
+    target.activeDays += 1;
+    addMoney(target.revenue, r.currency ?? ctx.currency, r.revenue);
+    if (target === cur && (!best || (r.revenue ?? 0) > best.revenue)) best = { day: r.day, revenue: r.revenue ?? 0, currency: r.currency };
+  }
+  const { count: connected } = await ctx.supabase.from("channel_connections").select("id", { count: "exact", head: true }).eq("organization_id", ctx.organizationId).eq("status", "connected");
+  return {
+    period: { days: input.days, from: split, to: (ctx.now ?? /* @__PURE__ */ new Date()).toISOString().slice(0, 10) },
+    current: cur,
+    previousPeriod: { ...prev, from },
+    bestDay: best,
+    connectedSalesChannels: connected ?? 0,
+    note: "Commandes annul\xE9es ou rembours\xE9es exclues ; jours sans vente non compt\xE9s dans activeDays."
+  };
+}
+var stockInput = z30.object({
+  query: textQuery,
+  filter: z30.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
+  limit: limitSchema(40, 15)
+});
+async function stockSearch(ctx, raw) {
+  const input = stockInput.parse(raw);
+  let q = ctx.supabase.from("v_stock_overview").select("code, product_name, variant_name, brand, category, grade, condition, quantity_available, quantity_on_hand, quantity_reserved, reorder_point, cost_price, sale_price, avg_sale_price_30d, unit_margin, stock_value, currency, units_7d, units_30d, units_90d, revenue_30d, last_sale_at, active_listings_count, best_supplier_price").eq("organization_id", ctx.organizationId).eq("product_archived", false);
+  if (input.query) q = q.or(`product_name.ilike.%${input.query}%,code.ilike.%${input.query}%,brand.ilike.%${input.query}%,variant_name.ilike.%${input.query}%`);
+  const { data, error } = await q.limit(1e3);
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  const now = (ctx.now ?? /* @__PURE__ */ new Date()).getTime();
+  const filtered = rows.filter((r) => {
+    const qty = r.quantity_available ?? 0;
+    switch (input.filter) {
+      case "in_stock":
+        return qty > 0;
+      case "out_of_stock":
+        return qty <= 0;
+      case "low":
+        return qty > 0 && qty <= Math.max(r.reorder_point ?? 0, 2);
+      case "dormant":
+        return (r.quantity_on_hand ?? 0) > 0 && (!r.last_sale_at || now - new Date(r.last_sale_at).getTime() > 60 * DAY);
+      case "best_sellers":
+        return (r.units_30d ?? 0) > 0;
+      default:
+        return true;
+    }
+  });
+  filtered.sort((a, b) => input.filter === "best_sellers" ? (b.units_30d ?? 0) - (a.units_30d ?? 0) : (b.stock_value ?? 0) - (a.stock_value ?? 0));
+  const totals = { skus: rows.length, unitsAvailable: rows.reduce((s, r) => s + Math.max(0, r.quantity_available ?? 0), 0), stockValue: {} };
+  for (const r of rows) addMoney(totals.stockValue, r.currency ?? ctx.currency, r.stock_value);
+  return {
+    filter: input.filter,
+    query: input.query ?? null,
+    matching: filtered.length,
+    totalsForQuery: totals,
+    items: filtered.slice(0, input.limit),
+    truncated: rows.length >= 1e3,
+    note: "stock_value = quantit\xE9 en stock \xD7 prix d'achat (null si prix d'achat inconnu). unit_margin = prix de vente \u2212 prix d'achat."
+  };
+}
+var ordersInput = z30.object({ days: daysSchema, limit: limitSchema(30, 10), status: z30.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
+async function recentOrders(ctx, raw) {
+  const input = ordersInput.parse(raw);
+  let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
+  if (input.status) q = q.eq("status", input.status);
+  const { data, error } = await q.order("placed_at", { ascending: false }).limit(input.limit);
+  if (error) throw new Error(error.message);
+  const { count } = await ctx.supabase.from("orders").select("id", { count: "exact", head: true }).eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
+  return {
+    period: { days: input.days },
+    ordersInPeriod: count ?? 0,
+    orders: (data ?? []).map((o) => ({ ...o, stockDeducted: o.inventory_applied, inventory_applied: void 0 }))
+  };
+}
+async function ebayAccount(ctx) {
+  const org = ctx.organizationId;
+  const [conn, runs, errors, active, unmapped, ended] = await Promise.all([
+    ctx.supabase.from("channel_connections").select("provider, status, external_username, environment, connected_at, last_sync_at, last_successful_sync_at, last_error, auto_sync").eq("organization_id", org).eq("provider", "ebay"),
+    ctx.supabase.from("sync_runs").select("status, trigger, started_at, finished_at, records_processed, error_count, error_summary").eq("organization_id", org).eq("provider", "ebay").order("started_at", { ascending: false }).limit(5),
+    ctx.supabase.from("sync_errors").select("code, message, created_at").eq("organization_id", org).order("created_at", { ascending: false }).limit(5),
+    ctx.supabase.from("channel_listings").select("id", { count: "exact", head: true }).eq("organization_id", org).eq("provider", "ebay").eq("status", "active"),
+    ctx.supabase.from("channel_listings").select("id", { count: "exact", head: true }).eq("organization_id", org).eq("provider", "ebay").eq("status", "active").in("mapping_status", ["unmapped", "suggested"]),
+    ctx.supabase.from("channel_listings").select("id", { count: "exact", head: true }).eq("organization_id", org).eq("provider", "ebay").neq("status", "active")
+  ]);
+  if (conn.error) throw new Error(conn.error.message);
+  return {
+    connections: conn.data ?? [],
+    connected: (conn.data ?? []).some((c) => c.status === "connected"),
+    listings: { active: active.count ?? 0, activeNotLinkedToStock: unmapped.count ?? 0, endedOrUnsold: ended.count ?? 0 },
+    lastSyncRuns: runs.data ?? [],
+    recentSyncErrors: errors.data ?? []
+  };
+}
+var listingsInput = z30.object({
+  query: textQuery,
+  status: z30.enum(["active", "ended", "unsold", "unknown"]).optional(),
+  onlyNotLinkedToStock: z30.boolean().default(false),
+  sort: z30.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
+  limit: limitSchema(30, 10)
+});
+async function listingsSearch(ctx, raw) {
+  const input = listingsInput.parse(raw);
+  let q = ctx.supabase.from("channel_listings").select("provider, title, status, price, currency, quantity_available, quantity_sold, mapping_status, external_sku, listing_url, last_synced_at, sku_id").eq("organization_id", ctx.organizationId);
+  if (input.status) q = q.eq("status", input.status);
+  if (input.onlyNotLinkedToStock) q = q.in("mapping_status", ["unmapped", "suggested"]);
+  if (input.query) q = q.ilike("title", `%${input.query}%`);
+  const order = input.sort === "price" ? "price" : input.sort === "recent" ? "last_synced_at" : "quantity_sold";
+  const { data, error } = await q.order(order, { ascending: false, nullsFirst: false }).limit(input.limit);
+  if (error) throw new Error(error.message);
+  return { count: (data ?? []).length, listings: (data ?? []).map((l) => ({ ...l, linkedToStock: Boolean(l.sku_id), sku_id: void 0 })), note: "quantity_sold = cumul indiqu\xE9 par eBay pour l'annonce (depuis sa cr\xE9ation)." };
+}
+var obj = (properties) => ({ type: "object", additionalProperties: false, properties });
+var ASSISTANT_TOOLS = {
+  sales_ranking: {
+    label: "Ventes par produit",
+    definition: {
+      name: "sales_ranking",
+      description: "Classement des produits VENDUS (commandes eBay et autres canaux synchronis\xE9s) sur une p\xE9riode : unit\xE9s vendues, chiffre d'affaires par devise, nombre de commandes, derni\xE8re vente, stock restant. Utilise-le pour \xAB produit le plus vendu \xBB, \xAB meilleures ventes \xBB, \xAB combien de X ai-je vendu \xBB. Les commandes annul\xE9es/rembours\xE9es sont exclues.",
+      input_schema: obj({
+        days: { type: "integer", description: "P\xE9riode en jours jusqu'\xE0 aujourd'hui (1 \xE0 730). 30 par d\xE9faut ; 365 pour \xAB cette ann\xE9e / depuis le d\xE9but \xBB." },
+        by: { type: "string", enum: ["units", "revenue"], description: "Crit\xE8re de classement : unit\xE9s vendues (d\xE9faut) ou chiffre d'affaires." },
+        limit: { type: "integer", description: "Nombre de produits (1 \xE0 25, d\xE9faut 10)." },
+        channel: { type: "string", enum: ["ebay", "amazon", "shopify", "woocommerce", "manual"], description: "Limiter \xE0 un canal de vente." },
+        query: { type: "string", description: "Filtrer sur un mot du titre (ex. \xAB iPhone 13 \xBB)." }
+      })
+    },
+    run: salesRanking
+  },
+  sales_summary: {
+    label: "Synth\xE8se des ventes",
+    definition: {
+      name: "sales_summary",
+      description: "Chiffre d'affaires, nombre de commandes et d'unit\xE9s sur une p\xE9riode, compar\xE9s \xE0 la p\xE9riode pr\xE9c\xE9dente de m\xEAme dur\xE9e, et meilleur jour. Pour \xAB combien j'ai vendu ce mois \xBB, \xAB mes ventes augmentent-elles \xBB.",
+      input_schema: obj({ days: { type: "integer", description: "P\xE9riode en jours (1 \xE0 730, d\xE9faut 30)." } })
+    },
+    run: salesSummary
+  },
+  stock_search: {
+    label: "Stock",
+    definition: {
+      name: "stock_search",
+      description: "\xC9tat du stock par SKU : quantit\xE9s disponibles/r\xE9serv\xE9es, prix d'achat et de vente, marge unitaire, valeur du stock, ventes 7/30/90 jours, derni\xE8re vente, annonces actives, meilleur prix fournisseur. Filtres : en stock, stock bas, rupture, dormant (en stock sans vente depuis 60 jours), best_sellers.",
+      input_schema: obj({
+        query: { type: "string", description: "Recherche dans le nom, la marque, la variante ou le code SKU." },
+        filter: { type: "string", enum: ["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"] },
+        limit: { type: "integer", description: "1 \xE0 40 (d\xE9faut 15)." }
+      })
+    },
+    run: stockSearch
+  },
+  recent_orders: {
+    label: "Commandes",
+    definition: {
+      name: "recent_orders",
+      description: "Derni\xE8res commandes (eBay et autres canaux) avec leurs lignes, montants, frais, statut et indication de d\xE9duction du stock.",
+      input_schema: obj({
+        days: { type: "integer", description: "P\xE9riode en jours (d\xE9faut 30)." },
+        limit: { type: "integer", description: "1 \xE0 30 (d\xE9faut 10)." },
+        status: { type: "string", enum: ["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"] }
+      })
+    },
+    run: recentOrders
+  },
+  ebay_account: {
+    label: "Compte eBay",
+    definition: {
+      name: "ebay_account",
+      description: "\xC9tat du compte eBay connect\xE9 : connexion, derni\xE8re synchronisation, erreurs r\xE9centes, nombre d'annonces actives, annonces non associ\xE9es au stock.",
+      input_schema: obj({})
+    },
+    run: (ctx) => ebayAccount(ctx)
+  },
+  listings_search: {
+    label: "Annonces",
+    definition: {
+      name: "listings_search",
+      description: "Annonces des canaux de vente (eBay\u2026) : titre, statut, prix, quantit\xE9 disponible, quantit\xE9 vendue (cumul eBay), association au stock.",
+      input_schema: obj({
+        query: { type: "string", description: "Mot du titre." },
+        status: { type: "string", enum: ["active", "ended", "unsold", "unknown"] },
+        onlyNotLinkedToStock: { type: "boolean" },
+        sort: { type: "string", enum: ["quantity_sold", "price", "recent"] },
+        limit: { type: "integer", description: "1 \xE0 30 (d\xE9faut 10)." }
+      })
+    },
+    run: listingsSearch
+  }
+};
+var ASSISTANT_TOOL_DEFINITIONS = Object.values(ASSISTANT_TOOLS).map((t) => t.definition);
+var MAX_RESULT_CHARS = 24e3;
+async function runAssistantTool(ctx, name, input) {
+  const tool = ASSISTANT_TOOLS[name];
+  if (!tool) return { content: `Outil inconnu : ${name}`, isError: true };
+  try {
+    const result = await tool.run(ctx, input ?? {});
+    const json2 = JSON.stringify(result);
+    return { content: json2.length > MAX_RESULT_CHARS ? `${json2.slice(0, MAX_RESULT_CHARS)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false };
+  } catch (e) {
+    if (e instanceof z30.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
+    return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true };
+  }
+}
+
+// src/services/ai/assistant.ts
+var log23 = createLogger("AI_ASSISTANT");
+var assistantRequestSchema = z31.object({
+  messages: z31.array(z31.object({ role: z31.enum(["user", "assistant"]), content: z31.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
+});
+var MAX_STEPS = 8;
+function assistantSystemPrompt(org, today) {
+  return [
+    `Tu es l'assistant \xAB Intelligence \xBB de MON STOCK, le logiciel de gestion de stock et de ventes de l'organisation \xAB ${org.name} \xBB (revendeur d'appareils \xE9lectroniques ; devise principale ${org.currency}).`,
+    `Nous sommes le ${today}.`,
+    "",
+    "Tu r\xE9ponds aux questions de l'utilisateur sur SON activit\xE9 : ventes (eBay et autres canaux synchronis\xE9s), commandes, stock, marges, annonces, \xE9tat du compte eBay.",
+    "",
+    "M\xE9thode :",
+    "- Utilise les outils pour lire les donn\xE9es avant de r\xE9pondre \xE0 toute question chiffr\xE9e ou factuelle sur le compte. Tu peux en appeler plusieurs, en parall\xE8le si utile.",
+    "- Choisis une p\xE9riode coh\xE9rente avec la question (\xAB ce mois-ci \xBB = depuis le 1er du mois, \xAB cette ann\xE9e \xBB, \xAB depuis le d\xE9but \xBB = 730 jours). Sans pr\xE9cision, 30 jours, et dis-le.",
+    "- Si une question ne rel\xE8ve pas des donn\xE9es disponibles (ex. pr\xE9visions m\xE9t\xE9o, donn\xE9es d'un autre vendeur), dis-le simplement.",
+    "",
+    "R\xE8gles absolues :",
+    "- Chaque chiffre de ta r\xE9ponse (quantit\xE9, montant, date, nombre) doit provenir d'un r\xE9sultat d'outil de cette conversation. N'invente, n'arrondis abusivement et n'extrapoles jamais.",
+    "- Si les donn\xE9es sont vides (aucune vente, eBay non connect\xE9, aucune synchronisation), dis-le clairement et indique quoi faire (ex. connecter eBay dans R\xE9glages \u2192 Int\xE9grations, lancer une synchronisation).",
+    "- Si un r\xE9sultat est tronqu\xE9 ou partiel, pr\xE9cise-le.",
+    "- Montants avec leur devise (ex. 1 234,50 \u20AC). Dates au format fran\xE7ais.",
+    "- Tu ne peux rien modifier (lecture seule) : pour une action, indique o\xF9 la faire dans l'application.",
+    "",
+    "Style : fran\xE7ais, direct et concis, adapt\xE9 \xE0 un \xE9cran de t\xE9l\xE9phone. R\xE9ponds d'abord \xE0 la question en une phrase, puis au besoin quelques lignes de d\xE9tail (listes avec \xAB \u2013 \xBB, sans tableau, sans titres, sans gras)."
+  ].join("\n");
+}
+async function askAssistant(ctx, request) {
+  const client2 = claudeClient();
+  const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeZone: "Europe/Paris" }).format(ctx.now ?? /* @__PURE__ */ new Date());
+  const system = assistantSystemPrompt({ name: ctx.organizationName, currency: ctx.currency }, today);
+  const messages = request.messages.map((m) => ({ role: m.role, content: m.content }));
+  const used = [];
+  let model = AI_MODEL;
+  try {
+    for (let step = 0; step < MAX_STEPS; step++) {
+      const response = await client2.beta.messages.create({
+        model: AI_MODEL,
+        max_tokens: 8e3,
+        betas: AI_BETAS,
+        fallbacks: "default",
+        output_config: { effort: "medium" },
+        system,
+        tools: ASSISTANT_TOOL_DEFINITIONS,
+        messages
+      });
+      model = response.model;
+      if (response.stop_reason === "refusal") return { answer: "Je ne peux pas r\xE9pondre \xE0 cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
+      const text2 = response.content.map((b) => b.type === "text" ? b.text : "").join("").trim();
+      const calls = response.content.filter((b) => b.type === "tool_use");
+      if (response.stop_reason !== "tool_use" || calls.length === 0) {
+        if (!text2) throw new AppError("EXTERNAL_API", "L'assistant n'a pas formul\xE9 de r\xE9ponse. R\xE9essayez.");
+        return { answer: response.stop_reason === "max_tokens" ? `${text2}
+
+(r\xE9ponse interrompue : posez une question plus pr\xE9cise)` : text2, sources: used, model };
+      }
+      messages.push({ role: "assistant", content: response.content });
+      const results = await Promise.all(
+        calls.map(async (call) => {
+          const r = await runAssistantTool(ctx, call.name, call.input);
+          if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
+          if (r.isError) log23.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          return { type: "tool_result", tool_use_id: call.id, content: r.content, is_error: r.isError };
+        })
+      );
+      messages.push({ role: "user", content: results });
+    }
+  } catch (e) {
+    throw aiError(e);
+  }
+  throw new AppError("EXTERNAL_API", "La question demande trop d'\xE9tapes : posez-la de fa\xE7on plus pr\xE9cise.");
+}
+
+// src/services/ai/tools-check.ts
+async function checkAssistantTools(organizationId) {
+  const admin = createAdminSupabaseClient();
+  let orgId = organizationId ?? null;
+  let currency = "EUR";
+  const { data: org } = orgId ? await admin.from("organizations").select("id, default_currency").eq("id", orgId).maybeSingle() : await admin.from("organizations").select("id, default_currency").order("created_at").limit(1).maybeSingle();
+  if (!org) return { organization: null, tools: [] };
+  orgId = org.id;
+  currency = org.default_currency;
+  const ctx = { supabase: admin, organizationId: orgId, currency };
+  const tools = [];
+  for (const name of Object.keys(ASSISTANT_TOOLS)) {
+    const r = await runAssistantTool(ctx, name, { days: 365 });
+    let keys = [];
+    try {
+      keys = r.isError ? [] : Object.keys(JSON.parse(r.content));
+    } catch {
+      keys = [];
+    }
+    tools.push({ name, ok: !r.isError, bytes: r.content.length, error: r.isError ? r.content.slice(0, 300) : null, keys });
+  }
+  return { organization: orgId, tools };
+}
+
 // server/edge/ebay-callback.ts
 var EBAY_APP_CALLBACK = "monstock://ebay/callback";
 var SAFE_CODE = /^[A-Za-z0-9._~\-#=%+/^]{1,2048}$/;
@@ -12655,7 +13283,8 @@ var RUNTIME_SECRET_NAMES = [
   "EBAY_RU_NAME",
   "EBAY_WEBHOOK_VERIFICATION_TOKEN",
   "SOURCING_DISCOVERY_PROVIDER",
-  "BRAVE_SEARCH_API_KEY"
+  "BRAVE_SEARCH_API_KEY",
+  "ANTHROPIC_API_KEY"
 ];
 async function loadRuntimeSecrets(env, fetchImpl = fetch) {
   const fromEnv = RUNTIME_SECRET_NAMES.filter((n) => Boolean(env[n]));
@@ -12692,16 +13321,17 @@ async function loadRuntimeSecrets(env, fetchImpl = fetch) {
 }
 
 // server/edge/api.ts
-var log23 = createLogger("EDGE_API");
+var log24 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z28.object({ code: z28.string().min(1).max(2048), state: z28.string().min(16).max(200) });
-var syncSchema = z28.object({ connectionId: uuidParam, scope: z28.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z28.object({ hosts: z28.array(z28.string().min(3).max(120)).min(1).max(25), query: z28.string().min(2).max(80).optional() });
-var activateSchema = z28.object({ key: z28.string().min(1).max(80), attest: z28.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var ebayFinalizeSchema = z32.object({ code: z32.string().min(1).max(2048), state: z32.string().min(16).max(200) });
+var syncSchema = z32.object({ connectionId: uuidParam, scope: z32.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z32.object({ hosts: z32.array(z32.string().min(3).max(120)).min(1).max(25), query: z32.string().min(2).max(80).optional() });
+var productDraftSchema = z32.object({ text: z32.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z32.object({ key: z32.string().min(1).max(80), attest: z32.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -12731,7 +13361,7 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log23.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
+  log24.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
   return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
 }
 async function finalizeEbayConnect(request) {
@@ -12742,7 +13372,7 @@ async function finalizeEbayConnect(request) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row.created_by !== ctx.user.id || row.organization_id !== ctx.organization.id) {
-    log23.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log24.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -12753,11 +13383,11 @@ async function finalizeEbayConnect(request) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
-    log23.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log24.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log23.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log24.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
@@ -12820,6 +13450,7 @@ async function route(request) {
           ebayConfigured: Boolean(ebay2),
           ebayEnvironment: ebay2?.EBAY_ENV ?? null,
           cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16),
+          aiConfigured: aiConfigured(),
           encryptionConfigured: Boolean(process.env.TOKEN_ENCRYPTION_KEY && process.env.TOKEN_ENCRYPTION_KEY.length >= 32),
           // Noms uniquement (jamais les valeurs).
           secrets: { fromEnv: secrets.fromEnv, fromVault: secrets.fromVault, error: secrets.error },
@@ -12837,8 +13468,14 @@ async function route(request) {
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z28.object({ query: z28.string().min(2).max(120), source: z28.string().min(1).max(80) }));
+          const body = await parseBody(request, z32.object({ query: z32.string().min(2).max(120), source: z32.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
+        });
+      }
+      if (m === "POST" && path === "/cron/ai-tools-check") {
+        return handle(async () => {
+          const body = await parseBody(request, z32.object({ organizationId: uuidParam.optional() }));
+          return checkAssistantTools(body.organizationId);
         });
       }
       if (m === "POST" && path === "/cron/scout") {
@@ -12856,6 +13493,20 @@ async function route(request) {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, activateSchema);
         return activateLibrarySource(ctx, body.key);
+      });
+    }
+    if (m === "POST" && path === "/ai/product-draft") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, productDraftSchema);
+        return draftProductFromText(body.text, ctx.organization.default_currency);
+      });
+    }
+    if (m === "POST" && path === "/ai/assistant") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const body = await parseBody(request, assistantRequestSchema);
+        return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
       });
     }
     if (m === "GET" && path === "/integrations") return handle(async () => integrations(await requireMobileOrgContext(request)));
@@ -12877,7 +13528,7 @@ async function route(request) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log23.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log24.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;

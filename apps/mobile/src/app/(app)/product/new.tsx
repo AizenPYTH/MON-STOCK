@@ -2,7 +2,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Plus } from "lucide-react-native";
+import { Plus, Sparkles } from "lucide-react-native";
 import { PRODUCT_CATEGORIES, productDisplayName } from "@/features/stock/product-form";
 import { useActiveOrg } from "~/org/org-provider";
 import { useCreateProduct } from "~/data/hooks";
@@ -11,6 +11,8 @@ import { userMessage } from "~/lib/errors";
 import { formatNumber } from "~/lib/format";
 import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, FilterChip, Screen, StickyActions, TextField, Txt, useToast } from "~/components/ui";
 import { draftToInput, newVariantDraft, VariantCard, withSuggestedCode, type VariantDraft } from "~/components/product-form";
+import { VoiceInput } from "~/components/voice-input";
+import { draftProduct, draftToForm } from "~/data/ai";
 import { color, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -31,6 +33,10 @@ export default function NewProductScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNotes, setAiNotes] = useState<string[]>([]);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const identity = { brand, model, name };
   const displayName = productDisplayName(identity);
@@ -60,6 +66,36 @@ export default function NewProductScreen() {
   function remove(i: number) {
     setVariants((vs) => vs.filter((_, j) => j !== i));
     setErrors({});
+  }
+
+  /** Phrase dictée ou écrite → compréhension par l'IA (serveur) → formulaire pré-rempli, à vérifier. */
+  async function analyze(text: string) {
+    setAiText(text);
+    setAiBusy(true);
+    setAiError(null);
+    setAiNotes([]);
+    try {
+      const draft = await draftProduct(active.organization.id, text);
+      if (!draft.understood) {
+        setAiError(draft.notes[0] ?? "Je n'ai pas compris quel produit ajouter. Précisez la marque, le modèle et la quantité.");
+        return;
+      }
+      const f = draftToForm(draft);
+      setBrand(f.brand);
+      setModel(f.model);
+      setName(f.name);
+      setCategory(f.category);
+      setVariants(f.variants);
+      setErrors({});
+      setFormError(null);
+      setAiNotes(f.notes);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      toast({ text: `Formulaire rempli : ${f.variants.length} variante${f.variants.length > 1 ? "s" : ""} à vérifier` });
+    } catch (e) {
+      setAiError(userMessage(e));
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   function submit() {
@@ -112,6 +148,29 @@ export default function NewProductScreen() {
           <Txt variant="label">Organisation : {active.organization.name} · prix en {active.organization.currency}</Txt>
         </View>
         {formError ? <AlertBanner text={formError} tone="dark" /> : null}
+        <Card padded style={{ gap: space[3] }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
+            <Sparkles size={16} color={color.accent} />
+            <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700], flex: 1 }}>
+              Dites ou écrivez le produit
+            </Txt>
+          </View>
+          <Txt variant="label">Ex. « 3 iPhone 13 128 Go noir grade A achetés 310 € revendus 429 €, et 2 en 256 Go bleu grade B ». L'IA remplit le formulaire ; vous vérifiez avant de créer.</Txt>
+          <VoiceInput value={aiText} onChangeText={setAiText} onSubmit={(t) => void analyze(t)} placeholder="Décrivez le produit…" busy={aiBusy} submitLabel="Remplir le formulaire" testID="product-ai-input" />
+          {aiError ? <Txt variant="label" color={color.danger} accessibilityLiveRegion="polite">{aiError}</Txt> : null}
+          {aiNotes.length ? (
+            <View style={{ gap: 2 }} accessibilityLiveRegion="polite">
+              <Txt variant="label" color={color.accentInkOnSoft} style={{ fontFamily: fontFamily[700] }}>
+                À vérifier
+              </Txt>
+              {aiNotes.map((n) => (
+                <Txt key={n} variant="label" color={color.accentInkOnSoft}>
+                  – {n}
+                </Txt>
+              ))}
+            </View>
+          ) : null}
+        </Card>
         <Card padded style={{ gap: space[4] }}>
           <TextField label="Marque" value={brand} onChangeText={(v) => setIdentity({ brand: v })} placeholder="Ex. Apple" maxLength={120} autoCapitalize="words" testID="product-brand" />
           <TextField label="Modèle" value={model} onChangeText={(v) => setIdentity({ model: v })} placeholder="Ex. iPhone 13" maxLength={160} testID="product-model" />

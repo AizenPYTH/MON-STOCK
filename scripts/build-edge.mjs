@@ -25,7 +25,7 @@ const versionOf = (name) => {
 };
 
 /** Paquets npm chargés par Deno (`npm:paquet@version/sous-chemin`). */
-const NPM = ["@supabase/supabase-js", "zod", "csv-parse", "fast-xml-parser"];
+const NPM = ["@supabase/supabase-js", "zod", "csv-parse", "fast-xml-parser", "@anthropic-ai/sdk"];
 const shims = {
   "server-only": "server/edge/shims/empty.ts",
   "next/server": "server/edge/shims/next-server.ts",

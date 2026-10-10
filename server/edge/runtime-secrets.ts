@@ -14,6 +14,7 @@ export const RUNTIME_SECRET_NAMES = [
   "EBAY_WEBHOOK_VERIFICATION_TOKEN",
   "SOURCING_DISCOVERY_PROVIDER",
   "BRAVE_SEARCH_API_KEY",
+  "ANTHROPIC_API_KEY",
 ] as const;
 
 export interface RuntimeSecretsState {

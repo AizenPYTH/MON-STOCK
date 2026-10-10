@@ -18,6 +18,8 @@
  *   GET  /api/ebay/callback               retour d'eBay → redirection vers l'application (monstock://)
  *   POST /api/ebay/finalize               échange du code (utilisateur qui a démarré le flux uniquement)
  *   POST /api/ebay/sync                   synchronisation immédiate d'une connexion
+ *   POST /api/ai/product-draft            phrase dictée → brouillon du formulaire produit (Claude ; rien n'est créé)
+ *   POST /api/ai/assistant                questions sur les ventes / le stock / eBay (Claude + lecture seule sous RLS)
  *   POST /api/cron/sync | /api/cron/sourcing | /api/cron/library-checks
  *                                         tâches planifiées (Authorization: Bearer CRON_SECRET)
  *
@@ -52,6 +54,10 @@ import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
 import { runSearchSelfTest } from "@/services/sourcing/e2e-check";
+import { aiConfigured } from "@/services/ai/claude";
+import { draftProductFromText } from "@/services/ai/product-draft";
+import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
+import { checkAssistantTools } from "@/services/ai/tools-check";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
 import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
 
@@ -67,6 +73,7 @@ const CORS = {
 const ebayFinalizeSchema = z.object({ code: z.string().min(1).max(2048), state: z.string().min(16).max(200) });
 const syncSchema = z.object({ connectionId: uuidParam, scope: z.enum(["full", "listings", "orders"]).default("full") });
 const scoutSchema = z.object({ hosts: z.array(z.string().min(3).max(120)).min(1).max(25), query: z.string().min(2).max(80).optional() });
+const productDraftSchema = z.object({ text: z.string().trim().min(3, "Dites ou écrivez le produit à ajouter.").max(2000, "Texte trop long (2000 caractères maximum).") });
 const activateSchema = z.object({ key: z.string().min(1).max(80), attest: z.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 
 function withCors(res: Response): Response {
@@ -210,6 +217,7 @@ export async function route(request: Request): Promise<Response> {
           ebayConfigured: Boolean(ebay),
           ebayEnvironment: ebay?.EBAY_ENV ?? null,
           cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16),
+          aiConfigured: aiConfigured(),
           encryptionConfigured: Boolean(process.env.TOKEN_ENCRYPTION_KEY && process.env.TOKEN_ENCRYPTION_KEY.length >= 32),
           // Noms uniquement (jamais les valeurs).
           secrets: { fromEnv: secrets.fromEnv, fromVault: secrets.fromVault, error: secrets.error },
@@ -231,6 +239,12 @@ export async function route(request: Request): Promise<Response> {
           return runSearchSelfTest(body.query, body.source);
         });
       }
+      if (m === "POST" && path === "/cron/ai-tools-check") {
+        return handle(async () => {
+          const body = await parseBody(request, z.object({ organizationId: uuidParam.optional() }));
+          return checkAssistantTools(body.organizationId);
+        });
+      }
       if (m === "POST" && path === "/cron/scout") {
         return handle(async () => {
           const body = await parseBody(request, scoutSchema);
@@ -246,6 +260,20 @@ export async function route(request: Request): Promise<Response> {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, activateSchema);
         return activateLibrarySource(ctx, body.key);
+      });
+    }
+    if (m === "POST" && path === "/ai/product-draft") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, productDraftSchema);
+        return draftProductFromText(body.text, ctx.organization.default_currency);
+      });
+    }
+    if (m === "POST" && path === "/ai/assistant") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const body = await parseBody(request, assistantRequestSchema);
+        return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
       });
     }
     if (m === "GET" && path === "/integrations") return handle(async () => integrations(await requireMobileOrgContext(request)));

@@ -518,3 +518,41 @@ export interface IntelligenceDTO {
   stockCounts: Record<StockLevel, number>;
   truncated: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// IA (Claude, côté serveur) : brouillon de produit dicté, assistant « Intelligence »
+// ---------------------------------------------------------------------------
+
+/** Brouillon issu d'une phrase dictée : pré-remplit le formulaire, rien n'est créé sans confirmation. */
+export interface ProductDraftDTO {
+  transcript: string;
+  /** false : la phrase ne décrit pas un produit à ajouter */
+  understood: boolean;
+  brand: string | null;
+  model: string | null;
+  name: string | null;
+  category: string | null;
+  variants: {
+    storage: string | null;
+    color: string | null;
+    grade: "A" | "B" | "C" | null;
+    condition: "new" | "refurbished" | "used" | "unknown";
+    costPrice: number | null;
+    salePrice: number | null;
+    initialQuantity: number | null;
+  }[];
+  /** ambiguïtés / informations manquantes, à vérifier par l'utilisateur */
+  notes: string[];
+}
+
+export interface AssistantMessageDTO {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AssistantReplyDTO {
+  answer: string;
+  /** données consultées pour répondre (transparence) */
+  sources: { tool: string; label: string }[];
+  model: string;
+}

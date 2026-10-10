@@ -32,7 +32,14 @@
       "expo-web-browser",
       "expo-splash-screen",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Mon Stock Pro utilise le micro pour dicter un produit à ajouter ou une question à l'assistant.",
+          "speechRecognitionPermission": "Mon Stock Pro transcrit votre voix (reconnaissance vocale d'Apple) pour remplir un produit ou poser une question à l'assistant."
+        }
+      ]
     ],
     "extra": {
       "router": {},

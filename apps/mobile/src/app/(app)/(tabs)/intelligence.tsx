@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActionSheetIOS, Alert, Platform, Pressable, RefreshControl, View } from "react-native";
 import { router } from "expo-router";
-import { ChevronDown } from "lucide-react-native";
+import { ChevronDown, Mic, Sparkles } from "lucide-react-native";
 import { useUser } from "~/auth/session-provider";
 import { useActiveOrg } from "~/org/org-provider";
 import { useAnalysis, useCatalog, useToday } from "~/data/hooks";
@@ -74,6 +74,32 @@ export default function IntelligenceScreen() {
   );
 }
 
+/** Accès à l'assistant IA : questions écrites ou dictées sur les ventes, le stock et eBay. */
+function AssistantEntry() {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Poser une question à l'assistant"
+      onPress={() => router.push("/assistant")}
+      testID="assistant-entry"
+      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: space[3], padding: space[4], borderRadius: radius.xxl, backgroundColor: color.surfaceDark, opacity: pressed ? 0.9 : 1 })}
+    >
+      <Sparkles size={20} color={color.accent} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Txt variant="label" color={color.inkOnDark} style={{ fontFamily: "Manrope_700Bold" }}>
+          Demandez à l'assistant
+        </Txt>
+        <Txt variant="label" color={color.inkOnDarkMuted}>
+          « Quel est le produit que j'ai le plus vendu ? »
+        </Txt>
+      </View>
+      <View style={{ width: 40, height: 40, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: "center", justifyContent: "center" }}>
+        <Mic size={20} color={color.inkOnDark} />
+      </View>
+    </Pressable>
+  );
+}
+
 const SEGMENTS: { value: Segment; label: string }[] = [
   { value: "today", label: "Aujourd'hui" },
   { value: "analysis", label: "Analyse" },
@@ -106,6 +132,7 @@ function Today({ header, segment, currency }: { header: React.ReactNode; segment
     >
       {header}
       {segment}
+      <AssistantEntry />
       {today.isPending ? (
         <>
           <Skeleton w="100%" h={130} r={radius.xxl} />
@@ -173,6 +200,7 @@ function Analysis({ header, segment, period, currency }: { header: React.ReactNo
     <Screen contentGap={16} refreshControl={<RefreshControl refreshing={analysis.isRefetching} onRefresh={() => void Promise.all([catalog.refetch(), analysis.refetch()])} />}>
       {header}
       {segment}
+      <AssistantEntry />
       {analysis.isPending || catalog.isPending ? (
         <>
           <Skeleton w="100%" h={170} r={radius.lg} />
