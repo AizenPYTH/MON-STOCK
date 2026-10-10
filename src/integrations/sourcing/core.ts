@@ -134,6 +134,8 @@ export interface SourceAdapter {
   testConnection(config: AdapterSourceConfig, ctx: AdapterRunContext): Promise<{ ok: boolean; message: string }>;
   /** parser HTML dédié exposé au crawler générique (sources PUBLIC_WEB à liste d'URLs) */
   htmlParser?: SourceParser;
+  /** budget de temps propre à la recherche en direct (ms), si elle exige plusieurs requêtes espacées */
+  searchBudgetMs?: number;
   /** statut de vérification honnête : « fixtures » = testé uniquement sur des documents construits depuis le format documenté */
   verification: "fixtures" | "live";
 }

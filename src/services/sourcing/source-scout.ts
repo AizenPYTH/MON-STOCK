@@ -2,6 +2,8 @@ import "server-only";
 import { fetchText } from "@/services/sourcing/http";
 import { checkRobotsForUrls } from "@/services/sourcing/crawler/robots";
 import { parseJsonLdPage } from "@/integrations/sourcing/jsonld-public/parser";
+import { sitemapJsonLdAdapter } from "@/integrations/sourcing/sitemap-jsonld";
+import { parseQuery } from "@/domain/sourcing/query-parser";
 
 /**
  * Éclaireur de sources (outil d'administration, jamais exposé aux utilisateurs) : pour un hôte
@@ -22,7 +24,8 @@ export interface ScoutReport {
   robots: { allowed: boolean | null; details: string | null };
   json: { url: string; status: number | null; products: number; samples: Array<{ title: string; price: string | null }> } | null;
   search: { url: string; status: number | null; jsonLdOffers: number; samples: Array<{ title: string; price: number | null; currency: string | null }> } | null;
-  recommendation: { adapter: "shopify-storefront" | "woocommerce-store" | "jsonld-public"; searchUrl?: string } | null;
+  sitemap: { offers: number; requests: number; error: string | null; samples: Array<{ title: string; price: number | null; currency: string | null; url: string | null }> } | null;
+  recommendation: { adapter: "shopify-storefront" | "woocommerce-store" | "jsonld-public" | "sitemap-jsonld"; searchUrl?: string } | null;
   error: string | null;
 }
 
@@ -55,7 +58,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function scoutHost(host: string, query = "iphone"): Promise<ScoutReport> {
   const base = `https://${host.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}`;
-  const report: ScoutReport = { host, homeStatus: null, platform: "unknown", robots: { allowed: null, details: null }, json: null, search: null, recommendation: null, error: null };
+  const report: ScoutReport = { host, homeStatus: null, platform: "unknown", robots: { allowed: null, details: null }, json: null, search: null, sitemap: null, recommendation: null, error: null };
   try {
     const home = await fetchText(`${base}/`, { userAgent: UA(), timeoutMs: 12_000, maxBytes: 2_000_000 });
     report.homeStatus = home.status;
@@ -86,6 +89,13 @@ export async function scoutHost(host: string, query = "iphone"): Promise<ScoutRe
       const offers = r ? parseJsonLdPage(r.text, r.finalUrl || searchUrl) : [];
       report.search = { url: searchUrl, status: r?.status ?? null, jsonLdOffers: offers.length, samples: offers.slice(0, 3).map((o) => ({ title: o.title, price: o.price ?? null, currency: o.currency ?? null })) };
       if (!report.recommendation && offers.length > 0) report.recommendation = { adapter: "jsonld-public", searchUrl: template };
+    }
+    if (!report.recommendation) {
+      // Plan du site + données structurées des fiches produit (adaptateur sitemap-jsonld).
+      const r = await sitemapJsonLdAdapter.search({ baseUrl: base, settings: {}, defaultCurrency: null, defaultTaxType: "unknown", defaultCountry: null }, parseQuery(query), query, { userAgent: UA(), timeoutMs: 40_000, minDelayMs: 1_500 });
+      const priced = r.offers.filter((o) => o.price !== null && o.price > 0);
+      report.sitemap = { offers: priced.length, requests: r.requests.length, error: r.error, samples: priced.slice(0, 3).map((o) => ({ title: o.title, price: o.price, currency: o.currency ?? null, url: o.url ?? null })) };
+      if (priced.length > 0) report.recommendation = { adapter: "sitemap-jsonld" };
     }
   } catch (e) {
     report.error = e instanceof Error ? e.message.slice(0, 300) : String(e);

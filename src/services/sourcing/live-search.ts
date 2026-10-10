@@ -230,8 +230,10 @@ async function querySource(c: LiveSourceCandidate, input: LiveSearchInput, rt: L
 
   const fetchImpl = scheduler.wrapFetch(rt.fetchImpl);
   // Reformulations successives dans UN SEUL budget de temps par source (perSourceTimeoutMs).
-  const deadline = t0 + rt.perSourceTimeoutMs;
-  const minVariantBudget = Math.min(LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, rt.perSourceTimeoutMs / 4);
+  // Budget propre à l'adaptateur s'il en déclare un plus long (plusieurs pages espacées de ≥ 2 s).
+  const budgetMs = Math.max(rt.perSourceTimeoutMs, adapter.searchBudgetMs ?? 0);
+  const deadline = t0 + budgetMs;
+  const minVariantBudget = Math.min(LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, budgetMs / 4);
   const collected: Array<{ offer: RawOffer; requestUrl: string | null }> = [];
   const seenOfferIds = new Set<string>();
   const requests: AdapterSearchResult["requests"] = [];
@@ -277,12 +279,12 @@ async function querySource(c: LiveSourceCandidate, input: LiveSearchInput, rt: L
     }
     if (result === "timeout") {
       if (i === 0) {
-        const r = report(c, "timeout", `Délai dépassé (${Math.round(rt.perSourceTimeoutMs / 1000)} s) : la source n'a pas répondu à temps.`, { durationMs: Date.now() - t0, queries: sent }, startedAt);
+        const r = report(c, "timeout", `Délai dépassé (${Math.round(budgetMs / 1000)} s) : la source n'a pas répondu à temps.`, { durationMs: Date.now() - t0, queries: sent }, startedAt);
         await rt.recordRun(c, r, startedAt);
         return r;
       }
       truncated = true;
-      errors.push(`reformulation « ${v.text} » interrompue : budget de ${Math.round(rt.perSourceTimeoutMs / 1000)} s atteint`);
+      errors.push(`reformulation « ${v.text} » interrompue : budget de ${Math.round(budgetMs / 1000)} s atteint`);
       break;
     }
     method = result.method;

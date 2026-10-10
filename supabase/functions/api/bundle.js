@@ -6149,8 +6149,283 @@ var ebayBrowseAdapter = {
   }
 };
 
+// src/services/sourcing/crawler/robots.ts
+function parseRobotsTxt(text2) {
+  const groups = [];
+  const sitemaps = [];
+  let current = null;
+  let lastWasAgent = false;
+  for (const rawLine of text2.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const idx = line.indexOf(":");
+    if (idx < 0) continue;
+    const key2 = line.slice(0, idx).trim().toLowerCase();
+    const value = line.slice(idx + 1).trim();
+    if (key2 === "user-agent") {
+      if (!current || !lastWasAgent) {
+        current = { agents: [], allow: [], disallow: [], crawlDelay: null };
+        groups.push(current);
+      }
+      current.agents.push(value.toLowerCase());
+      lastWasAgent = true;
+      continue;
+    }
+    lastWasAgent = false;
+    if (key2 === "sitemap") {
+      sitemaps.push(value);
+      continue;
+    }
+    if (!current) continue;
+    if (key2 === "allow") current.allow.push(value);
+    else if (key2 === "disallow") current.disallow.push(value);
+    else if (key2 === "crawl-delay") {
+      const n = Number(value.replace(",", "."));
+      if (Number.isFinite(n) && n >= 0) current.crawlDelay = n;
+    }
+  }
+  return { groups, sitemaps };
+}
+function patternToRegex(pattern) {
+  const anchored = pattern.endsWith("$");
+  const body = (anchored ? pattern.slice(0, -1) : pattern).split("*").map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  return new RegExp(`^${body}${anchored ? "$" : ""}`);
+}
+function userAgentToken(userAgent) {
+  return (userAgent.split(/[\s/]/)[0] ?? userAgent).toLowerCase();
+}
+function selectGroup(rules, userAgent) {
+  const token = userAgentToken(userAgent);
+  let best = null;
+  let bestLen = -1;
+  for (const g of rules.groups) {
+    for (const a of g.agents) {
+      if (a !== "*" && token.startsWith(a) && a.length > bestLen) {
+        best = g;
+        bestLen = a.length;
+      }
+    }
+  }
+  if (best) return best;
+  return rules.groups.find((g) => g.agents.includes("*")) ?? null;
+}
+function evaluateRobots(rules, userAgent, path) {
+  const group = selectGroup(rules, userAgent);
+  if (!group) return { allowed: true, crawlDelay: null, matchedAgent: null, rule: null };
+  const p = path.startsWith("/") ? path : `/${path}`;
+  let bestLen = -1;
+  let allowed = true;
+  let rule = null;
+  const consider = (patterns, isAllow) => {
+    for (const pat of patterns) {
+      if (pat === "") continue;
+      if (!patternToRegex(pat).test(p)) continue;
+      const len = pat.length;
+      if (len > bestLen || len === bestLen && isAllow) {
+        bestLen = len;
+        allowed = isAllow;
+        rule = `${isAllow ? "Allow" : "Disallow"}: ${pat}`;
+      }
+    }
+  };
+  consider(group.disallow, false);
+  consider(group.allow, true);
+  return { allowed, crawlDelay: group.crawlDelay, matchedAgent: group.agents[0] ?? null, rule };
+}
+async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e4) {
+  const empty = { groups: [], sitemaps: [] };
+  let origin;
+  try {
+    origin = new URL(baseUrl).origin;
+  } catch {
+    return { status: "error", rules: empty, httpStatus: null, error: "URL de base invalide." };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(`${origin}/robots.txt`, { headers: { "User-Agent": userAgent, Accept: "text/plain" }, redirect: "follow", signal: controller.signal });
+    if (res.status === 404 || res.status === 410) return { status: "missing", rules: empty, httpStatus: res.status, error: null };
+    if (!res.ok) return { status: "error", rules: empty, httpStatus: res.status, error: `robots.txt inaccessible (HTTP ${res.status}).` };
+    const text2 = await res.text();
+    return { status: "ok", rules: parseRobotsTxt(text2.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
+  } catch (e) {
+    return { status: "error", rules: empty, httpStatus: null, error: e instanceof Error ? e.message : "Erreur r\xE9seau." };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch) {
+  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl);
+  if (fetched.status === "error") {
+    return { allowed: false, robotsStatus: "error", crawlDelay: null, disallowedUrls: urls, details: fetched.error ?? "robots.txt inaccessible." };
+  }
+  if (fetched.status === "missing") {
+    return { allowed: true, robotsStatus: "missing", crawlDelay: null, disallowedUrls: [], details: "Aucun robots.txt : aucune restriction d\xE9clar\xE9e (les CGU du site restent \xE0 v\xE9rifier)." };
+  }
+  const disallowed = [];
+  let crawlDelay = null;
+  for (const u of urls) {
+    let path = "/";
+    try {
+      const parsed = new URL(u);
+      path = parsed.pathname + parsed.search;
+    } catch {
+      disallowed.push(u);
+      continue;
+    }
+    const d = evaluateRobots(fetched.rules, userAgent, path);
+    if (d.crawlDelay !== null) crawlDelay = d.crawlDelay;
+    if (!d.allowed) disallowed.push(u);
+  }
+  const group = selectGroup(fetched.rules, userAgent);
+  const agent = group?.agents[0] ?? "*";
+  return {
+    allowed: disallowed.length === 0,
+    robotsStatus: "ok",
+    crawlDelay,
+    disallowedUrls: disallowed,
+    details: disallowed.length === 0 ? `robots.txt lu (groupe \xAB ${agent} \xBB) : toutes les URLs sont autoris\xE9es${crawlDelay !== null ? `, d\xE9lai demand\xE9 ${crawlDelay} s` : ""}.` : `robots.txt (groupe \xAB ${agent} \xBB) interdit ${disallowed.length} URL(s) : le crawl est refus\xE9.`
+  };
+}
+
+// src/integrations/sourcing/sitemap-jsonld/index.ts
+var SITEMAP_MAX_CHILDREN = 12;
+var SITEMAP_MAX_URLS = 8e4;
+var SITEMAP_DEFAULT_PAGES = 3;
+var SITEMAP_CACHE_TTL_MS = 6 * 36e5;
+var cache2 = /* @__PURE__ */ new Map();
+function parseSitemapXml(xml) {
+  const kind = /<sitemapindex[\s>]/i.test(xml) ? "index" : /<urlset[\s>]/i.test(xml) ? "urlset" : "unknown";
+  const locs = [];
+  const re = /<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi;
+  let m;
+  while ((m = re.exec(xml)) && locs.length < SITEMAP_MAX_URLS) locs.push(m[1].replace(/&amp;/g, "&"));
+  return { kind, locs };
+}
+function rankChildSitemaps(locs) {
+  const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer/i;
+  const score = (u) => /product|produit|(^|[^a-z])items?([^a-z]|$)/i.test(u) ? 0 : 1;
+  return locs.filter((u) => !skip.test(u) && !/\.gz($|\?)/i.test(u)).sort((a, b) => score(a) - score(b));
+}
+var STOP = /* @__PURE__ */ new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
+function queryTokens(rawQuery) {
+  return [...new Set(normalizeText(rawQuery).split(/[^a-z0-9]+/).filter((t) => t.length >= 2 && !STOP.has(t)))].slice(0, 8);
+}
+function matchProductUrls(urls, rawQuery, max) {
+  const tokens = queryTokens(rawQuery);
+  if (tokens.length === 0) return [];
+  const need = Math.min(2, tokens.length);
+  const scored = [];
+  for (const url of urls) {
+    let path;
+    try {
+      path = normalizeText(decodeURIComponent(new URL(url).pathname));
+    } catch {
+      continue;
+    }
+    const parts = new Set(path.split(/[^a-z0-9]+/));
+    let matched = 0;
+    let score = 0;
+    for (const t of tokens) {
+      if (!parts.has(t)) continue;
+      matched += 1;
+      score += /^\d+$/.test(t) ? 1.5 : 1;
+    }
+    if (matched >= need) scored.push({ url, score, len: path.length });
+  }
+  scored.sort((a, b) => b.score - a.score || a.len - b.len);
+  return scored.slice(0, max).map((s) => s.url);
+}
+async function loadIndex(base, ctx, http, settings) {
+  const now = (ctx.now ?? (() => /* @__PURE__ */ new Date()))().getTime();
+  const hit = cache2.get(base);
+  if (hit && now - hit.at < SITEMAP_CACHE_TTL_MS) return hit;
+  let robots = null;
+  try {
+    const r = await http.request(`${base}/robots.txt`, { accept: "text/plain" });
+    robots = parseRobotsTxt(r.text.slice(0, 512 * 1024));
+  } catch {
+    robots = null;
+  }
+  const configured = settingString(settings, "sitemap_url");
+  const roots = configured ? [configured] : robots?.sitemaps.length ? robots.sitemaps.slice(0, 3) : [`${base}/sitemap.xml`];
+  const urls = [];
+  const read = [];
+  const queue = [...roots];
+  while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
+    const sm = queue.shift();
+    if (new URL(sm).host !== new URL(base).host) continue;
+    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 15e6 });
+    read.push(sm);
+    const parsed = parseSitemapXml(res.text);
+    if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
+    else for (const u of parsed.locs) if (urls.length < SITEMAP_MAX_URLS) urls.push(u);
+  }
+  const index = { at: now, urls, robots, sitemaps: read };
+  if (urls.length > 0) cache2.set(base, index);
+  return index;
+}
+function allowedByRobots(robots, userAgent, url) {
+  if (!robots) return true;
+  const u = new URL(url);
+  return evaluateRobots(robots, userAgent, u.pathname + u.search).allowed;
+}
+var sitemapJsonLdAdapter = {
+  key: "sitemap-jsonld",
+  label: "Boutique publique (sitemap + donn\xE9es structur\xE9es)",
+  description: "Trouve les fiches produit correspondant \xE0 la recherche dans le plan du site (sitemap publi\xE9 pour les robots), puis lit leurs donn\xE9es structur\xE9es schema.org (prix, devise, disponibilit\xE9, \xE9tat, marque, SKU/GTIN). Chaque URL est v\xE9rifi\xE9e contre robots.txt ; 3 fiches par recherche, une requ\xEAte \xE0 la fois.",
+  method: "public_html",
+  access: "public",
+  capabilities: { search: true, catalog: false, stockQuantity: false },
+  credentialFields: [],
+  configFields: [
+    { name: "sitemap_url", label: "URL du sitemap (facultatif)", required: false, help: "Par d\xE9faut : sitemaps d\xE9clar\xE9s dans robots.txt, sinon /sitemap.xml." },
+    { name: "max_pages", label: "Fiches lues par recherche", required: false, placeholder: String(SITEMAP_DEFAULT_PAGES) }
+  ],
+  searchBudgetMs: 25e3,
+  verification: "fixtures",
+  urlsForQuery(config) {
+    if (!config.baseUrl) return [];
+    const base = trimSlash(config.baseUrl);
+    return [settingString(config.settings, "sitemap_url") ?? `${base}/sitemap.xml`];
+  },
+  async search(config, _query, rawQuery, ctx) {
+    if (!config.baseUrl) return failedSearch("public_html", "URL de base de la boutique manquante.");
+    const base = trimSlash(config.baseUrl);
+    const http = createAdapterHttp(ctx);
+    try {
+      const index = await loadIndex(base, ctx, http, config.settings);
+      if (index.urls.length === 0) return failedSearch("public_html", "Plan du site (sitemap) introuvable ou vide : la boutique n'est pas interrogeable de cette fa\xE7on.", http.requests);
+      const max = settingInt(config.settings, "max_pages", SITEMAP_DEFAULT_PAGES, 1, 6);
+      const candidates = matchProductUrls(index.urls, rawQuery, max * 2).filter((u) => new URL(u).host === new URL(base).host && allowedByRobots(index.robots, ctx.userAgent, u));
+      if (candidates.length === 0) return { offers: [], method: "public_html", requests: http.requests, error: null, truncated: false };
+      const offers = [];
+      let pages = 0;
+      for (const url of candidates) {
+        if (pages >= max || http.exhausted()) break;
+        try {
+          const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
+          pages += 1;
+          const found = parseJsonLdPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
+          http.countOffers(found.length);
+          offers.push(...found);
+        } catch {
+          pages += 1;
+        }
+      }
+      return { offers, method: "public_html", requests: http.requests, error: null, truncated: candidates.length > pages };
+    } catch (e) {
+      return failedSearch("public_html", errorMessage(e), http.requests);
+    }
+  },
+  async testConnection(config, ctx) {
+    const r = await sitemapJsonLdAdapter.search(config, parseQuery2("iphone"), "iphone", ctx);
+    return r.error ? { ok: false, message: r.error } : { ok: true, message: `${r.offers.length} offre(s) structur\xE9e(s) lue(s) pour \xAB iphone \xBB.` };
+  }
+};
+
 // src/integrations/sourcing/registry.ts
-var SOURCE_ADAPTERS = [jsonLdPublicAdapter, shopifyStorefrontAdapter, wooCommerceStoreAdapter, googleMerchantFeedAdapter, bigbuyAdapter, ingramMicroAdapter, ebayBrowseAdapter];
+var SOURCE_ADAPTERS = [jsonLdPublicAdapter, shopifyStorefrontAdapter, wooCommerceStoreAdapter, googleMerchantFeedAdapter, bigbuyAdapter, ingramMicroAdapter, ebayBrowseAdapter, sitemapJsonLdAdapter];
 function listSourceAdapters() {
   return SOURCE_ADAPTERS;
 }
@@ -6717,145 +6992,6 @@ function dedupeOffers(items) {
   return { kept, collapsed };
 }
 
-// src/services/sourcing/crawler/robots.ts
-function parseRobotsTxt(text2) {
-  const groups = [];
-  const sitemaps = [];
-  let current = null;
-  let lastWasAgent = false;
-  for (const rawLine of text2.split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, "").trim();
-    if (!line) continue;
-    const idx = line.indexOf(":");
-    if (idx < 0) continue;
-    const key2 = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-    if (key2 === "user-agent") {
-      if (!current || !lastWasAgent) {
-        current = { agents: [], allow: [], disallow: [], crawlDelay: null };
-        groups.push(current);
-      }
-      current.agents.push(value.toLowerCase());
-      lastWasAgent = true;
-      continue;
-    }
-    lastWasAgent = false;
-    if (key2 === "sitemap") {
-      sitemaps.push(value);
-      continue;
-    }
-    if (!current) continue;
-    if (key2 === "allow") current.allow.push(value);
-    else if (key2 === "disallow") current.disallow.push(value);
-    else if (key2 === "crawl-delay") {
-      const n = Number(value.replace(",", "."));
-      if (Number.isFinite(n) && n >= 0) current.crawlDelay = n;
-    }
-  }
-  return { groups, sitemaps };
-}
-function patternToRegex(pattern) {
-  const anchored = pattern.endsWith("$");
-  const body = (anchored ? pattern.slice(0, -1) : pattern).split("*").map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
-  return new RegExp(`^${body}${anchored ? "$" : ""}`);
-}
-function userAgentToken(userAgent) {
-  return (userAgent.split(/[\s/]/)[0] ?? userAgent).toLowerCase();
-}
-function selectGroup(rules, userAgent) {
-  const token = userAgentToken(userAgent);
-  let best = null;
-  let bestLen = -1;
-  for (const g of rules.groups) {
-    for (const a of g.agents) {
-      if (a !== "*" && token.startsWith(a) && a.length > bestLen) {
-        best = g;
-        bestLen = a.length;
-      }
-    }
-  }
-  if (best) return best;
-  return rules.groups.find((g) => g.agents.includes("*")) ?? null;
-}
-function evaluateRobots(rules, userAgent, path) {
-  const group = selectGroup(rules, userAgent);
-  if (!group) return { allowed: true, crawlDelay: null, matchedAgent: null, rule: null };
-  const p = path.startsWith("/") ? path : `/${path}`;
-  let bestLen = -1;
-  let allowed = true;
-  let rule = null;
-  const consider = (patterns, isAllow) => {
-    for (const pat of patterns) {
-      if (pat === "") continue;
-      if (!patternToRegex(pat).test(p)) continue;
-      const len = pat.length;
-      if (len > bestLen || len === bestLen && isAllow) {
-        bestLen = len;
-        allowed = isAllow;
-        rule = `${isAllow ? "Allow" : "Disallow"}: ${pat}`;
-      }
-    }
-  };
-  consider(group.disallow, false);
-  consider(group.allow, true);
-  return { allowed, crawlDelay: group.crawlDelay, matchedAgent: group.agents[0] ?? null, rule };
-}
-async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e4) {
-  const empty = { groups: [], sitemaps: [] };
-  let origin;
-  try {
-    origin = new URL(baseUrl).origin;
-  } catch {
-    return { status: "error", rules: empty, httpStatus: null, error: "URL de base invalide." };
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetchImpl(`${origin}/robots.txt`, { headers: { "User-Agent": userAgent, Accept: "text/plain" }, redirect: "follow", signal: controller.signal });
-    if (res.status === 404 || res.status === 410) return { status: "missing", rules: empty, httpStatus: res.status, error: null };
-    if (!res.ok) return { status: "error", rules: empty, httpStatus: res.status, error: `robots.txt inaccessible (HTTP ${res.status}).` };
-    const text2 = await res.text();
-    return { status: "ok", rules: parseRobotsTxt(text2.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
-  } catch (e) {
-    return { status: "error", rules: empty, httpStatus: null, error: e instanceof Error ? e.message : "Erreur r\xE9seau." };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch) {
-  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl);
-  if (fetched.status === "error") {
-    return { allowed: false, robotsStatus: "error", crawlDelay: null, disallowedUrls: urls, details: fetched.error ?? "robots.txt inaccessible." };
-  }
-  if (fetched.status === "missing") {
-    return { allowed: true, robotsStatus: "missing", crawlDelay: null, disallowedUrls: [], details: "Aucun robots.txt : aucune restriction d\xE9clar\xE9e (les CGU du site restent \xE0 v\xE9rifier)." };
-  }
-  const disallowed = [];
-  let crawlDelay = null;
-  for (const u of urls) {
-    let path = "/";
-    try {
-      const parsed = new URL(u);
-      path = parsed.pathname + parsed.search;
-    } catch {
-      disallowed.push(u);
-      continue;
-    }
-    const d = evaluateRobots(fetched.rules, userAgent, path);
-    if (d.crawlDelay !== null) crawlDelay = d.crawlDelay;
-    if (!d.allowed) disallowed.push(u);
-  }
-  const group = selectGroup(fetched.rules, userAgent);
-  const agent = group?.agents[0] ?? "*";
-  return {
-    allowed: disallowed.length === 0,
-    robotsStatus: "ok",
-    crawlDelay,
-    disallowedUrls: disallowed,
-    details: disallowed.length === 0 ? `robots.txt lu (groupe \xAB ${agent} \xBB) : toutes les URLs sont autoris\xE9es${crawlDelay !== null ? `, d\xE9lai demand\xE9 ${crawlDelay} s` : ""}.` : `robots.txt (groupe \xAB ${agent} \xBB) interdit ${disallowed.length} URL(s) : le crawl est refus\xE9.`
-  };
-}
-
 // src/services/sourcing/ecb-parser.ts
 import { XMLParser as XMLParser4 } from "npm:fast-xml-parser@5.11.2";
 import { z as z22 } from "npm:zod@4.6.5";
@@ -6891,7 +7027,7 @@ function crossRate(rates, from, to) {
 var log5 = createLogger("FX_RATES");
 var ECB_DAILY_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml";
 var CACHE_TTL_MS = 60 * 60 * 1e3;
-var cache2 = null;
+var cache3 = null;
 async function refreshFxRates(options = {}) {
   const doFetch = options.fetchImpl ?? fetch;
   const res = await doFetch(ECB_DAILY_URL, { headers: { Accept: "application/xml,text/xml", ...options.userAgent ? { "User-Agent": options.userAgent } : {} } });
@@ -6902,19 +7038,19 @@ async function refreshFxRates(options = {}) {
   const rows = Object.entries(parsed.rates).filter(([cur]) => cur !== "EUR").map(([cur, rate]) => ({ base_currency: "EUR", quote_currency: cur, rate, rate_date: parsed.date, source: "ecb", fetched_at: (/* @__PURE__ */ new Date()).toISOString() }));
   const { error } = await admin.from("fx_rates").upsert(rows, { onConflict: "base_currency,quote_currency,rate_date" });
   if (error) throw new Error(`fx_rates : ${error.message}`);
-  cache2 = { loadedAt: Date.now(), date: parsed.date, rates: parsed.rates };
+  cache3 = { loadedAt: Date.now(), date: parsed.date, rates: parsed.rates };
   log5.info("fx rates refreshed", { date: parsed.date, count: rows.length });
   return { date: parsed.date, count: rows.length };
 }
 async function loadLatestRates() {
-  if (cache2 && Date.now() - cache2.loadedAt < CACHE_TTL_MS) return { date: cache2.date, rates: cache2.rates };
+  if (cache3 && Date.now() - cache3.loadedAt < CACHE_TTL_MS) return { date: cache3.date, rates: cache3.rates };
   const admin = createAdminSupabaseClient();
   const { data: latest } = await admin.from("fx_rates").select("rate_date").eq("base_currency", "EUR").order("rate_date", { ascending: false }).limit(1).maybeSingle();
   if (!latest) return null;
   const { data: rows } = await admin.from("fx_rates").select("quote_currency, rate").eq("base_currency", "EUR").eq("rate_date", latest.rate_date);
   const rates = { EUR: 1 };
   for (const r of rows ?? []) rates[r.quote_currency.toUpperCase()] = Number(r.rate);
-  cache2 = { loadedAt: Date.now(), date: latest.rate_date, rates };
+  cache3 = { loadedAt: Date.now(), date: latest.rate_date, rates };
   return { date: latest.rate_date, rates };
 }
 async function getFxRate(from, to) {
@@ -7525,8 +7661,9 @@ async function querySource(c, input, rt, scheduler) {
     credentials = creds;
   }
   const fetchImpl = scheduler.wrapFetch(rt.fetchImpl);
-  const deadline = t0 + rt.perSourceTimeoutMs;
-  const minVariantBudget = Math.min(LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, rt.perSourceTimeoutMs / 4);
+  const budgetMs = Math.max(rt.perSourceTimeoutMs, adapter.searchBudgetMs ?? 0);
+  const deadline = t0 + budgetMs;
+  const minVariantBudget = Math.min(LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, budgetMs / 4);
   const collected = [];
   const seenOfferIds = /* @__PURE__ */ new Set();
   const requests = [];
@@ -7571,12 +7708,12 @@ async function querySource(c, input, rt, scheduler) {
     }
     if (result === "timeout") {
       if (i === 0) {
-        const r2 = report(c, "timeout", `D\xE9lai d\xE9pass\xE9 (${Math.round(rt.perSourceTimeoutMs / 1e3)} s) : la source n'a pas r\xE9pondu \xE0 temps.`, { durationMs: Date.now() - t0, queries: sent }, startedAt);
+        const r2 = report(c, "timeout", `D\xE9lai d\xE9pass\xE9 (${Math.round(budgetMs / 1e3)} s) : la source n'a pas r\xE9pondu \xE0 temps.`, { durationMs: Date.now() - t0, queries: sent }, startedAt);
         await rt.recordRun(c, r2, startedAt);
         return r2;
       }
       truncated = true;
-      errors.push(`reformulation \xAB ${v2.text} \xBB interrompue : budget de ${Math.round(rt.perSourceTimeoutMs / 1e3)} s atteint`);
+      errors.push(`reformulation \xAB ${v2.text} \xBB interrompue : budget de ${Math.round(budgetMs / 1e3)} s atteint`);
       break;
     }
     method = result.method;
@@ -9228,7 +9365,7 @@ function createWebSearchProvider(env = process.env, options = {}) {
   if (!config.enabled || !config.apiKey) return { provider: null, config };
   return { provider: createBraveProvider(config.apiKey, options), config };
 }
-var cache3 = /* @__PURE__ */ new Map();
+var cache4 = /* @__PURE__ */ new Map();
 function cacheKey(provider, query) {
   return `${provider}::${query.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
@@ -9252,7 +9389,7 @@ async function runDiscoverySearches(provider, queries, options = {}) {
   let halted = null;
   for (const query of unique) {
     const k = cacheKey(provider.key, query);
-    const hit = cache3.get(k);
+    const hit = cache4.get(k);
     if (hit && now().getTime() - hit.at < ttl) {
       runs.push({ query, results: hit.results, cached: true, error: null });
       continue;
@@ -9265,7 +9402,7 @@ async function runDiscoverySearches(provider, queries, options = {}) {
     calledBefore = true;
     try {
       const results = await provider.search(query);
-      cache3.set(k, { at: now().getTime(), results });
+      cache4.set(k, { at: now().getTime(), results });
       runs.push({ query, results, cached: false, error: null });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Erreur de recherche.";
@@ -11792,11 +11929,15 @@ async function checkLibrarySource(s, runtime = {}) {
 }
 async function checkLibrarySourceDetect(s, runtime = {}) {
   const first = await checkLibrarySource(s, runtime);
-  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access !== "public_json") return first;
-  const other = s.adapter === "shopify-storefront" ? "woocommerce-store" : "shopify-storefront";
-  const second = await checkLibrarySource({ ...s, adapter: other }, runtime);
-  if (second.status === "ok") return second;
-  return { ...first, message: `${first.message} | ${other} : ${second.message}`.slice(0, 500) };
+  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access === "official_api") return first;
+  const messages = [first.message];
+  const order = ["shopify-storefront", "woocommerce-store", "sitemap-jsonld"];
+  for (const other of order.filter((a) => a !== s.adapter)) {
+    const next = await checkLibrarySource({ ...s, adapter: other }, runtime);
+    if (next.status === "ok") return next;
+    messages.push(`${other} : ${next.message}`);
+  }
+  return { ...first, message: messages.join(" | ").slice(0, 500) };
 }
 async function runLibraryChecks(keys) {
   const admin = createAdminSupabaseClient();
@@ -11923,7 +12064,7 @@ function searchTemplate(platform, base) {
 var sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
 async function scoutHost(host, query = "iphone") {
   const base = `https://${host.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}`;
-  const report2 = { host, homeStatus: null, platform: "unknown", robots: { allowed: null, details: null }, json: null, search: null, recommendation: null, error: null };
+  const report2 = { host, homeStatus: null, platform: "unknown", robots: { allowed: null, details: null }, json: null, search: null, sitemap: null, recommendation: null, error: null };
   try {
     const home = await fetchText(`${base}/`, { userAgent: UA(), timeoutMs: 12e3, maxBytes: 2e6 });
     report2.homeStatus = home.status;
@@ -11954,6 +12095,12 @@ async function scoutHost(host, query = "iphone") {
       const offers = r ? parseJsonLdPage(r.text, r.finalUrl || searchUrl) : [];
       report2.search = { url: searchUrl, status: r?.status ?? null, jsonLdOffers: offers.length, samples: offers.slice(0, 3).map((o) => ({ title: o.title, price: o.price ?? null, currency: o.currency ?? null })) };
       if (!report2.recommendation && offers.length > 0) report2.recommendation = { adapter: "jsonld-public", searchUrl: template };
+    }
+    if (!report2.recommendation) {
+      const r = await sitemapJsonLdAdapter.search({ baseUrl: base, settings: {}, defaultCurrency: null, defaultTaxType: "unknown", defaultCountry: null }, parseQuery2(query), query, { userAgent: UA(), timeoutMs: 4e4, minDelayMs: 1500 });
+      const priced = r.offers.filter((o) => o.price !== null && o.price > 0);
+      report2.sitemap = { offers: priced.length, requests: r.requests.length, error: r.error, samples: priced.slice(0, 3).map((o) => ({ title: o.title, price: o.price, currency: o.currency ?? null, url: o.url ?? null })) };
+      if (priced.length > 0) report2.recommendation = { adapter: "sitemap-jsonld" };
     }
   } catch (e) {
     report2.error = e instanceof Error ? e.message.slice(0, 300) : String(e);

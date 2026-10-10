@@ -6,6 +6,7 @@ import { googleMerchantFeedAdapter } from "@/integrations/sourcing/google-mercha
 import { bigbuyAdapter } from "@/integrations/sourcing/bigbuy";
 import { ingramMicroAdapter } from "@/integrations/sourcing/ingram-micro";
 import { ebayBrowseAdapter } from "@/integrations/sourcing/ebay-browse";
+import { sitemapJsonLdAdapter } from "@/integrations/sourcing/sitemap-jsonld";
 import type { SourceParser } from "@/services/sourcing/crawler/parsers/types";
 
 /**
@@ -16,7 +17,7 @@ import type { SourceParser } from "@/services/sourcing/crawler/parsers/types";
  * Tous les adaptateurs sont vérifiés sur fixtures uniquement (`verification: "fixtures"`) :
  * aucun n'a été exercé en conditions réelles depuis l'environnement de développement.
  */
-export const SOURCE_ADAPTERS: readonly SourceAdapter[] = [jsonLdPublicAdapter, shopifyStorefrontAdapter, wooCommerceStoreAdapter, googleMerchantFeedAdapter, bigbuyAdapter, ingramMicroAdapter, ebayBrowseAdapter];
+export const SOURCE_ADAPTERS: readonly SourceAdapter[] = [jsonLdPublicAdapter, shopifyStorefrontAdapter, wooCommerceStoreAdapter, googleMerchantFeedAdapter, bigbuyAdapter, ingramMicroAdapter, ebayBrowseAdapter, sitemapJsonLdAdapter];
 
 export function listSourceAdapters(): readonly SourceAdapter[] {
   return SOURCE_ADAPTERS;

@@ -39,7 +39,7 @@ export interface LibrarySource {
   website: string;
   /** URL de base passée à l'adaptateur (boutique) */
   baseUrl: string;
-  adapter: "shopify-storefront" | "woocommerce-store" | "ebay-browse";
+  adapter: "shopify-storefront" | "woocommerce-store" | "sitemap-jsonld" | "ebay-browse";
   segment: LibrarySegment;
   country: string;
   currency: string;
@@ -266,11 +266,15 @@ export async function checkLibrarySource(s: LibrarySource, runtime: Pick<Adapter
  */
 export async function checkLibrarySourceDetect(s: LibrarySource, runtime: Parameters<typeof checkLibrarySource>[1] = {}): Promise<LibraryCheckResult> {
   const first = await checkLibrarySource(s, runtime);
-  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access !== "public_json") return first;
-  const other: LibrarySource["adapter"] = s.adapter === "shopify-storefront" ? "woocommerce-store" : "shopify-storefront";
-  const second = await checkLibrarySource({ ...s, adapter: other }, runtime);
-  if (second.status === "ok") return second;
-  return { ...first, message: `${first.message} | ${other} : ${second.message}`.slice(0, 500) };
+  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access === "official_api") return first;
+  const messages = [first.message];
+  const order: LibrarySource["adapter"][] = ["shopify-storefront", "woocommerce-store", "sitemap-jsonld"];
+  for (const other of order.filter((a) => a !== s.adapter)) {
+    const next = await checkLibrarySource({ ...s, adapter: other }, runtime);
+    if (next.status === "ok") return next;
+    messages.push(`${other} : ${next.message}`);
+  }
+  return { ...first, message: messages.join(" | ").slice(0, 500) };
 }
 
 /** Vérifie toute la bibliothèque (séquentiellement : un hôte à la fois) et enregistre les preuves. */
