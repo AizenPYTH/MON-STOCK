@@ -4024,7 +4024,7 @@ function createAdapterHttp(ctx) {
   const requests = [];
   const startedAt = Date.now();
   const budget = ctx.timeoutMs ?? null;
-  const sleep2 = ctx.sleep ?? defaultSleep;
+  const sleep3 = ctx.sleep ?? defaultSleep;
   let lastRequestAt = null;
   const remainingMs = () => budget === null ? Number.POSITIVE_INFINITY : Math.max(0, budget - (Date.now() - startedAt));
   return {
@@ -4039,7 +4039,7 @@ function createAdapterHttp(ctx) {
       const minDelay = ctx.minDelayMs ?? 0;
       if (lastRequestAt !== null && minDelay > 0) {
         const wait = minDelay - (Date.now() - lastRequestAt);
-        if (wait > 0) await sleep2(wait);
+        if (wait > 0) await sleep3(wait);
       }
       const remaining = remainingMs();
       if (remaining <= 0) throw new Error("Budget de temps \xE9puis\xE9 avant la requ\xEAte.");
@@ -6234,9 +6234,9 @@ function hostOf(url) {
 }
 var defaultSleep2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 var HostScheduler = class {
-  constructor(minDelayMs, sleep2 = defaultSleep2, clock = () => Date.now()) {
+  constructor(minDelayMs, sleep3 = defaultSleep2, clock = () => Date.now()) {
     this.minDelayMs = minDelayMs;
-    this.sleep = sleep2;
+    this.sleep = sleep3;
     this.clock = clock;
   }
   minDelayMs;
@@ -9234,7 +9234,7 @@ function cacheKey(provider, query) {
 }
 async function runDiscoverySearches(provider, queries, options = {}) {
   const now = options.now ?? (() => /* @__PURE__ */ new Date());
-  const sleep2 = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const sleep3 = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const max = Math.min(options.maxQueries ?? MAX_DISCOVERY_QUERIES, MAX_DISCOVERY_QUERIES);
   const interval = options.minIntervalMs ?? BRAVE_MIN_INTERVAL_MS;
   const ttl = options.ttlMs ?? DISCOVERY_CACHE_TTL_MS;
@@ -9261,7 +9261,7 @@ async function runDiscoverySearches(provider, queries, options = {}) {
       runs.push({ query, results: [], cached: false, error: halted });
       continue;
     }
-    if (calledBefore && interval > 0) await sleep2(interval);
+    if (calledBefore && interval > 0) await sleep3(interval);
     calledBefore = true;
     try {
       const results = await provider.search(query);
@@ -11230,7 +11230,7 @@ function allowedHost(baseUrl, urls) {
 }
 var defaultSleep3 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function crawlSource(params) {
-  const sleep2 = params.sleep ?? defaultSleep3;
+  const sleep3 = params.sleep ?? defaultSleep3;
   const host = allowedHost(params.baseUrl, params.config.urls);
   const delaySeconds = Math.max(MIN_DELAY_SECONDS, params.robotsCrawlDelay ?? 0, params.config.delay_seconds ?? 0);
   const maxPages = Math.min(params.config.max_pages ?? DEFAULT_MAX_PAGES2, 50);
@@ -11256,7 +11256,7 @@ async function crawlSource(params) {
     else skippedUrls.push(u);
   }
   for (const [i, url] of targets.entries()) {
-    if (i > 0) await sleep2(delaySeconds * 1e3);
+    if (i > 0) await sleep3(delaySeconds * 1e3);
     try {
       const res = await fetchText(url, { userAgent: params.userAgent, fetchImpl: params.fetchImpl, accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5" });
       if (!res.ok) {
@@ -11897,6 +11897,74 @@ async function activateLibrarySource(ctx, key2) {
   return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
 }
 
+// src/services/sourcing/source-scout.ts
+var UA = () => process.env.SOURCING_USER_AGENT || "MonStockBot/0.1";
+function detectPlatform(html) {
+  if (/cdn\.shopify\.com|Shopify\.theme|shopify-section/i.test(html)) return "shopify";
+  if (/woocommerce|wp-content\/plugins\/woocommerce/i.test(html)) return "woocommerce";
+  if (/prestashop|var prestashop\s*=/i.test(html)) return "prestashop";
+  if (/Magento_|mage\/cookies|data-mage-init/i.test(html)) return "magento";
+  return "unknown";
+}
+function searchTemplate(platform, base) {
+  switch (platform) {
+    case "shopify":
+      return `${base}/search?q={query}&type=product`;
+    case "woocommerce":
+      return `${base}/?s={query}&post_type=product`;
+    case "prestashop":
+      return `${base}/recherche?controller=search&s={query}`;
+    case "magento":
+      return `${base}/catalogsearch/result/?q={query}`;
+    default:
+      return null;
+  }
+}
+var sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+async function scoutHost(host, query = "iphone") {
+  const base = `https://${host.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}`;
+  const report2 = { host, homeStatus: null, platform: "unknown", robots: { allowed: null, details: null }, json: null, search: null, recommendation: null, error: null };
+  try {
+    const home = await fetchText(`${base}/`, { userAgent: UA(), timeoutMs: 12e3, maxBytes: 2e6 });
+    report2.homeStatus = home.status;
+    report2.platform = detectPlatform(home.text);
+    const jsonUrl = report2.platform === "shopify" ? `${base}/products.json?limit=5` : report2.platform === "woocommerce" ? `${base}/wp-json/wc/store/v1/products?per_page=5&search=${encodeURIComponent(query)}` : null;
+    const template = searchTemplate(report2.platform, base);
+    const searchUrl = template ? template.replace("{query}", encodeURIComponent(query)) : null;
+    const robots = await checkRobotsForUrls(base, [jsonUrl, searchUrl].filter((u) => Boolean(u)).concat(`${base}/`), UA());
+    report2.robots = { allowed: robots.allowed, details: robots.details };
+    if (!robots.allowed) return report2;
+    if (jsonUrl) {
+      await sleep2(1500);
+      const r = await fetchText(jsonUrl, { userAgent: UA(), accept: "application/json", timeoutMs: 12e3 }).catch(() => ({ status: null, text: "" }));
+      let products = [];
+      try {
+        const body = JSON.parse(r.text);
+        if (Array.isArray(body)) products = body.map((p) => ({ title: String(p.name ?? ""), price: p.prices?.price ? `${Number(p.prices.price) / 10 ** (p.prices.currency_minor_unit ?? 2)} ${p.prices.currency_code ?? ""}` : null }));
+        else products = (body.products ?? []).map((p) => ({ title: String(p.title ?? ""), price: p.variants?.[0]?.price ?? null }));
+      } catch {
+        products = [];
+      }
+      report2.json = { url: jsonUrl, status: r.status, products: products.filter((p) => p.price).length, samples: products.slice(0, 3) };
+      if (report2.json.products > 0) report2.recommendation = { adapter: report2.platform === "shopify" ? "shopify-storefront" : "woocommerce-store" };
+    }
+    if (searchUrl && template) {
+      await sleep2(1500);
+      const r = await fetchText(searchUrl, { userAgent: UA(), timeoutMs: 12e3, maxBytes: 3e6 }).catch(() => null);
+      const offers = r ? parseJsonLdPage(r.text, r.finalUrl || searchUrl) : [];
+      report2.search = { url: searchUrl, status: r?.status ?? null, jsonLdOffers: offers.length, samples: offers.slice(0, 3).map((o) => ({ title: o.title, price: o.price ?? null, currency: o.currency ?? null })) };
+      if (!report2.recommendation && offers.length > 0) report2.recommendation = { adapter: "jsonld-public", searchUrl: template };
+    }
+  } catch (e) {
+    report2.error = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  return report2;
+}
+async function scoutHosts(hosts, query) {
+  const unique = [...new Set(hosts.map((h) => h.trim().toLowerCase()).filter((h) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h)))].slice(0, 25);
+  return Promise.all(unique.map((h) => scoutHost(h, query)));
+}
+
 // server/edge/ebay-callback.ts
 var EBAY_APP_CALLBACK = "monstock://ebay/callback";
 var SAFE_CODE = /^[A-Za-z0-9._~\-#=%+/^]{1,2048}$/;
@@ -11978,6 +12046,7 @@ var CORS = {
 };
 var ebayFinalizeSchema = z27.object({ code: z27.string().min(1).max(2048), state: z27.string().min(16).max(200) });
 var syncSchema = z27.object({ connectionId: uuidParam, scope: z27.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z27.object({ hosts: z27.array(z27.string().min(3).max(120)).min(1).max(25), query: z27.string().min(2).max(80).optional() });
 var activateSchema = z27.object({ key: z27.string().min(1).max(80), attest: z27.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
@@ -12085,6 +12154,12 @@ async function route(request) {
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
+      if (m === "POST" && path === "/cron/scout") {
+        return handle(async () => {
+          const body = await parseBody(request, scoutSchema);
+          return scoutHosts(body.hosts, body.query);
+        });
+      }
     }
     if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request), parseQuery(request, sourcingSearchQuerySchema)));
     if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request)));

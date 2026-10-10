@@ -46,6 +46,7 @@ import { listDueConnections, upsertOAuthConnection } from "@/services/channels/c
 import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
+import { scoutHosts } from "@/services/sourcing/source-scout";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
 import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
 
@@ -60,6 +61,7 @@ const CORS = {
 
 const ebayFinalizeSchema = z.object({ code: z.string().min(1).max(2048), state: z.string().min(16).max(200) });
 const syncSchema = z.object({ connectionId: uuidParam, scope: z.enum(["full", "listings", "orders"]).default("full") });
+const scoutSchema = z.object({ hosts: z.array(z.string().min(3).max(120)).min(1).max(25), query: z.string().min(2).max(80).optional() });
 const activateSchema = z.object({ key: z.string().min(1).max(80), attest: z.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 
 function withCors(res: Response): Response {
@@ -181,6 +183,12 @@ export async function route(request: Request): Promise<Response> {
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
+      if (m === "POST" && path === "/cron/scout") {
+        return handle(async () => {
+          const body = await parseBody(request, scoutSchema);
+          return scoutHosts(body.hosts, body.query);
+        });
+      }
     }
     if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request), parseQuery(request, sourcingSearchQuerySchema)));
     if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request)));
