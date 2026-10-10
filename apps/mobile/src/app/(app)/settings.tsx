@@ -1,4 +1,5 @@
 import { Alert, View } from "react-native";
+import { router } from "expo-router";
 import Constants from "expo-constants";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUser } from "~/auth/session-provider";
@@ -69,9 +70,11 @@ export default function SettingsScreen() {
       {!permissions.canWrite ? <Txt variant="label">Rôle lecture seule : consultation uniquement.</Txt> : null}
 
       <SectionHeader title="Intégrations" />
-      <Card padded>
-        <Txt variant="bodyRegular">eBay : connexion (autorisation OAuth) et synchronisation depuis l'application web MON STOCK. Amazon, Shopify et WooCommerce : disponibles prochainement.</Txt>
+      <Card>
+        <ListRow title="eBay" subtitle="Connexion du compte vendeur, synchronisation, erreurs" chevron onPress={() => router.push("/ebay")} />
+        <ListRow title="Sources fournisseurs" subtitle="Sources vérifiées pour la recherche d'offres" chevron onPress={() => router.push("/sourcing-sources")} last />
       </Card>
+      <Txt variant="label">Amazon, Shopify et WooCommerce : disponibles prochainement (non connectables pour l'instant).</Txt>
 
       <SectionHeader title="Application" />
       <Card padded>

@@ -5,7 +5,7 @@ const process = { env: { NODE_ENV: "production", ...__denoEnv, NEXT_PUBLIC_SUPAB
 const Buffer = globalThis.Buffer ?? __Buffer;
 
 // server/edge/api.ts
-import { z as z27 } from "npm:zod@4.6.5";
+import { z as z28 } from "npm:zod@4.6.5";
 
 // src/lib/logger.ts
 var SENSITIVE = /token|secret|password|authorization|credential|api[_-]?key|cookie/i;
@@ -323,6 +323,9 @@ function decryptSecret(payload) {
   const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(ivB64, "base64"));
   decipher.setAuthTag(Buffer.from(tagB64, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(encB64, "base64")), decipher.final()]).toString("utf8");
+}
+function sha256Hex(input) {
+  return createHash("sha256").update(input).digest("hex");
 }
 function randomToken(bytes = 24) {
   return randomBytes(bytes).toString("hex");
@@ -1480,9 +1483,9 @@ async function tokenRequest(config, body, label) {
     },
     { provider: EBAY_PROVIDER, label, retries: 2, timeoutMs: 2e4 }
   );
-  const json = await readJson(res, EBAY_PROVIDER);
+  const json2 = await readJson(res, EBAY_PROVIDER);
   if (!res.ok) {
-    const err = tokenErrorSchema.safeParse(json);
+    const err = tokenErrorSchema.safeParse(json2);
     const code = err.success ? err.data.error : `http_${res.status}`;
     const description = err.success ? err.data.error_description : void 0;
     if (code === "invalid_client" || code === "unauthorized_client") {
@@ -1512,7 +1515,7 @@ async function tokenRequest(config, body, label) {
       retryable: false
     });
   }
-  const parsed = tokenResponseSchema.safeParse(json);
+  const parsed = tokenResponseSchema.safeParse(json2);
   if (!parsed.success) {
     throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse de token eBay inattendue (format non reconnu).", { details: { step: label, issues: parsed.error.issues.map((i) => i.path.join(".")) } });
   }
@@ -1536,6 +1539,11 @@ async function refreshAccessToken(config, refreshToken, scopes = ebayScopeList()
   const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, scope: scopes.join(" ") });
   const data = await tokenRequest(config, body, "oauth:refresh_token");
   return toTokenSet(data, now, { token: refreshToken, expiresAt: null });
+}
+async function getApplicationAccessToken(config, now = /* @__PURE__ */ new Date()) {
+  const body = new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" });
+  const data = await tokenRequest(config, body, "oauth:client_credentials");
+  return { accessToken: data.access_token, expiresAt: new Date(now.getTime() + data.expires_in * 1e3) };
 }
 
 // src/integrations/ebay/identity.ts
@@ -1631,8 +1639,8 @@ var ebayRestErrorSchema = z9.object({
     })
   )
 });
-function summarizeRestErrors(json) {
-  const parsed = ebayRestErrorSchema.safeParse(json);
+function summarizeRestErrors(json2) {
+  const parsed = ebayRestErrorSchema.safeParse(json2);
   if (!parsed.success || parsed.data.errors.length === 0) return { message: "", errorIds: [] };
   const first = parsed.data.errors[0];
   return {
@@ -1656,10 +1664,10 @@ async function ebayRestGet(auth, url, label, options = {}) {
       },
       { provider: EBAY_PROVIDER, label }
     );
-    const json = await readJson(res, EBAY_PROVIDER);
+    const json2 = await readJson(res, EBAY_PROVIDER);
     if (res.status === 401) {
       if (attempt === 0) continue;
-      const { message, errorIds } = summarizeRestErrors(json);
+      const { message, errorIds } = summarizeRestErrors(json2);
       throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", {
         httpStatus: 401,
         details: { label, ebayMessage: message || null, errorIds },
@@ -1667,7 +1675,7 @@ async function ebayRestGet(auth, url, label, options = {}) {
       });
     }
     if (res.status === 403) {
-      const { message, errorIds } = summarizeRestErrors(json);
+      const { message, errorIds } = summarizeRestErrors(json2);
       throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, `eBay refuse l'acc\xE8s (${message || "scope insuffisant"}). Reconnectez votre compte pour accorder les autorisations n\xE9cessaires.`, {
         httpStatus: 403,
         details: { label, ebayMessage: message || null, errorIds },
@@ -1675,14 +1683,14 @@ async function ebayRestGet(auth, url, label, options = {}) {
       });
     }
     if (!res.ok) {
-      const { message, errorIds } = summarizeRestErrors(json);
+      const { message, errorIds } = summarizeRestErrors(json2);
       throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `Erreur de l'API eBay (HTTP ${res.status})${message ? ` : ${message}` : ""}.`, {
         httpStatus: res.status,
         details: { label, errorIds },
         retryable: res.status >= 500
       });
     }
-    return json;
+    return json2;
   }
   throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "Appel eBay interrompu.", { details: { label } });
 }
@@ -1710,8 +1718,8 @@ function normalizeEbayUser(raw) {
   });
 }
 async function fetchEbayAccountInfo(config, auth) {
-  const json = await ebayRestGet(auth, `${config.apizBase}/commerce/identity/v1/user/`, "identity:getUser");
-  return normalizeEbayUser(json);
+  const json2 = await ebayRestGet(auth, `${config.apizBase}/commerce/identity/v1/user/`, "identity:getUser");
+  return normalizeEbayUser(json2);
 }
 
 // src/integrations/ebay/fulfillment.ts
@@ -1862,8 +1870,8 @@ async function* iterateEbayOrders(config, auth, params) {
     url.searchParams.set("filter", buildLastModifiedFilter(params.since, params.until));
     url.searchParams.set("limit", String(EBAY_ORDERS_PAGE_SIZE));
     url.searchParams.set("offset", String(offset));
-    const json = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders");
-    const parsed = ebayOrdersPageSchema.safeParse(json);
+    const json2 = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders");
+    const parsed = ebayOrdersPageSchema.safeParse(json2);
     if (!parsed.success) {
       throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse inattendue de la Fulfillment API eBay (liste de commandes illisible).", {
         details: { issues: parsed.error.issues.map((i) => i.path.join(".")) }
@@ -5475,8 +5483,8 @@ var bigbuyStockSchema = z18.looseObject({
 });
 var bigbuyManufacturerSchema = z18.looseObject({ id: numOrStr3, name: z18.string().nullish() });
 function parseList(text2, schema, label) {
-  const json = JSON.parse(text2);
-  const parsed = z18.array(schema).safeParse(json);
+  const json2 = JSON.parse(text2);
+  const parsed = z18.array(schema).safeParse(json2);
   if (!parsed.success) throw new Error(`R\xE9ponse ${label} inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data;
 }
@@ -5777,8 +5785,8 @@ function parseIngramCatalog(text2) {
   return { items: parsed.data.catalog ?? [], recordsFound: Number.isFinite(rf) ? rf : null };
 }
 function parseIngramPriceAvailability(text2) {
-  const json = JSON.parse(text2);
-  const parsed = z19.array(ingramPriceAvailabilityItemSchema).safeParse(json);
+  const json2 = JSON.parse(text2);
+  const parsed = z19.array(ingramPriceAvailabilityItemSchema).safeParse(json2);
   if (!parsed.success) throw new Error(`R\xE9ponse prix & disponibilit\xE9 inattendue : ${parsed.error.issues[0]?.message ?? "format invalide"}.`);
   return parsed.data;
 }
@@ -6041,9 +6049,9 @@ async function getAppToken(ctx) {
     headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${base64(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`)}` },
     body: new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" }).toString()
   });
-  const json = await res.json().catch(() => null);
+  const json2 = await res.json().catch(() => null);
   if (!res.ok) throw new Error(res.status === 401 ? "eBay refuse les cl\xE9s de l'application (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET)." : `Jeton d'application eBay refus\xE9 (HTTP ${res.status}).`);
-  const t = tokenSchema.parse(json);
+  const t = tokenSchema.parse(json2);
   appToken = { token: t.access_token, expiresAt: now + t.expires_in * 1e3, key: key2 };
   return t.access_token;
 }
@@ -6470,9 +6478,9 @@ var MAX_PAYLOAD_JSON = 8e3;
 function boundedPayload(raw) {
   if (raw === void 0 || raw === null) return null;
   try {
-    const json = JSON.stringify(raw);
-    if (json.length <= MAX_PAYLOAD_JSON) return raw;
-    return { truncated: true, excerpt: json.slice(0, MAX_PAYLOAD_JSON) };
+    const json2 = JSON.stringify(raw);
+    if (json2.length <= MAX_PAYLOAD_JSON) return raw;
+    return { truncated: true, excerpt: json2.slice(0, MAX_PAYLOAD_JSON) };
   } catch {
     return null;
   }
@@ -9098,13 +9106,13 @@ var LOGIN_WALL_PATTERNS = [
   /(?:members|trade customers|registered (?:users|customers)) only/i,
   /veuillez vous connecter|please (?:log ?in|sign ?in) to (?:continue|access)/i
 ];
-function looksLikeShopifyProductsJson(json) {
-  if (!json || typeof json !== "object") return false;
-  const products = json.products;
+function looksLikeShopifyProductsJson(json2) {
+  if (!json2 || typeof json2 !== "object") return false;
+  const products = json2.products;
   return Array.isArray(products) && products.length > 0 && products.every((p) => p && typeof p === "object" && "handle" in p && Array.isArray(p.variants));
 }
-function looksLikeWooStoreJson(json) {
-  return Array.isArray(json) && json.length > 0 && json.every((p) => p && typeof p === "object" && "prices" in p && "permalink" in p);
+function looksLikeWooStoreJson(json2) {
+  return Array.isArray(json2) && json2.length > 0 && json2.every((p) => p && typeof p === "object" && "prices" in p && "permalink" in p);
 }
 function hasJsonLdProduct(html) {
   let product = false;
@@ -9159,12 +9167,12 @@ function analyzePage(res) {
   let jsonPrices = false;
   if (isJson) {
     try {
-      const json = JSON.parse(body);
-      if (looksLikeShopifyProductsJson(json)) {
+      const json2 = JSON.parse(body);
+      if (looksLikeShopifyProductsJson(json2)) {
         platform = "shopify";
         jsonPrices = true;
         signals.push("Format /products.json (Shopify)");
-      } else if (looksLikeWooStoreJson(json)) {
+      } else if (looksLikeWooStoreJson(json2)) {
         platform = "woocommerce";
         jsonPrices = true;
         signals.push("Format Store API (WooCommerce)");
@@ -9311,8 +9319,8 @@ var braveResponseSchema = z23.object({
 function cleanSnippet(s) {
   return s.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
 }
-function parseBraveResponse(json) {
-  const parsed = braveResponseSchema.safeParse(json);
+function parseBraveResponse(json2) {
+  const parsed = braveResponseSchema.safeParse(json2);
   if (!parsed.success) throw new Error("R\xE9ponse Brave Search inattendue (format non reconnu).");
   const out = [];
   for (const raw of parsed.data.web?.results ?? []) {
@@ -9350,13 +9358,13 @@ function createBraveProvider(apiKey, options = {}) {
       if (res.status === 401 || res.status === 403) throw new Error(`Brave Search : cl\xE9 API refus\xE9e (HTTP ${res.status}).`);
       if (res.status === 429) throw new Error("Brave Search : limite de requ\xEAtes atteinte (HTTP 429), r\xE9essayez plus tard.");
       if (!res.ok) throw new Error(`Brave Search : HTTP ${res.status}.`);
-      let json;
+      let json2;
       try {
-        json = JSON.parse(res.text);
+        json2 = JSON.parse(res.text);
       } catch {
         throw new Error("R\xE9ponse Brave Search non JSON.");
       }
-      return parseBraveResponse(json);
+      return parseBraveResponse(json2);
     }
   };
 }
@@ -10147,9 +10155,9 @@ var syncFailedKey = (connectionId) => `sync_failed:${connectionId}`;
 function sanitizeDetails(details) {
   if (!details) return {};
   const cleaned = scrubDeep(details);
-  const json = JSON.stringify(cleaned);
-  if (json.length <= 4e3) return cleaned;
-  return { truncated: true, preview: json.slice(0, 3900) };
+  const json2 = JSON.stringify(cleaned);
+  if (json2.length <= 4e3) return cleaned;
+  return { truncated: true, preview: json2.slice(0, 3900) };
 }
 function sanitizeMessage(message, max = 2e3) {
   return scrubSecrets(message).slice(0, max);
@@ -10178,6 +10186,21 @@ async function listDueConnections(now = /* @__PURE__ */ new Date()) {
     const due = new Date(c.last_sync_at).getTime() + c.sync_interval_minutes * 6e4;
     return due <= now.getTime();
   });
+}
+async function findConnectionsByExternalAccount(provider, account) {
+  const admin = createAdminSupabaseClient();
+  const found = /* @__PURE__ */ new Map();
+  if (account.userId) {
+    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_account_id", account.userId);
+    if (error) throw fromPostgrestError(error);
+    for (const c of data ?? []) found.set(c.id, c);
+  }
+  if (account.username) {
+    const { data, error } = await admin.from("channel_connections").select("*").eq("provider", provider).eq("external_username", account.username);
+    if (error) throw fromPostgrestError(error);
+    for (const c of data ?? []) found.set(c.id, c);
+  }
+  return Array.from(found.values());
 }
 async function saveConnectionTokens(connectionId, tokens) {
   const admin = createAdminSupabaseClient();
@@ -10574,7 +10597,7 @@ function emptyListingsResult() {
   return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
 }
 async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log23 } = ctx;
+  const { admin, log: log24 } = ctx;
   const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   const seen = /* @__PURE__ */ new Set();
   let truncated = false;
@@ -10582,7 +10605,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     result.fetched += page2.listings.length;
     result.invalid += page2.invalid.length;
     for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log23.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+    for (const w2 of page2.warnings) log24.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
@@ -10595,7 +10618,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
   result.complete = !truncated;
   if (truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log23.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log24.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
   const active = result.complete ? await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
@@ -11225,9 +11248,417 @@ function oauthErrorCodeFor(e) {
 }
 var OAUTH_STATE_TTL_SECONDS = 15 * 60;
 
+// src/integrations/ebay/webhook-verify.ts
+import { createHash as createHash6, createVerify } from "node:crypto";
+import { z as z25 } from "npm:zod@4.6.5";
+function computeChallengeResponse(challengeCode, verificationToken, endpointUrl) {
+  return createHash6("sha256").update(challengeCode).update(verificationToken).update(endpointUrl).digest("hex");
+}
+var ebaySignatureHeaderSchema = z25.object({
+  alg: z25.string().optional(),
+  kid: z25.string().min(1),
+  signature: z25.string().min(1),
+  digest: z25.string().optional()
+});
+function parseSignatureHeader(header) {
+  if (!header) return null;
+  try {
+    const json2 = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
+    const parsed = ebaySignatureHeaderSchema.safeParse(json2);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+var ebayPublicKeySchema = z25.object({
+  key: z25.string().min(1),
+  algorithm: z25.string().optional(),
+  digest: z25.string().optional()
+});
+function formatPem(key2) {
+  const trimmed = key2.trim();
+  if (trimmed.includes("\n")) return trimmed;
+  const m = /^-----BEGIN ([A-Z ]+)-----(.+?)-----END ([A-Z ]+)-----$/.exec(trimmed);
+  if (!m) return trimmed;
+  const body = (m[2] ?? "").replace(/\s+/g, "");
+  const lines = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${m[1]}-----
+${lines.join("\n")}
+-----END ${m[3]}-----
+`;
+}
+function digestAlgorithm(name) {
+  switch ((name ?? "").toUpperCase()) {
+    case "SHA1":
+      return "sha1";
+    case "SHA384":
+      return "sha384";
+    case "SHA512":
+      return "sha512";
+    case "SHA256":
+    default:
+      return "sha256";
+  }
+}
+function verifyNotificationSignature(rawBody, header, publicKey) {
+  try {
+    const algo = digestAlgorithm(publicKey.digest ?? header.digest);
+    const verifier = createVerify(algo);
+    verifier.update(rawBody);
+    const key2 = typeof publicKey.key === "string" ? formatPem(publicKey.key) : publicKey.key;
+    return verifier.verify(key2, header.signature, "base64");
+  } catch {
+    return false;
+  }
+}
+var ebayNotificationSchema = z25.object({
+  metadata: z25.object({ topic: z25.string().min(1), schemaVersion: z25.string().optional(), deprecated: z25.boolean().optional() }),
+  notification: z25.object({
+    notificationId: z25.string().min(1).optional(),
+    eventDate: z25.string().optional(),
+    publishDate: z25.string().optional(),
+    publishAttemptCount: z25.number().optional(),
+    data: z25.record(z25.string(), z25.unknown()).optional()
+  })
+});
+function notificationEventId(notification, payloadHash) {
+  return notification.notification.notificationId ?? `${notification.metadata.topic}:${payloadHash}`;
+}
+
+// src/integrations/ebay/notification-keys.ts
+var PublicKeyNotFoundError = class extends Error {
+  constructor(kid) {
+    super(`Cl\xE9 de signature eBay inconnue (kid=${kid.slice(0, 64)}).`);
+    this.kid = kid;
+    this.name = "PublicKeyNotFoundError";
+  }
+  kid;
+};
+var POSITIVE_TTL_MS = 12 * 36e5;
+var NEGATIVE_TTL_MS = 10 * 6e4;
+var MAX_KID_LENGTH = 200;
+function isUnknownKeyError(body) {
+  if (!body || typeof body !== "object") return false;
+  const errors = body.errors;
+  if (!Array.isArray(errors)) return false;
+  return errors.some((e) => {
+    if (!e || typeof e !== "object") return false;
+    const err = e;
+    const params = Array.isArray(err.parameters) ? err.parameters : [];
+    if (params.some((p) => p && typeof p === "object" && /^public_?key_?id$/i.test(String(p.name ?? "")))) return true;
+    const text2 = `${typeof err.message === "string" ? err.message : ""} ${typeof err.longMessage === "string" ? err.longMessage : ""}`;
+    return /public[ _]?key/i.test(text2) && /(invalid|not found|unknown|does not exist)/i.test(text2) && !/token|authoriz|authentic/i.test(text2);
+  });
+}
+var EbayNotificationKeyStore = class {
+  constructor(config) {
+    this.config = config;
+  }
+  config;
+  cache = /* @__PURE__ */ new Map();
+  appToken = null;
+  async getAppToken(config) {
+    if (this.appToken && this.appToken.expiresAt - Date.now() > 6e4) return this.appToken.accessToken;
+    const t = await getApplicationAccessToken(config);
+    this.appToken = { accessToken: t.accessToken, expiresAt: t.expiresAt.getTime() };
+    return t.accessToken;
+  }
+  async getPublicKey(kid) {
+    if (!kid || kid.length > MAX_KID_LENGTH || !/^[A-Za-z0-9._:-]+$/.test(kid)) throw new PublicKeyNotFoundError(kid);
+    const now = Date.now();
+    const cached2 = this.cache.get(kid);
+    if (cached2 && cached2.expiresAt > now) {
+      if (!cached2.key) throw new PublicKeyNotFoundError(kid);
+      return cached2.key;
+    }
+    const config = this.config();
+    if (!config) throw new ConnectorError("NOT_CONFIGURED", EBAY_PROVIDER, "Int\xE9gration eBay non configur\xE9e : signature inv\xE9rifiable.", { retryable: false });
+    const token = await this.getAppToken(config);
+    const res = await fetchWithRetry(
+      `${config.apiBase}/commerce/notification/v1/public_key/${encodeURIComponent(kid)}`,
+      { method: "GET", headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+      { provider: EBAY_PROVIDER, label: "notification:public_key", retries: 2, timeoutMs: 1e4 }
+    );
+    const json2 = await readJson(res, EBAY_PROVIDER);
+    if (res.status === 404 || res.status === 400 && isUnknownKeyError(json2)) {
+      this.cache.set(kid, { key: null, expiresAt: now + NEGATIVE_TTL_MS });
+      throw new PublicKeyNotFoundError(kid);
+    }
+    if (res.status === 400 || res.status === 401) this.appToken = null;
+    const parsed = ebayPublicKeySchema.safeParse(json2);
+    if (!res.ok || !parsed.success) {
+      throw new ConnectorError("API_ERROR", EBAY_PROVIDER, `Cl\xE9 publique eBay indisponible pour le moment (HTTP ${res.status}).`, { httpStatus: res.status, details: { label: "notification:public_key" } });
+    }
+    this.cache.set(kid, { key: parsed.data, expiresAt: now + POSITIVE_TTL_MS });
+    return parsed.data;
+  }
+};
+
+// src/services/sync/ebay-webhook.ts
+var log17 = createLogger("EBAY_WEBHOOK");
+var WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
+var WEBHOOK_STALE_RECEIVED_MS = 5 * 6e4;
+var WEBHOOK_ROUTE_MAX_DURATION_S = 60;
+var WEBHOOK_PROCESSING_BUDGET_MS = (WEBHOOK_ROUTE_MAX_DURATION_S - 10) * 1e3;
+var WEBHOOK_CONFLICT_RETRIES = 2;
+var WEBHOOK_CONFLICT_WAIT_MS = 1e4;
+var WEBHOOK_ORDERS_MAX_PAGES = 20;
+var WEBHOOK_ABANDONED_MS = 10 * 6e4;
+var WEBHOOK_DEADLINE_MESSAGE = `Traitement interrompu : d\xE9lai maximal de ${WEBHOOK_ROUTE_MAX_DURATION_S} s atteint avant la fin de la synchronisation. Les commandes et annonces concern\xE9es seront reprises par la prochaine synchronisation planifi\xE9e (le curseur de commandes n\u2019avance que sur des donn\xE9es lues).`;
+var DELETED_ACCOUNT_LABEL = "[compte eBay supprim\xE9]";
+function json(body, status = 200) {
+  return Response.json(body, { status });
+}
+async function readBodyLimited(request, limit) {
+  const declared = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > limit) return null;
+  if (!request.body) return Buffer.alloc(0);
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => void 0);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+function redactedDeletionPayload(n) {
+  return {
+    metadata: n.metadata,
+    notification: { notificationId: n.notification.notificationId ?? null, eventDate: n.notification.eventDate ?? null, publishDate: n.notification.publishDate ?? null, data: { redacted: true } }
+  };
+}
+async function markEvent(admin, id, patch) {
+  const { error } = await admin.from("webhook_events").update({ status: patch.status, processed_at: patch.status === "received" ? null : (/* @__PURE__ */ new Date()).toISOString(), error: patch.error ? sanitizeMessage(patch.error, 1e3) : null, ...patch.payload !== void 0 ? { payload: patch.payload } : {} }).eq("id", id);
+  if (error) log17.error("mise \xE0 jour de la notification impossible", { eventRowId: id, error: error.message });
+}
+async function claimForRetry(admin, eventId) {
+  const { data: failed } = await admin.from("webhook_events").update({ status: "received", error: null, processed_at: null }).eq("provider", "ebay").eq("event_id", eventId).eq("status", "failed").select("id").maybeSingle();
+  if (failed) return failed.id;
+  const cutoff = new Date(Date.now() - WEBHOOK_STALE_RECEIVED_MS).toISOString();
+  const { data: stale } = await admin.from("webhook_events").update({ status: "received", error: null, received_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("provider", "ebay").eq("event_id", eventId).eq("status", "received").lt("received_at", cutoff).select("id").maybeSingle();
+  return stale?.id ?? null;
+}
+async function handleEbayNotification(request, deps) {
+  const { admin } = deps;
+  const clock = deps.now ?? Date.now;
+  const deadlineAt = clock() + (deps.processingBudgetMs ?? WEBHOOK_PROCESSING_BUDGET_MS);
+  const raw = await readBodyLimited(request, WEBHOOK_MAX_BODY_BYTES);
+  if (raw === null) {
+    log17.warn("notification refus\xE9e : corps trop volumineux", { limit: WEBHOOK_MAX_BODY_BYTES });
+    return json({ error: `Notification trop volumineuse (limite ${Math.round(WEBHOOK_MAX_BODY_BYTES / 1024)} Ko).` }, 413);
+  }
+  if (!deps.isConfigured()) {
+    return json({ error: "Int\xE9gration eBay non configur\xE9e sur ce serveur : signature inv\xE9rifiable." }, 503);
+  }
+  const payloadHash = sha256Hex(raw);
+  let parsedBody;
+  try {
+    parsedBody = JSON.parse(raw.toString("utf8"));
+  } catch {
+    return json({ error: "Corps JSON invalide." }, 400);
+  }
+  const notification = ebayNotificationSchema.safeParse(parsedBody);
+  if (!notification.success) return json({ error: "Notification eBay au format inattendu." }, 400);
+  const topic = notification.data.metadata.topic;
+  const eventId = notificationEventId(notification.data, payloadHash);
+  const isDeletion = topic === "MARKETPLACE_ACCOUNT_DELETION";
+  const header = parseSignatureHeader(request.headers.get("x-ebay-signature"));
+  let signatureValid = false;
+  let signatureError = null;
+  if (!header) {
+    signatureError = "En-t\xEAte x-ebay-signature absent ou illisible.";
+  } else {
+    try {
+      const key2 = await deps.getPublicKey(header.kid);
+      signatureValid = verifyNotificationSignature(raw, header, key2);
+      if (!signatureValid) signatureError = "Signature invalide.";
+    } catch (e) {
+      if (e instanceof PublicKeyNotFoundError) {
+        signatureError = "Cl\xE9 de signature inconnue d'eBay (kid).";
+      } else {
+        log17.warn("v\xE9rification de signature impossible, nouvelle tentative attendue", { eventId, topic, reason: toUserMessage(e) });
+        return json({ status: "retry", error: "V\xE9rification de signature temporairement impossible : r\xE9essayez plus tard." }, 503);
+      }
+    }
+  }
+  if (!signatureValid) {
+    const { error } = await admin.from("webhook_events").insert({
+      provider: "ebay",
+      event_id: `rejected:${payloadHash.slice(0, 32)}`,
+      event_type: topic.slice(0, 200),
+      payload_hash: payloadHash,
+      payload: null,
+      signature_valid: false,
+      status: "failed",
+      error: signatureError
+    });
+    if (error && error.code !== "23505") log17.error("impossible de journaliser la notification rejet\xE9e", { error: error.message });
+    log17.warn("notification eBay rejet\xE9e", { topic, reason: signatureError, duplicate: error?.code === "23505" });
+    return json({ status: error?.code === "23505" ? "duplicate" : "rejected", error: signatureError }, 401);
+  }
+  const data = notification.data.notification.data ?? {};
+  const username = typeof data.username === "string" && data.username ? data.username : null;
+  const userId = typeof data.userId === "string" && data.userId ? data.userId : null;
+  let connections;
+  try {
+    connections = await deps.findConnections({ userId, username });
+  } catch (e) {
+    log17.error("recherche des connexions impossible", { eventId, topic, reason: toUserMessage(e) });
+    return json({ status: "retry", error: "Traitement temporairement impossible." }, 503);
+  }
+  const primary = connections[0] ?? null;
+  const { data: inserted, error: insertError } = await admin.from("webhook_events").insert({
+    provider: "ebay",
+    event_id: eventId,
+    event_type: topic.slice(0, 200),
+    organization_id: primary?.organization_id ?? null,
+    connection_id: primary?.id ?? null,
+    payload_hash: payloadHash,
+    payload: isDeletion ? redactedDeletionPayload(notification.data) : parsedBody,
+    signature_valid: true,
+    status: "received",
+    error: null
+  }).select("id").maybeSingle();
+  let eventRowId = inserted?.id ?? null;
+  if (insertError) {
+    if (insertError.code !== "23505") {
+      log17.error("impossible d'enregistrer la notification", { eventId, error: insertError.message });
+      return json({ error: "Enregistrement impossible." }, 500);
+    }
+    eventRowId = await claimForRetry(admin, eventId);
+    if (!eventRowId) {
+      log17.info("notification dupliqu\xE9e ignor\xE9e", { eventId, topic });
+      return json({ status: "duplicate" }, 200);
+    }
+    log17.info("notification d\xE9j\xE0 re\xE7ue mais non trait\xE9e : reprise", { eventId, topic });
+  }
+  if (!eventRowId) return json({ error: "Enregistrement impossible." }, 500);
+  if (isDeletion) {
+    try {
+      const result = await handleAccountDeletion(admin, { username, userId }, connections);
+      await markEvent(admin, eventRowId, { status: "processed" });
+      log17.info("demande de suppression de compte eBay trait\xE9e", { eventId, ...result });
+      return json({ status: "processed", topic, ...result });
+    } catch (e) {
+      await markEvent(admin, eventRowId, { status: "failed", error: `Suppression de compte non appliqu\xE9e : ${toUserMessage(e)}` });
+      log17.error("suppression de compte eBay non appliqu\xE9e : eBay red\xE9livrera la notification", { eventId, reason: toUserMessage(e) });
+      return json({ status: "retry", error: "Traitement de la suppression impossible pour le moment." }, 500);
+    }
+  }
+  const active = connections.filter((c) => c.status === "connected" || c.status === "error");
+  if (active.length > 0 && /ORDER|ITEM|LISTING|OFFER|INVENTORY/i.test(topic)) {
+    const scope = /ORDER/i.test(topic) ? "orders" : "listings";
+    const rowId = eventRowId;
+    deps.schedule(async () => {
+      const work = (async () => {
+        const failures = [];
+        for (const c of active) {
+          const outcome2 = await runWithConflictRetry(deps, c.id, scope, deadlineAt);
+          if (!outcome2.ok) failures.push(outcome2.message);
+          else log17.info("synchronisation d\xE9clench\xE9e par webhook", { eventId, connectionId: c.id, runId: outcome2.runId, status: outcome2.status });
+        }
+        return failures;
+      })().catch((e) => [toUserMessage(e)]);
+      const outcome = await withDeadline(work, deadlineAt - clock());
+      if (outcome === DEADLINE) {
+        log17.warn("traitement de la notification interrompu (d\xE9lai maximal atteint)", { eventId, topic });
+        await markEvent(admin, rowId, { status: "failed", error: WEBHOOK_DEADLINE_MESSAGE });
+        return;
+      }
+      if (outcome.length === 0) await markEvent(admin, rowId, { status: "processed" });
+      else await markEvent(admin, rowId, { status: "failed", error: outcome.join(" ; ") });
+    });
+    return json({ status: "accepted", topic, connections: active.length });
+  }
+  await markEvent(admin, eventRowId, { status: "ignored", error: connections.length === 0 ? "Aucune connexion MON STOCK pour ce compte eBay." : active.length === 0 ? "Connexion inactive (expir\xE9e ou d\xE9connect\xE9e)." : null });
+  return json({ status: "ignored", topic });
+}
+var DEADLINE = /* @__PURE__ */ Symbol("deadline");
+async function withDeadline(work, ms) {
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(DEADLINE), Math.max(0, ms));
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var CONFLICT_MESSAGE = "Une synchronisation \xE9tait d\xE9j\xE0 en cours : cette notification sera prise en compte par la prochaine synchronisation (planifi\xE9e ou manuelle), aucune commande n'est perdue.";
+async function runWithConflictRetry(deps, connectionId, scope, deadlineAt) {
+  const sleep3 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const clock = deps.now ?? Date.now;
+  const wait = deps.conflictWaitMs ?? WEBHOOK_CONFLICT_WAIT_MS;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await deps.runSync(connectionId, { trigger: "webhook", scope, ...scope === "orders" ? { orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } } : {} });
+      return { ok: true, runId: r.runId, status: r.status };
+    } catch (e) {
+      const conflict = e instanceof AppError && e.code === "CONFLICT";
+      if (conflict && attempt < WEBHOOK_CONFLICT_RETRIES && deadlineAt - clock() > 2 * wait) {
+        await sleep3(wait);
+        continue;
+      }
+      if (conflict) return { ok: false, conflict: true, message: CONFLICT_MESSAGE };
+      return { ok: false, conflict: false, message: toUserMessage(e) };
+    }
+  }
+}
+async function handleAccountDeletion(admin, account, connections) {
+  const fail = (step, message) => {
+    throw new Error(`${step} : ${message}`);
+  };
+  let ordersAnonymized = 0;
+  let eventsPurged = 0;
+  if (account.username) {
+    const { data, error } = await admin.from("orders").update({ buyer_username: DELETED_ACCOUNT_LABEL }).eq("provider", "ebay").eq("buyer_username", account.username).select("id");
+    if (error) fail("anonymisation des commandes", error.message);
+    ordersAnonymized = data?.length ?? 0;
+    const { data: purged, error: purgeError } = await admin.from("webhook_events").update({ payload: null }).eq("provider", "ebay").eq("payload->notification->data->>username", account.username).select("id");
+    if (purgeError) fail("purge des notifications", purgeError.message);
+    eventsPurged += purged?.length ?? 0;
+  }
+  if (account.userId) {
+    const { data: purged, error: purgeError } = await admin.from("webhook_events").update({ payload: null }).eq("provider", "ebay").eq("payload->notification->data->>userId", account.userId).select("id");
+    if (purgeError) fail("purge des notifications", purgeError.message);
+    eventsPurged += purged?.length ?? 0;
+  }
+  for (const c of connections) {
+    const { error: secretsError } = await admin.from("channel_connection_secrets").delete().eq("connection_id", c.id);
+    if (secretsError) fail("suppression des tokens", secretsError.message);
+    const { error: connError } = await admin.from("channel_connections").update({ status: "disconnected", disconnected_at: (/* @__PURE__ */ new Date()).toISOString(), external_username: DELETED_ACCOUNT_LABEL, external_account_id: null, token_expires_at: null, refresh_token_expires_at: null, last_error: "Compte eBay supprim\xE9 par son titulaire (notification eBay)." }).eq("id", c.id);
+    if (connError) fail("d\xE9connexion", connError.message);
+    const { error: channelError } = await admin.from("sales_channels").update({ name: `eBay \xB7 ${DELETED_ACCOUNT_LABEL}` }).eq("id", c.sales_channel_id);
+    if (channelError) fail("anonymisation du canal", channelError.message);
+    const { error: alertsError } = await admin.from("alerts").update({ message: "Message anonymis\xE9 : le compte eBay concern\xE9 a \xE9t\xE9 supprim\xE9 par son titulaire." }).eq("organization_id", c.organization_id).eq("entity_type", "channel_connection").eq("entity_id", c.id);
+    if (alertsError) fail("anonymisation des alertes", alertsError.message);
+    await upsertAlert(admin, {
+      organizationId: c.organization_id,
+      type: "connection_expired",
+      severity: "critical",
+      title: "Compte eBay supprim\xE9",
+      // Aucun pseudo dans l'alerte : la donnée personnelle ne doit pas survivre à la suppression.
+      message: "eBay nous a notifi\xE9 la suppression du compte vendeur connect\xE9. La connexion a \xE9t\xE9 ferm\xE9e et ses tokens supprim\xE9s. Les annonces et commandes d\xE9j\xE0 import\xE9es sont conserv\xE9es ; connectez un autre compte eBay pour reprendre la synchronisation.",
+      dedupeKey: connectionExpiredKey(c.id),
+      entityType: "channel_connection",
+      entityId: c.id,
+      actionHref: "/settings/integrations"
+    });
+  }
+  return { ordersAnonymized, eventsPurged, connectionsDisconnected: connections.length };
+}
+
 // src/services/sourcing/feed-ingestion.ts
 var MAX_ROWS_PER_RUN = 5e3;
-var log17 = createLogger("FEED_INGESTION");
+var log18 = createLogger("FEED_INGESTION");
 var FEED_ACCEPT = {
   csv: "text/csv,text/plain,application/csv;q=0.9,*/*;q=0.5",
   xml: "application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.5",
@@ -11267,7 +11698,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
       content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl);
     }
     const parsed = parseFeedContent(content, feed.format, feedOptions);
-    for (const w2 of parsed.warnings) log17.info("feed warning", { feedId, warning: w2 });
+    for (const w2 of parsed.warnings) log18.info("feed warning", { feedId, warning: w2 });
     const ctx = {
       supabase: admin,
       organizationId: feed.organization_id,
@@ -11318,7 +11749,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
-    log17.error("feed ingestion failed", { feedId, error: message });
+    log18.error("feed ingestion failed", { feedId, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "FEED_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: processed, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message, status: "error" }).eq("id", feed.id);
@@ -11347,12 +11778,12 @@ function getParser(key2) {
 }
 
 // src/services/sourcing/crawler/source-crawler.ts
-import { z as z25 } from "npm:zod@4.6.5";
-var crawlConfigSchema = z25.object({
-  urls: z25.array(z25.string().url()).max(50).default([]),
-  parser: z25.string().max(60).optional(),
-  max_pages: z25.number().int().min(1).max(50).optional(),
-  delay_seconds: z25.number().min(0).max(120).optional()
+import { z as z26 } from "npm:zod@4.6.5";
+var crawlConfigSchema = z26.object({
+  urls: z26.array(z26.string().url()).max(50).default([]),
+  parser: z26.string().max(60).optional(),
+  max_pages: z26.number().int().min(1).max(50).optional(),
+  delay_seconds: z26.number().min(0).max(120).optional()
 });
 var MIN_DELAY_SECONDS = 2;
 var DEFAULT_MAX_PAGES2 = 20;
@@ -11421,7 +11852,7 @@ async function crawlSource(params) {
 }
 
 // src/services/sourcing/crawler/crawler-manager.ts
-var log18 = createLogger("CRAWLER");
+var log19 = createLogger("CRAWLER");
 async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
   const admin = options.admin ?? createAdminSupabaseClient();
   const userAgent = serverEnv().SOURCING_USER_AGENT;
@@ -11494,7 +11925,7 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
     return { sourceId, runId: run.id, status, pages: crawl.pages.length, found: crawl.offers.length, stored, rejected, expired: expired2, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
-    log18.error("crawl failed", { sourceId, error: message });
+    log19.error("crawl failed", { sourceId, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "CRAWL_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
@@ -11546,7 +11977,7 @@ async function runDueCrawls(now = /* @__PURE__ */ new Date(), admin = createAdmi
 }
 
 // src/services/sourcing/alerts.ts
-import { z as z26 } from "npm:zod@4.6.5";
+import { z as z27 } from "npm:zod@4.6.5";
 
 // src/domain/sourcing/opportunities.ts
 var ABNORMAL_LOW_RATIO = 0.8;
@@ -11601,16 +12032,16 @@ function detectOpportunities(offer, priceHistory, stockHistory, now = /* @__PURE
 }
 
 // src/services/sourcing/alerts.ts
-var log19 = createLogger("SOURCING_ALERTS");
-var alertCriteriaSchema = z26.object({
-  max_price: z26.number().positive().optional(),
-  min_quantity: z26.number().int().min(0).optional(),
-  countries: z26.array(z26.string().length(2)).optional(),
-  max_moq: z26.number().int().min(1).optional(),
-  grades: z26.array(z26.string().max(5)).optional(),
-  condition: z26.enum(["new", "refurbished", "used"]).optional(),
-  max_delivery_days: z26.number().int().min(0).optional(),
-  supplier_id: z26.string().uuid().optional()
+var log20 = createLogger("SOURCING_ALERTS");
+var alertCriteriaSchema = z27.object({
+  max_price: z27.number().positive().optional(),
+  min_quantity: z27.number().int().min(0).optional(),
+  countries: z27.array(z27.string().length(2)).optional(),
+  max_moq: z27.number().int().min(1).optional(),
+  grades: z27.array(z27.string().max(5)).optional(),
+  condition: z27.enum(["new", "refurbished", "used"]).optional(),
+  max_delivery_days: z27.number().int().min(0).optional(),
+  supplier_id: z27.string().uuid().optional()
 });
 function criteriaToFilters(c) {
   return { maxPrice: c.max_price, minQuantity: c.min_quantity, countries: c.countries, maxMoq: c.max_moq, grades: c.grades, condition: c.condition, maxDeliveryDays: c.max_delivery_days, supplierId: c.supplier_id };
@@ -11697,7 +12128,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
         totalAlerts++;
       } catch (e) {
         errors++;
-        log19.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
+        log20.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
       }
     }
     totalEvents += events;
@@ -11707,7 +12138,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
 }
 
 // src/services/sourcing/sync.ts
-var log20 = createLogger("SOURCING_SYNC");
+var log21 = createLogger("SOURCING_SYNC");
 async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
   const startedAt = now.toISOString();
   let fx = { ok: false, date: null, count: 0, error: null };
@@ -11716,34 +12147,34 @@ async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
     fx = { ok: true, date: r.date, count: r.count, error: null };
   } catch (e) {
     fx = { ok: false, date: null, count: 0, error: e instanceof Error ? e.message : String(e) };
-    log20.warn("fx refresh failed", { error: fx.error });
+    log21.warn("fx refresh failed", { error: fx.error });
   }
   let feeds = [];
   try {
     feeds = await runDueFeeds(now);
   } catch (e) {
-    log20.error("due feeds failed", { error: e instanceof Error ? e.message : String(e) });
+    log21.error("due feeds failed", { error: e instanceof Error ? e.message : String(e) });
   }
   let crawls = [];
   try {
     crawls = await runDueCrawls(now);
   } catch (e) {
-    log20.error("due crawls failed", { error: e instanceof Error ? e.message : String(e) });
+    log21.error("due crawls failed", { error: e instanceof Error ? e.message : String(e) });
   }
   let alerts;
   try {
     alerts = await evaluateSourcingAlerts(now);
   } catch (e) {
     alerts = { error: e instanceof Error ? e.message : String(e) };
-    log20.error("alerts evaluation failed", { error: alerts.error });
+    log21.error("alerts evaluation failed", { error: alerts.error });
   }
   const summary = { startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), fx, feeds, crawls, alerts };
-  log20.info("sourcing sync finished", { fx: fx.ok, feeds: feeds.length, crawls: crawls.length });
+  log21.info("sourcing sync finished", { fx: fx.ok, feeds: feeds.length, crawls: crawls.length });
   return summary;
 }
 
 // src/services/sourcing/source-library.ts
-var log21 = createLogger("SOURCE_LIBRARY");
+var log22 = createLogger("SOURCE_LIBRARY");
 var shopifyTerms = (base) => `${base}/policies/terms-of-service`;
 var SOURCE_LIBRARY = [
   {
@@ -11967,7 +12398,7 @@ async function runLibraryChecks(keys) {
       message: r.message,
       duration_ms: r.durationMs
     });
-    if (error) log21.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
+    if (error) log22.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
   }
   return out;
 }
@@ -12038,7 +12469,7 @@ async function activateLibrarySource(ctx, key2) {
     await ctx.supabase.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", ctx.organization.id);
     throw srcErr ?? new AppError("INTERNAL", "Source non cr\xE9\xE9e.");
   }
-  log21.info("source de biblioth\xE8que activ\xE9e", { orgId: ctx.organization.id, key: key2 });
+  log22.info("source de biblioth\xE8que activ\xE9e", { orgId: ctx.organization.id, key: key2 });
   return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
 }
 
@@ -12191,16 +12622,16 @@ async function loadRuntimeSecrets(env, fetchImpl = fetch) {
 }
 
 // server/edge/api.ts
-var log22 = createLogger("EDGE_API");
+var log23 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z27.object({ code: z27.string().min(1).max(2048), state: z27.string().min(16).max(200) });
-var syncSchema = z27.object({ connectionId: uuidParam, scope: z27.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z27.object({ hosts: z27.array(z27.string().min(3).max(120)).min(1).max(25), query: z27.string().min(2).max(80).optional() });
-var activateSchema = z27.object({ key: z27.string().min(1).max(80), attest: z27.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var ebayFinalizeSchema = z28.object({ code: z28.string().min(1).max(2048), state: z28.string().min(16).max(200) });
+var syncSchema = z28.object({ connectionId: uuidParam, scope: z28.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z28.object({ hosts: z28.array(z28.string().min(3).max(120)).min(1).max(25), query: z28.string().min(2).max(80).optional() });
+var activateSchema = z28.object({ key: z28.string().min(1).max(80), attest: z28.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -12230,7 +12661,7 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log22.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
+  log23.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
   return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
 }
 async function finalizeEbayConnect(request) {
@@ -12241,7 +12672,7 @@ async function finalizeEbayConnect(request) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row.created_by !== ctx.user.id || row.organization_id !== ctx.organization.id) {
-    log22.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log23.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -12252,11 +12683,11 @@ async function finalizeEbayConnect(request) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
-    log22.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log23.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log22.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log23.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
@@ -12277,6 +12708,32 @@ async function cronSync() {
     }
   }
   return { due: due.length, results };
+}
+var keyStore = new EbayNotificationKeyStore(() => getEbayConnector().config());
+function ebayWebhookEndpoint() {
+  return `${(process.env.SUPABASE_URL ?? "").replace(/\/+$/, "")}/functions/v1/api/ebay/webhook`;
+}
+async function ebayWebhook(request, url) {
+  if (request.method === "GET") {
+    const challenge = url.searchParams.get("challenge_code");
+    if (!challenge) return Response.json({ ok: true, usage: "eBay envoie GET ?challenge_code=\u2026 puis des POST sign\xE9s." });
+    const token = getEbayConnector().config()?.webhookVerificationToken ?? null;
+    if (!token) return Response.json({ error: "EBAY_WEBHOOK_VERIFICATION_TOKEN non configur\xE9 : impossible de valider l'endpoint eBay." }, { status: 503 });
+    return Response.json({ challengeResponse: computeChallengeResponse(challenge, token, ebayWebhookEndpoint()) });
+  }
+  if (request.method !== "POST") return new Response(null, { status: 405 });
+  const runtime = globalThis.EdgeRuntime;
+  return handleEbayNotification(request, {
+    admin: createAdminSupabaseClient(),
+    isConfigured: () => getEbayConnector().isConfigured(),
+    getPublicKey: (kid) => keyStore.getPublicKey(kid),
+    findConnections: (account) => findConnectionsByExternalAccount("ebay", account),
+    runSync: (connectionId, options) => runChannelSync(connectionId, options),
+    schedule: (task) => {
+      const p = Promise.resolve().then(task);
+      if (runtime) runtime.waitUntil(p);
+    }
+  });
 }
 async function route(request) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
@@ -12301,6 +12758,7 @@ async function route(request) {
       });
     }
     if (m === "GET" && path === "/ebay/callback") return ebayCallbackRedirect(url);
+    if (path === "/ebay/webhook") return ebayWebhook(request, url);
     if (path.startsWith("/cron/")) {
       const auth = authorizeCron(request);
       if (!auth.ok) return auth.response;
@@ -12343,7 +12801,7 @@ async function route(request) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log22.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log23.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;

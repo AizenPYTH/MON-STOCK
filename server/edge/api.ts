@@ -14,6 +14,7 @@
  *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (attestation de l'utilisateur)
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
  *   POST /api/ebay/connect                URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur)
+ *   GET|POST /api/ebay/webhook            notifications eBay (suppression de compte, commandes) — signées par eBay
  *   GET  /api/ebay/callback               retour d'eBay → redirection vers l'application (monstock://)
  *   POST /api/ebay/finalize               échange du code (utilisateur qui a démarré le flux uniquement)
  *   POST /api/ebay/sync                   synchronisation immédiate d'une connexion
@@ -42,7 +43,10 @@ import { OAUTH_STATE_TTL_SECONDS, oauthErrorCodeFor } from "@/features/integrati
 import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
-import { listDueConnections, upsertOAuthConnection } from "@/services/channels/connection-store";
+import { findConnectionsByExternalAccount, listDueConnections, upsertOAuthConnection } from "@/services/channels/connection-store";
+import { computeChallengeResponse } from "@/integrations/ebay/webhook-verify";
+import { EbayNotificationKeyStore } from "@/integrations/ebay/notification-keys";
+import { handleEbayNotification } from "@/services/sync/ebay-webhook";
 import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
@@ -154,6 +158,42 @@ async function cronSync() {
   return { due: due.length, results };
 }
 
+/** Cache mémoire (par instance) des clés publiques eBay et du jeton d'application. */
+const keyStore = new EbayNotificationKeyStore(() => getEbayConnector().config());
+
+/** URL publique exacte de l'endpoint (à déclarer dans le portail eBay, utilisée dans le hash du challenge). */
+export function ebayWebhookEndpoint(): string {
+  return `${(process.env.SUPABASE_URL ?? "").replace(/\/+$/, "")}/functions/v1/api/ebay/webhook`;
+}
+
+/**
+ * Notifications eBay (Marketplace Account Deletion, obligatoire en production) : mêmes traitements
+ * que la route web (validation du challenge, signature, déduplication, suppression de compte,
+ * synchronisation), exécutés après la réponse via EdgeRuntime.waitUntil.
+ */
+async function ebayWebhook(request: Request, url: URL): Promise<Response> {
+  if (request.method === "GET") {
+    const challenge = url.searchParams.get("challenge_code");
+    if (!challenge) return Response.json({ ok: true, usage: "eBay envoie GET ?challenge_code=… puis des POST signés." });
+    const token = getEbayConnector().config()?.webhookVerificationToken ?? null;
+    if (!token) return Response.json({ error: "EBAY_WEBHOOK_VERIFICATION_TOKEN non configuré : impossible de valider l'endpoint eBay." }, { status: 503 });
+    return Response.json({ challengeResponse: computeChallengeResponse(challenge, token, ebayWebhookEndpoint()) });
+  }
+  if (request.method !== "POST") return new Response(null, { status: 405 });
+  const runtime = (globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  return handleEbayNotification(request as never, {
+    admin: createAdminSupabaseClient(),
+    isConfigured: () => getEbayConnector().isConfigured(),
+    getPublicKey: (kid) => keyStore.getPublicKey(kid),
+    findConnections: (account) => findConnectionsByExternalAccount("ebay", account),
+    runSync: (connectionId, options) => runChannelSync(connectionId, options),
+    schedule: (task) => {
+      const p = Promise.resolve().then(task);
+      if (runtime) runtime.waitUntil(p);
+    },
+  });
+}
+
 export async function route(request: Request): Promise<Response> {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   const url = new URL(request.url);
@@ -177,6 +217,7 @@ export async function route(request: Request): Promise<Response> {
       });
     }
     if (m === "GET" && path === "/ebay/callback") return ebayCallbackRedirect(url);
+    if (path === "/ebay/webhook") return ebayWebhook(request, url);
     if (path.startsWith("/cron/")) {
       const auth = authorizeCron(request);
       if (!auth.ok) return auth.response;

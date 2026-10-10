@@ -10,6 +10,7 @@ import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } 
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
+import { applyPendingSales, connectEbay, fetchIntegrations, fetchListing, mapListing, syncEbay } from "~/data/ebay";
 import type { ProductWithVariantsInput, VariantInput } from "@/features/stock/product-form";
 import {
   addVariants,
@@ -250,5 +251,59 @@ export function useActivateSource() {
         queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-search"] }),
       ]),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// eBay (serveur pour les tokens ; association annonce ↔ SKU sous RLS)
+// ---------------------------------------------------------------------------------------------
+
+export function useIntegrations() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "integrations"], queryFn: () => fetchIntegrations(orgId), retry: 0 });
+}
+
+function useInvalidateSales() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all(
+      [[orgId, "integrations"], [orgId, "listings"], [orgId, "orders"], [orgId, "sales-kpis"], [orgId, "catalog"], [orgId, "today"], [orgId, "analysis"]].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    );
+}
+
+export function useConnectEbay() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateSales();
+  return useMutation({ mutationFn: () => connectEbay(orgId), onSettled: () => invalidate() });
+}
+
+export function useSyncEbay() {
+  const orgId = useOrgId();
+  const invalidate = useInvalidateSales();
+  return useMutation({ mutationFn: (connectionId: string) => syncEbay(orgId, connectionId), onSettled: () => invalidate() });
+}
+
+export function useListing(listingId: string) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "listing", listingId], queryFn: () => fetchListing(requireSupabase(), orgId, listingId), enabled: Boolean(listingId) });
+}
+
+export function useMapListing(listingId: string) {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateSales();
+  return useMutation({
+    mutationFn: (skuId: string | null) => mapListing(requireSupabase(), listingId, skuId),
+    onSettled: () => Promise.all([invalidate(), queryClient.invalidateQueries({ queryKey: [orgId, "listing", listingId] })]),
+  });
+}
+
+export function useApplyPendingSales(skuId: string) {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => applyPendingSales(requireSupabase(), skuId),
+    onSettled: () => Promise.all([[orgId, "sku", skuId], [orgId, "catalog"], [orgId, "today"], [orgId, "analysis"]].map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
   });
 }

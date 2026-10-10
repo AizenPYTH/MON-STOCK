@@ -14,8 +14,13 @@ import { useLayout } from "~/theme/layout";
 type Segment = "orders" | "listings";
 
 export default function SalesScreen() {
-  const params = useLocalSearchParams<{ status?: string }>();
-  const [segment, setSegment] = useState<Segment>("orders");
+  const params = useLocalSearchParams<{ status?: string; segment?: string }>();
+  const [segment, setSegment] = useState<Segment>(params.segment === "listings" ? "listings" : "orders");
+  const [appliedSegment, setAppliedSegment] = useState(params.segment ?? "");
+  if ((params.segment ?? "") !== appliedSegment) {
+    setAppliedSegment(params.segment ?? "");
+    if (params.segment === "listings") setSegment("listings");
+  }
   const [toShipOnly, setToShipOnly] = useState(params.status === "paid");
   const { active } = useActiveOrg();
   const currency = active.organization.currency;
@@ -72,7 +77,7 @@ export default function SalesScreen() {
             ) : listings.isError ? (
               <ErrorState description={userMessage(listings.error)} onRetry={() => void listings.refetch()} />
             ) : (
-              <EmptyState icon={<Tag size={28} color={color.ink2} />} title="Aucune annonce eBay" description="Les annonces apparaissent après la connexion et la synchronisation eBay (depuis l'application web)." />
+              <EmptyState icon={<Tag size={28} color={color.ink2} />} title="Aucune annonce eBay" description="Les annonces apparaissent après la connexion et la synchronisation de votre compte eBay." actions={[{ label: "Connecter eBay", onPress: () => router.push("/ebay") }]} />
             )
           }
           renderItem={({ item: l, index }) => {
@@ -91,6 +96,7 @@ export default function SalesScreen() {
                       <StatusChip label={chip.label} tone={chip.tone} />
                     </View>
                   }
+                  onPress={() => router.push({ pathname: "/listing/[listingId]", params: { listingId: l.id } })}
                   last={index === listingRows.length - 1}
                 />
               </RowFrame>

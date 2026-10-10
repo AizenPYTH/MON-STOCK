@@ -2,11 +2,11 @@ import { RefreshControl, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { UNKNOWN_COST_LABEL } from "@/domain/pricing/margin";
 import { useActiveOrg } from "~/org/org-provider";
-import { useSkuDetail } from "~/data/hooks";
+import { useApplyPendingSales, useSkuDetail } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatDays, formatMoneyRounded, formatNumber, MOVEMENT_TYPE_LABEL, STOCK_LEVEL_LABEL } from "~/lib/format";
 import { Pencil } from "lucide-react-native";
-import { AlertBanner, Button, Card, DetailHeader, IconButton, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, Screen, SectionHeader, Skeleton, StatusChip, StickyActions, Txt } from "~/components/ui";
+import { AlertBanner, Button, Card, DetailHeader, IconButton, useToast, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, Screen, SectionHeader, Skeleton, StatusChip, StickyActions, Txt } from "~/components/ui";
 import { QuantityCard, variantTitle } from "~/components/stock";
 import { color, radius } from "~/theme/tokens";
 
@@ -17,6 +17,8 @@ export default function SkuScreen() {
   const { skuId } = useLocalSearchParams<{ skuId: string }>();
   const { permissions } = useActiveOrg();
   const q = useSkuDetail(skuId ?? "");
+  const pending = useApplyPendingSales(skuId ?? "");
+  const toast = useToast();
 
   if (q.isPending)
     return (
@@ -95,7 +97,25 @@ export default function SkuScreen() {
         ]}
       </KpiGrid>
       <Txt variant="label">{v.classification.reason}</Txt>
-      {pendingSalesCount > 0 ? <AlertBanner text={`${pendingSalesCount} vente${pendingSalesCount > 1 ? "s" : ""} rattachée${pendingSalesCount > 1 ? "s" : ""} pas encore déduite${pendingSalesCount > 1 ? "s" : ""} du stock.`} /> : null}
+      {pendingSalesCount > 0 ? (
+        <Card padded style={{ gap: 8 }}>
+          <AlertBanner text={`${pendingSalesCount} vente${pendingSalesCount > 1 ? "s" : ""} rattachée${pendingSalesCount > 1 ? "s" : ""} pas encore déduite${pendingSalesCount > 1 ? "s" : ""} du stock.`} />
+          <Txt variant="label">Vérifiez d'abord le stock physique : la déduction est enregistrée comme mouvement « vente » (une seule fois par ligne de commande).</Txt>
+          {permissions.canWrite ? (
+            <Button
+              label="Déduire ces ventes du stock"
+              variant="secondary"
+              loading={pending.isPending}
+              onPress={() =>
+                pending.mutate(undefined, {
+                  onSuccess: (n) => toast({ text: n === 0 ? "Aucune vente à déduire : tout était déjà appliqué." : `${n} vente(s) déduite(s) du stock.` }),
+                  onError: (e) => toast({ text: userMessage(e), tone: "error" }),
+                })
+              }
+            />
+          ) : null}
+        </Card>
+      ) : null}
       <SectionHeader title="Mouvements" />
       {movements.length === 0 ? (
         <Card padded>
