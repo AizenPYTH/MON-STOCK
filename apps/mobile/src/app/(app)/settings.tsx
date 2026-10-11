@@ -7,7 +7,8 @@ import { signOut } from "~/auth/auth-service";
 import { useActiveOrg } from "~/org/org-provider";
 import { ROLE_LABEL } from "~/org/org-service";
 import { appConfig } from "~/lib/config";
-import { Avatar, Button, Card, DetailHeader, ListRow, Screen, SectionHeader, StatusChip, Txt, initialsOf, useToast } from "~/components/ui";
+import { BRANDS } from "~/brands/registry";
+import { Avatar, BrandDisclaimer, BrandMark, Button, Card, DetailHeader, ListRow, Screen, SectionHeader, StatusChip, Txt, initialsOf, useToast } from "~/components/ui";
 import { space } from "~/theme/tokens";
 
 /** Compte, organisation active (changement par appareil), intégrations, déconnexion. */
@@ -71,12 +72,13 @@ export default function SettingsScreen() {
 
       <SectionHeader title="Intégrations" />
       <Card>
-        <ListRow title="eBay" subtitle="Connexion du compte vendeur, synchronisation, erreurs" chevron onPress={() => router.push("/ebay")} />
+        <ListRow left={<BrandMark brand={BRANDS.ebay} withName={false} />} title="eBay" subtitle="Connexion du compte vendeur, synchronisation, erreurs" chevron onPress={() => router.push("/ebay")} testID="settings-ebay" />
         <ListRow title="Sources fournisseurs" subtitle="Sources vérifiées pour la recherche d'offres" chevron onPress={() => router.push("/sourcing-sources")} />
         <ListRow title="Fournisseurs professionnels" subtitle="Annuaire qualifié, demandes d'accès, import de catalogue" chevron onPress={() => router.push("/supplier-directory")} />
         <ListRow title="Diagnostic" subtitle="Base, serveur, sourcing, eBay, assistant IA" chevron onPress={() => router.push("/diagnostics")} last />
       </Card>
       <Txt variant="label">Amazon, Shopify et WooCommerce : disponibles prochainement (non connectables pour l'instant).</Txt>
+      <BrandDisclaimer />
 
       <SectionHeader title="Application" />
       <Card padded>

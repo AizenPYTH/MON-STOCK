@@ -7,7 +7,8 @@ import { useListings, useOrders, useSalesKpis } from "~/data/hooks";
 import { groupOrdersByDay, ORDER_CHIP, type OrderListItem } from "~/data/sales";
 import { userMessage } from "~/lib/errors";
 import { formatLongDate, formatMoneyRounded, formatNumber } from "~/lib/format";
-import { EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, RowFrame, Screen, Segmented, Skeleton, SkeletonList, StatusChip, TabHeader, Txt, useTabBarClearance } from "~/components/ui";
+import { BRANDS } from "~/brands/registry";
+import { BrandMark, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, RowFrame, Screen, Segmented, Skeleton, SkeletonList, StatusChip, TabHeader, Txt, useTabBarClearance } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 
@@ -88,6 +89,7 @@ export default function SalesScreen() {
             return (
               <RowFrame first={index === 0} last={index === listingRows.length - 1}>
                 <ListRow
+                  left={<BrandMark brand={BRANDS.ebay} withName={false} />}
                   title={l.title ?? l.external_listing_id}
                   subtitle={`${formatNumber(l.quantity_available ?? 0)} en vente${l.sku_id ? "" : " · non associée à un SKU"}`}
                   right={

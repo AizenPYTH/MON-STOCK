@@ -3,8 +3,8 @@ import { Linking, RefreshControl, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { CARRIER_LABEL, FINAL_STATUSES, TRACKING_STATUS_LABEL, type CarrierCode } from "@/domain/tools/tracking";
 import { CopyButton, ToolHeader } from "~/components/tools";
-import { carrierText, frDateTime, ParcelStatusChip } from "~/components/tracking";
-import { AlertBanner, BottomSheet, Button, Card, ErrorState, FilterChip, Screen, SectionHeader, SkeletonList, TextField, Timeline, Txt, useToast } from "~/components/ui";
+import { carrierBrand, carrierText, frDateTime, ParcelStatusChip, trackingSourceText } from "~/components/tracking";
+import { AlertBanner, BottomSheet, BrandMark, Button, Card, ErrorState, FilterChip, Screen, SectionHeader, SkeletonList, TextField, Timeline, Txt, useToast } from "~/components/ui";
 import { useDeleteParcel, useParcel, useRefreshParcel, useUpdateParcel } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { useActiveOrg } from "~/org/org-provider";
@@ -53,15 +53,13 @@ export default function ParcelDetailScreen() {
         </View>
         <Txt variant="headline">{TRACKING_STATUS_LABEL[p.status]}</Txt>
         {p.statusDetail ? <Txt variant="bodyRegular">{p.statusDetail}</Txt> : null}
-        <Txt variant="label">
-          {carrierText(p)} · {p.trackingNumber}
-        </Txt>
+        <BrandMark brand={carrierBrand(p)} fallbackName={carrierText(p)} kind="carrier" detail={p.trackingNumber} testID="parcel-carrier" />
         {p.status === "delivered" && p.deliveredAt ? <Txt variant="body">Livré le {frDateTime(p.deliveredAt)}</Txt> : null}
         {p.estimatedDelivery && p.status !== "delivered" ? <Txt variant="body">Livraison estimée par le transporteur : {frDateTime(p.estimatedDelivery)}</Txt> : null}
         {!p.estimatedDelivery && !final ? <Txt variant="label">Aucune date de livraison estimée fournie par le transporteur.</Txt> : null}
         <Txt variant="label">
           {p.lastCheckedAt ? `Dernière vérification : ${frDateTime(p.lastCheckedAt)} UTC` : "Jamais vérifié"}
-          {p.provider ? ` · source ${p.provider === "laposte" ? "La Poste (officiel)" : "Ship24"}` : ""}
+          {p.provider ? ` · source ${trackingSourceText(p.provider)}` : ""}
           {p.nextCheckAt && !final ? ` · prochaine : ${frDateTime(p.nextCheckAt)} UTC` : final ? " · suivi terminé" : ""}
         </Txt>
         {p.lastError ? <AlertBanner text={p.lastError} tone="dark" /> : null}

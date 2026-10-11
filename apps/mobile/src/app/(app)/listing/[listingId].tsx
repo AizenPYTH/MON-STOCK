@@ -9,7 +9,8 @@ import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatMoney, formatNumber } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
 import { useDebounced } from "~/lib/use-debounced";
-import { AlertBanner, BottomSheet, Button, Card, DetailHeader, EmptyState, ErrorState, ListRow, Screen, SearchField, SectionHeader, Skeleton, StatusChip, Txt, useToast } from "~/components/ui";
+import { BRANDS } from "~/brands/registry";
+import { AlertBanner, BottomSheet, BrandMark, Button, Card, DetailHeader, EmptyState, ErrorState, ListRow, Screen, SearchField, SectionHeader, Skeleton, StatusChip, Txt, useToast } from "~/components/ui";
 import { variantTitle } from "~/components/stock";
 import { color, radius, space } from "~/theme/tokens";
 
@@ -73,6 +74,7 @@ export default function ListingScreen() {
     <Screen>
       <DetailHeader parentLabel="Annonces" />
       <Card padded style={{ gap: space[2] }}>
+        <BrandMark brand={BRANDS.ebay} size="sm" withName={false} />
         <Txt variant="body">{l.title ?? l.external_listing_id}</Txt>
         <Txt variant="label">
           eBay n° {l.external_listing_id}

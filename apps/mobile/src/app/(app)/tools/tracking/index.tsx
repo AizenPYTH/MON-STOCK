@@ -3,8 +3,8 @@ import { RefreshControl, View } from "react-native";
 import { router } from "expo-router";
 import { PackageSearch } from "lucide-react-native";
 import { ToolHeader } from "~/components/tools";
-import { carrierText, frDateTime, ParcelStatusChip } from "~/components/tracking";
-import { AlertBanner, Button, Card, EmptyState, ErrorState, ListRow, Screen, Segmented, SkeletonList, Txt } from "~/components/ui";
+import { carrierBrand, carrierText, frDateTime, ParcelStatusChip } from "~/components/tracking";
+import { AlertBanner, BrandMark, Button, Card, EmptyState, ErrorState, ListRow, Screen, Segmented, SkeletonList, Txt } from "~/components/ui";
 import { useParcels, useToolsStatus } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { useActiveOrg } from "~/org/org-provider";
@@ -43,6 +43,7 @@ export default function TrackingListScreen() {
             <ListRow
               key={p.id}
               testID={`parcel-${p.trackingNumber}`}
+              left={<BrandMark brand={carrierBrand(p)} fallbackName={carrierText(p)} kind="carrier" withName={false} />}
               title={p.label || p.trackingNumber}
               subtitle={`${carrierText(p)}${p.label ? ` · ${p.trackingNumber}` : ""}${p.estimatedDelivery && p.status !== "delivered" ? ` · prévu ${frDateTime(p.estimatedDelivery)?.slice(0, 10)}` : ""}`}
               right={<ParcelStatusChip status={p.status} />}

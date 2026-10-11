@@ -5,7 +5,8 @@ import { formatMoneyDec } from "@/domain/tools/decimal";
 import { compareManualCards, highlights, optionFromQuote, parseParcel, sortOptions, type Parcel, type ShippingOption, type ShippingSort } from "@/domain/tools/shipping";
 import type { ShippingQuotesDTO } from "@/features/mobile-api/contract";
 import { AmountField, EstimateNote, ToolHeader } from "~/components/tools";
-import { AlertBanner, Button, Card, EmptyState, Screen, SectionHeader, Segmented, StatusChip, TextField, Txt } from "~/components/ui";
+import { brandById, brandFromText } from "~/brands/registry";
+import { AlertBanner, BrandDisclaimer, BrandMark, Button, Card, EmptyState, Screen, SectionHeader, Segmented, StatusChip, TextField, Txt } from "~/components/ui";
 import { useRateCards, useShippingQuotes, useToolsStatus } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { color, space } from "~/theme/tokens";
@@ -172,6 +173,7 @@ export default function ShippingToolScreen() {
             ) : null}
           </>
         ) : null}
+        <BrandDisclaimer />
         <EstimateNote text="Devis réels : prix renvoyés par la plateforme pour votre compte au moment de la demande (HT/TTC indiqué seulement si l'API le précise). Estimations : vos grilles saisies, à jour selon la date de vérification indiquée. Aucune étiquette n'est achetée depuis cet écran ; le prix final dépend de l'étiquette achetée." />
       </Screen>
     </KeyboardAvoidingView>
@@ -183,9 +185,8 @@ function OptionCard({ option: o, cheapest, fastest }: { option: ShippingOption; 
   return (
     <Card padded style={{ gap: space[2] }} accessibilityLabel={`${o.carrier} ${o.service}, ${formatMoneyDec(o.price, o.currency)}, ${transit}`}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[2] }}>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Txt variant="body">{o.carrier}</Txt>
-          <Txt variant="label">{o.service}</Txt>
+        <View style={{ flex: 1 }}>
+          <BrandMark brand={brandFromText(o.carrier)} fallbackName={o.carrier} kind="carrier" detail={o.service} testID={`ship-carrier-${o.key}`} />
         </View>
         <View style={{ alignItems: "flex-end" }}>
           <Txt variant="kpiSm" num>
@@ -199,7 +200,7 @@ function OptionCard({ option: o, cheapest, fastest }: { option: ShippingOption; 
         {fastest ? <StatusChip label="Le plus rapide" tone="dark" /> : null}
         <StatusChip label={transit} tone="neutral" />
         <StatusChip label={o.tracking === true ? "Suivi inclus" : o.tracking === false ? "Sans suivi" : "Suivi : non précisé"} tone="neutral" />
-        <StatusChip label={o.origin === "api" ? `Devis réel ${o.provider}` : "Estimation : votre grille"} tone={o.origin === "api" ? "accent" : "neutral"} />
+        <StatusChip label={o.origin === "api" ? `Devis réel ${brandById(o.provider)?.name ?? o.provider}` : "Estimation : votre grille"} tone={o.origin === "api" ? "accent" : "neutral"} />
       </View>
       {o.deliveryMode ? <Txt variant="label">{o.deliveryMode}</Txt> : null}
       {o.restrictions.map((r) => (

@@ -5,3 +5,4 @@ export * from "~/components/ui/display";
 export * from "~/components/ui/feedback";
 export * from "~/components/ui/form";
 export * from "~/components/ui/tab-bar";
+export * from "~/components/ui/brand";

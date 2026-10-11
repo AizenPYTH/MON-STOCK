@@ -3,7 +3,7 @@
 État au 11 octobre 2026 :
 - implémenté et testé avec des simulations (API du modèle, base, voix) ;
 - **déployé sur TEST** le 11 octobre : migration appliquée, Edge Function en version 22 (commit `bf3f645`), build TestFlight 9 lancé ;
-- **11 octobre, après la mise en ligne** : le fournisseur IA passe de Claude (Anthropic) à **OpenAI** (seule clé disponible). Ce changement est dans le code (commit suivant `568183a`) mais **pas encore déployé**.
+- **11 octobre, après la mise en ligne** : le fournisseur IA passe de Claude (Anthropic) à **OpenAI** (seule clé disponible). Ce changement est dans le code (commit `b3718ad`) mais **pas encore déployé**.
 - **reste à faire** : redéployer l'Edge Function (avec votre accord), puis ajouter vous-même `OPENAI_API_KEY` dans les secrets de l'Edge Function. Sans elle, l'écran affiche « conseiller non activé ».
 
 ## 1. Ce qui fonctionne réellement (dans le code)

@@ -8,7 +8,8 @@ import { useActiveOrg } from "~/org/org-provider";
 import { useConnectEbay, useDisconnectEbay, useIntegrations, useSyncEbay } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatNumber } from "~/lib/format";
-import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, Screen, SectionHeader, Skeleton, StatusChip, Txt, useToast } from "~/components/ui";
+import { BRANDS } from "~/brands/registry";
+import { AlertBanner, BottomSheet, BrandDisclaimer, BrandMark, Button, Card, DetailHeader, ErrorState, Screen, SectionHeader, Skeleton, StatusChip, Txt, useToast } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 const CONNECTION_STATUS: Record<string, { label: string; tone: "success" | "danger" | "accent" | "neutral" }> = {
@@ -77,10 +78,14 @@ export default function EbayScreen() {
     <Screen refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} />}>
       <DetailHeader parentLabel="Retour" />
       <View style={{ gap: 4 }}>
-        <Txt variant="title2" accessibilityRole="header">
-          eBay
-        </Txt>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+          <BrandMark brand={BRANDS.ebay} size="lg" withName={false} />
+          <Txt variant="title2" accessibilityRole="header">
+            eBay
+          </Txt>
+        </View>
         <Txt variant="label">Annonces, commandes et quantités synchronisées par le serveur MON STOCK. Les ventes déduisent le stock une seule fois (protection contre les doubles traitements).</Txt>
+        <BrandDisclaimer />
       </View>
 
       {!d.ebay.configured ? (

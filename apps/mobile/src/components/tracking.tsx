@@ -1,5 +1,6 @@
 import { CARRIER_LABEL, PROBLEM_STATUSES, TRACKING_STATUS_LABEL, type TrackingStatus } from "@/domain/tools/tracking";
 import { StatusChip, type ChipTone } from "~/components/ui";
+import { brandById, brandFromText, type BrandEntry } from "~/brands/registry";
 import type { TrackedParcel } from "~/data/tracking";
 
 export function statusTone(s: TrackingStatus): ChipTone {
@@ -17,6 +18,16 @@ export function ParcelStatusChip({ status }: { status: TrackingStatus }) {
 export function carrierText(p: Pick<TrackedParcel, "carrierCode" | "carrierLabel">): string {
   if (p.carrierLabel) return p.carrierLabel;
   return p.carrierCode ? CARRIER_LABEL[p.carrierCode] : "Transporteur non déterminé";
+}
+
+/** Marque du transporteur (code détecté ou libellé saisi) ; null si inconnue. */
+export function carrierBrand(p: Pick<TrackedParcel, "carrierCode" | "carrierLabel">): BrandEntry | null {
+  return brandById(p.carrierCode) ?? brandFromText(p.carrierLabel);
+}
+
+/** Source du suivi : API officielle La Poste ou agrégateur Ship24 (aucune affiliation). */
+export function trackingSourceText(provider: string | null): string | null {
+  return provider === "laposte" ? "API La Poste Suivi" : provider === "ship24" ? "Ship24" : provider;
 }
 
 /** Date ISO → « 12/10/2026 14:05 » (sans Intl) ; date seule → « 12/10/2026 ». */

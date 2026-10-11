@@ -3,9 +3,10 @@ import { router, useLocalSearchParams } from "expo-router";
 import { skuLabel } from "@/features/stock/model";
 import { useOrder } from "~/data/hooks";
 import { ORDER_CHIP, PROVIDER_LABEL } from "~/data/sales";
+import { brandById } from "~/brands/registry";
 import { userMessage } from "~/lib/errors";
 import { formatClock, formatDate, formatMoney, formatNumber } from "~/lib/format";
-import { Button, Card, DetailHeader, Divider, EmptyState, ErrorState, ListRow, Screen, Skeleton, StatusChip, StickyActions, Thumb, Timeline, Txt, type TimelineStep } from "~/components/ui";
+import { BrandMark, Button, Card, DetailHeader, Divider, EmptyState, ErrorState, ListRow, Screen, Skeleton, StatusChip, StickyActions, Thumb, Timeline, Txt, type TimelineStep } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 /**
@@ -80,9 +81,7 @@ export default function OrderScreen() {
           <Txt variant="title2" accessibilityRole="header">
             Commande {o.order_number ?? o.external_order_id}
           </Txt>
-          <Txt variant="label">
-            {PROVIDER_LABEL[o.provider] ?? o.provider} · passée le {placed}
-          </Txt>
+          <BrandMark brand={brandById(o.provider)} fallbackName={PROVIDER_LABEL[o.provider] ?? o.provider} kind="marketplace" size="sm" detail={`passée le ${placed}`} testID="order-channel" />
         </View>
         <StatusChip label={chip.label} tone={chip.tone} />
       </View>

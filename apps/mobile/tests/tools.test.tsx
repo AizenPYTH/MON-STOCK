@@ -159,6 +159,10 @@ describe("comparateur de frais de port : devis réels et estimations", () => {
     expect(screen.queryByText("Gratuit ?")).toBeNull();
     expect(screen.getByText(/1 offre écartée/)).toBeTruthy();
     expect(screen.getByText("2 options")).toBeTruthy();
+    // identité du transporteur : présentation neutre (aucun logo sans autorisation) + mention
+    expect(screen.getByLabelText("Mondial Relay, Mondial Relay Point Relais")).toBeTruthy();
+    expect(screen.getByTestId("ship-carrier-sendcloud:mr-generic")).toBeTruthy();
+    expect(screen.getByText(/ni partenaire ni approuvé/)).toBeTruthy();
   });
 });
 
