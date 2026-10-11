@@ -5,10 +5,11 @@ import { color } from "~/theme/tokens";
 jest.mock("expo-haptics", () => ({ selectionAsync: jest.fn(() => Promise.resolve()), notificationAsync: jest.fn(() => Promise.resolve()), NotificationFeedbackType: { Success: "success" } }));
 
 describe("composants du design", () => {
-  it("QtyBadge : rupture en rouge, faible en ambre, accessible", () => {
+  it("QtyBadge (v3) : chiffre en encre, mot et point colorés, accessible", () => {
     render(<QtyBadge qty={0} level="out" />);
     expect(screen.getByLabelText("0 disponible(s), rupture")).toBeTruthy();
-    expect(screen.getByText("0")).toHaveStyle({ color: color.danger });
+    expect(screen.getByText("0")).toHaveStyle({ color: color.ink });
+    expect(screen.getByText("rupture")).toHaveStyle({ color: color.dangerInk });
   });
 
   it("Button désactivé : non cliquable et annoncé comme tel", () => {

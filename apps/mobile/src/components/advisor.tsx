@@ -98,7 +98,7 @@ export function AdvisorCardView({ card, onConfirm, onCancel, busyActionId }: { c
         <View style={{ gap: 4, paddingTop: space[1] }}>
           {card.warnings.map((w) => (
             <View key={w} style={{ flexDirection: "row", gap: 6, alignItems: "flex-start" }}>
-              <AlertTriangle size={14} color={color.accent} style={{ marginTop: 2 }} />
+              <AlertTriangle size={14} color={color.accentInkOnSoft} style={{ marginTop: 2 }} />
               <Txt variant="label" color={color.accentInkOnSoft} style={{ flex: 1 }}>
                 {w}
               </Txt>

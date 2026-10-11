@@ -6,16 +6,17 @@ import { Txt } from "~/components/ui/text";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 
-const BUTTON: Record<ButtonVariant, { bg: string; fg: string; border: number }> = {
-  primary: { bg: color.ink, fg: color.inkOnDark, border: 0 },
-  secondary: { bg: color.surface, fg: color.ink, border: 0 },
-  ghost: { bg: "transparent", fg: color.ink, border: 0 },
-  destructive: { bg: color.surface, fg: color.danger, border: 0 },
+const BUTTON: Record<ButtonVariant, { bg: string; bgPressed: string; fg: string }> = {
+  primary: { bg: color.mint, bgPressed: color.mintPressed, fg: color.onMint },
+  secondary: { bg: color.surfaceSunken, bgPressed: color.line, fg: color.ink },
+  ghost: { bg: "transparent", bgPressed: color.lineSoft, fg: color.ink },
+  destructive: { bg: color.dangerSoft, bgPressed: "#F6DADA", fg: color.dangerInk },
 };
 
 /**
- * Bouton « Pill » du handoff : 52 pt (44 compact), rayon pilule, libellé 16/20 ×700 porteur de
- * valeur (« Enregistrer +2 ») ; « … » final = ouvre une confirmation. Appui : scale 0,97.
+ * Bouton v3 : 52 pt (36 compact), rayon 14 (10 compact). primary = menthe avec texte bleu nuit
+ * (une seule grande surface menthe par écran) ; secondary = gris clair sans bordure ; ghost ;
+ * destructive. Pressé : couleur plus dense et scale 0,98. Désactivé : gris clair, texte ink3.
  */
 export function Button({
   label,
@@ -42,7 +43,6 @@ export function Button({
 }) {
   const inactive = disabled || loading;
   const v = BUTTON[variant];
-  const bg = disabled ? color.lineStrong : v.bg;
   const fg = disabled ? color.ink3 : v.fg;
   return (
     <Pressable
@@ -56,16 +56,14 @@ export function Button({
       style={({ pressed }) => [
         {
           minHeight: compact ? size.buttonCompact : size.button,
-          borderRadius: radius.pill,
-          paddingHorizontal: compact ? space[4] : space[5],
+          borderRadius: compact ? radius.md : radius.xl,
+          paddingHorizontal: compact ? space[3] : space[4],
           flexDirection: "row",
           gap: space[2],
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: bg,
-          borderWidth: v.border,
-          opacity: pressed ? 0.9 : 1,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
+          backgroundColor: disabled ? color.surfaceSunken : pressed ? v.bgPressed : v.bg,
+          transform: [{ scale: pressed && !inactive ? 0.98 : 1 }],
         },
         style,
       ]}
@@ -75,7 +73,7 @@ export function Button({
       ) : (
         <>
           {icon}
-          <Txt variant="body" color={fg} style={{ fontFamily: "Manrope_700Bold", fontSize: compact ? 15 : 16, lineHeight: 20, textAlign: "center" }}>
+          <Txt variant="body" color={fg} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: compact ? 14 : 16, lineHeight: 20, textAlign: "center" }}>
             {label}
           </Txt>
         </>
@@ -84,8 +82,8 @@ export function Button({
   );
 }
 
-/** Bouton icône 40 pt (zone tactile 44) : surface blanche, ou plein `ink`. */
-export function IconButton({ icon, label, onPress, filled = false }: { icon: ReactNode; label: string; onPress: () => void; filled?: boolean }) {
+/** Bouton icône 36 dans une zone tactile de 44, rayon 12. `filled` = bleu nuit ; `onDark` = sur bandeau nuit. */
+export function IconButton({ icon, label, onPress, filled = false, onDark = false }: { icon: ReactNode; label: string; onPress: () => void; filled?: boolean; onDark?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -96,12 +94,11 @@ export function IconButton({ icon, label, onPress, filled = false }: { icon: Rea
         width: size.iconButton,
         height: size.iconButton,
         margin: (size.touchMin - size.iconButton) / 2,
-        borderRadius: radius.pill,
+        borderRadius: radius.lg,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: filled ? color.ink : color.surface,
-        opacity: pressed ? 0.9 : 1,
-        transform: [{ scale: pressed ? 0.97 : 1 }],
+        backgroundColor: onDark ? (filled ? color.mint : color.nightRaised) : filled ? color.brand : pressed ? color.line : color.surfaceSunken,
+        transform: [{ scale: pressed ? 0.96 : 1 }],
       })}
     >
       {icon}
@@ -125,9 +122,9 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
               void Haptics.selectionAsync().catch(() => {});
               onChange(o.value);
             }}
-            style={[{ flex: 1, minHeight: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2] }, selected ? { backgroundColor: color.surface } : null]}
+            style={{ flex: 1, minHeight: 36, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], backgroundColor: selected ? color.surface : "transparent" }}
           >
-            <Txt variant="label" color={selected ? color.ink : color.ink2} style={{ fontFamily: "Manrope_700Bold", fontSize: 14 }} numberOfLines={1}>
+            <Txt variant="label" color={selected ? color.ink : color.ink2} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1}>
               {o.label}
             </Txt>
           </Pressable>
@@ -137,11 +134,13 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
   );
 }
 
-/** Chip du handoff : 9×14, pilule, 13/18 ×700 ; sélectionnée `ink` / blanc ; tons ambre / rouge. */
+/**
+ * Filtre v3. Sélectionné : bleu nuit, texte clair. Repos : gris clair sans bordure (corps blanc).
+ * `tone` n'ajoute qu'un point coloré (jamais une pastille pleine).
+ */
 export function FilterChip({ label, count, selected, tone, onPress }: { label: string; count?: number; selected: boolean; tone?: "danger" | "accent"; onPress: () => void }) {
-  const fg = selected ? color.inkOnDark : tone === "danger" ? color.dangerInk : tone === "accent" ? color.accentInkOnSoft : color.ink;
-  const bg = selected ? color.ink : tone === "danger" ? color.dangerSoft : tone === "accent" ? color.accentSoft : color.surface;
   const text = count === undefined ? label : `${label} · ${count}`;
+  const dot = tone === "danger" ? color.danger : tone === "accent" ? color.accent : null;
   return (
     <Pressable
       accessibilityRole="button"
@@ -150,14 +149,17 @@ export function FilterChip({ label, count, selected, tone, onPress }: { label: s
       onPress={onPress}
       hitSlop={6}
       style={({ pressed }) => ({
-        paddingVertical: 9,
-        paddingHorizontal: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        minHeight: 34,
+        paddingHorizontal: space[3],
         borderRadius: radius.pill,
-        backgroundColor: bg,
-        opacity: pressed ? 0.9 : 1,
+        backgroundColor: selected ? color.brand : pressed ? color.line : color.surfaceSunken,
       })}
     >
-      <Txt variant="label" num color={fg} style={{ fontFamily: "Manrope_700Bold" }}>
+      {dot && !selected && (count ?? 0) > 0 ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot }} /> : null}
+      <Txt variant="label" num color={selected ? color.inkOnDark : color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
         {text}
       </Txt>
     </Pressable>
@@ -173,7 +175,7 @@ export function Thumb({ uri, size: s = size.thumb }: { uri?: string | null; size
 
 export function Avatar({ initials, size: s = size.iconButton, dark = true, onPress, label }: { initials: string; size?: number; dark?: boolean; onPress?: () => void; label?: string }) {
   const body = (
-    <View style={{ width: s, height: s, borderRadius: s / 2, backgroundColor: dark ? color.ink : color.line, alignItems: "center", justifyContent: "center" }}>
+    <View style={{ width: s, height: s, borderRadius: s / 2, backgroundColor: dark ? color.brand : color.surfaceSunken, alignItems: "center", justifyContent: "center" }}>
       <Txt variant="label" color={dark ? color.inkOnDark : color.ink} style={{ fontFamily: "Manrope_800ExtraBold" }}>
         {initials}
       </Txt>

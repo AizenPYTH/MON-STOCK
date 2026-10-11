@@ -1,78 +1,74 @@
 import { Pressable, View } from "react-native";
 import { router, type Href } from "expo-router";
+import { ChevronRight } from "lucide-react-native";
 import { toolsByCategory, type ToolDefinition } from "@/domain/tools/catalog";
 import { TOOL_ICONS } from "~/components/tools";
-import { Screen, SectionHeader, TabHeader, Txt } from "~/components/ui";
+import { Card, Screen, SectionHeader, StatusChip, TabHeader, Txt } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
-import { useLayout } from "~/theme/layout";
 
 /**
- * « Mes outils » : catalogue d'outils indépendants (calculs locaux et instantanés, ou appuyés sur
- * le serveur quand une donnée externe est nécessaire). Grille de tuiles (3 colonnes, 2 sur petit
- * écran) ; un outil « à venir » est atténué (55 %) et n'est pas ouvrable.
+ * « Mes outils » (v3) : outils groupés par usage, en listes (fixer un prix · TVA et devises ·
+ * expédier · sourcing). Calculs locaux et instantanés, ou appuyés sur le serveur quand une donnée
+ * externe est nécessaire. Un outil « à venir » est atténué et n'est pas ouvrable.
  */
 export default function ToolsScreen() {
   const groups = toolsByCategory();
-  const { compact } = useLayout();
-  const columns = compact ? 2 : 3;
   return (
     <Screen>
-      <TabHeader overline="Calculs locaux et instantanés" title="Mes outils" />
-      <Txt variant="bodyRegular">Estimations à partir de vos saisies, pour acheter, vendre et expédier.</Txt>
+      <TabHeader title="Mes outils" sub="Calculs locaux et instantanés · estimations à partir de vos saisies" />
       {groups.map((g) => (
         <View key={g.category} style={{ gap: space[2] }}>
           <SectionHeader title={g.label} />
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-            {g.tools.map((t) => (
-              <ToolTile key={t.id} tool={t} columns={columns} />
+          <Card>
+            {g.tools.map((t, i) => (
+              <ToolRow key={t.id} tool={t} last={i === g.tools.length - 1} />
             ))}
-            {Array.from({ length: (columns - (g.tools.length % columns)) % columns }, (_, k) => (
-              <View key={`pad-${k}`} style={{ flexBasis: 0, flexGrow: 1, minWidth: `${Math.floor(100 / columns) - 4}%` }} />
-            ))}
-          </View>
+          </Card>
         </View>
       ))}
     </Screen>
   );
 }
 
-function ToolTile({ tool, columns }: { tool: ToolDefinition; columns: number }) {
+function ToolRow({ tool, last }: { tool: ToolDefinition; last: boolean }) {
   const Icon = TOOL_ICONS[tool.icon];
   const soon = tool.availability === "soon" || !tool.route;
-  const body = (pressed: boolean) => (
+  const content = (pressed: boolean) => (
     <View
       style={{
-        minHeight: 104,
-        padding: space[3],
-        borderRadius: radius.xxl,
-        backgroundColor: pressed ? color.surfaceSunken : color.surface,
-        justifyContent: "space-between",
-        gap: space[2],
+        flexDirection: "row",
+        alignItems: "center",
+        gap: space[3],
+        paddingVertical: space[3],
+        paddingHorizontal: space[4],
+        minHeight: 64,
+        backgroundColor: pressed ? color.surfacePressed : "transparent",
+        borderBottomWidth: last ? 0 : 2,
+        borderBottomColor: color.surface,
         opacity: soon ? 0.55 : 1,
-        transform: [{ scale: pressed ? 0.97 : 1 }],
       }}
     >
-      <View style={{ width: 36, height: 36, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: soon ? color.lineSoft : color.surfaceDark }}>
-        <Icon size={18} color={soon ? color.ink3 : color.inkOnDark} strokeWidth={2.2} />
+      <View style={{ width: 40, height: 40, borderRadius: radius.lg, alignItems: "center", justifyContent: "center", backgroundColor: soon ? color.lineSoft : color.brand }}>
+        <Icon size={20} color={soon ? color.ink3 : color.inkOnDark} strokeWidth={2} />
       </View>
-      <View style={{ gap: 2 }}>
-        <Txt variant="body" numberOfLines={2} style={{ fontSize: 14, lineHeight: 18 }}>
-          {tool.title}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Txt variant="body">{tool.title}</Txt>
+        <Txt variant="label" numberOfLines={2}>
+          {tool.description}
         </Txt>
-        {soon ? <Txt variant="overline">À venir</Txt> : null}
       </View>
+      {soon ? <StatusChip label="À venir" tone="neutral" /> : <ChevronRight size={18} color={color.ink3} strokeWidth={2} />}
     </View>
   );
-  const frame = { flexBasis: 0, flexGrow: 1, minWidth: `${Math.floor(100 / columns) - 4}%` as `${number}%` };
   if (soon)
     return (
-      <View style={frame} accessible accessibilityLabel={`${tool.title}, à venir, non disponible`} testID={`tool-${tool.id}`}>
-        {body(false)}
+      <View accessible accessibilityLabel={`${tool.title}, à venir, non disponible`} testID={`tool-${tool.id}`}>
+        {content(false)}
       </View>
     );
   return (
-    <Pressable style={frame} testID={`tool-${tool.id}`} accessibilityRole="button" accessibilityLabel={`${tool.title}, ${tool.description}`} onPress={() => router.push(tool.route as Href)}>
-      {({ pressed }) => body(pressed)}
+    <Pressable testID={`tool-${tool.id}`} accessibilityRole="button" accessibilityLabel={`${tool.title}, ${tool.description}`} onPress={() => router.push(tool.route as Href)}>
+      {({ pressed }) => content(pressed)}
     </Pressable>
   );
 }

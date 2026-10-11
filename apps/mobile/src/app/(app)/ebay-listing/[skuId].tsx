@@ -134,7 +134,7 @@ function ListingForm({ orgId, prefill }: { orgId: string; prefill: EbayListingPr
               <View key={key} style={{ gap: 4 }}>
                 <Txt variant="label">{label}</Txt>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
-                  {list.length === 0 ? <Txt variant="label" color={color.danger}>Aucune politique : créez-la dans eBay (Compte → Politiques).</Txt> : null}
+                  {list.length === 0 ? <Txt variant="label" color={color.dangerInk}>Aucune politique : créez-la dans eBay (Compte → Politiques).</Txt> : null}
                   {list.map((p) => (
                     <FilterChip
                       key={p.id}
@@ -148,7 +148,7 @@ function ListingForm({ orgId, prefill }: { orgId: string; prefill: EbayListingPr
             ))}
             <Txt variant="label">Emplacement d'inventaire</Txt>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
-              {s.locations.length === 0 ? <Txt variant="label" color={color.danger}>Aucun emplacement : à créer chez eBay (adresse d'expédition).</Txt> : null}
+              {s.locations.length === 0 ? <Txt variant="label" color={color.dangerInk}>Aucun emplacement : à créer chez eBay (adresse d'expédition).</Txt> : null}
               {s.locations.map((l) => (
                 <FilterChip key={l.id} label={l.name || l.id} selected={d.merchantLocationKey === l.id} onPress={() => patch({ merchantLocationKey: l.id })} />
               ))}
@@ -161,7 +161,7 @@ function ListingForm({ orgId, prefill }: { orgId: string; prefill: EbayListingPr
             <SectionHeader title="Résultat du contrôle" />
             <Card padded style={{ gap: 4 }}>
               {check.errors.map((e) => (
-                <Txt key={e} variant="body" color={color.danger}>
+                <Txt key={e} variant="body" color={color.dangerInk}>
                   ✕ {e}
                 </Txt>
               ))}

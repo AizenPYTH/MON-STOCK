@@ -150,14 +150,14 @@ export default function NewProductScreen() {
         {formError ? <AlertBanner text={formError} tone="dark" /> : null}
         <Card padded style={{ gap: space[3] }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-            <Sparkles size={16} color={color.accent} />
+            <Sparkles size={16} color={color.accentInkOnSoft} />
             <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700], flex: 1 }}>
               Dites ou écrivez le produit
             </Txt>
           </View>
           <Txt variant="label">Ex. « 3 iPhone 13 128 Go noir grade A achetés 310 € revendus 429 €, et 2 en 256 Go bleu grade B ». L'IA remplit le formulaire ; vous vérifiez avant de créer.</Txt>
           <VoiceInput value={aiText} onChangeText={setAiText} onSubmit={(t) => void analyze(t)} placeholder="Décrivez le produit…" busy={aiBusy} submitLabel="Remplir le formulaire" testID="product-ai-input" />
-          {aiError ? <Txt variant="label" color={color.danger} accessibilityLiveRegion="polite">{aiError}</Txt> : null}
+          {aiError ? <Txt variant="label" color={color.dangerInk} accessibilityLiveRegion="polite">{aiError}</Txt> : null}
           {aiNotes.length ? (
             <View style={{ gap: 2 }} accessibilityLiveRegion="polite">
               <Txt variant="label" color={color.accentInkOnSoft} style={{ fontFamily: fontFamily[700] }}>
@@ -201,7 +201,7 @@ export default function NewProductScreen() {
         <Txt variant="kpiSm" accessibilityRole="header">
           Variantes ({variants.length})
         </Txt>
-        {errors.variants ? <Txt variant="label" color={color.danger}>{errors.variants}</Txt> : null}
+        {errors.variants ? <Txt variant="label" color={color.dangerInk}>{errors.variants}</Txt> : null}
         {variants.map((v, i) => (
           <VariantCard key={v.key} index={i} draft={v} errors={errors} onChange={(p) => patchVariant(i, p)} onDuplicate={() => duplicate(i)} onRemove={variants.length > 1 ? () => remove(i) : undefined} />
         ))}

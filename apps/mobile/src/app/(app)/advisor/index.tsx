@@ -241,7 +241,7 @@ export default function AdvisorScreen() {
             <View style={{ flex: 1, gap: space[2] }}>
               <VoiceStatus phase={shownPhase} detail={shownPhase === "listening" ? dictation.transcript || null : statusDetail} onStop={stopAll} />
               {dictation.error ? (
-                <Txt variant="label" color={color.danger} accessibilityLiveRegion="polite">
+                <Txt variant="label" color={color.dangerInk} accessibilityLiveRegion="polite">
                   {dictation.error}
                 </Txt>
               ) : null}
@@ -308,7 +308,7 @@ export default function AdvisorScreen() {
           {items.length === 0 ? (
             <View style={{ gap: space[3] }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-                <Sparkles size={22} color={color.accent} />
+                <Sparkles size={22} color={color.accentInkOnSoft} />
                 <Txt variant="title2" accessibilityRole="header">
                   Votre conseiller
                 </Txt>

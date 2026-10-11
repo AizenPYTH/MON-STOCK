@@ -102,7 +102,7 @@ export default function CurrencyToolScreen() {
             </View>
           </View>
           {errors.currency ? (
-            <Txt variant="label" color={color.danger}>
+            <Txt variant="label" color={color.dangerInk}>
               {errors.currency}
             </Txt>
           ) : null}

@@ -213,7 +213,7 @@ export default function SourcingImportScreen() {
                 maxLength={3}
               />
               {issues.map((i) => (
-                <Txt key={i} variant="label" color={color.danger}>
+                <Txt key={i} variant="label" color={color.dangerInk}>
                   {i}
                 </Txt>
               ))}
@@ -229,7 +229,7 @@ export default function SourcingImportScreen() {
                   </Txt>
                 </View>
                 {s.errors.length ? (
-                  <Txt variant="label" color={color.danger}>
+                  <Txt variant="label" color={color.dangerInk}>
                     {s.errors.join(" ")}
                   </Txt>
                 ) : (

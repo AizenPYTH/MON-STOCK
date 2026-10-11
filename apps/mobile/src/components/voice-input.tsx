@@ -72,11 +72,11 @@ export function VoiceInput({
         </RoundButton>
       </View>
       {dictation.listening ? (
-        <Txt variant="label" color={color.accent} accessibilityLiveRegion="polite">
+        <Txt variant="label" color={color.accentInkOnSoft} accessibilityLiveRegion="polite">
           J'écoute… touchez ■ quand vous avez fini.
         </Txt>
       ) : dictation.error ? (
-        <Txt variant="label" color={color.danger} accessibilityLiveRegion="polite">
+        <Txt variant="label" color={color.dangerInk} accessibilityLiveRegion="polite">
           {dictation.error}
         </Txt>
       ) : null}

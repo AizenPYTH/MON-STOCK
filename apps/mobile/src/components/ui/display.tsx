@@ -7,16 +7,25 @@ import { Txt } from "~/components/ui/text";
 
 export type QtyLevel = "out" | "low" | "ok";
 
-/** Quantité en liste : badge 44×44 (rayon 12) ; rupture → `dangerSoft`, faible → `accentSoft`, sinon `bg`. */
+/**
+ * Quantité en liste (v3) : le chiffre reste en encre ; seuls un point coloré et le mot signalent
+ * rupture ou faible (la couleur n'est jamais seule, pas de pastille pleine).
+ */
 export function QtyBadge({ qty, level }: { qty: number; level: QtyLevel }) {
-  const fg = level === "out" ? color.danger : level === "low" ? color.accentInkOnSoft : color.ink;
-  const bg = level === "out" ? color.dangerSoft : level === "low" ? color.accentSoft : color.bg;
   const label = level === "out" ? "rupture" : level === "low" ? "faible" : "en stock";
+  const dot = level === "out" ? color.danger : level === "low" ? color.accent : null;
+  const fg = level === "out" ? color.dangerInk : level === "low" ? color.accentInkOnSoft : color.ink3;
   return (
-    <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: bg, alignItems: "center", justifyContent: "center" }} accessible accessibilityLabel={`${qty} disponible(s), ${label}`}>
-      <Txt variant="kpiSm" num color={fg} style={{ fontSize: 18, lineHeight: 22 }} adjustsFontSizeToFit numberOfLines={1}>
+    <View style={{ alignItems: "flex-end", minWidth: 52 }} accessible accessibilityLabel={`${qty} disponible(s), ${label}`}>
+      <Txt variant="kpiSm" num>
         {qty}
       </Txt>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+        {dot ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot }} /> : null}
+        <Txt variant="label" color={fg} style={{ fontSize: 12, lineHeight: 16 }}>
+          {label}
+        </Txt>
+      </View>
     </View>
   );
 }
@@ -25,16 +34,16 @@ export type ChipTone = "accent" | "neutral" | "success" | "danger" | "dark";
 
 const CHIP: Record<ChipTone, { fg: string; bg: string }> = {
   accent: { fg: color.accentInkOnSoft, bg: color.accentSoft },
-  neutral: { fg: color.ink2, bg: color.lineSoft },
-  success: { fg: color.successInk, bg: color.successSoft },
+  neutral: { fg: color.ink2, bg: color.surfaceSunken },
+  success: { fg: color.success, bg: color.successSoft },
   danger: { fg: color.dangerInk, bg: color.dangerSoft },
-  dark: { fg: color.inkOnDark, bg: color.ink },
+  dark: { fg: color.inkOnDark, bg: color.brand },
 };
 
 export function StatusChip({ label, tone }: { label: string; tone: ChipTone }) {
   const c = CHIP[tone];
   return (
-    <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: radius.xs, backgroundColor: c.bg, alignSelf: "flex-start" }}>
+    <View style={{ paddingVertical: 3, paddingHorizontal: 8, borderRadius: radius.xs, backgroundColor: c.bg, alignSelf: "flex-start" }}>
       <Txt variant="micro" color={c.fg} style={{ textTransform: "none", letterSpacing: 0 }}>
         {label}
       </Txt>
@@ -45,11 +54,11 @@ export function StatusChip({ label, tone }: { label: string; tone: ChipTone }) {
 export type TileTone = "dark" | "success" | "accent" | "danger" | "neutral" | "unknown";
 
 const TILE: Record<TileTone, { bg: string; fg: string; label: string; reason: string; border?: string }> = {
-  dark: { bg: color.surfaceDark, fg: color.inkOnDark, label: color.inkOnDarkMuted, reason: color.inkOnDarkMuted },
-  success: { bg: color.successSoft, fg: color.successInk, label: color.successInk, reason: color.successInk },
+  dark: { bg: color.brand, fg: color.inkOnDark, label: color.inkOnDarkMuted, reason: color.inkOnDarkMuted },
+  success: { bg: color.successSoft, fg: color.success, label: color.success, reason: color.success },
   accent: { bg: color.accentSoft, fg: color.accentInkOnSoft, label: color.accentInkOnSoft, reason: color.accentInkOnSoft },
   danger: { bg: color.dangerSoft, fg: color.dangerInk, label: color.dangerInk, reason: color.dangerInk },
-  neutral: { bg: color.surface, fg: color.ink, label: color.ink3, reason: color.ink2 },
+  neutral: { bg: color.bg, fg: color.ink, label: color.ink3, reason: color.ink2 },
   unknown: { bg: "transparent", fg: color.ink3, label: color.ink3, reason: color.accentInkOnSoft, border: color.accent },
 };
 
@@ -59,16 +68,16 @@ const TILE: Record<TileTone, { bg: string; fg: string; label: string; reason: st
  */
 export function Tile({ label, value, reason, reasonTone, tone = "neutral", onPress, selected, testID }: { label: string; value: string | null; reason?: string; reasonTone?: "success" | "danger"; tone?: TileTone; onPress?: () => void; selected?: boolean; testID?: string }) {
   const t = TILE[value === null ? "unknown" : tone];
-  const dark = t.bg === color.surfaceDark;
-  const reasonColor = reasonTone === "success" ? (dark ? color.successOnDark : color.success) : reasonTone === "danger" ? (dark ? "#F0A59C" : color.danger) : t.reason;
+  const dark = t.bg === color.brand;
+  const reasonColor = reasonTone === "success" ? (dark ? color.successOnDark : color.success) : reasonTone === "danger" ? (dark ? color.dangerOnDark : color.dangerInk) : t.reason;
   const shown = value ?? "—";
   const body = (
     <View
       style={{
         flex: 1,
-        minHeight: 96,
+        minHeight: 88,
         padding: space[4],
-        borderRadius: radius.xxl,
+        borderRadius: radius.xl,
         backgroundColor: t.bg,
         borderWidth: t.border ? 1.5 : selected ? 2 : 0,
         borderStyle: t.border ? "dashed" : "solid",
@@ -127,7 +136,7 @@ export function KpiGrid({ children, columns }: { children: ReactNode[]; columns?
 
 export function HeroCard({ label, value, stats }: { label: string; value: string; stats: { label: string; value: string; tone?: "success" | "danger" }[] }) {
   return (
-    <View style={{ backgroundColor: color.surfaceDark, borderRadius: radius.xxl, padding: space[5] }} accessible accessibilityLabel={`${label} : ${value}. ${stats.map((s) => `${s.label} ${s.value}`).join(", ")}`}>
+    <View style={{ backgroundColor: color.brand, borderRadius: radius.xl, padding: space[5] }} accessible accessibilityLabel={`${label} : ${value}. ${stats.map((s) => `${s.label} ${s.value}`).join(", ")}`}>
       <Txt variant="bodyRegular" color={color.inkOnDarkMuted}>
         {label}
       </Txt>
@@ -138,7 +147,7 @@ export function HeroCard({ label, value, stats }: { label: string; value: string
         {stats.map((s) => (
           <Txt key={s.label} variant="label" color={color.inkOnDarkMuted}>
             {s.label}{" "}
-            <Txt variant="label" num color={s.tone === "success" ? color.successOnDark : s.tone === "danger" ? "#F0A59C" : color.inkOnDark} style={{ fontFamily: "Manrope_800ExtraBold" }}>
+            <Txt variant="label" num color={s.tone === "success" ? color.mint : s.tone === "danger" ? color.dangerOnDark : color.inkOnDark} style={{ fontFamily: "Manrope_800ExtraBold" }}>
               {s.value}
             </Txt>
           </Txt>
@@ -151,7 +160,7 @@ export function HeroCard({ label, value, stats }: { label: string; value: string
 export function AlertBanner({ text, tone = "accent", onPress }: { text: string; tone?: "accent" | "dark"; onPress?: () => void }) {
   const dark = tone === "dark";
   const body = (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: space[3], paddingHorizontal: 14, borderRadius: radius.xl, backgroundColor: dark ? color.surfaceDark : color.accentSoft }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: space[3], paddingHorizontal: 14, borderRadius: radius.xl, backgroundColor: dark ? color.brand : color.accentSoft }}>
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color.accent }} />
       <Txt variant="bodyRegular" color={dark ? color.inkOnDark : color.accentInkOnSoft} style={{ flex: 1, fontFamily: "Manrope_600SemiBold" }}>
         {text}
@@ -180,7 +189,7 @@ export function Timeline({ steps }: { steps: TimelineStep[] }) {
               borderRadius: 10,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: s.state === "done" ? color.ink : s.state === "current" ? color.accentSoft : "transparent",
+              backgroundColor: s.state === "done" ? color.brand : s.state === "current" ? color.accentSoft : "transparent",
               borderWidth: s.state === "done" ? 0 : s.state === "current" ? 2 : 1.5,
               borderColor: s.state === "current" ? color.accent : color.line,
             }}
@@ -191,7 +200,7 @@ export function Timeline({ steps }: { steps: TimelineStep[] }) {
             {s.label}
           </Txt>
           {s.meta ? (
-            <Txt variant="label" num color={s.metaTone === "accent" ? color.accent : color.ink3} style={s.metaTone === "accent" ? { fontFamily: "Manrope_700Bold" } : null}>
+            <Txt variant="label" num color={s.metaTone === "accent" ? color.accentInkOnSoft : color.ink3} style={s.metaTone === "accent" ? { fontFamily: "Manrope_700Bold" } : null}>
               {s.meta}
             </Txt>
           ) : null}
@@ -209,7 +218,7 @@ export function BarChart({ data, height = 64 }: { data: { label: string; value: 
       {data.map((d, i) => (
         <View key={d.label} style={{ flex: 1, alignItems: "center", gap: 6 }}>
           <View style={{ height, width: "100%", justifyContent: "flex-end" }}>
-            <View style={{ height: Math.max(2, (d.value / max) * height), backgroundColor: i === data.length - 1 ? color.ink : color.lineStrong, borderTopLeftRadius: 4, borderTopRightRadius: 4 }} />
+            <View style={{ height: Math.max(2, (d.value / max) * height), backgroundColor: i === data.length - 1 ? color.brand : color.lineStrong, borderTopLeftRadius: 4, borderTopRightRadius: 4 }} />
           </View>
           <Txt variant="tab" color={color.ink3}>
             {d.label}
@@ -241,7 +250,7 @@ export function TrustBadge({ kind, label, ageDays }: { kind: TrustKind; label?: 
   const stale = kind === "freshness" && (ageDays === undefined || ageDays > 7);
   const st =
     kind === "api"
-      ? { bg: color.ink, fg: color.inkOnDark }
+      ? { bg: color.brand, fg: color.inkOnDark }
       : kind === "unverified" || stale
         ? { bg: color.accentSoft, fg: color.accentInkOnSoft }
         : kind === "missing"
@@ -290,7 +299,7 @@ export function QualityBars({ filled, total = 4, label }: { filled: number; tota
   return (
     <View style={{ flexDirection: "row", gap: 3 }} accessible accessibilityLabel={label ?? `Qualité des données : ${n} sur ${total}`}>
       {Array.from({ length: total }, (_, i) => (
-        <View key={i} style={{ width: 14, height: 6, borderRadius: 3, backgroundColor: i < n ? color.ink : color.line }} />
+        <View key={i} style={{ width: 14, height: 6, borderRadius: 3, backgroundColor: i < n ? color.brand : color.line }} />
       ))}
     </View>
   );

@@ -133,7 +133,7 @@ function RadarRow({ item: i }: { item: RadarItemDTO }) {
           <Txt variant="headline" style={{ flex: 1 }} numberOfLines={1}>
             {i.sku.name}
           </Txt>
-          {i.savedAt ? <Bookmark size={16} color={color.accent} fill={color.accent} /> : null}
+          {i.savedAt ? <Bookmark size={16} color={color.accentInkOnSoft} fill={color.accent} /> : null}
           <ChevronRight size={16} color={color.ink3} />
         </View>
         <Txt variant="label" numberOfLines={1}>

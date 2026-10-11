@@ -48,7 +48,7 @@ export default function AdvisorHistoryScreen() {
             <Txt variant="label">{new Date(c.lastMessageAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}</Txt>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={`Supprimer : ${c.title}`} onPress={() => confirmDelete(c.id, c.title)} hitSlop={6} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
-            <Trash2 size={18} color={color.danger} />
+            <Trash2 size={18} color={color.dangerInk} />
           </Pressable>
         </View>
       ))}

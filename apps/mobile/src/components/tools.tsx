@@ -5,7 +5,7 @@ import * as Haptics from "expo-haptics";
 import { BadgePercent, Calculator, CircleAlert, Coins, Copy, PackageSearch, Percent, Receipt, Scale, Tag, TrendingUp, Truck, X, type LucideIcon } from "lucide-react-native";
 import { sanitizeAmountInput } from "@/domain/tools/decimal";
 import type { ToolIcon } from "@/domain/tools/catalog";
-import { Card, DetailHeader, FilterChip, Txt, useToast } from "~/components/ui";
+import { Card, DetailHeader, FilterChip, Txt, markHeader, useToast } from "~/components/ui";
 import { color, radius, size, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -24,17 +24,9 @@ export const TOOL_ICONS: Record<ToolIcon, LucideIcon> = {
   "trending-up": TrendingUp,
 };
 
-export function ToolHeader({ title, description }: { title: string; description?: string }) {
-  return (
-    <>
-      <DetailHeader parentLabel="Mes outils" />
-      <Txt variant="title2" accessibilityRole="header">
-        {title}
-      </Txt>
-      {description ? <Txt variant="bodyRegular">{description}</Txt> : null}
-    </>
-  );
-}
+export const ToolHeader = markHeader(function ToolHeader({ title, description }: { title: string; description?: string }) {
+  return <DetailHeader parentLabel="Mes outils" title={title} sub={description} />;
+});
 
 /**
  * Champ numérique : clavier décimal, virgule française, bouton d'effacement, suffixe (€, %, kg…).
@@ -98,10 +90,10 @@ export function AmountField({
             <X size={16} color={color.ink2} />
           </Pressable>
         ) : null}
-        {error ? <CircleAlert size={18} color={color.danger} style={{ marginLeft: space[2] }} /> : null}
+        {error ? <CircleAlert size={18} color={color.dangerInk} style={{ marginLeft: space[2] }} /> : null}
       </View>
       {error ? (
-        <Txt variant="label" color={color.danger} accessibilityLiveRegion="polite">
+        <Txt variant="label" color={color.dangerInk} accessibilityLiveRegion="polite">
           {error}
         </Txt>
       ) : hint ? (

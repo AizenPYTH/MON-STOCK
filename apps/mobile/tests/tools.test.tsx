@@ -61,33 +61,40 @@ describe("catalogue Mes outils", () => {
   });
 });
 
-describe("calculateur de TVA", () => {
+describe("calculateur de TVA (clavier intégré)", () => {
+  const type = (keys: string) => {
+    for (const k of keys) fireEvent.press(screen.getByTestId(`key-${k}`));
+  };
   it("100 € HT à 20 % → 20 € de TVA, 120 € TTC, calcul local instantané ; inversion ; copie", async () => {
     const Screen = VatTool;
     render(wrap(<Screen />));
-    expect(screen.getByText(/Saisissez un montant ht/i)).toBeTruthy();
-    fireEvent.changeText(screen.getByTestId("vat-amount"), "100");
-    expect(screen.getByText("20,00 €")).toBeTruthy();
-    expect(screen.getByText("120,00 €")).toBeTruthy();
+    expect(screen.getByText(/Tapez un montant HT/)).toBeTruthy();
+    expect(screen.getByTestId("key-action")).toBeDisabled();
+    type("100");
+    expect(screen.getByLabelText("HT : 100 €, champ en cours de saisie")).toBeTruthy();
+    expect(screen.getByLabelText("TVA 20 % : 20,00 €")).toBeTruthy();
+    expect(screen.getByLabelText("TTC : 120,00 €")).toBeTruthy();
     expect(mockCallApi).not.toHaveBeenCalled();
-    fireEvent.press(screen.getByTestId("vat-invert"));
-    expect(screen.getByLabelText("Montant TTC")).toBeTruthy();
-    expect(screen.getByDisplayValue("120,00")).toBeTruthy();
-    fireEvent.press(screen.getByLabelText("Copier les résultats"));
+    // le champ TTC touché devient la saisie (résultat repris)
+    fireEvent.press(screen.getByTestId("vat-field-ttc"));
+    expect(screen.getByLabelText("TTC : 120,00 €, champ en cours de saisie")).toBeTruthy();
+    expect(screen.getByLabelText("HT : 100,00 €")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("key-action"));
     await waitFor(() => expect(mockSetString).toHaveBeenCalled());
+    expect(String((mockSetString.mock.calls[0] as unknown[])[0])).toMatch(/TVA 20\s%\s:\s20,00\s€/u);
   });
-  it("19,99 € HT, taux 5,5 %, saisie invalide et champ vide", async () => {
+  it("19,99 € HT, taux 5,5 % ; effacer ; au plus 2 décimales", async () => {
     const Screen = VatTool;
     render(wrap(<Screen />));
-    fireEvent.press(screen.getByText("5,5 %"));
-    fireEvent.changeText(screen.getByTestId("vat-amount"), "19,99");
-    expect(screen.getByText("1,10 €")).toBeTruthy(); // 1,09945 → 1,10
-    expect(screen.getByText("21,09 €")).toBeTruthy();
-    fireEvent.changeText(screen.getByTestId("vat-amount"), "12,,5");
-    expect(screen.getByText(/Montant invalide/)).toBeTruthy();
-    fireEvent.changeText(screen.getByTestId("vat-amount"), "");
-    expect(screen.queryByText(/^Résultat · base/)).toBeNull();
-    expect(screen.getByText(/Saisissez un montant ht/i)).toBeTruthy();
+    fireEvent.press(screen.getByRole("tab", { name: "5,5" }));
+    type("19,999");
+    expect(screen.getByLabelText("HT : 19,99 €, champ en cours de saisie")).toBeTruthy();
+    expect(screen.getByLabelText("TVA 5,5 % : 1,10 €")).toBeTruthy(); // 1,09945 → 1,10
+    expect(screen.getByLabelText("TTC : 21,09 €")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("key-back"));
+    expect(screen.getByLabelText("HT : 19,9 €, champ en cours de saisie")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("key-clear"));
+    expect(screen.getByText(/Tapez un montant HT/)).toBeTruthy();
   });
 });
 

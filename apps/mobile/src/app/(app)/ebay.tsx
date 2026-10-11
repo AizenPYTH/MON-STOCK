@@ -91,7 +91,7 @@ export default function EbayScreen() {
       {!d.ebay.configured ? (
         <Card padded style={{ gap: space[2] }}>
           <View style={{ flexDirection: "row", gap: space[2], alignItems: "center" }}>
-            <CircleAlert size={18} color={color.accent} />
+            <CircleAlert size={18} color={color.accentInkOnSoft} />
             <Txt variant="body">Intégration eBay pas encore configurée sur le serveur</Txt>
           </View>
           <Txt variant="bodyRegular">

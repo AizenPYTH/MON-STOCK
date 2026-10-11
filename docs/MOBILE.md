@@ -190,6 +190,38 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Fournisseurs (annuaire) | 120 fournisseurs ; niveau d'accès réel (connecté, importable, accessible, vérifié, identifié) et prochaine action ; filtres | `/sourcing/directory` |
 | Import protégé | Fichier suspect (lignes illisibles, catalogue tronqué, prix décalés, doublons) : import suspendu, rien n'est modifié, « Importer quand même » après vérification | `/sourcing/import` |
 
+### 4.1 ter Design v3 « Bleu nuit + menthe » (handoff design_handoff_mon_stock_v3, remplace « Atelier »)
+
+- **Jetons** (`src/theme/*`) :
+  - bleu nuit `#101C2C` (marque) et menthe `#8BE8BE` (action principale, onglet actif) ;
+  - fond `#F7F8FA`, corps blanc ;
+  - textes accessibles (`dangerInk`, `accentInkOnSoft`, `success #1E7F57`) ;
+  - titres resserrés (26 / 20) ;
+  - les clés des versions précédentes sont conservées.
+- **Construction commune** (`components/ui/header.tsx`, `layout.tsx`) :
+  - chaque écran a un **bandeau bleu nuit** (`NightHeader`) : retour « ‹ Parent », action, titre, chiffre clé facultatif et 2 à 4 stats, onglets intercalaires facultatifs ;
+  - le **corps blanc remonte de 22 pt** (rayon 22), ou fait corps avec l'onglet actif ;
+  - `Screen` place automatiquement le premier `TabHeader` / `DetailHeader` / `ToolHeader` dans le bandeau : les 40 écrans passent au style v3 sans être réécrits ;
+  - listes en blocs gris clair (rayon 14) avec un filet blanc de 2 pt entre les lignes.
+- **Navigation** :
+  - barre d'onglets **ancrée** : fond blanc, pastille menthe 52×28 derrière l'icône active, « Auj. » sur petit écran ;
+  - la route reste `today` (`/intelligence` redirige toujours).
+- **Composants** :
+  - boutons : primaire menthe avec texte nuit, secondaire gris clair, rayon 14 ;
+  - filtres sélectionnés en bleu nuit ; quantité en encre avec un point et un mot pour faible ou rupture ;
+  - toasts bleu nuit ;
+  - nouveaux composants **`ValueField`** (champ-valeur 64 pt), **`Keypad`** (clavier intégré 4×4, une seule touche menthe), **`ChoiceTiles`**.
+- **Écrans retravaillés** :
+  - **Aujourd'hui** : chiffre d'affaires du jour, ventes, marge ≈ et écart avec la veille dans le bandeau ; onglets Aujourd'hui / Analyse ;
+  - **Stock** : bandeau, liste dense ;
+  - **Ventes** : chiffre d'affaires sur 7 jours, à expédier, remboursements et annonces dans le bandeau ; onglets **À expédier · Toutes · Annonces**. Ce sont les filtres existants : le « En attente » de la maquette demanderait un filtre multi-statut côté données, non modifié ;
+  - **Outils** : listes groupées par usage ;
+  - **TVA** : écran de référence « calculatrice ». Taux en grands onglets dans le bandeau, champs HT / TVA / TTC, clavier intégré sans clavier système, touche « Copier ». Le champ touché devient la saisie ; le calcul exact `evaluateVatForm` est inchangé ; un autre taux s'ajoute dans une feuille.
+- **Pas encore fait** :
+  - clavier intégré pour les autres outils (marge, prix de vente, frais eBay, remise, devises), qui gardent leurs champs actuels au nouveau style ;
+  - titres des écrans de détail dans le bandeau (le titre reste dans le corps) ;
+  - thème sombre.
+
 ### 4.1 bis Refonte « Atelier », vert pomme (handoff du 11 octobre 2026)
 
 Le handoff `design_handoff_mon_stock_refonte` est en place pour les **fondations**. Il est appliqué à tous les écrans, puisque ceux-ci réutilisent les composants partagés.

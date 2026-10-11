@@ -1,18 +1,28 @@
-import type { ReactElement, ReactNode } from "react";
+import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { Pressable, ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChevronRight } from "lucide-react-native";
 import { color, radius, shadow, size, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
-import { Avatar, initialsOf } from "~/components/ui/controls";
-import { useTabBarClearance } from "~/components/ui/tab-bar";
+import { initialsOf } from "~/components/ui/controls";
+import { useInTabs, useTabBarClearance } from "~/components/ui/tab-bar";
+import { markHeader, NIGHT_HEADER, NightHeader, type HeaderStat, type HeaderTabs } from "~/components/ui/header";
 import { useUser } from "~/auth/session-provider";
 
+function headerOf(children: ReactNode): { header: ReactElement | null; rest: ReactNode[] } {
+  const arr = Children.toArray(children);
+  const i = arr.findIndex((c) => isValidElement(c) && typeof c.type === "function" && (c.type as unknown as Record<symbol, unknown>)[NIGHT_HEADER] !== undefined);
+  if (i < 0) return { header: null, rest: arr };
+  return { header: arr[i] as ReactElement, rest: arr.filter((_, k) => k !== i) };
+}
+
 /**
- * Écran : SafeArea, fond `bg`, marge horizontale 16 (12 sur iPhone SE, 20 si ≥ 430), contenu
- * centré sur tablette ; dans un onglet, le bas réserve la place de la barre flottante.
+ * Écran v3 : bandeau bleu nuit (premier `TabHeader` / `DetailHeader` / `ToolHeader` des enfants,
+ * ou `header`) puis corps blanc qui remonte de 22 pt (rayon 22) ; marge 16 (12 sur iPhone SE,
+ * 20 si ≥ 430), contenu centré sur tablette. Sans en-tête : corps blanc plein écran.
  */
 export function Screen({
   children,
@@ -20,80 +30,106 @@ export function Screen({
   refreshControl,
   footer,
   contentGap = space.blockGap,
+  header: explicitHeader,
 }: {
   children: ReactNode;
   scroll?: boolean;
   refreshControl?: ReactElement;
   footer?: ReactNode;
   contentGap?: number;
+  header?: ReactElement;
 }) {
   const { screenX, maxWidth } = useLayout();
   const clearance = useTabBarClearance();
+  const found = explicitHeader ? { header: explicitHeader, rest: Children.toArray(children) } : headerOf(children);
+  const header = found.header;
+  const props = (header?.props ?? {}) as { tabs?: unknown; hero?: unknown };
+  const overlap = Boolean(header) && !props.tabs;
   const inner: ViewStyle = { paddingHorizontal: screenX, gap: contentGap, width: "100%", maxWidth, alignSelf: "center" };
+  const body = scroll ? (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={[inner, { paddingTop: overlap ? space[5] : space[4], paddingBottom: space[8] + clearance }]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      refreshControl={refreshControl as never}
+    >
+      {found.rest}
+    </ScrollView>
+  ) : (
+    <View style={[inner, { flex: 1, paddingTop: overlap ? space[5] : space[4] }]}>{found.rest}</View>
+  );
+  if (!header)
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={["top", "left", "right"]}>
+        <StatusBar style="dark" />
+        {body}
+        {footer}
+      </SafeAreaView>
+    );
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: color.bg }} edges={["top", "left", "right"]}>
-      {scroll ? (
-        <ScrollView contentContainerStyle={[inner, { paddingTop: space[2], paddingBottom: space[8] + clearance }]} keyboardShouldPersistTaps="handled" refreshControl={refreshControl as never}>
-          {children}
-        </ScrollView>
-      ) : (
-        <View style={[inner, { flex: 1, paddingTop: space[2] }]}>{children}</View>
-      )}
-      {footer}
+    <SafeAreaView style={{ flex: 1, backgroundColor: color.brand }} edges={["left", "right"]}>
+      <StatusBar style="light" />
+      {header}
+      <View style={{ flex: 1, backgroundColor: color.surface, marginTop: overlap ? -space.bodyOverlap : 0, borderTopLeftRadius: overlap ? radius.body : 0, borderTopRightRadius: overlap ? radius.body : 0, overflow: "hidden" }}>
+        {body}
+        {footer}
+      </View>
     </SafeAreaView>
   );
 }
 
 /**
- * En-tête d'onglet : titre `title1` (+ sur-titre éventuel), actions à droite et, dans un onglet,
- * l'avatar (40 pt) qui ouvre Réglages et Diagnostic.
+ * En-tête d'onglet (bandeau nuit) : titre 26/32, sur-titre, chiffre clé et onglets facultatifs,
+ * actions à droite et, dans un onglet, l'avatar qui ouvre Réglages et Diagnostic.
  */
-export function TabHeader({ title, overline, right, avatar }: { title: string; overline?: string; right?: ReactNode; avatar?: boolean }) {
-  const inTabs = useTabBarClearance() > 0;
+export const TabHeader = markHeader(function TabHeader<T extends string = string>({
+  title,
+  overline,
+  sub,
+  right,
+  avatar,
+  hero,
+  tabs,
+}: {
+  title: string;
+  overline?: string;
+  sub?: string;
+  right?: ReactNode;
+  avatar?: boolean;
+  hero?: { value: string; label?: string; stats?: HeaderStat[] };
+  tabs?: HeaderTabs<T>;
+}) {
+  const inTabs = useInTabs();
   const showAvatar = avatar ?? inTabs;
-  const { compact } = useLayout();
-  return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingTop: space[3] }}>
-      <View style={{ flexShrink: 1 }}>
-        {overline ? <Txt variant="label">{overline}</Txt> : null}
-        <Txt variant="title1" accessibilityRole="header" numberOfLines={1} style={compact ? { fontSize: 24, lineHeight: 30 } : null}>
-          {title}
-        </Txt>
-      </View>
-      {right || showAvatar ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-          {right}
-          {showAvatar ? <AccountAvatar /> : null}
-        </View>
-      ) : null}
-    </View>
-  );
-}
+  const actions =
+    right || showAvatar ? (
+      <>
+        {right}
+        {showAvatar ? <AccountAvatar /> : null}
+      </>
+    ) : undefined;
+  return <NightHeader right={actions} over={overline} title={title} sub={sub} hero={hero} tabs={tabs} />;
+});
 
 function AccountAvatar() {
   const user = useUser();
   const name = (user?.user_metadata as { full_name?: string } | undefined)?.full_name ?? user?.email;
-  return <Avatar initials={initialsOf(name)} size={size.iconButton} label="Compte, réglages et diagnostic" onPress={() => router.push("/settings")} />;
-}
-
-/** En-tête d'écran de détail : chevron + libellé du parent, action à droite. */
-export function DetailHeader({ parentLabel, right, onBack }: { parentLabel: string; right?: ReactNode; onBack?: () => void }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: size.touchMin }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Retour : ${parentLabel}`}
-        hitSlop={8}
-        onPress={onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/today")))}
-        style={{ flexDirection: "row", alignItems: "center", gap: 2, minHeight: size.touchMin, paddingRight: space[3] }}
-      >
-        <ChevronLeft size={22} color={color.ink} strokeWidth={2} />
-        <Txt variant="body">{parentLabel}</Txt>
-      </Pressable>
-      {right}
-    </View>
+    <Pressable accessibilityRole="button" accessibilityLabel="Compte, réglages et diagnostic" onPress={() => router.push("/settings")} hitSlop={6}>
+      <View style={{ width: size.iconButton, height: size.iconButton, borderRadius: size.iconButton / 2, backgroundColor: color.nightRaised, alignItems: "center", justifyContent: "center" }}>
+        <Txt variant="label" color={color.inkOnDark} style={{ fontFamily: "Manrope_800ExtraBold" }}>
+          {initialsOf(name)}
+        </Txt>
+      </View>
+    </Pressable>
   );
 }
+
+/** En-tête d'écran de détail (bandeau nuit) : « ‹ Parent », action à droite, titre et sous-titre facultatifs. */
+export const DetailHeader = markHeader(function DetailHeader({ parentLabel, right, onBack, title, sub, hero }: { parentLabel: string; right?: ReactNode; onBack?: () => void; title?: string; sub?: string; hero?: { value: string; label?: string; stats?: HeaderStat[] } }) {
+  return <NightHeader back={{ label: parentLabel, onPress: onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/today"))) }} right={right} title={title} sub={sub} hero={hero} />;
+});
 
 export function SectionHeader({ title, action }: { title: string; action?: { label: string; onPress: () => void } }) {
   return (
@@ -116,14 +152,14 @@ export function Card({ children, padded = false, style, accessibilityLabel }: { 
   return (
     <View
       accessibilityLabel={accessibilityLabel}
-      style={[{ backgroundColor: color.surface, borderRadius: radius.xxl, overflow: "hidden" }, padded ? { padding: space[4] } : null, style]}
+      style={[{ backgroundColor: color.bg, borderRadius: radius.xl, overflow: "hidden" }, padded ? { padding: space[4] } : null, style]}
     >
       {children}
     </View>
   );
 }
 
-/** Ligne de liste : vignette éventuelle, titre, sous-titre, élément droit ; fond `surfaceSunken` à l'appui. */
+/** Ligne de liste v3 : 60 pt, filet blanc de 2 pt entre les lignes, fond `surfacePressed` à l'appui. */
 export function ListRow({
   title,
   subtitle,
@@ -153,10 +189,10 @@ export function ListRow({
         gap: space[3],
         paddingVertical: space[3],
         paddingHorizontal: space[4],
-        minHeight: 64,
-        backgroundColor: pressed ? color.surfaceSunken : "transparent",
-        borderBottomWidth: last ? 0 : 1,
-        borderBottomColor: color.lineSoft,
+        minHeight: 60,
+        backgroundColor: pressed ? color.surfacePressed : "transparent",
+        borderBottomWidth: last ? 0 : 2,
+        borderBottomColor: color.surface,
       }}
     >
       {left}
@@ -194,7 +230,7 @@ export function StickyActions({ children }: { children: ReactNode }) {
         paddingTop: space[3],
         paddingHorizontal: screenX,
         paddingBottom: Math.max(insets.bottom, space[3]) + space[2],
-        backgroundColor: color.bg,
+        backgroundColor: color.surface,
         borderTopWidth: 1,
         borderTopColor: color.line,
       }}
@@ -209,11 +245,11 @@ export function RowFrame({ children, first, last }: { children: ReactNode; first
   return (
     <View
       style={{
-        backgroundColor: color.surface,
-        borderTopLeftRadius: first ? radius.xxl : 0,
-        borderTopRightRadius: first ? radius.xxl : 0,
-        borderBottomLeftRadius: last ? radius.xxl : 0,
-        borderBottomRightRadius: last ? radius.xxl : 0,
+        backgroundColor: color.bg,
+        borderTopLeftRadius: first ? radius.xl : 0,
+        borderTopRightRadius: first ? radius.xl : 0,
+        borderBottomLeftRadius: last ? radius.xl : 0,
+        borderBottomRightRadius: last ? radius.xl : 0,
         overflow: "hidden",
       }}
     >
@@ -223,7 +259,7 @@ export function RowFrame({ children, first, last }: { children: ReactNode; first
 }
 
 export function Divider() {
-  return <View style={{ height: 1, backgroundColor: color.lineSoft }} />;
+  return <View style={{ height: 2, backgroundColor: color.surface }} />;
 }
 
 export { shadow };

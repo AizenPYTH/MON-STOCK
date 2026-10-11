@@ -96,14 +96,14 @@ export function VariantCard({
         </Txt>
         <View style={{ flexDirection: "row", gap: space[2] }}>
           <IconButton icon={<Copy size={18} color={color.ink} />} label={`Dupliquer la variante ${index + 1}`} onPress={onDuplicate} />
-          {onRemove ? <IconButton icon={<Trash2 size={18} color={color.danger} />} label={`Supprimer la variante ${index + 1}`} onPress={onRemove} /> : null}
+          {onRemove ? <IconButton icon={<Trash2 size={18} color={color.dangerInk} />} label={`Supprimer la variante ${index + 1}`} onPress={onRemove} /> : null}
         </View>
       </View>
       <ChipRow label="Capacité" options={[...STORAGE_PRESETS.map((s) => ({ value: s, label: s })), { value: "", label: "Aucune" }]} value={presetStorage ? draft.storage : ""} onChange={(v) => onChange({ storage: v })} />
       {!presetStorage ? <TextField label="Autre capacité (facultatif)" value={draft.storage} onChangeText={(v) => onChange({ storage: v })} placeholder="Ex. 2 To, 16 Go RAM" maxLength={60} error={err("storage")} /> : null}
       <TextField label="Couleur (facultatif)" value={draft.color} onChangeText={(v) => onChange({ color: v })} placeholder="Ex. Noir minuit" maxLength={60} error={err("color")} />
       <ChipRow label="Grade" options={GRADE_OPTIONS} value={draft.grade} onChange={(v) => onChange({ grade: v })} />
-      {err("grade") ? <Txt variant="label" color={color.danger}>{err("grade")}</Txt> : null}
+      {err("grade") ? <Txt variant="label" color={color.dangerInk}>{err("grade")}</Txt> : null}
       <ChipRow label="État" options={CONDITION_OPTIONS} value={draft.condition} onChange={(v) => onChange({ condition: v || "unknown" })} />
       <TextField
         label="Référence interne (SKU)"

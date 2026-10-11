@@ -21,7 +21,6 @@ import {
   ListRow,
   Screen,
   SectionHeader,
-  Segmented,
   Skeleton,
   SkeletonList,
   TabHeader,
@@ -57,19 +56,20 @@ export default function TodayScreen() {
           Alert.alert("Période d'analyse", undefined, PERIODS.map((p) => ({ text: `${p} jours`, onPress: () => setPeriod(p) })));
         }
       }}
-      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: color.surface, borderWidth: 1, borderColor: color.line }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.lg, backgroundColor: color.nightRaised }}
     >
-      <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
+      <Txt variant="label" color={color.inkOnDark} style={{ fontFamily: "Manrope_700Bold" }}>
         {period} jours
       </Txt>
-      <ChevronDown size={14} color={color.ink} strokeWidth={2.4} />
+      <ChevronDown size={14} color={color.inkOnDark} strokeWidth={2.4} />
     </Pressable>
   );
 
+  const tabs = { value: segment, onChange: setSegment, options: SEGMENTS };
   return segment === "today" ? (
-    <Today header={<TabHeader overline={formatLongDate(new Date())} title={greeting} />} segment={<Segmented value={segment} onChange={setSegment} options={SEGMENTS} />} currency={active.organization.currency} />
+    <Today header={(hero) => <TabHeader overline={formatLongDate(new Date())} title={greeting} hero={hero} tabs={tabs} />} currency={active.organization.currency} />
   ) : (
-    <Analysis header={<TabHeader overline={`Analyse · ${period} j`} title={greeting} right={periodPicker} />} segment={<Segmented value={segment} onChange={setSegment} options={SEGMENTS} />} period={period} currency={active.organization.currency} />
+    <Analysis header={<TabHeader overline={`Analyse · ${period} jours`} title={greeting} right={periodPicker} tabs={tabs} />} period={period} currency={active.organization.currency} />
   );
 }
 
@@ -81,19 +81,17 @@ function AssistantEntry() {
       accessibilityLabel="Parler à votre conseiller"
       onPress={() => router.push("/advisor")}
       testID="assistant-entry"
-      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: space[3], padding: space[4], borderRadius: radius.xxl, backgroundColor: color.surfaceDark, opacity: pressed ? 0.9 : 1 })}
+      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: space[3], padding: space[4], borderRadius: radius.xl, backgroundColor: pressed ? color.surfacePressed : color.bg })}
     >
-      <Sparkles size={20} color={color.accent} />
+      <Sparkles size={20} color={color.brand} />
       <View style={{ flex: 1, gap: 2 }}>
-        <Txt variant="label" color={color.inkOnDark} style={{ fontFamily: "Manrope_700Bold" }}>
-          Parlez à votre conseiller
-        </Txt>
-        <Txt variant="label" color={color.inkOnDarkMuted}>
+        <Txt variant="body">Parlez à votre conseiller</Txt>
+        <Txt variant="label">
           « Qu'est-ce que tu me conseilles de faire aujourd'hui ? »
         </Txt>
       </View>
-      <View style={{ width: 40, height: 40, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: "center", justifyContent: "center" }}>
-        <Mic size={20} color={color.inkOnDark} />
+      <View style={{ width: 44, height: 44, borderRadius: radius.lg, backgroundColor: color.mint, alignItems: "center", justifyContent: "center" }}>
+        <Mic size={20} color={color.onMint} />
       </View>
     </Pressable>
   );
@@ -104,7 +102,9 @@ const SEGMENTS: { value: Segment; label: string }[] = [
   { value: "analysis", label: "Analyse" },
 ];
 
-function Today({ header, segment, currency }: { header: React.ReactNode; segment: React.ReactNode; currency: string }) {
+type Hero = { value: string; label?: string; stats?: { label: string; value: string; tone?: "positive" | "warning" | "negative" }[] };
+
+function Today({ header, currency }: { header: (hero?: Hero) => React.ReactElement; currency: string }) {
   const today = useToday();
   const catalog = useCatalog();
   const refreshing = today.isRefetching || catalog.isRefetching;
@@ -118,6 +118,19 @@ function Today({ header, segment, currency }: { header: React.ReactNode; segment
 
   return (
     <Screen
+      header={header(
+        today.data
+          ? {
+              label: "Chiffre d'affaires du jour",
+              value: formatMoneyRounded(today.data.revenueToday, currency),
+              stats: [
+                { label: "Ventes", value: formatNumber(today.data.ordersToday) },
+                { label: "Marge (estimée)", value: today.data.marginTodayPercent === null ? "—" : `≈ ${Math.round(today.data.marginTodayPercent)} %` },
+                { label: "vs hier", value: formatSignedPercent(today.data.vsYesterdayPercent), tone: today.data.vsYesterdayPercent === null ? undefined : today.data.vsYesterdayPercent >= 0 ? "positive" : "negative" },
+              ],
+            }
+          : undefined,
+      )}
       contentGap={16}
       refreshControl={
         <RefreshControl
@@ -129,8 +142,6 @@ function Today({ header, segment, currency }: { header: React.ReactNode; segment
         />
       }
     >
-      {header}
-      {segment}
       <AssistantEntry />
       {today.isPending ? (
         <>
@@ -144,21 +155,6 @@ function Today({ header, segment, currency }: { header: React.ReactNode; segment
           {todo[0] ? <AlertBanner text={`À faire : ${todo[0].text}`} onPress={todo[0].go} /> : null}
           <KpiGrid columns={2}>
             {[
-              <Tile
-                key="ca"
-                tone="dark"
-                label="CA du jour"
-                value={formatMoneyRounded(today.data.revenueToday, currency)}
-                reason={`${today.data.vsYesterdayPercent === null ? "pas de comparaison" : `${formatSignedPercent(today.data.vsYesterdayPercent)} vs hier`} · ${formatNumber(today.data.ordersToday)} vente${today.data.ordersToday > 1 ? "s" : ""}`}
-                reasonTone={today.data.vsYesterdayPercent === null ? undefined : today.data.vsYesterdayPercent >= 0 ? "success" : "danger"}
-              />,
-              <Tile
-                key="margin"
-                tone="success"
-                label="Marge du jour"
-                value={today.data.marginTodayPercent === null ? null : `≈ ${Math.round(today.data.marginTodayPercent)} %`}
-                reason={today.data.marginTodayPercent === null ? "coûts d'achat inconnus" : "estimée sur les coûts connus"}
-              />,
               <Tile key="out" tone={catalog.data && catalog.data.counts.out > 0 ? "danger" : "neutral"} label="Rupture" value={catalog.data ? formatNumber(catalog.data.counts.out) : null} reason={catalog.data ? "produits à 0" : "stock indisponible"} onPress={() => router.push({ pathname: "/stock", params: { filter: "out" } })} />,
               <Tile key="low" tone={catalog.data && catalog.data.counts.low > 0 ? "accent" : "neutral"} label="Faible" value={catalog.data ? formatNumber(catalog.data.counts.low) : null} reason={catalog.data ? "sous le seuil" : "stock indisponible"} onPress={() => router.push({ pathname: "/stock", params: { filter: "low" } })} />,
             ]}
@@ -203,15 +199,13 @@ function Today({ header, segment, currency }: { header: React.ReactNode; segment
   );
 }
 
-function Analysis({ header, segment, period, currency }: { header: React.ReactNode; segment: React.ReactNode; period: Period; currency: string }) {
+function Analysis({ header, period, currency }: { header: React.ReactElement; period: Period; currency: string }) {
   const analysis = useAnalysis(period);
   const catalog = useCatalog();
   const d = analysis.data;
 
   return (
-    <Screen contentGap={16} refreshControl={<RefreshControl refreshing={analysis.isRefetching} onRefresh={() => void Promise.all([catalog.refetch(), analysis.refetch()])} />}>
-      {header}
-      {segment}
+    <Screen header={header} contentGap={16} refreshControl={<RefreshControl refreshing={analysis.isRefetching} onRefresh={() => void Promise.all([catalog.refetch(), analysis.refetch()])} />}>
       <AssistantEntry />
       {analysis.isPending || catalog.isPending ? (
         <>

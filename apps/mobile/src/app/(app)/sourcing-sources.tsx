@@ -117,7 +117,7 @@ function SourceCard({ entry: e, action }: { entry: LibraryEntry; action?: { labe
   return (
     <Card padded style={{ gap: space[2] }}>
       <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
-        {e.sourceId || ok ? <CircleCheck size={20} color={color.success} /> : status === "not_configured" ? <KeyRound size={20} color={color.accent} /> : <CircleX size={20} color={color.ink3} />}
+        {e.sourceId || ok ? <CircleCheck size={20} color={color.success} /> : status === "not_configured" ? <KeyRound size={20} color={color.accentInkOnSoft} /> : <CircleX size={20} color={color.ink3} />}
         <View style={{ flex: 1, gap: 2 }}>
           <Txt variant="body">{e.name}</Txt>
           <Txt variant="label">

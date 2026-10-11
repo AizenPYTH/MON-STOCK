@@ -8,7 +8,7 @@ import { groupOrdersByDay, ORDER_CHIP, type OrderListItem } from "~/data/sales";
 import { userMessage } from "~/lib/errors";
 import { formatLongDate, formatMoneyRounded, formatNumber } from "~/lib/format";
 import { BRANDS } from "~/brands/registry";
-import { BrandMark, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, RowFrame, Screen, Segmented, Skeleton, SkeletonList, StatusChip, TabHeader, Txt, useTabBarClearance } from "~/components/ui";
+import { BrandMark, EmptyState, ErrorState, ListRow, RowFrame, Screen, Skeleton, SkeletonList, StatusChip, TabHeader, Txt, useTabBarClearance } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 
@@ -35,36 +35,51 @@ export default function SalesScreen() {
   const sections = useMemo(() => groupOrdersByDay(rows, new Date(), formatLongDate), [rows]);
   const listingRows = useMemo(() => listings.data?.pages.flatMap((p) => p.rows) ?? [], [listings.data]);
 
-  const header = (
-    <View style={{ gap: space.blockGap, paddingBottom: space[2] }}>
-      <TabHeader title="Ventes" />
-      <Segmented
-        value={segment}
-        onChange={setSegment}
-        options={[
-          { value: "orders", label: "Commandes" },
-          { value: "listings", label: k.data ? `Annonces eBay · ${formatNumber(k.data.listingsActive)}` : "Annonces eBay" },
-        ]}
-      />
-      {segment === "orders" ? (
-        k.isPending ? (
-          <Skeleton w="100%" h={96} r={radius.xxl} />
-        ) : k.data ? (
-          <KpiGrid>
-            {[
-              <KpiCard key="ship" dark={toShipOnly} selected={toShipOnly} label="À expédier" value={formatNumber(k.data.toShip)} onPress={() => setToShipOnly((v) => !v)} hint={toShipOnly ? "filtre actif" : undefined} />,
-              <KpiCard key="7d" label="7 jours" value={formatMoneyRounded(k.data.revenue7d, currency)} />,
-              <KpiCard key="ref" label="Remboursées · 30 j" value={formatNumber(k.data.refunded30d)} />,
-            ]}
-          </KpiGrid>
-        ) : null
-      ) : null}
-    </View>
+  type Tab = "toship" | "all" | "listings";
+  const tab: Tab = segment === "listings" ? "listings" : toShipOnly ? "toship" : "all";
+  const setTab = (t: Tab) => {
+    if (t === "listings") setSegment("listings");
+    else {
+      setSegment("orders");
+      setToShipOnly(t === "toship");
+    }
+  };
+  const nightHeader = (
+    <TabHeader
+      title="Ventes"
+      hero={
+        k.data
+          ? {
+              value: formatMoneyRounded(k.data.revenue7d, currency),
+              label: "Chiffre d'affaires · 7 jours",
+              stats: [
+                { label: "À expédier", value: formatNumber(k.data.toShip), tone: k.data.toShip > 0 ? "warning" : undefined },
+                { label: "Remboursées · 30 j", value: formatNumber(k.data.refunded30d) },
+                { label: "Annonces actives", value: formatNumber(k.data.listingsActive) },
+              ],
+            }
+          : undefined
+      }
+      tabs={{
+        value: tab,
+        onChange: setTab,
+        options: [
+          { value: "toship", label: "À expédier" },
+          { value: "all", label: "Toutes" },
+          { value: "listings", label: "Annonces" },
+        ],
+      }}
+    />
   );
+  const header = k.isPending && segment === "orders" ? (
+    <View style={{ paddingBottom: space[2] }}>
+      <Skeleton w="100%" h={18} r={radius.xs} />
+    </View>
+  ) : null;
 
   if (segment === "listings") {
     return (
-      <Screen scroll={false} contentGap={0}>
+      <Screen scroll={false} contentGap={0} header={nightHeader}>
         <SectionList
           sections={listingRows.length ? [{ key: "l", title: "", data: listingRows }] : []}
           keyExtractor={(l) => l.id}
@@ -112,7 +127,7 @@ export default function SalesScreen() {
   }
 
   return (
-    <Screen scroll={false} contentGap={0}>
+    <Screen scroll={false} contentGap={0} header={nightHeader}>
       <SectionList
         sections={sections}
         keyExtractor={(o) => o.id}

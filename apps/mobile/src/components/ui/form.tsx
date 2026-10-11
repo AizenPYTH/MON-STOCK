@@ -31,10 +31,10 @@ export const TextField = forwardRef<TextInput, TextInputProps & { label: string;
           style={[{ flex: 1, paddingVertical: space[3], paddingHorizontal: 14, minHeight: size.input, fontFamily: fontFamily[700], fontSize: 17, color: color.ink }, style]}
           {...props}
         />
-        {error ? <CircleAlert size={18} color={color.danger} style={{ marginRight: space[3] }} /> : null}
+        {error ? <CircleAlert size={18} color={color.dangerInk} style={{ marginRight: space[3] }} /> : null}
       </View>
       {error ? (
-        <Txt variant="label" color={color.danger} accessibilityLiveRegion="polite">
+        <Txt variant="label" color={color.dangerInk} accessibilityLiveRegion="polite">
           {error}
         </Txt>
       ) : hint ? (

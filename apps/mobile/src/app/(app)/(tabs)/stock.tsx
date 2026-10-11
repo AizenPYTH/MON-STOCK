@@ -7,7 +7,7 @@ import { useCatalog } from "~/data/hooks";
 import { filterCatalog, type CatalogFilter, type ProductGroup } from "~/data/catalog";
 import { useDebounced } from "~/lib/use-debounced";
 import { userMessage } from "~/lib/errors";
-import { AlertBanner, Button, EmptyState, ErrorState, FilterChip, ListRow, QtyBadge, Screen, SearchField, Skeleton, SkeletonList, TabHeader, Thumb, useTabBarClearance } from "~/components/ui";
+import { AlertBanner, Button, EmptyState, RowFrame, ErrorState, FilterChip, ListRow, QtyBadge, Screen, SearchField, Skeleton, SkeletonList, TabHeader, Thumb, useTabBarClearance } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 
@@ -28,7 +28,6 @@ export default function StockScreen() {
 
   const header = (
     <View style={{ gap: space.blockGap, paddingBottom: space[3] }}>
-      <TabHeader title="Stock" right={addButton} />
       <SearchField value={search} onChangeText={setSearch} placeholder="Nom, SKU, code-barres…" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
         <FilterChip label="Tous" count={counts?.all} selected={filter === "all"} onPress={() => setFilter("all")} />
@@ -62,7 +61,7 @@ export default function StockScreen() {
     );
 
   return (
-    <Screen scroll={false} contentGap={0}>
+    <Screen scroll={false} contentGap={0} header={<TabHeader title="Stock" sub={counts ? `${counts.all} produit${counts.all > 1 ? "s" : ""}` : undefined} right={addButton} />}>
       <FlatList
         data={products}
         keyExtractor={(p) => p.productId}
@@ -83,30 +82,25 @@ export default function StockScreen() {
             <EmptyState title="Aucun produit ne correspond" description="Modifiez la recherche ou le filtre." />
           )
         }
-        ItemSeparatorComponent={RowGap}
-        renderItem={({ item }) => <ProductRow product={item} />}
+        renderItem={({ item, index }) => <ProductRow product={item} first={index === 0} last={index === products.length - 1} />}
       />
     </Screen>
   );
 }
 
-function RowGap() {
-  return <View style={{ height: space[2] }} />;
-}
-
-/** Ligne autonome du handoff : carte blanche rayon 16, vignette 44, badge quantité 44×44. */
-function ProductRow({ product: p }: { product: ProductGroup }) {
+/** Ligne de liste v3 : bloc gris clair continu, filet blanc de 2 pt, badge quantité à droite. */
+function ProductRow({ product: p, first, last }: { product: ProductGroup; first: boolean; last: boolean }) {
   const state = p.level === "out" ? "Rupture" : p.level === "low" ? "Faible" : null;
   return (
-    <View style={{ backgroundColor: color.surface, borderRadius: radius.xl, overflow: "hidden" }}>
+    <RowFrame first={first} last={last}>
       <ListRow
         left={<Thumb uri={p.imageUrl} />}
         title={p.name}
         subtitle={`${state ? `${state} · ` : ""}${p.code} · ${p.skus.length} variante${p.skus.length > 1 ? "s" : ""}`}
         right={<QtyBadge qty={p.totalAvailable} level={p.level} />}
         onPress={() => router.push({ pathname: "/product/[productId]", params: { productId: p.productId } })}
-        last
+        last={last}
       />
-    </View>
+    </RowFrame>
   );
 }

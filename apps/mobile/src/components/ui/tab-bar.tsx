@@ -3,74 +3,74 @@ import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "expo-router/tabs";
 import * as Haptics from "expo-haptics";
-import { color, radius, shadow, size, space } from "~/theme/tokens";
+import { color, size } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
 
 /**
- * Barre d'onglets flottante (handoff « Atelier ») : pilule `surfaceDark` de 64 pt (56 sur iPhone
- * SE), marges 16, à 22 pt du bas + safe area ; l'onglet actif est une pastille blanche.
- * Les écrans d'onglet réservent la place via `useTabBarClearance()` (0 hors des onglets).
+ * Barre d'onglets v3 ANCRÉE (non flottante) : fond blanc, filet haut, onglet actif = icône bleu
+ * nuit dans une pastille menthe 52×28 + libellé encre ; inactifs en gris. La zone de sécurité est
+ * incluse (aucun contenu ne passe dessous). Libellé « Auj. » sur petit écran.
  */
-export const TabBarClearanceContext = createContext(0);
 
+/** Hauteur à réserver sous le contenu des onglets (0 : la barre est ancrée). */
+export const TabBarClearanceContext = createContext(0);
 export function useTabBarClearance() {
   return useContext(TabBarClearanceContext);
 }
 
-/** Hauteur à réserver sous le contenu défilant d'un onglet (barre + écart + safe area). */
-export function useTabBarSpace() {
-  const insets = useSafeAreaInsets();
-  return space.tabBarClearance + insets.bottom;
+/** Vrai dans les écrans racines des onglets (avatar Réglages dans l'en-tête). */
+export const InTabsContext = createContext(false);
+export function useInTabs() {
+  return useContext(InTabsContext);
 }
 
-export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+/** Compatibilité : barre ancrée, rien à réserver. */
+export function useTabBarSpace() {
+  return 0;
+}
+
+export function MonStockTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { compact, screenX } = useLayout();
-  const height = compact ? 56 : size.tabBar;
+  const { compact } = useLayout();
+  const height = compact ? 48 : size.tabBar;
   return (
-    <View
-      pointerEvents="box-none"
-      style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: screenX, paddingBottom: size.tabBarBottom + insets.bottom }}
-    >
-      <View
-        accessibilityRole="tablist"
-        style={[{ flexDirection: "row", alignItems: "center", height, borderRadius: height / 2, backgroundColor: color.surfaceDark, paddingHorizontal: 6, width: "100%", maxWidth: 560, alignSelf: "center" }, shadow.tabBar]}
-      >
-        {state.routes.map((route, index) => {
-          const options = descriptors[route.key]?.options ?? {};
-          const focused = state.index === index;
-          const title = typeof options.tabBarLabel === "string" ? options.tabBarLabel : (options.title ?? route.name);
-          const label = compact && route.name === "today" ? "Auj." : title;
-          const fg = focused ? color.ink : color.inkOnDarkMuted;
-          const onPress = () => {
-            const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-            if (!focused && !event.defaultPrevented) {
-              void Haptics.selectionAsync().catch(() => {});
-              navigation.navigate(route.name, route.params);
-            }
-          };
-          return (
-            <Pressable
-              key={route.key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: focused }}
-              accessibilityLabel={options.tabBarAccessibilityLabel ?? title}
-              testID={options.tabBarButtonTestID ?? `tab-${route.name}`}
-              onPress={onPress}
-              onLongPress={() => navigation.emit({ type: "tabLongPress", target: route.key })}
-              style={{ flex: 1, alignItems: "center", justifyContent: "center", height: "100%" }}
-            >
-              <View style={{ alignItems: "center", justifyContent: "center", gap: 2, paddingVertical: 6, paddingHorizontal: compact ? 8 : 12, borderRadius: radius.pill, backgroundColor: focused ? color.surface : "transparent", minWidth: compact ? 48 : 58 }}>
-                {options.tabBarIcon?.({ focused, color: fg, size: compact ? 18 : 20 })}
-                <Txt variant="tab" color={fg} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                  {label}
-                </Txt>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
+    <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: color.surface, borderTopWidth: 1, borderTopColor: color.line, paddingBottom: insets.bottom, paddingTop: 4 }}>
+      {state.routes.map((route, index) => {
+        const options = descriptors[route.key]?.options ?? {};
+        const focused = state.index === index;
+        const title = typeof options.tabBarLabel === "string" ? options.tabBarLabel : (options.title ?? route.name);
+        const label = compact && route.name === "today" ? "Auj." : title;
+        const onPress = () => {
+          const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+          if (!focused && !event.defaultPrevented) {
+            void Haptics.selectionAsync().catch(() => {});
+            navigation.navigate(route.name, route.params);
+          }
+        };
+        return (
+          <Pressable
+            key={route.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: focused }}
+            accessibilityLabel={options.tabBarAccessibilityLabel ?? title}
+            testID={options.tabBarButtonTestID ?? `tab-${route.name}`}
+            onPress={onPress}
+            onLongPress={() => navigation.emit({ type: "tabLongPress", target: route.key })}
+            style={{ flex: 1, height, alignItems: "center", justifyContent: "center", gap: 3 }}
+          >
+            <View style={{ width: 52, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: focused ? color.mint : "transparent" }}>
+              {options.tabBarIcon?.({ focused, color: focused ? color.brand : color.ink3, size: size.tabIcon })}
+            </View>
+            <Txt variant="tab" color={focused ? color.ink : color.ink3} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+              {label}
+            </Txt>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
+
+/** Ancien nom (barre flottante) conservé pour compatibilité. */
+export const FloatingTabBar = MonStockTabBar;
