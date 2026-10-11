@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *
  * Le module natif est chargé paresseusement : absent (Expo Go, tests, ancien build), la dictée est
  * simplement signalée indisponible — l'écran garde la saisie au clavier, rien ne plante.
- * Le texte reconnu est ensuite COMPRIS côté serveur (Claude) : ce hook ne fait que transcrire.
+ * Le texte reconnu est ensuite COMPRIS côté serveur (modèle OpenAI) : ce hook ne fait que transcrire.
  */
 type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecognitionModule;
 type Subscription = { remove: () => void };

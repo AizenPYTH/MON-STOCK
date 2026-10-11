@@ -27,8 +27,8 @@
  *   POST /api/ebay/listings/check         contrôle + simulation (rien n'est envoyé à eBay)
  *   POST /api/ebay/listings/publish       publication — verrouillée (EBAY_LISTING_ENABLED, administrateur, confirmation)
  *   POST /api/ebay/sync                   synchronisation immédiate d'une connexion
- *   POST /api/ai/product-draft            phrase dictée → brouillon du formulaire produit (Claude ; rien n'est créé)
- *   POST /api/ai/assistant                questions sur les ventes / le stock / eBay (Claude + lecture seule sous RLS)
+ *   POST /api/ai/product-draft            phrase dictée → brouillon du formulaire produit (OpenAI ; rien n'est créé)
+ *   POST /api/ai/assistant                questions sur les ventes / le stock / eBay (OpenAI + lecture seule sous RLS)
  *   GET  /api/advisor/status              conseiller IA : configuré ?, limites
  *   POST /api/advisor/chat                conseiller IA (texte / voix) : flux NDJSON si Accept: application/x-ndjson
  *   POST /api/advisor/actions/confirm     exécute UNE action préparée, après revérification des droits (bouton de l'app)
@@ -72,7 +72,7 @@ import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/servic
 import { buildRadar, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
-import { AI_MODEL, aiConfigured, claudeClient } from "@/services/ai/claude";
+import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
 import { enforceAiQuota } from "@/services/ai/quota";
 import { draftProductFromText } from "@/services/ai/product-draft";
 import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
@@ -361,7 +361,7 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, productDraftSchema);
-        claudeClient(); // « non configuré » avant de consommer le quota
+        llmClient(); // « non configuré » avant de consommer le quota
         await enforceAiQuota(ctx, "product_draft");
         return draftProductFromText(body.text, ctx.organization.default_currency);
       });
@@ -370,7 +370,7 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
         const body = await parseBody(request, assistantRequestSchema);
-        claudeClient();
+        llmClient();
         await enforceAiQuota(ctx, "assistant");
         return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
       });
@@ -378,14 +378,14 @@ export async function route(request: Request): Promise<Response> {
     if (m === "GET" && path === "/advisor/status") {
       return handle(async () => {
         await requireMobileOrgContext(request);
-        return { configured: aiConfigured(), model: aiConfigured() ? AI_MODEL : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
+        return { configured: aiConfigured(), model: aiConfigured() ? aiModel() : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
       });
     }
     if (m === "POST" && path === "/advisor/chat") {
       try {
         const ctx = await requireMobileOrgContext(request);
         const body = await parseBody(request, advisorChatSchema);
-        claudeClient(); // « non configuré » avant de consommer le quota
+        llmClient(); // « non configuré » avant de consommer le quota
         await enforceAiQuota(ctx, "assistant");
         if ((request.headers.get("accept") ?? "").includes("application/x-ndjson")) {
           return new Response(advisorNdjsonStream(ctx, body), { status: 200, headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });

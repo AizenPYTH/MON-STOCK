@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdvisorStreamEvent } from "@/features/mobile-api/contract";
 
 /**
- * Conseiller e-commerce IA (serveur). Tout est simulé : l'API Claude (faux client de flux), la base
+ * Conseiller e-commerce IA (serveur). Tout est simulé : le modèle (faux `LlmClient` qui diffuse le texte), la base
  * (faux client Supabase / magasin en mémoire). Aucun appel réseau, aucun achat.
  */
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient: () => ({}) }));
@@ -113,32 +113,20 @@ describe("périodes (calendrier de Paris)", () => {
 // Boucle de conversation
 // ---------------------------------------------------------------------------
 
-type Msg = { model: string; stop_reason: string; content: unknown[] };
+type Msg = { model: string; finish: "stop" | "tool_calls" | "length" | "refusal"; text: string; toolCalls: { id: string; name: string; input: unknown }[] };
 function fakeModel(responses: (Msg | Error)[]) {
   const calls: Record<string, unknown>[] = [];
   const client = {
-    beta: {
-      messages: {
-        stream(params: Record<string, unknown>) {
-          calls.push(structuredClone(params));
-          const r = responses.shift();
-          let onText: ((d: string) => void) | null = null;
-          return {
-            on(_e: "text", cb: (d: string) => void) {
-              onText = cb;
-            },
-            async finalMessage() {
-              if (!r) throw new Error("plus de réponse simulée");
-              if (r instanceof Error) throw r;
-              for (const b of r.content as { type: string; text?: string }[]) if (b.type === "text" && b.text) for (const part of b.text.match(/.{1,12}/gs) ?? []) onText?.(part);
-              return r;
-            },
-          };
-        },
-      },
+    async complete(req: object, opts: { onText?: (d: string) => void } = {}) {
+      calls.push(structuredClone(req) as Record<string, unknown>);
+      const r = responses.shift();
+      if (!r) throw new Error("plus de réponse simulée");
+      if (r instanceof Error) throw r;
+      for (const part of r.text.match(/.{1,12}/gs) ?? []) opts.onText?.(part);
+      return r;
     },
   };
-  return { client: client as never, calls };
+  return { client, calls };
 }
 
 function memoryStore(history: { role: "user" | "assistant" | "notice"; content: string }[] = []) {
@@ -156,8 +144,8 @@ function memoryStore(history: { role: "user" | "assistant" | "notice"; content: 
   };
 }
 
-const text = (t: string, stop = "end_turn"): Msg => ({ model: "claude-opus-5-5", stop_reason: stop, content: [{ type: "text", text: t }] });
-const toolUse = (name: string, input: unknown, id = "tu_1"): Msg => ({ model: "claude-opus-5-5", stop_reason: "tool_use", content: [{ type: "tool_use", id, name, input }] });
+const text = (t: string, finish: Msg["finish"] = "stop"): Msg => ({ model: "gpt-5.4-mini", finish, text: t, toolCalls: [] });
+const toolUse = (name: string, input: unknown, id = "call_1"): Msg => ({ model: "gpt-5.4-mini", finish: "tool_calls", text: "", toolCalls: [{ id, name, input }] });
 
 describe("conversation textuelle et vocale", () => {
   it("diffuse la réponse au fil de l'eau et enregistre question + réponse", async () => {
@@ -171,14 +159,13 @@ describe("conversation textuelle et vocale", () => {
     expect(deltas.join("")).toBe(reply.answer);
     expect(events.at(-1)).toMatchObject({ type: "done", reply: { answer: reply.answer, interrupted: false } });
     expect(saved.map((m) => m.role)).toEqual(["user", "assistant"]);
-    // invite : partie stable mise en cache, outils déclarés, effort explicite, repli serveur
-    const p = calls[0]! as { system: { text: string; cache_control?: unknown }[]; tools: { name: string; cache_control?: unknown }[]; output_config: unknown; fallbacks: unknown; max_tokens: number };
-    expect(p.system[0]).toMatchObject({ text: ADVISOR_SYSTEM_STABLE, cache_control: { type: "ephemeral" } });
-    expect(p.system[1]!.cache_control).toBeUndefined();
-    expect(p.tools.at(-1)!.cache_control).toEqual({ type: "ephemeral" });
-    expect(p.output_config).toEqual({ effort: "medium" });
-    expect(p.fallbacks).toBe("default");
-    expect(p.max_tokens).toBe(ADVISOR_LIMITS.maxTokens);
+    // invite : partie stable EN TÊTE (cache d'invite), outils déclarés, effort et plafond explicites
+    const p = calls[0]! as { system: string; tools: { name: string }[]; effort: string; maxTokens: number; cacheKey: string };
+    expect(p.system.startsWith(ADVISOR_SYSTEM_STABLE)).toBe(true);
+    expect(p.tools.length).toBe(ADVISOR_TOOL_DEFINITIONS.length);
+    expect(p.effort).toBe("medium");
+    expect(p.cacheKey).toBe("mon-stock-advisor");
+    expect(p.maxTokens).toBe(ADVISOR_LIMITS.maxTokens);
   });
 
   it("question dictée : consigne de réponse courte lue à voix haute", () => {
@@ -199,20 +186,21 @@ describe("conversation textuelle et vocale", () => {
     expect(reply.sources).toEqual(["Bilan de l'activité"]);
     expect(reply.cards).toEqual([card]);
     expect(saved.at(-1)).toMatchObject({ role: "assistant", cards: [card] });
-    // le résultat d'outil est renvoyé au modèle dans un seul message utilisateur
-    const second = calls[1] as { messages: { role: string; content: unknown }[] };
-    expect(second.messages.at(-1)).toEqual({ role: "user", content: [{ type: "tool_result", tool_use_id: "tu_1", content: JSON.stringify({ revenue: "830,00 €" }), is_error: false }] });
+    // l'appel d'outil puis son résultat sont renvoyés au modèle (message « tool » lié à l'appel)
+    const second = calls[1] as { messages: Record<string, unknown>[] };
+    expect(second.messages.at(-2)).toMatchObject({ role: "assistant", toolCalls: [{ id: "call_1", name: "business_report" }] });
+    expect(second.messages.at(-1)).toEqual({ role: "tool", toolCallId: "call_1", content: JSON.stringify({ revenue: "830,00 €" }) });
   });
 
-  it("erreur d'outil transmise comme telle (is_error), jamais complétée", async () => {
+  it("erreur d'outil transmise comme telle (préfixe ERREUR), jamais complétée", async () => {
     const { client, calls } = fakeModel([toolUse("order_lookup", { orderNumber: "X" }), text("Je n'ai pas pu lire la commande.")]);
     const runTool = vi.fn(async () => ({ content: "Lecture des données impossible : timeout", isError: true, cards: [] }));
     await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "commande X ?" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: runTool as never });
-    expect(JSON.stringify(calls[1])).toContain('"is_error":true');
+    expect((calls[1] as { messages: { content: string }[] }).messages.at(-1)!.content).toBe("ERREUR : Lecture des données impossible : timeout");
   });
 
   it("refus du modèle : message clair", async () => {
-    const { client } = fakeModel([{ model: "m", stop_reason: "refusal", content: [] }]);
+    const { client } = fakeModel([{ model: "m", finish: "refusal", text: "", toolCalls: [] }]);
     const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "?" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: vi.fn() });
     expect(r.answer).toMatch(/ne peux pas répondre/);
   });
@@ -225,7 +213,7 @@ describe("conversation textuelle et vocale", () => {
   });
 
   it("trop d'étapes d'outils : réponse marquée interrompue", async () => {
-    const loops = Array.from({ length: ADVISOR_LIMITS.maxSteps }, (_, i) => toolUse("today_briefing", {}, `tu_${i}`));
+    const loops = Array.from({ length: ADVISOR_LIMITS.maxSteps }, (_, i) => toolUse("today_briefing", {}, `call_${i}`));
     const { client } = fakeModel(loops);
     const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "tout" }, () => undefined, {
       client,

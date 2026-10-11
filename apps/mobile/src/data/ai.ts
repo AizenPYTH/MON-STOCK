@@ -4,7 +4,7 @@ import { newVariantDraft, withSuggestedCode, type VariantDraft } from "~/compone
 import { callApi } from "~/lib/api";
 
 /**
- * IA (exécutée sur le serveur MON STOCK, jamais dans le téléphone : la clé de l'API Claude reste
+ * IA (exécutée sur le serveur MON STOCK, jamais dans le téléphone : la clé de l'API OpenAI reste
  * un secret serveur). Le téléphone envoie le texte dicté ou la question, reçoit un brouillon ou
  * une réponse fondée sur les données du compte.
  */

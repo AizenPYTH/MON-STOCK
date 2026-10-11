@@ -21,7 +21,6 @@
     "edge:build": "node scripts/build-edge.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.3",
     "clsx": "^2.1.1",
@@ -31,6 +30,7 @@
     "geist": "^1.7.2",
     "lucide-react": "^1.52.0",
     "next": "16.4.0",
+    "openai": "7.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",

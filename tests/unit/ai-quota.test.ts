@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AI_LIMITS, enforceAiQuota } from "@/services/ai/quota";
 import { fakeSupabase } from "./helpers/fake-supabase";
 
-/** Quotas IA : contrôlés AVANT tout appel à Claude ; l'événement est journalisé sous la session de l'utilisateur. */
+/** Quotas IA : contrôlés AVANT tout appel au modèle ; l'événement est journalisé sous la session de l'utilisateur. */
 const ctx = (count: number) => {
   const user = fakeSupabase({ ai_usage_events: { data: null, count } });
   return { user, ctx: { supabase: user.client, organization: { id: "org-1" }, user: { id: "u-1" } } as never };

@@ -520,7 +520,7 @@ export interface IntelligenceDTO {
 }
 
 // ---------------------------------------------------------------------------
-// IA (Claude, côté serveur) : brouillon de produit dicté, assistant « Intelligence »
+// IA (modèle OpenAI, côté serveur) : brouillon de produit dicté, assistant « Intelligence »
 // ---------------------------------------------------------------------------
 
 /** Brouillon issu d'une phrase dictée : pré-remplit le formulaire, rien n'est créé sans confirmation. */

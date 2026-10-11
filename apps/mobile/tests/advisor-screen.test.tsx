@@ -82,7 +82,7 @@ function replyWith(answer: string, cards: AdvisorCardDTO[] = [], sources: string
     onEvent({ type: "status", label: "Bilan de l'activité" });
     for (const part of answer.match(/.{1,10}/g) ?? []) onEvent({ type: "text", delta: part });
     for (const c of cards) onEvent({ type: "card", card: c });
-    const reply = { conversationId: "c1", messageId: "m1", answer, cards, sources, interrupted: false, model: "claude-opus-5-5" };
+    const reply = { conversationId: "c1", messageId: "m1", answer, cards, sources, interrupted: false, model: "gpt-5.4-mini" };
     onEvent({ type: "done", reply });
     return reply;
   };
@@ -97,7 +97,7 @@ beforeEach(() => {
   mockStream.mockReset();
   mockConfirm.mockReset();
   mockCancel.mockReset();
-  mockStatus.mockReset().mockResolvedValue({ configured: true, model: "claude-opus-5-5", limits: { perUserPerHour: 40, perOrganizationPerDay: 400, maxMessageChars: 2000 } });
+  mockStatus.mockReset().mockResolvedValue({ configured: true, model: "gpt-5.4-mini", limits: { perUserPerHour: 40, perOrganizationPerDay: 400, maxMessageChars: 2000 } });
   mockPermission = true;
 });
 

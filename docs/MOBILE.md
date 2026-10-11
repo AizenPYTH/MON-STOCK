@@ -170,7 +170,7 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | **eBay** | Connexion OAuth (page officielle eBay dans une session système), finalisation liée à l'utilisateur, première synchronisation, « Synchroniser maintenant », dernière synchro réussie, dernier passage, erreurs, reconnexion ; annonces → association à un SKU ; déduction des ventes en attente | Edge Function (tokens chiffrés côté serveur) + `map_listing_to_sku`, `apply_pending_sales_for_sku` |
 | Ventes | Commandes par jour, à expédier, annonces eBay | `orders`, `channel_listings` |
 | Aujourd'hui (onglet initial, ex-« Intelligence ») | Aujourd'hui (tuiles CA, marge ≈, ruptures, stock faible ; « À faire ») / Analyse 7-30-90 j | vues analytiques |
-| **Produit à la voix (IA)** | « Dites ou écrivez le produit » : dictée iOS en français, phrase comprise par Claude (marque, modèle, variantes, prix d'achat/vente, quantités, ambiguïtés signalées) → formulaire pré-rempli, création après vérification | Edge Function `/ai/product-draft` (clé `ANTHROPIC_API_KEY` serveur) |
+| **Produit à la voix (IA)** | « Dites ou écrivez le produit » : dictée iOS en français, phrase comprise par le modèle OpenAI (marque, modèle, variantes, prix d'achat/vente, quantités, ambiguïtés signalées) → formulaire pré-rempli, création après vérification | Edge Function `/ai/product-draft` (clé `OPENAI_API_KEY` serveur) |
 | **Conseiller (IA, texte + voix)** | Aujourd'hui → « Parlez à votre conseiller » : conversation écrite ou vocale (dictée et voix de l'appareil), réponse au fil de l'eau, cartes de résultats (ventes, marges, stock, commandes, colis, frais de port), actions préparées à confirmer, historique des conversations ; voir docs/ADVISOR.md | Edge Function `/advisor/*` (outils sous la session de l'utilisateur) + tables `advisor_*` (RLS personnelle) |
 | Commande fournisseur | Brouillon depuis la comparaison ou le radar (jamais envoyé automatiquement) | `purchase_orders` |
 | **Fournisseurs professionnels** | Sourcing → « Fournisseurs » (ou Réglages) : annuaire de 63 fournisseurs, filtres par segment, statut réel (identifié, vérifié, accès public, compte pro requis, connecteur, import testé, indisponible), dernier contrôle du site, procédure d'accès, e-mail de demande FR/EN | `/sourcing/directory` |
@@ -326,7 +326,7 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
 4. **eBay** (après configuration des clés, docs/SERVER.md §4) : Réglages → Intégrations → eBay →
    « Connecter mon compte eBay » → autoriser chez eBay → retour automatique → synchronisation ;
    Ventes → Annonces → associer chaque annonce à son SKU.
-5. **Produit à la voix** (après ajout de `ANTHROPIC_API_KEY`, docs/SERVER.md §3) : Stock → « + » →
+5. **Produit à la voix** (après ajout de `OPENAI_API_KEY`, docs/SERVER.md §3) : Stock → « + » →
    micro → dire « trois iPhone 13 128 gigas noir grade A achetés 310 euros revendus 429 » → ■ → le
    formulaire se remplit (Apple, iPhone 13, 128 Go, Noir, A, 310, 429, 3) → vérifier → Créer.
 6. **Conseiller** : Aujourd'hui → « Parlez à votre conseiller » (détail : docs/ADVISOR.md §6) → micro ou texte « quel est le
@@ -357,7 +357,7 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
 
 ## 8. Problèmes restants
 
-- **IA** : clé `ANTHROPIC_API_KEY` à ajouter dans Supabase → Edge Functions → Secrets ; sans elle,
+- **IA** : clé `OPENAI_API_KEY` à ajouter dans Supabase → Edge Functions → Secrets ; sans elle,
   la dictée transcrit mais le remplissage et l'assistant affichent « non activé ».
 - **eBay** : clés d'application eBay à fournir (App ID, Cert ID, RuName) et URL de retour à
   déclarer chez eBay — seule action manuelle bloquante (docs/SERVER.md §4).

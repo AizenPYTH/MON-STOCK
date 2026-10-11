@@ -1,9 +1,10 @@
 # Conseiller e-commerce IA (texte + voix)
 
 État au 11 octobre 2026 :
-- implémenté et testé avec des simulations (API Claude, base, voix) ;
+- implémenté et testé avec des simulations (API du modèle, base, voix) ;
 - **déployé sur TEST** le 11 octobre : migration appliquée, Edge Function en version 22 (commit `bf3f645`), build TestFlight 9 lancé ;
-- **reste à faire** : ajouter `ANTHROPIC_API_KEY` (secrets de l'Edge Function). Sans elle, l'écran affiche « conseiller non activé ».
+- **11 octobre, après la mise en ligne** : le fournisseur IA passe de Claude (Anthropic) à **OpenAI** (seule clé disponible). Ce changement est dans le code (commit suivant `568183a`) mais **pas encore déployé**.
+- **reste à faire** : redéployer l'Edge Function (avec votre accord), puis ajouter vous-même `OPENAI_API_KEY` dans les secrets de l'Edge Function. Sans elle, l'écran affiche « conseiller non activé ».
 
 ## 1. Ce qui fonctionne réellement (dans le code)
 
@@ -44,7 +45,7 @@
 iPhone : dictée de l'appareil ──texte──► Edge Function « api » (existante)
                                          POST /advisor/chat (flux NDJSON)
                                            ├─ RLS : session de l'utilisateur
-                                           ├─ Claude (claude-opus-5-5) + outils fermés
+                                           ├─ OpenAI (gpt-5.4-mini par défaut) + outils fermés
                                            └─ conversations / messages / actions en base
 iPhone : texte au fil de l'eau + cartes ◄──┘
 iPhone : synthèse vocale de l'appareil (lecture de la réponse)
@@ -55,7 +56,7 @@ Bouton « Confirmer » ─► POST /advisor/actions/confirm (revérification, ex
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | OpenAI Realtime (audio ↔ audio) | très bonne | la plus faible | audio facturé au jeton (`gpt-realtime-2.1` : 32 $ / 64 $ par million de jetons audio, soit environ 0,02 $/min d'écoute et 0,08 $/min de parole selon une conversion tierce) | WebRTC natif (module supplémentaire), jetons éphémères à émettre | native | second fournisseur, second modèle de raisonnement, outils à dupliquer | trop cher et trop complexe pour le gain |
 | Transcription → modèle → synthèse (outils audio OpenAI) | bonne | moyenne | transcription environ 0,003 $/min, synthèse environ 0,015 $/min (tiers) + modèle | simple (fichiers audio) | à gérer | 3 appels payants par question, second fournisseur | possible, mais payant pour rien |
-| **Claude (déjà intégré) + dictée et voix DE L'APPAREIL** | bonne (voix « Améliorée » si installée) | moyenne (le texte arrive au fil de l'eau) | **0 € pour la voix** ; seul le modèle est payé | modules Expo officiels | bouton ■, nouvel appui sur le micro | aucun nouveau fournisseur ni nouvelle clé ; réutilise les outils, la RLS et les quotas | **retenu** |
+| **Modèle texte (OpenAI) + dictée et voix DE L'APPAREIL** | bonne (voix « Améliorée » si installée) | moyenne (le texte arrive au fil de l'eau) | **0 € pour la voix** ; seul le modèle est payé | modules Expo officiels | bouton ■, nouvel appui sur le micro | une seule clé (OpenAI) ; réutilise les outils, la RLS et les quotas | **retenu** |
 
 Possibilité d'évoluer sans tout refaire : brancher plus tard une voix serveur plus naturelle (`speak()` est isolé dans `apps/mobile/src/lib/tts.ts`). Ce serait un service payant, à justifier seulement si la voix de l'appareil déçoit.
 
@@ -63,7 +64,7 @@ Pourquoi l'Edge Function existante et pas une fonction dédiée : même authenti
 
 ## 3. Sécurité et confirmations
 
-- **Clés** : `ANTHROPIC_API_KEY` reste uniquement côté serveur. Le bundle iOS a été analysé (`npm run scan:bundle`) : aucun secret.
+- **Clés** : `OPENAI_API_KEY` reste uniquement côté serveur. Les requêtes sont envoyées avec `store: false` (pas de stockage des échanges par OpenAI pour réutilisation dans le tableau de bord). Le bundle iOS a été analysé (`npm run scan:bundle`) : aucun secret.
 - **Accès aux données** : le modèle n'a ni SQL libre ni secrets. Il ne dispose que d'outils à schéma fermé (`additionalProperties: false`, validation zod), exécutés avec le client Supabase **de l'utilisateur**.
 - **Données personnelles** : conversations et actions sont personnelles. RLS `user_id = auth.uid()` et membre de l'organisation ; un collègue de la même organisation ne les voit pas (test d'intégration).
 - **Confirmation d'une action** : chaque action préparée a un résumé exact (action, objet, montant). Elle expire après 10 minutes et l'utilisateur ne peut pas la modifier (aucune politique UPDATE). La confirmation passe par un appui sur un bouton. Au moment de l'exécution, le serveur revérifie :
@@ -82,30 +83,31 @@ Pourquoi l'Edge Function existante et pas une fonction dédiée : même authenti
 
 ## 4. Coûts estimés (à confirmer sur votre facture)
 
-Les abonnements Claude et ChatGPT ne couvrent **pas** l'API : elle est facturée séparément à l'usage.
+L'abonnement ChatGPT (Plus, Pro…) ne couvre **pas** l'API OpenAI : elle est facturée séparément à l'usage.
 
 | Poste | Coût |
 | --- | --- |
 | Transcription (dictée de l'appareil) | 0 € |
 | Synthèse vocale (voix de l'appareil) | 0 € |
 | Hébergement | Edge Function Supabase existante (quotas de votre formule Supabase) |
-| Modèle | Claude Opus 5.5 : 4 $ par million de jetons en entrée, 20 $ en sortie, lecture du cache 0,20 $ |
+| Modèle | OpenAI `gpt-5.4-mini` (défaut) : 0,75 $ par million de jetons en entrée, 4,50 $ en sortie, entrée en cache 0,075 $. Ces prix viennent de sources tierces concordantes ; la page officielle d'OpenAI n'est pas accessible depuis cet environnement, donc à vérifier sur votre compte. |
 
 Hypothèses : 6 000 jetons d'invite et d'outils mis en cache, 2 à 4 appels au modèle par question, et des réponses de 300 à 600 jetons avec une réflexion modérée (`effort: medium`).
 
-| Usage | Estimation (Opus 5.5) |
+| Usage | Estimation (gpt-5.4-mini) |
 | --- | --- |
-| Question simple (1 outil) | environ 0,05 à 0,08 $ |
-| Bilan complet (3 à 4 outils) | environ 0,12 à 0,20 $ |
-| Conversation courte (5 questions) | environ 0,3 à 0,5 $ |
-| Conversation longue (20 questions) | environ 1,5 à 2,5 $ (historique plafonné) |
+| Question simple (1 outil) | environ 0,01 à 0,02 $ |
+| Bilan complet (3 à 4 outils) | environ 0,02 à 0,04 $ |
+| Conversation courte (5 questions) | environ 0,06 à 0,10 $ |
+| Conversation longue (20 questions) | environ 0,3 à 0,5 $ (historique plafonné) |
 | Plafond théorique par utilisateur | 40 questions par heure |
 
-Passer à Claude Sonnet 5.5 (2 $ / 10 $) diviserait ces montants par deux environ, au prix d'analyses parfois moins fines. C'est votre décision : le modèle se change à un seul endroit, `AI_MODEL`.
+Un modèle plus puissant (par exemple `gpt-5.5`, environ 5 $ / 30 $ par million de jetons selon des sources tierces) multiplierait ces montants par 6 à 7 environ. C'est votre décision : le modèle se change **sans redéploiement**, en ajoutant le secret `OPENAI_MODEL`. Le modèle choisi doit accepter les outils, les sorties structurées et le paramètre `reasoning_effort` (gamme gpt-5.x).
 
 ## 5. Fichiers
 
 **Serveur**
+- `src/services/ai/llm.ts` : accès au modèle (interface neutre + adaptateur OpenAI, flux, erreurs).
 - `src/services/ai/advisor.ts` : boucle de conversation, flux, historique.
 - `src/services/ai/advisor-tools.ts` : outils.
 - `src/services/ai/advisor-actions.ts` : préparation et confirmation.
@@ -133,7 +135,7 @@ Passer à Claude Sonnet 5.5 (2 $ / 10 $) diviserait ces montants par deux enviro
 ## 6. Pour tester sur iPhone (étapes manuelles)
 
 1. **Avec votre accord**, appliquer la migration `20261011000200_advisor` sur le projet TEST et redéployer l'Edge Function `api` (version épinglée sur le commit poussé).
-2. Dans Supabase (TEST) → Edge Functions → Secrets, ajouter vous-même `ANTHROPIC_API_KEY`.
+2. Dans Supabase (TEST) → Edge Functions → Secrets, ajouter vous-même `OPENAI_API_KEY` (et, si besoin, `OPENAI_MODEL`).
 3. **Avec votre accord**, lancer un nouveau build TestFlight. Il est indispensable : `expo-speech` est un module natif.
 4. Sur l'iPhone :
    - autoriser le micro et la reconnaissance vocale au premier appui ;

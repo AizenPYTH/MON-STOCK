@@ -3,11 +3,11 @@ import { z } from "zod";
 import { CONDITION_LABEL, MAX_VARIANTS, PRODUCT_CATEGORIES, PRODUCT_GRADES } from "@/features/stock/product-form";
 import type { ProductDraftDTO } from "@/features/mobile-api/contract";
 import { AppError } from "@/lib/errors";
-import { AI_BETAS, AI_MODEL, aiError, claudeClient } from "./claude";
+import { aiError, llmClient, type LlmClient } from "./llm";
 
 /**
  * Création de produit à la voix : la phrase dictée (transcrite sur le téléphone) est COMPRISE par
- * Claude et convertie en brouillon du formulaire « Nouveau produit » (marque, modèle, catégorie,
+ * le modèle de langage et convertie en brouillon du formulaire « Nouveau produit » (marque, modèle, catégorie,
  * variantes avec capacité / couleur / grade / état, prix, quantités).
  *
  * Rien n'est créé ici : le brouillon pré-remplit le formulaire, l'utilisateur vérifie et confirme.
@@ -99,23 +99,21 @@ export function productDraftSystemPrompt(currency: string): string {
   ].join("\n");
 }
 
-export async function draftProductFromText(text: string, currency: string): Promise<ProductDraftDTO> {
+export async function draftProductFromText(text: string, currency: string, deps: { client?: LlmClient } = {}): Promise<ProductDraftDTO> {
   const transcript = text.trim();
   if (transcript.length < 3) throw new AppError("VALIDATION", "Dites ou écrivez le produit à ajouter.");
   let raw: string;
   try {
-    const response = await claudeClient().beta.messages.create({
-      model: AI_MODEL,
-      max_tokens: 4096,
-      betas: AI_BETAS,
-      fallbacks: "default",
-      output_config: { effort: "low", format: { type: "json_schema", schema: PRODUCT_DRAFT_JSON_SCHEMA as unknown as Record<string, unknown> } },
+    const response = await (deps.client ?? llmClient()).complete({
       system: productDraftSystemPrompt(currency),
       messages: [{ role: "user", content: `Texte dicté :\n"""${transcript}"""` }],
+      maxTokens: 4096,
+      effort: "low",
+      json: { name: "product_draft", schema: PRODUCT_DRAFT_JSON_SCHEMA as unknown as Record<string, unknown> },
     });
-    if (response.stop_reason === "refusal") throw new AppError("VALIDATION", "Cette demande n'a pas pu être traitée par l'assistant IA. Reformulez.");
-    if (response.stop_reason === "max_tokens") throw new AppError("VALIDATION", "Description trop longue : dictez moins de variantes à la fois.");
-    raw = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+    if (response.finish === "refusal") throw new AppError("VALIDATION", "Cette demande n'a pas pu être traitée par l'assistant IA. Reformulez.");
+    if (response.finish === "length") throw new AppError("VALIDATION", "Description trop longue : dictez moins de variantes à la fois.");
+    raw = response.text;
   } catch (e) {
     throw aiError(e);
   }

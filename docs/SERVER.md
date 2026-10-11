@@ -56,8 +56,8 @@ maximale (64 Ko par défaut ; fichier catalogue : 15 Mo, soit 21 Mo une fois enc
 | `POST /api/ebay/listings/check` | rédacteur | contrôle + **simulation** : contenu exact qui serait envoyé à eBay, erreurs, verrous restants — aucun appel d'écriture |
 | `POST /api/ebay/listings/publish` | administrateur | publication réelle, **uniquement** si les 4 verrous sont levés (§7) |
 | `GET/POST /api/ebay/webhook` | eBay (signé) | challenge + notifications (suppression de compte, commandes) |
-| `POST /api/ai/product-draft` | rédacteur | phrase dictée → brouillon du formulaire produit (Claude, sortie structurée) ; rien n'est créé |
-| `POST /api/ai/assistant` | membre | questions sur les ventes, le stock, eBay : Claude appelle des outils de LECTURE exécutés avec la session de l'utilisateur (RLS) |
+| `POST /api/ai/product-draft` | rédacteur | phrase dictée → brouillon du formulaire produit (OpenAI, sortie structurée) ; rien n'est créé |
+| `POST /api/ai/assistant` | membre | questions sur les ventes, le stock, eBay : le modèle appelle des outils de LECTURE exécutés avec la session de l'utilisateur (RLS) |
 | `GET /api/advisor/status` | membre | conseiller IA : configuré ?, limites |
 | `POST /api/advisor/chat` | membre | conseiller IA (texte / voix) : flux NDJSON (`Accept: application/x-ndjson`), outils de lecture et de préparation, conversations enregistrées (voir docs/ADVISOR.md) |
 | `POST /api/advisor/actions/confirm` · `/cancel` | membre (rédacteur pour exécuter) | exécute ou annule UNE action préparée, après revérification (propriétaire, rôle, expiration, objet inchangé) |
@@ -80,7 +80,7 @@ Vault** via `server_runtime_secrets()` (exécutable par `service_role` uniquemen
 | `CRON_SECRET` | généré dans la base (Vault) ; lu par `call_monstock_cron()` à chaque exécution |
 | `EBAY_WEBHOOK_VERIFICATION_TOKEN` | généré dans la base (Vault, migration `20261009000500`) — à recopier chez eBay |
 | `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | **à fournir** (voir §4) |
-| `ANTHROPIC_API_KEY` | **à fournir** : clé de l'API Claude (console.anthropic.com → API Keys) dans Edge Functions → Secrets. Sans elle, `/api/ai/*` répond « non configuré » (jamais de réponse simulée) ; `/api/health` → `aiConfigured` |
+| `OPENAI_API_KEY` | **à fournir** : clé de l'API OpenAI (platform.openai.com → API keys) dans Edge Functions → Secrets. `OPENAI_MODEL` facultatif (défaut `gpt-5.4-mini`). Sans elle, `/api/ai/*` répond « non configuré » (jamais de réponse simulée) ; `/api/health` → `aiConfigured` |
 | `EBAY_LISTING_ENABLED` | facultatif, `true` pour autoriser la publication d'annonces (désactivée par défaut) |
 | `PACKLINK_API_KEY` | facultatif : devis d'expédition Packlink PRO (Packlink PRO → Paramètres → clé API) |
 | `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY` | facultatif : devis d'expédition Sendcloud, consultation uniquement (Sendcloud → Paramètres → Intégrations → Sendcloud API) |
@@ -290,23 +290,23 @@ Implémenté (`src/integrations/ebay/listing.ts`, `src/services/channels/ebay-li
 **Jamais exécuté contre eBay** (clés absentes) : la publication réelle reste à tester sur un
 compte réel, avec votre autorisation, sur une annonce de test.
 
-## 8. IA (Claude)
+## 8. IA (OpenAI)
 
-- Modèle `claude-opus-5-5`, repli serveur par défaut d'Anthropic si une requête est déclinée.
+- Fournisseur OpenAI, API Chat Completions en flux (`src/services/ai/llm.ts`, interface neutre `LlmClient`). Modèle `gpt-5.4-mini` par défaut (`OPENAI_MODEL` pour changer), `store: false`, `prompt_cache_key` pour le cache d'invite, refus et filtre de contenu traités comme refus.
 - **Produit dicté** : la transcription (reconnaissance vocale du téléphone) est envoyée au
-  serveur ; Claude renvoie un JSON imposé par schéma, revalidé par Zod. Consigne : rien d'inventé,
+  serveur ; le modèle renvoie un JSON imposé par schéma strict (`response_format: json_schema`), revalidé par Zod. Consigne : rien d'inventé,
   valeurs non dites laissées vides. La création reste confirmée par l'utilisateur.
 - **Assistant** : boucle d'outils (8 étapes max), outils en lecture seule filtrés sur
   l'organisation active et exécutés avec le client Supabase de l'utilisateur (RLS). La consigne
   impose que chaque chiffre provienne d'un résultat d'outil ; la réponse liste les données
   consultées.
-- **Quotas** (table `ai_usage_events`, vérifiés AVANT tout appel à Claude) : 40 questions / heure /
+- **Quotas** (table `ai_usage_events`, vérifiés AVANT tout appel au modèle) : 40 questions / heure /
   utilisateur, 60 brouillons / heure / utilisateur, 400 appels / jour / organisation → « Limite
   atteinte » (429).
 - **Délais** : 55 s par appel, 1 nouvel essai, 110 s pour toute la boucle (limite Edge ≈ 150 s).
 - **Sans clé** : « non configuré » (aucune réponse simulée) ; le reste de l'application fonctionne.
-- Vérifié sur TEST (`/cron/ai-tools-check`) : les 6 outils s'exécutent sur le schéma réel. Appel à
-  Claude non exécuté : clé non configurée.
+- Vérifié sur TEST (`/cron/ai-tools-check`) : les 6 outils s'exécutent sur le schéma réel. Appel au
+  modèle non exécuté : clé non configurée.
 
 ## 9. Audit de sécurité Supabase (10 octobre 2026, projet TEST)
 

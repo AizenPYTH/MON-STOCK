@@ -4,7 +4,7 @@ import { OFFLINE_MESSAGE, UserFacingError } from "~/lib/errors";
 import type { MobileSupabase } from "~/lib/supabase";
 
 /**
- * Conseiller e-commerce IA. Le raisonnement (Claude) et l'accès aux données tournent sur le
+ * Conseiller e-commerce IA. Le raisonnement (modèle OpenAI) et l'accès aux données tournent sur le
  * serveur MON STOCK : le téléphone envoie la question (écrite ou transcrite par la dictée de
  * l'appareil) et reçoit la réponse au fil de l'eau (flux NDJSON). Aucune clé dans l'application.
  * L'historique est lu directement en base (RLS : uniquement les conversations de l'utilisateur).

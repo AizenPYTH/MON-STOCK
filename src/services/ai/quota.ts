@@ -7,7 +7,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
  * Quotas des fonctions IA (coût maîtrisé, abus limités) — journal ai_usage_events :
  *   - par utilisateur et par heure : 40 questions à l'assistant, 60 brouillons de produit ;
  *   - par organisation et par jour : 400 appels au total.
- * L'événement est enregistré AVANT l'appel à Claude (sous la session de l'utilisateur, RLS).
+ * L'événement est enregistré AVANT l'appel au modèle (sous la session de l'utilisateur, RLS).
  */
 export const AI_LIMITS = { assistantPerHour: 40, productDraftPerHour: 60, orgPerDay: 400 } as const;
 

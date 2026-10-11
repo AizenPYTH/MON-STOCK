@@ -293,7 +293,7 @@ export default function AdvisorScreen() {
           }
         />
         {offline ? <AlertBanner tone="dark" text="Hors ligne : le conseiller est indisponible. Vos conversations restent consultables." /> : null}
-        {notConfigured ? <AlertBanner tone="accent" text="Le conseiller n'est pas encore activé sur le serveur (clé ANTHROPIC_API_KEY à ajouter par l'administrateur)." /> : null}
+        {notConfigured ? <AlertBanner tone="accent" text="Le conseiller n'est pas encore activé sur le serveur (clé OPENAI_API_KEY à ajouter par l'administrateur)." /> : null}
         <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ gap: space[3], paddingBottom: space[4] }} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
           {items.length === 0 ? (
             <View style={{ gap: space[3] }}>

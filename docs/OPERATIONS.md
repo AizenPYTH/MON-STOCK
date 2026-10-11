@@ -62,7 +62,8 @@ Supabase Dashboard → projet → **Edge Functions → Secrets** (jamais dans Gi
 | Secret | Quand |
 | --- | --- |
 | `EBAY_ENV` (`production`), `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | pour connecter eBay (§5) |
-| `ANTHROPIC_API_KEY` | pour le produit dicté et le conseiller IA (texte + voix, docs/ADVISOR.md) |
+| `OPENAI_API_KEY` | pour le produit dicté, l'assistant et le conseiller IA (texte + voix, docs/ADVISOR.md) |
+| `OPENAI_MODEL` | facultatif : modèle OpenAI (défaut `gpt-5.4-mini`) |
 | `EBAY_LISTING_ENABLED` = `true` | seulement quand vous décidez d'autoriser la publication d'annonces |
 | `PACKLINK_API_KEY` | devis d'expédition réels (Packlink PRO → Paramètres → clé API) |
 | `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY` | devis d'expédition Sendcloud, consultation uniquement (Sendcloud → Paramètres → Intégrations → Sendcloud API → clé publique et clé secrète). À mettre dans **Edge Functions → Secrets**, pas dans Vault. |
@@ -87,11 +88,12 @@ une fois (nouveau scope de lecture des politiques).
 Avant la première annonce : sur eBay, activer les **politiques métier** (paiement, retour,
 expédition) et créer un **emplacement d'inventaire**.
 
-## 6. Configuration Anthropic
+## 6. Configuration OpenAI
 
-1. console.anthropic.com → API Keys → créer une clé dédiée « MON STOCK serveur » ; fixer une limite
-   de dépense mensuelle dans la console.
-2. Ajouter `ANTHROPIC_API_KEY` (§4).
+1. platform.openai.com → API keys → créer une clé dédiée « MON STOCK serveur » (projet dédié de
+   préférence) ; fixer une limite de dépense mensuelle (Billing → Limits). L'abonnement ChatGPT ne
+   couvre pas l'API : il faut du crédit API.
+2. Ajouter `OPENAI_API_KEY` (§4) ; facultatif : `OPENAI_MODEL` (défaut `gpt-5.4-mini`).
 3. Vérifier : `GET /health` → `aiConfigured: true` ; application → Réglages → Diagnostic →
    « Assistant IA : activé ».
 4. Quotas intégrés : 40 questions et 60 produits dictés par heure et par utilisateur, 400 appels par
@@ -146,7 +148,7 @@ diagnostic, mode avion.
 | Base de données | Pas de retour arrière destructif. Chaque migration de l'audit indique comment l'annuler : `20261010000300` → réappliquer la définition de `ingest_external_order` de `20261008005000` ; `20261010000100` / `0200` → tables nouvelles, les conserver (données) ; droits révoqués rétablissables par `grant`. Sauvegardes : Dashboard → Database → Backups. |
 | Tâche planifiée | `select cron.unschedule('monstock-directory-checks');` (idem pour les autres noms) |
 | Publication eBay | Retirer `EBAY_LISTING_ENABLED` des secrets : la publication est immédiatement refusée. |
-| IA | Retirer `ANTHROPIC_API_KEY` : l'IA affiche « non activé », le reste fonctionne. |
+| IA | Retirer `OPENAI_API_KEY` : l'IA affiche « non activé », le reste fonctionne. |
 
 ## 11. Procédure de diagnostic
 
@@ -196,7 +198,7 @@ diagnostic, mode avion.
 ### 2. Fonctionnel uniquement avec des tests simulés
 
 - eBay OAuth, synchronisation, webhooks, annonces : réponses eBay simulées.
-- Produit dicté et assistant IA : réponses Claude simulées ; fonctionnement sans clé testé.
+- Produit dicté et assistant IA : réponses du modèle simulées ; fonctionnement sans clé testé.
 - Devis Packlink PRO et Boxtal : réponses au format de leur code officiel, simulées.
 - Devis Sendcloud : réponse réelle du compte enregistrée le 11/10/2026 (appel en lecture seule via le connecteur Sendcloud, pas via MON STOCK), rejouée en test. Aucun appel du serveur MON STOCK à Sendcloud tant que les clés ne sont pas configurées.
 - Suivi La Poste et Ship24 : formats de la bibliothèque communautaire et de la spécification
@@ -205,7 +207,7 @@ diagnostic, mode avion.
 
 ### 3. En attente d'un compte ou d'identifiants
 
-- Clés eBay et `ANTHROPIC_API_KEY`.
+- Clés eBay et `OPENAI_API_KEY`.
 - `PACKLINK_API_KEY`, identifiants Boxtal v1 ou clés Sendcloud : devis d'expédition réels. En attendant, saisissez
   vos grilles tarifaires.
 - `LAPOSTE_OKAPI_KEY` et / ou `SHIP24_API_KEY` : statut réel des colis.

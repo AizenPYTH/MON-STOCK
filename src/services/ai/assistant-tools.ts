@@ -1,5 +1,5 @@
 import "server-only";
-import type Anthropic from "@anthropic-ai/sdk";
+import type { LlmTool } from "./llm";
 import { z } from "zod";
 import type { ServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -325,7 +325,7 @@ async function listingsSearch(ctx: ToolContext, raw: unknown) {
 
 interface ToolSpec {
   label: string;
-  definition: Anthropic.Beta.BetaTool;
+  definition: LlmTool;
   run: (ctx: ToolContext, input: unknown) => Promise<unknown>;
 }
 
@@ -410,7 +410,7 @@ export const ASSISTANT_TOOLS: Record<string, ToolSpec> = {
   },
 };
 
-export const ASSISTANT_TOOL_DEFINITIONS: Anthropic.Beta.BetaTool[] = Object.values(ASSISTANT_TOOLS).map((t) => t.definition);
+export const ASSISTANT_TOOL_DEFINITIONS: LlmTool[] = Object.values(ASSISTANT_TOOLS).map((t) => t.definition);
 
 const MAX_RESULT_CHARS = 24_000;
 

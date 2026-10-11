@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * IA côté serveur : brouillon de produit dicté et assistant « Intelligence ».
- * L'API Claude est simulée (aucun appel réseau) ; les outils lisent un faux client Supabase dont
+ * Le modèle (OpenAI) est simulé via l'interface neutre `LlmClient` (aucun appel réseau) ; les outils lisent un faux client Supabase dont
  * on vérifie les filtres (organisation, statuts exclus) et les agrégats calculés.
  */
 const create = vi.fn();
-vi.mock("@/services/ai/claude", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@/services/ai/claude")>();
-  return { ...real, claudeClient: () => ({ beta: { messages: { create } } }) };
+vi.mock("@/services/ai/llm", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/services/ai/llm")>();
+  return { ...real, llmClient: () => ({ complete: create }) };
 });
 
 const { parseProductDraft, draftProductFromText, productDraftSystemPrompt } = await import("@/services/ai/product-draft");
@@ -21,8 +21,8 @@ const NOW = new Date("2026-10-10T12:00:00Z");
 
 beforeEach(() => create.mockReset());
 
-function textMessage(text: string, stop = "end_turn") {
-  return { model: "claude-opus-5-5", stop_reason: stop, content: [{ type: "text", text }] };
+function textMessage(text: string, finish = "stop") {
+  return { model: "gpt-5.4-mini", finish, text, toolCalls: [] };
 }
 
 describe("brouillon de produit dicté", () => {
@@ -54,21 +54,20 @@ describe("brouillon de produit dicté", () => {
     expect(() => parseProductDraft(JSON.stringify({ ...draft, variants: [{ ...draft.variants[0], grade: "D" }] }), "x")).toThrow(/incomplète/);
   });
 
-  it("appelle Claude avec une sortie structurée et l'interdiction d'inventer", async () => {
+  it("appelle le modèle avec une sortie structurée et l'interdiction d'inventer", async () => {
     create.mockResolvedValueOnce(textMessage(JSON.stringify(draft)));
     const d = await draftProductFromText("trois iPhone 13 128 gigas noir grade A achetés 310 revendus 429", "EUR");
     expect(d.model).toBe("iPhone 13");
     const req = create.mock.calls[0]![0];
-    expect(req.model).toBe("claude-opus-5-5");
-    expect(req.output_config.format.type).toBe("json_schema");
-    expect(req.fallbacks).toBe("default");
+    expect(req.json.name).toBe("product_draft");
+    expect(req.json.schema.required).toContain("variants");
     expect(req.system).toContain("n'invente AUCUNE valeur");
     expect(req.messages[0].content).toContain("128 gigas");
     expect(productDraftSystemPrompt("EUR")).toContain("ne suppose jamais 1");
   });
 
   it("refus du modèle → message clair, aucun brouillon", async () => {
-    create.mockResolvedValueOnce({ model: "claude-opus-5-5", stop_reason: "refusal", content: [] });
+    create.mockResolvedValueOnce({ model: "gpt-5.4-mini", finish: "refusal", text: "", toolCalls: [] });
     await expect(draftProductFromText("bonjour", "EUR")).rejects.toThrow(/Reformulez/);
   });
 });
@@ -121,14 +120,15 @@ describe("assistant Intelligence", () => {
   it("boucle outils → réponse : la réponse finale s'appuie sur le résultat de l'outil", async () => {
     const { client } = fakeSupabase({ order_items: { data: orderRows }, v_stock_overview: { data: stock } });
     create
-      .mockResolvedValueOnce({ model: "claude-opus-5-5", stop_reason: "tool_use", content: [{ type: "tool_use", id: "tu_1", name: "sales_ranking", input: { days: 365 } }] })
+      .mockResolvedValueOnce({ model: "gpt-5.4-mini", finish: "tool_calls", text: "", toolCalls: [{ id: "call_1", name: "sales_ranking", input: { days: 365 } }] })
       .mockResolvedValueOnce(textMessage("Votre produit le plus vendu est l'Apple iPhone 13 128 Go Noir : 3 unités."));
     const reply = await askAssistant({ supabase: client, organizationId: ORG, organizationName: "Boutique", currency: "EUR", now: NOW }, { messages: [{ role: "user", content: "Quel est le produit que j'ai le plus vendu ?" }] });
     expect(reply.answer).toContain("3 unités");
     expect(reply.sources).toEqual([{ tool: "sales_ranking", label: "Ventes par produit" }]);
     const second = create.mock.calls[1]![0];
-    const toolResult = second.messages[2].content[0];
-    expect(toolResult).toMatchObject({ type: "tool_result", tool_use_id: "tu_1", is_error: false });
+    expect(second.messages[1]).toMatchObject({ role: "assistant", toolCalls: [{ id: "call_1", name: "sales_ranking" }] });
+    const toolResult = second.messages[2];
+    expect(toolResult).toMatchObject({ role: "tool", toolCallId: "call_1" });
     expect(JSON.parse(toolResult.content).products[0].unitsSold).toBe(3);
     expect(second.system).toContain("doit provenir d'un résultat d'outil");
     expect(second.tools.map((t: { name: string }) => t.name)).toEqual(["sales_ranking", "sales_summary", "stock_search", "recent_orders", "ebay_account", "listings_search"]);
@@ -143,15 +143,21 @@ describe("assistant Intelligence", () => {
 });
 
 describe("configuration", () => {
-  const saved = process.env.ANTHROPIC_API_KEY;
+  const saved = process.env.OPENAI_API_KEY;
   afterEach(() => {
-    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
-    else process.env.ANTHROPIC_API_KEY = saved;
+    if (saved === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = saved;
   });
   it("sans clé : « non configuré », jamais de réponse simulée", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    const real = await vi.importActual<typeof import("@/services/ai/claude")>("@/services/ai/claude");
+    delete process.env.OPENAI_API_KEY;
+    const real = await vi.importActual<typeof import("@/services/ai/llm")>("@/services/ai/llm");
     expect(real.aiConfigured()).toBe(false);
-    expect(() => real.claudeClient()).toThrow(/ANTHROPIC_API_KEY/);
+    expect(() => real.llmClient()).toThrow(/OPENAI_API_KEY/);
+  });
+  it("modèle : gpt-5.4-mini par défaut, remplaçable par OPENAI_MODEL (valeur assainie)", async () => {
+    const real = await vi.importActual<typeof import("@/services/ai/llm")>("@/services/ai/llm");
+    expect(real.aiModel({})).toBe("gpt-5.4-mini");
+    expect(real.aiModel({ OPENAI_MODEL: " gpt-5.5 " })).toBe("gpt-5.5");
+    expect(real.aiModel({ OPENAI_MODEL: "gpt 5; drop" })).toBe("gpt-5.4-mini");
   });
 });

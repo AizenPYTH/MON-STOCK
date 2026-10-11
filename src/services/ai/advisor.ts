@@ -1,10 +1,9 @@
 import "server-only";
-import type Anthropic from "@anthropic-ai/sdk";
 import type { OrgContext } from "@/features/auth/dal";
 import type { AdvisorCardDTO, AdvisorChatRequest, AdvisorReplyDTO, AdvisorStreamEvent } from "@/features/mobile-api/contract";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { AI_BETAS, AI_MODEL, aiError, claudeClient } from "./claude";
+import { aiError, llmClient, type LlmClient, type LlmMessage } from "./llm";
 import { ADVISOR_FUTURE_CAPABILITIES, ADVISOR_TOOL_DEFINITIONS, ADVISOR_TOOLS, runAdvisorTool, type AdvisorToolContext } from "./advisor-tools";
 
 const log = createLogger("AI_ADVISOR");
@@ -12,7 +11,7 @@ const log = createLogger("AI_ADVISOR");
 /**
  * Conseiller e-commerce IA : conversation (écrite ou dictée) liée à l'utilisateur authentifié.
  *
- * Un tour = 1 question → boucle d'outils Claude (lecture / préparation, voir advisor-tools.ts) →
+ * Un tour = 1 question → boucle d'outils du modèle (lecture / préparation, voir advisor-tools.ts) →
  * réponse diffusée au fil de l'eau (événements NDJSON) → message et cartes enregistrés.
  * Coûts maîtrisés : historique limité (12 derniers messages, 12 000 caractères), au plus 6 étapes
  * d'outils, réponse ≤ 2 500 jetons, invite système et outils mis en cache, un seul modèle par question.
@@ -101,7 +100,7 @@ export function supabaseAdvisorStore(ctx: OrgContext): AdvisorStore {
  * Historique envoyé au modèle : rôles alternés, notes de l'application rattachées au tour
  * utilisateur, borné en nombre de caractères (les plus récents d'abord).
  */
-export function historyForModel(history: { role: "user" | "assistant" | "notice"; content: string }[], maxChars: number = ADVISOR_LIMITS.historyChars): Anthropic.Beta.BetaMessageParam[] {
+export function historyForModel(history: { role: "user" | "assistant" | "notice"; content: string }[], maxChars: number = ADVISOR_LIMITS.historyChars): LlmMessage[] {
   const kept: { role: "user" | "assistant"; content: string }[] = [];
   let total = 0;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -125,21 +124,8 @@ export function historyForModel(history: { role: "user" | "assistant" | "notice"
 // Boucle de conversation (flux)
 // ---------------------------------------------------------------------------
 
-/** Sous-ensemble de l'API utilisé (le client Anthropic réel le satisfait ; simulable en test). */
-export interface AdvisorModelClient {
-  beta: {
-    messages: {
-      stream(params: Anthropic.Beta.MessageCreateParamsStreaming | Record<string, unknown>, options?: { signal?: AbortSignal }): {
-        on(event: "text", cb: (delta: string) => void): unknown;
-        finalMessage(): Promise<Anthropic.Beta.BetaMessage>;
-        abort?: () => void;
-      };
-    };
-  };
-}
-
 export interface AdvisorDeps {
-  client?: AdvisorModelClient;
+  client?: LlmClient;
   store?: AdvisorStore;
   runTool?: typeof runAdvisorTool;
   now?: Date;
@@ -147,7 +133,7 @@ export interface AdvisorDeps {
 }
 
 export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, emit: (e: AdvisorStreamEvent) => void, deps: AdvisorDeps = {}): Promise<AdvisorReplyDTO> {
-  const client = deps.client ?? (claudeClient() as unknown as AdvisorModelClient);
+  const client = deps.client ?? llmClient();
   const store = deps.store ?? supabaseAdvisorStore(ctx);
   const runTool = deps.runTool ?? runAdvisorTool;
   const now = deps.now ?? new Date();
@@ -159,10 +145,8 @@ export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, e
   await store.addMessage(conversationId, { role: "user", content: req.message });
 
   const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short", timeZone: "Europe/Paris" }).format(now);
-  const system: Anthropic.Beta.BetaTextBlockParam[] = [
-    { type: "text", text: ADVISOR_SYSTEM_STABLE, cache_control: { type: "ephemeral" } },
-    { type: "text", text: advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice)) },
-  ];
+  // Partie stable en tête (préfixe identique d'une question à l'autre → cache d'invite du fournisseur).
+  const system = `${ADVISOR_SYSTEM_STABLE}\n\n${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice))}`;
   // Historique + question ; un tour utilisateur resté sans réponse (interruption) est fusionné.
   const convo = historyForModel([...previous, { role: "user", content: req.message }]);
   const toolCtx: AdvisorToolContext = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now };
@@ -181,38 +165,30 @@ export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, e
         break;
       }
       streamed = "";
-      const stream = client.beta.messages.stream(
+      const response = await client.complete(
+        { system, tools: ADVISOR_TOOL_DEFINITIONS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
         {
-          model: AI_MODEL,
-          max_tokens: ADVISOR_LIMITS.maxTokens,
-          betas: AI_BETAS,
-          fallbacks: "default",
-          output_config: { effort: "medium" },
-          system,
-          tools: ADVISOR_TOOL_DEFINITIONS.map((t, i, all) => (i === all.length - 1 ? { ...t, cache_control: { type: "ephemeral" as const } } : t)),
-          messages: convo,
-        } as never,
-        { signal: deps.signal },
+          signal: deps.signal,
+          onText: (delta) => {
+            streamed += delta;
+            emit({ type: "text", delta });
+          },
+        },
       );
-      stream.on("text", (delta) => {
-        streamed += delta;
-        emit({ type: "text", delta });
-      });
-      const response = await stream.finalMessage();
       model = response.model;
-      if (response.stop_reason === "refusal") {
+      if (response.finish === "refusal") {
         answer = "Je ne peux pas répondre à cette demande. Reformulez-la sur votre activité (ventes, stock, commandes, expéditions).";
         break;
       }
-      const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
-      const calls = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-      if (response.stop_reason !== "tool_use" || calls.length === 0) {
+      const text = response.text.trim();
+      const calls = response.toolCalls;
+      if (response.finish !== "tool_calls" || calls.length === 0) {
         answer = text;
-        if (response.stop_reason === "max_tokens") interrupted = true;
+        if (response.finish === "length") interrupted = true;
         break;
       }
-      if (response.stop_reason === "tool_use" && text) answer = text; // texte d'attente éventuel
-      convo.push({ role: "assistant", content: response.content });
+      if (text) answer = text; // texte d'attente éventuel
+      convo.push({ role: "assistant", content: response.text, toolCalls: calls });
       const results = await Promise.all(
         calls.map(async (call) => {
           const spec = ADVISOR_TOOLS[call.name];
@@ -226,10 +202,10 @@ export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, e
             }
           }
           if (r.isError) log.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
-          return { type: "tool_result" as const, tool_use_id: call.id, content: r.content, is_error: r.isError };
+          return { role: "tool" as const, toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         }),
       );
-      convo.push({ role: "user", content: results });
+      convo.push(...results);
       if (step === ADVISOR_LIMITS.maxSteps - 1) interrupted = true;
     }
   } catch (e) {

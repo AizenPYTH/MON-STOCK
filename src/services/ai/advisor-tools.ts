@@ -1,5 +1,5 @@
 import "server-only";
-import type Anthropic from "@anthropic-ai/sdk";
+import type { LlmTool } from "./llm";
 import { z } from "zod";
 import type { OrgContext } from "@/features/auth/dal";
 import type { AdvisorActionDTO, AdvisorCardDTO, AdvisorCardRowDTO, AdvisorCardTone } from "@/features/mobile-api/contract";
@@ -42,7 +42,7 @@ export interface AdvisorToolOutput {
 interface AdvisorToolSpec {
   label: string;
   category: AdvisorToolCategory;
-  definition: Anthropic.Beta.BetaTool;
+  definition: LlmTool;
   run: (ctx: AdvisorToolContext, input: unknown) => Promise<AdvisorToolOutput>;
 }
 
@@ -558,7 +558,7 @@ export const ADVISOR_TOOLS: Record<string, AdvisorToolSpec> = {
   },
 };
 
-export const ADVISOR_TOOL_DEFINITIONS: Anthropic.Beta.BetaTool[] = Object.values(ADVISOR_TOOLS).map((t) => t.definition);
+export const ADVISOR_TOOL_DEFINITIONS: LlmTool[] = Object.values(ADVISOR_TOOLS).map((t) => t.definition);
 
 /** Extensions futures (données ou intégration non disponibles) : citées au modèle, jamais simulées. */
 export const ADVISOR_FUTURE_CAPABILITIES = [

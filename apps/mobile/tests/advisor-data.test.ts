@@ -8,7 +8,7 @@ import { speakableText, splitSentences } from "~/lib/tts";
  */
 jest.mock("~/lib/api", () => ({ apiBaseUrl: () => "https://x.supabase.co/functions/v1/api", apiHeaders: async () => ({ Authorization: "Bearer jeton-test" }), callApi: jest.fn() }));
 
-const reply = { conversationId: "c1", messageId: "m2", answer: "Votre CA est de 830,00 € cette semaine.", cards: [], sources: ["Bilan de l'activité"], interrupted: false, model: "claude-opus-5-5" };
+const reply = { conversationId: "c1", messageId: "m2", answer: "Votre CA est de 830,00 € cette semaine.", cards: [], sources: ["Bilan de l'activité"], interrupted: false, model: "gpt-5.4-mini" };
 const lines = (events: AdvisorStreamEvent[]) => events.map((e) => JSON.stringify(e)).join("\n") + "\n";
 
 function streamResponse(text: string, cut = 7, headers: Record<string, string> = { "content-type": "application/x-ndjson; charset=utf-8" }, status = 200) {

@@ -21330,29 +21330,106 @@ init_radar2();
 init_supplier_directory2();
 init_catalog_import();
 
-// src/services/ai/claude.ts
+// src/services/ai/llm.ts
 init_empty();
 init_errors();
-import Anthropic from "npm:@anthropic-ai/sdk@0.133.0";
-var AI_MODEL = "claude-opus-5-5";
-var AI_BETAS = ["server-side-fallback-2026-07-01"];
-var AI_NOT_CONFIGURED = "L'assistant IA n'est pas encore activ\xE9 sur le serveur (cl\xE9 ANTHROPIC_API_KEY absente des secrets de l'Edge Function).";
+import OpenAI from "npm:openai@7.23.0";
+var DEFAULT_AI_MODEL = "gpt-5.4-mini";
+function aiModel(env = process.env) {
+  const m = env.OPENAI_MODEL?.trim();
+  return m && /^[a-z0-9][a-z0-9.\-_:]{1,80}$/i.test(m) ? m : DEFAULT_AI_MODEL;
+}
+var AI_NOT_CONFIGURED = "L'assistant IA n'est pas encore activ\xE9 sur le serveur (cl\xE9 OPENAI_API_KEY absente des secrets de l'Edge Function).";
 function aiConfigured(env = process.env) {
-  return Boolean(env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.length > 20);
+  return Boolean(env.OPENAI_API_KEY && env.OPENAI_API_KEY.length > 20);
+}
+function toOpenAIMessages(system, messages) {
+  const out = [{ role: "developer", content: system }];
+  for (const m of messages) {
+    if (m.role === "user") out.push({ role: "user", content: m.content });
+    else if (m.role === "tool") out.push({ role: "tool", tool_call_id: m.toolCallId, content: m.content });
+    else
+      out.push({
+        role: "assistant",
+        content: m.content || null,
+        ...m.toolCalls?.length ? { tool_calls: m.toolCalls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.input ?? {}) } })) } : {}
+      });
+  }
+  return out;
+}
+function toOpenAITools(tools) {
+  return tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+}
+function parseArgs(raw) {
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return void 0;
+  }
+}
+async function collectStream(stream, onText, fallbackModel = "") {
+  let text3 = "";
+  let refusal = "";
+  let model = fallbackModel;
+  let finish2 = null;
+  const calls = /* @__PURE__ */ new Map();
+  for await (const chunk3 of stream) {
+    if (chunk3.model) model = chunk3.model;
+    for (const choice of chunk3.choices ?? []) {
+      const d = choice.delta;
+      if (d?.content) {
+        text3 += d.content;
+        onText?.(d.content);
+      }
+      if (d?.refusal) refusal += d.refusal;
+      for (const tc of d?.tool_calls ?? []) {
+        const cur = calls.get(tc.index) ?? { id: "", name: "", args: "" };
+        if (tc.id) cur.id = tc.id;
+        if (tc.function?.name) cur.name += tc.function.name;
+        if (tc.function?.arguments) cur.args += tc.function.arguments;
+        calls.set(tc.index, cur);
+      }
+      if (choice.finish_reason) finish2 = choice.finish_reason;
+    }
+  }
+  const toolCalls = [...calls.entries()].sort((a, b) => a[0] - b[0]).map(([i, c]) => ({ id: c.id || `call_${i}`, name: c.name, input: parseArgs(c.args) }));
+  const mapped = refusal || finish2 === "content_filter" ? "refusal" : finish2 === "length" ? "length" : toolCalls.length > 0 ? "tool_calls" : "stop";
+  return { text: refusal && !text3 ? "" : text3, toolCalls: mapped === "refusal" ? [] : toolCalls, finish: mapped, model };
+}
+function openAILlm(sdk, model) {
+  return {
+    async complete(req, opts = {}) {
+      const body = {
+        model,
+        messages: toOpenAIMessages(req.system, req.messages),
+        max_completion_tokens: req.maxTokens,
+        reasoning_effort: req.effort ?? "low",
+        stream: true,
+        store: false,
+        ...req.cacheKey ? { prompt_cache_key: req.cacheKey } : {},
+        ...req.tools?.length ? { tools: toOpenAITools(req.tools), parallel_tool_calls: true } : {},
+        ...req.json ? { response_format: { type: "json_schema", json_schema: { name: req.json.name, strict: true, schema: req.json.schema } } } : {}
+      };
+      const stream = await sdk.chat.completions.create(body, { signal: opts.signal });
+      return collectStream(stream, opts.onText, model);
+    }
+  };
 }
 var client = null;
-function claudeClient() {
+function llmClient() {
   if (!aiConfigured()) throw new AppError("NOT_CONFIGURED", AI_NOT_CONFIGURED);
-  client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 55e3 });
+  client ??= openAILlm(new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: 55e3 }), aiModel());
   return client;
 }
 function aiError(e) {
   if (e instanceof AppError) return e;
-  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return new AppError("NOT_CONFIGURED", "La cl\xE9 de l'API Claude configur\xE9e sur le serveur est refus\xE9e par Anthropic.");
-  if (e instanceof Anthropic.RateLimitError) return new AppError("RATE_LIMITED", "L'assistant IA est tr\xE8s sollicit\xE9 : r\xE9essayez dans un instant.");
-  if (e instanceof Anthropic.BadRequestError) return new AppError("EXTERNAL_API", "La requ\xEAte \xE0 l'assistant IA a \xE9t\xE9 refus\xE9e. Reformulez ou r\xE9essayez.");
-  if (e instanceof Anthropic.APIConnectionError) return new AppError("EXTERNAL_API", "L'assistant IA est injoignable pour le moment. R\xE9essayez.");
-  if (e instanceof Anthropic.APIError) return new AppError("EXTERNAL_API", "L'assistant IA est momentan\xE9ment indisponible. R\xE9essayez.");
+  if (e instanceof OpenAI.AuthenticationError || e instanceof OpenAI.PermissionDeniedError) return new AppError("NOT_CONFIGURED", "La cl\xE9 OpenAI configur\xE9e sur le serveur est refus\xE9e (cl\xE9 invalide ou sans acc\xE8s au mod\xE8le).");
+  if (e instanceof OpenAI.RateLimitError) return new AppError("RATE_LIMITED", "L'assistant IA est tr\xE8s sollicit\xE9, ou le cr\xE9dit du compte OpenAI est \xE9puis\xE9 : r\xE9essayez dans un instant.");
+  if (e instanceof OpenAI.NotFoundError) return new AppError("NOT_CONFIGURED", "Le mod\xE8le configur\xE9 (OPENAI_MODEL) n'est pas disponible pour ce compte OpenAI.");
+  if (e instanceof OpenAI.BadRequestError) return new AppError("EXTERNAL_API", "La requ\xEAte \xE0 l'assistant IA a \xE9t\xE9 refus\xE9e. Reformulez ou r\xE9essayez.");
+  if (e instanceof OpenAI.APIConnectionError) return new AppError("EXTERNAL_API", "L'assistant IA est injoignable pour le moment. R\xE9essayez.");
+  if (e instanceof OpenAI.APIError) return new AppError("EXTERNAL_API", "L'assistant IA est momentan\xE9ment indisponible. R\xE9essayez.");
   return new AppError("INTERNAL", "L'assistant IA a rencontr\xE9 une erreur inattendue.");
 }
 
@@ -21520,24 +21597,22 @@ function productDraftSystemPrompt(currency) {
     "R\xE8gle absolue : n'invente AUCUNE valeur (prix, quantit\xE9, capacit\xE9, couleur, grade). Ce qui n'est pas dit reste null."
   ].join("\n");
 }
-async function draftProductFromText(text3, currency) {
+async function draftProductFromText(text3, currency, deps = {}) {
   const transcript = text3.trim();
   if (transcript.length < 3) throw new AppError("VALIDATION", "Dites ou \xE9crivez le produit \xE0 ajouter.");
   let raw;
   try {
-    const response = await claudeClient().beta.messages.create({
-      model: AI_MODEL,
-      max_tokens: 4096,
-      betas: AI_BETAS,
-      fallbacks: "default",
-      output_config: { effort: "low", format: { type: "json_schema", schema: PRODUCT_DRAFT_JSON_SCHEMA } },
+    const response = await (deps.client ?? llmClient()).complete({
       system: productDraftSystemPrompt(currency),
       messages: [{ role: "user", content: `Texte dict\xE9 :
-"""${transcript}"""` }]
+"""${transcript}"""` }],
+      maxTokens: 4096,
+      effort: "low",
+      json: { name: "product_draft", schema: PRODUCT_DRAFT_JSON_SCHEMA }
     });
-    if (response.stop_reason === "refusal") throw new AppError("VALIDATION", "Cette demande n'a pas pu \xEAtre trait\xE9e par l'assistant IA. Reformulez.");
-    if (response.stop_reason === "max_tokens") throw new AppError("VALIDATION", "Description trop longue : dictez moins de variantes \xE0 la fois.");
-    raw = response.content.map((b) => b.type === "text" ? b.text : "").join("");
+    if (response.finish === "refusal") throw new AppError("VALIDATION", "Cette demande n'a pas pu \xEAtre trait\xE9e par l'assistant IA. Reformulez.");
+    if (response.finish === "length") throw new AppError("VALIDATION", "Description trop longue : dictez moins de variantes \xE0 la fois.");
+    raw = response.text;
   } catch (e) {
     throw aiError(e);
   }
@@ -21916,47 +21991,38 @@ function assistantSystemPrompt(org, today) {
     "Style : fran\xE7ais, direct et concis, adapt\xE9 \xE0 un \xE9cran de t\xE9l\xE9phone. R\xE9ponds d'abord \xE0 la question en une phrase, puis au besoin quelques lignes de d\xE9tail (listes avec \xAB \u2013 \xBB, sans tableau, sans titres, sans gras)."
   ].join("\n");
 }
-async function askAssistant(ctx, request) {
-  const client2 = claudeClient();
+async function askAssistant(ctx, request, deps = {}) {
+  const client2 = deps.client ?? llmClient();
   const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeZone: "Europe/Paris" }).format(ctx.now ?? /* @__PURE__ */ new Date());
   const system = assistantSystemPrompt({ name: ctx.organizationName, currency: ctx.currency }, today);
   const messages = request.messages.map((m) => ({ role: m.role, content: m.content }));
   const used = [];
-  let model = AI_MODEL;
+  let model = "";
   const started = Date.now();
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (Date.now() - started > ASSISTANT_DEADLINE_MS) throw new AppError("EXTERNAL_API", "La r\xE9ponse prend trop de temps : posez une question plus pr\xE9cise.");
-      const response = await client2.beta.messages.create({
-        model: AI_MODEL,
-        max_tokens: 8e3,
-        betas: AI_BETAS,
-        fallbacks: "default",
-        output_config: { effort: "medium" },
-        system,
-        tools: ASSISTANT_TOOL_DEFINITIONS,
-        messages
-      });
+      const response = await client2.complete({ system, tools: ASSISTANT_TOOL_DEFINITIONS, messages, maxTokens: 8e3, effort: "medium", cacheKey: "mon-stock-assistant" });
       model = response.model;
-      if (response.stop_reason === "refusal") return { answer: "Je ne peux pas r\xE9pondre \xE0 cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
-      const text3 = response.content.map((b) => b.type === "text" ? b.text : "").join("").trim();
-      const calls = response.content.filter((b) => b.type === "tool_use");
-      if (response.stop_reason !== "tool_use" || calls.length === 0) {
+      if (response.finish === "refusal") return { answer: "Je ne peux pas r\xE9pondre \xE0 cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
+      const text3 = response.text.trim();
+      const calls = response.toolCalls;
+      if (response.finish !== "tool_calls" || calls.length === 0) {
         if (!text3) throw new AppError("EXTERNAL_API", "L'assistant n'a pas formul\xE9 de r\xE9ponse. R\xE9essayez.");
-        return { answer: response.stop_reason === "max_tokens" ? `${text3}
+        return { answer: response.finish === "length" ? `${text3}
 
 (r\xE9ponse interrompue : posez une question plus pr\xE9cise)` : text3, sources: used, model };
       }
-      messages.push({ role: "assistant", content: response.content });
+      messages.push({ role: "assistant", content: response.text, toolCalls: calls });
       const results = await Promise.all(
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
           if (r.isError) log23.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
-          return { type: "tool_result", tool_use_id: call.id, content: r.content, is_error: r.isError };
+          return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
-      messages.push({ role: "user", content: results });
+      messages.push(...results);
     }
   } catch (e) {
     throw aiError(e);
@@ -23494,7 +23560,7 @@ ${m.content}`;
   return merged.map((m) => ({ role: m.role, content: m.content }));
 }
 async function runAdvisorTurn(ctx, req, emit2, deps = {}) {
-  const client2 = deps.client ?? claudeClient();
+  const client2 = deps.client ?? llmClient();
   const store = deps.store ?? supabaseAdvisorStore(ctx);
   const runTool = deps.runTool ?? runAdvisorTool;
   const now = deps.now ?? /* @__PURE__ */ new Date();
@@ -23504,10 +23570,9 @@ async function runAdvisorTurn(ctx, req, emit2, deps = {}) {
   const previous = await store.history(conversationId);
   await store.addMessage(conversationId, { role: "user", content: req.message });
   const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short", timeZone: "Europe/Paris" }).format(now);
-  const system = [
-    { type: "text", text: ADVISOR_SYSTEM_STABLE, cache_control: { type: "ephemeral" } },
-    { type: "text", text: advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice)) }
-  ];
+  const system = `${ADVISOR_SYSTEM_STABLE}
+
+${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice))}`;
   const convo = historyForModel([...previous, { role: "user", content: req.message }]);
   const toolCtx = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now };
   const cards = [];
@@ -23523,38 +23588,30 @@ async function runAdvisorTurn(ctx, req, emit2, deps = {}) {
         break;
       }
       streamed = "";
-      const stream = client2.beta.messages.stream(
+      const response = await client2.complete(
+        { system, tools: ADVISOR_TOOL_DEFINITIONS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
         {
-          model: AI_MODEL,
-          max_tokens: ADVISOR_LIMITS.maxTokens,
-          betas: AI_BETAS,
-          fallbacks: "default",
-          output_config: { effort: "medium" },
-          system,
-          tools: ADVISOR_TOOL_DEFINITIONS.map((t, i, all) => i === all.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t),
-          messages: convo
-        },
-        { signal: deps.signal }
+          signal: deps.signal,
+          onText: (delta) => {
+            streamed += delta;
+            emit2({ type: "text", delta });
+          }
+        }
       );
-      stream.on("text", (delta) => {
-        streamed += delta;
-        emit2({ type: "text", delta });
-      });
-      const response = await stream.finalMessage();
       model = response.model;
-      if (response.stop_reason === "refusal") {
+      if (response.finish === "refusal") {
         answer = "Je ne peux pas r\xE9pondre \xE0 cette demande. Reformulez-la sur votre activit\xE9 (ventes, stock, commandes, exp\xE9ditions).";
         break;
       }
-      const text3 = response.content.map((b) => b.type === "text" ? b.text : "").join("").trim();
-      const calls = response.content.filter((b) => b.type === "tool_use");
-      if (response.stop_reason !== "tool_use" || calls.length === 0) {
+      const text3 = response.text.trim();
+      const calls = response.toolCalls;
+      if (response.finish !== "tool_calls" || calls.length === 0) {
         answer = text3;
-        if (response.stop_reason === "max_tokens") interrupted = true;
+        if (response.finish === "length") interrupted = true;
         break;
       }
-      if (response.stop_reason === "tool_use" && text3) answer = text3;
-      convo.push({ role: "assistant", content: response.content });
+      if (text3) answer = text3;
+      convo.push({ role: "assistant", content: response.text, toolCalls: calls });
       const results = await Promise.all(
         calls.map(async (call) => {
           const spec = ADVISOR_TOOLS[call.name];
@@ -23568,10 +23625,10 @@ async function runAdvisorTurn(ctx, req, emit2, deps = {}) {
             }
           }
           if (r.isError) log27.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
-          return { type: "tool_result", tool_use_id: call.id, content: r.content, is_error: r.isError };
+          return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
-      convo.push({ role: "user", content: results });
+      convo.push(...results);
       if (step === ADVISOR_LIMITS.maxSteps - 1) interrupted = true;
     }
   } catch (e) {
@@ -23728,7 +23785,8 @@ var RUNTIME_SECRET_NAMES = [
   "EBAY_WEBHOOK_VERIFICATION_TOKEN",
   "SOURCING_DISCOVERY_PROVIDER",
   "BRAVE_SEARCH_API_KEY",
-  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_MODEL",
   "EBAY_LISTING_ENABLED",
   "PACKLINK_API_KEY",
   "BOXTAL_V1_LOGIN",
@@ -24372,7 +24430,7 @@ async function route(request) {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, productDraftSchema);
-        claudeClient();
+        llmClient();
         await enforceAiQuota(ctx, "product_draft");
         return draftProductFromText(body.text, ctx.organization.default_currency);
       });
@@ -24381,7 +24439,7 @@ async function route(request) {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
         const body = await parseBody(request, assistantRequestSchema);
-        claudeClient();
+        llmClient();
         await enforceAiQuota(ctx, "assistant");
         return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
       });
@@ -24389,14 +24447,14 @@ async function route(request) {
     if (m === "GET" && path === "/advisor/status") {
       return handle(async () => {
         await requireMobileOrgContext(request);
-        return { configured: aiConfigured(), model: aiConfigured() ? AI_MODEL : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
+        return { configured: aiConfigured(), model: aiConfigured() ? aiModel() : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
       });
     }
     if (m === "POST" && path === "/advisor/chat") {
       try {
         const ctx = await requireMobileOrgContext(request);
         const body = await parseBody(request, advisorChatSchema);
-        claudeClient();
+        llmClient();
         await enforceAiQuota(ctx, "assistant");
         if ((request.headers.get("accept") ?? "").includes("application/x-ndjson")) {
           return new Response(advisorNdjsonStream(ctx, body), { status: 200, headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });

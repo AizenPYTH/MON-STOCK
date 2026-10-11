@@ -1,10 +1,9 @@
 import "server-only";
-import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { AssistantReplyDTO } from "@/features/mobile-api/contract";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { AI_BETAS, AI_MODEL, aiError, claudeClient } from "./claude";
+import { aiError, llmClient, type LlmClient, type LlmMessage } from "./llm";
 import { ASSISTANT_TOOL_DEFINITIONS, ASSISTANT_TOOLS, runAssistantTool, type ToolContext } from "./assistant-tools";
 
 const log = createLogger("AI_ASSISTANT");
@@ -14,7 +13,7 @@ const log = createLogger("AI_ASSISTANT");
  * l'utilisateur — « quel est le produit que j'ai le plus vendu ? », « combien ai-je vendu ce
  * mois-ci sur eBay ? », « qu'est-ce qui dort en stock ? ».
  *
- * Claude choisit les outils de lecture (ventes, commandes, stock, annonces, compte eBay), qui
+ * Le modèle choisit les outils de lecture (ventes, commandes, stock, annonces, compte eBay), qui
  * interrogent les VRAIES données de l'organisation sous la session de l'utilisateur (RLS).
  * Il répond uniquement à partir de ces résultats ; sans donnée, il le dit.
  */
@@ -57,48 +56,39 @@ export function assistantSystemPrompt(org: { name: string; currency: string }, t
   ].join("\n");
 }
 
-export async function askAssistant(ctx: ToolContext & { organizationName: string }, request: AssistantRequest): Promise<AssistantReplyDTO> {
-  const client = claudeClient();
+export async function askAssistant(ctx: ToolContext & { organizationName: string }, request: AssistantRequest, deps: { client?: LlmClient } = {}): Promise<AssistantReplyDTO> {
+  const client = deps.client ?? llmClient();
   const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeZone: "Europe/Paris" }).format(ctx.now ?? new Date());
   const system = assistantSystemPrompt({ name: ctx.organizationName, currency: ctx.currency }, today);
-  const messages: Anthropic.Beta.BetaMessageParam[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
+  const messages: LlmMessage[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
   const used: { tool: string; label: string }[] = [];
-  let model = AI_MODEL;
+  let model = "";
 
   const started = Date.now();
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (Date.now() - started > ASSISTANT_DEADLINE_MS) throw new AppError("EXTERNAL_API", "La réponse prend trop de temps : posez une question plus précise.");
-      const response = await client.beta.messages.create({
-        model: AI_MODEL,
-        max_tokens: 8000,
-        betas: AI_BETAS,
-        fallbacks: "default",
-        output_config: { effort: "medium" },
-        system,
-        tools: ASSISTANT_TOOL_DEFINITIONS,
-        messages,
-      });
+      const response = await client.complete({ system, tools: ASSISTANT_TOOL_DEFINITIONS, messages, maxTokens: 8000, effort: "medium", cacheKey: "mon-stock-assistant" });
       model = response.model;
-      if (response.stop_reason === "refusal") return { answer: "Je ne peux pas répondre à cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
+      if (response.finish === "refusal") return { answer: "Je ne peux pas répondre à cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
 
-      const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
-      const calls = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-      if (response.stop_reason !== "tool_use" || calls.length === 0) {
+      const text = response.text.trim();
+      const calls = response.toolCalls;
+      if (response.finish !== "tool_calls" || calls.length === 0) {
         if (!text) throw new AppError("EXTERNAL_API", "L'assistant n'a pas formulé de réponse. Réessayez.");
-        return { answer: response.stop_reason === "max_tokens" ? `${text}\n\n(réponse interrompue : posez une question plus précise)` : text, sources: used, model };
+        return { answer: response.finish === "length" ? `${text}\n\n(réponse interrompue : posez une question plus précise)` : text, sources: used, model };
       }
 
-      messages.push({ role: "assistant", content: response.content });
+      messages.push({ role: "assistant", content: response.text, toolCalls: calls });
       const results = await Promise.all(
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
           if (r.isError) log.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
-          return { type: "tool_result" as const, tool_use_id: call.id, content: r.content, is_error: r.isError };
+          return { role: "tool" as const, toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         }),
       );
-      messages.push({ role: "user", content: results });
+      messages.push(...results);
     }
   } catch (e) {
     throw aiError(e);
