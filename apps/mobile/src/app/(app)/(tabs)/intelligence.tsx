@@ -74,23 +74,23 @@ export default function IntelligenceScreen() {
   );
 }
 
-/** Accès à l'assistant IA : questions écrites ou dictées sur les ventes, le stock et eBay. */
+/** Accès au conseiller IA : conversation écrite ou vocale sur l'activité (ventes, marges, stock, expéditions). */
 function AssistantEntry() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Poser une question à l'assistant"
-      onPress={() => router.push("/assistant")}
+      accessibilityLabel="Parler à votre conseiller"
+      onPress={() => router.push("/advisor")}
       testID="assistant-entry"
       style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: space[3], padding: space[4], borderRadius: radius.xxl, backgroundColor: color.surfaceDark, opacity: pressed ? 0.9 : 1 })}
     >
       <Sparkles size={20} color={color.accent} />
       <View style={{ flex: 1, gap: 2 }}>
         <Txt variant="label" color={color.inkOnDark} style={{ fontFamily: "Manrope_700Bold" }}>
-          Demandez à l'assistant
+          Parlez à votre conseiller
         </Txt>
         <Txt variant="label" color={color.inkOnDarkMuted}>
-          « Quel est le produit que j'ai le plus vendu ? »
+          « Qu'est-ce que tu me conseilles de faire aujourd'hui ? »
         </Txt>
       </View>
       <View style={{ width: 40, height: 40, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: "center", justifyContent: "center" }}>

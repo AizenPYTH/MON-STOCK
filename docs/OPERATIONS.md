@@ -62,7 +62,7 @@ Supabase Dashboard → projet → **Edge Functions → Secrets** (jamais dans Gi
 | Secret | Quand |
 | --- | --- |
 | `EBAY_ENV` (`production`), `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | pour connecter eBay (§5) |
-| `ANTHROPIC_API_KEY` | pour le produit dicté et l'assistant (§6) |
+| `ANTHROPIC_API_KEY` | pour le produit dicté et le conseiller IA (texte + voix, docs/ADVISOR.md) |
 | `EBAY_LISTING_ENABLED` = `true` | seulement quand vous décidez d'autoriser la publication d'annonces |
 | `PACKLINK_API_KEY` | devis d'expédition réels (Packlink PRO → Paramètres → clé API) |
 | `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY` | devis d'expédition Sendcloud, consultation uniquement (Sendcloud → Paramètres → Intégrations → Sendcloud API → clé publique et clé secrète). À mettre dans **Edge Functions → Secrets**, pas dans Vault. |

@@ -58,6 +58,9 @@ maximale (64 Ko par défaut ; fichier catalogue : 15 Mo, soit 21 Mo une fois enc
 | `GET/POST /api/ebay/webhook` | eBay (signé) | challenge + notifications (suppression de compte, commandes) |
 | `POST /api/ai/product-draft` | rédacteur | phrase dictée → brouillon du formulaire produit (Claude, sortie structurée) ; rien n'est créé |
 | `POST /api/ai/assistant` | membre | questions sur les ventes, le stock, eBay : Claude appelle des outils de LECTURE exécutés avec la session de l'utilisateur (RLS) |
+| `GET /api/advisor/status` | membre | conseiller IA : configuré ?, limites |
+| `POST /api/advisor/chat` | membre | conseiller IA (texte / voix) : flux NDJSON (`Accept: application/x-ndjson`), outils de lecture et de préparation, conversations enregistrées (voir docs/ADVISOR.md) |
+| `POST /api/advisor/actions/confirm` · `/cancel` | membre (rédacteur pour exécuter) | exécute ou annule UNE action préparée, après revérification (propriétaire, rôle, expiration, objet inchangé) |
 | `GET /api/tools/status` | membre | plateformes d'expédition et API de suivi configurées (noms uniquement) |
 | `POST /api/shipping/quotes` | membre | devis réels Packlink PRO / Boxtal / Sendcloud pour un colis (poids, dimensions, codes postaux) ; consultation seulement, aucune étiquette ; aucune plateforme = aucun prix |
 | `POST /api/tracking/refresh` | rédacteur | actualise un colis suivi (La Poste Suivi v2 ou Ship24) ; seul le numéro est transmis |

@@ -108,24 +108,10 @@ describe("assistant Intelligence", () => {
     expect(t[t.length - 1]).toEqual({ role: "user", content: "fin" });
   });
 
-  it("question → réponse du serveur avec les données consultées", async () => {
-    mockAskAssistant.mockResolvedValueOnce({ answer: "Votre produit le plus vendu est l'iPhone 13 128 Go Noir : 3 unités sur 30 jours.", sources: [{ tool: "sales_ranking", label: "Ventes par produit" }], model: "claude-opus-5-5" });
-    const Screen = jest.requireActual("~/app/(app)/assistant").default;
-    render(wrap(<Screen />));
-    fireEvent.press(screen.getByText("Quel est le produit que j'ai le plus vendu ?"));
-    await waitFor(() => expect(screen.getByText(/3 unités sur 30 jours/)).toBeTruthy());
-    expect(screen.getByText("Données consultées : Ventes par produit")).toBeTruthy();
-    expect(mockAskAssistant).toHaveBeenCalledWith("org-1", [{ role: "user", content: "Quel est le produit que j'ai le plus vendu ?" }]);
-  });
-
-  it("serveur sans clé IA : l'erreur réelle est affichée, aucune réponse simulée", async () => {
-    const { UserFacingError } = jest.requireActual("~/lib/errors");
-    mockAskAssistant.mockRejectedValueOnce(new UserFacingError("L'assistant IA n'est pas encore activé sur le serveur (clé ANTHROPIC_API_KEY absente des secrets de l'Edge Function).", "NOT_CONFIGURED"));
-    const Screen = jest.requireActual("~/app/(app)/assistant").default;
-    render(wrap(<Screen />));
-    fireEvent.changeText(screen.getByTestId("assistant-input"), "Combien ai-je vendu ?");
-    fireEvent.press(screen.getByTestId("assistant-input-send"));
-    await waitFor(() => expect(screen.getByText(/pas encore activé/)).toBeTruthy());
+  it("l'ancien écran assistant mène au conseiller (texte + voix, voir advisor-screen.test.tsx)", () => {
+    const Redirected = jest.requireActual("~/app/(app)/assistant").default;
+    const el = Redirected();
+    expect(el.props.href).toBe("/advisor");
   });
 });
 

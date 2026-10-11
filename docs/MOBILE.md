@@ -171,7 +171,7 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Ventes | Commandes par jour, à expédier, annonces eBay | `orders`, `channel_listings` |
 | Intelligence | Aujourd'hui / Analyse 7-30-90 j | vues analytiques |
 | **Produit à la voix (IA)** | « Dites ou écrivez le produit » : dictée iOS en français, phrase comprise par Claude (marque, modèle, variantes, prix d'achat/vente, quantités, ambiguïtés signalées) → formulaire pré-rempli, création après vérification | Edge Function `/ai/product-draft` (clé `ANTHROPIC_API_KEY` serveur) |
-| **Assistant (IA)** | Intelligence → « Demandez à l'assistant » : questions écrites ou dictées (« quel est le produit que j'ai le plus vendu ? ») ; réponses calculées sur les vraies ventes / commandes / stock / annonces eBay, données consultées affichées | Edge Function `/ai/assistant` (lecture seule sous la session de l'utilisateur) |
+| **Conseiller (IA, texte + voix)** | Aujourd'hui → « Parlez à votre conseiller » : conversation écrite ou vocale (dictée et voix de l'appareil), réponse au fil de l'eau, cartes de résultats (ventes, marges, stock, commandes, colis, frais de port), actions préparées à confirmer, historique des conversations ; voir docs/ADVISOR.md | Edge Function `/advisor/*` (outils sous la session de l'utilisateur) + tables `advisor_*` (RLS personnelle) |
 | Commande fournisseur | Brouillon depuis la comparaison ou le radar (jamais envoyé automatiquement) | `purchase_orders` |
 | **Fournisseurs professionnels** | Sourcing → « Fournisseurs » (ou Réglages) : annuaire de 63 fournisseurs, filtres par segment, statut réel (identifié, vérifié, accès public, compte pro requis, connecteur, import testé, indisponible), dernier contrôle du site, procédure d'accès, e-mail de demande FR/EN | `/sourcing/directory` |
 | **Import de catalogue** | Sourcing → « Importer » : fichier CSV, TSV, XLSX, XML ou JSON du fournisseur → colonnes détectées, correspondance modifiable, HT/TTC, devise, aperçu et erreurs par ligne → confirmation → offres réelles horodatées | `/sourcing/import/preview`, `/sourcing/import` |
@@ -282,7 +282,7 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
 5. **Produit à la voix** (après ajout de `ANTHROPIC_API_KEY`, docs/SERVER.md §3) : Stock → « + » →
    micro → dire « trois iPhone 13 128 gigas noir grade A achetés 310 euros revendus 429 » → ■ → le
    formulaire se remplit (Apple, iPhone 13, 128 Go, Noir, A, 310, 429, 3) → vérifier → Créer.
-6. **Assistant** : Intelligence → « Demandez à l'assistant » → micro ou texte « quel est le
+6. **Conseiller** : Aujourd'hui → « Parlez à votre conseiller » (détail : docs/ADVISOR.md §6) → micro ou texte « quel est le
    produit que j'ai le plus vendu ? » → réponse chiffrée + « Données consultées : Ventes par
    produit ». Sans vente synchronisée, l'assistant le dit (il n'invente rien).
 7. **Import de catalogue** : Sourcing → « Importer » → nom du fournisseur → choisir le fichier

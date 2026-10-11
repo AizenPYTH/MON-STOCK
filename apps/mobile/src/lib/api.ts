@@ -24,16 +24,22 @@ export interface ApiCallOptions {
   fetchImpl?: typeof fetch;
 }
 
-export async function callApi<T>(path: string, options: ApiCallOptions = {}): Promise<T> {
+/** En-têtes d'un appel authentifié (jeton de session de l'utilisateur, organisation active). */
+export async function apiHeaders(organizationId: string | undefined, accept = "application/json", withBody = false): Promise<Record<string, string>> {
   const { data } = await requireSupabase().auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new UserFacingError("Votre session a expiré : reconnectez-vous.", "AUTH_REQUIRED");
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: accept };
+  if (appConfig.ok) headers.apikey = appConfig.config.supabaseAnonKey;
+  if (organizationId) headers[ORGANIZATION_HEADER] = organizationId;
+  if (withBody) headers["Content-Type"] = "application/json";
+  return headers;
+}
+
+export async function callApi<T>(path: string, options: ApiCallOptions = {}): Promise<T> {
+  const headers = await apiHeaders(options.organizationId, "application/json", options.body !== undefined);
   const url = new URL(`${apiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
   for (const [k, v] of Object.entries(options.query ?? {})) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
-  if (appConfig.ok) headers.apikey = appConfig.config.supabaseAnonKey;
-  if (options.organizationId) headers[ORGANIZATION_HEADER] = options.organizationId;
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 60_000);
   let res: Response;

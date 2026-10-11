@@ -51,12 +51,13 @@ export interface Dictation {
   /** texte reconnu (provisoire pendant l'écoute, définitif ensuite) */
   transcript: string;
   error: string | null;
-  start: () => Promise<void>;
+  /** `continuous: false` : l'écoute s'arrête seule après une pause (mode conversation). */
+  start: (opts?: { continuous?: boolean }) => Promise<void>;
   stop: () => void;
   reset: () => void;
 }
 
-export function useDictation(options: { onFinal?: (text: string) => void } = {}): Dictation {
+export function useDictation(options: { onFinal?: (text: string) => void; onEnd?: (heardSomething: boolean) => void; onError?: (message: string | null) => void } = {}): Dictation {
   const mod = speechModule();
   const [available] = useState(() => {
     try {
@@ -71,8 +72,12 @@ export function useDictation(options: { onFinal?: (text: string) => void } = {})
   const finalRef = useRef("");
   const lastRef = useRef("");
   const onFinal = useRef(options.onFinal);
+  const onEnd = useRef(options.onEnd);
+  const onError = useRef(options.onError);
   useEffect(() => {
     onFinal.current = options.onFinal;
+    onEnd.current = options.onEnd;
+    onError.current = options.onError;
   });
 
   useEffect(() => {
@@ -91,6 +96,7 @@ export function useDictation(options: { onFinal?: (text: string) => void } = {})
       // En mode continu, iOS ne marque pas toujours le dernier résultat comme définitif.
       const text = (finalRef.current || lastRef.current).trim();
       if (text) onFinal.current?.(text);
+      onEnd.current?.(Boolean(text));
     });
     on("result", (e: { results: { transcript: string }[]; isFinal: boolean }) => {
       const text = e.results[0]?.transcript ?? "";
@@ -100,12 +106,14 @@ export function useDictation(options: { onFinal?: (text: string) => void } = {})
     });
     on("error", (e: { error: string }) => {
       setListening(false);
-      setError(speechErrorMessage(e.error));
+      const message = speechErrorMessage(e.error);
+      setError(message);
+      onError.current?.(message);
     });
     return () => subs.forEach((s) => s.remove());
   }, [mod, available]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (opts: { continuous?: boolean } = {}) => {
     if (!mod) return;
     setError(null);
     setTranscript("");
@@ -115,9 +123,10 @@ export function useDictation(options: { onFinal?: (text: string) => void } = {})
       const perm = await mod.requestPermissionsAsync();
       if (!perm.granted) {
         setError(speechErrorMessage("not-allowed"));
+        onError.current?.(speechErrorMessage("not-allowed"));
         return;
       }
-      mod.start({ lang: "fr-FR", interimResults: true, continuous: true, addsPunctuation: true, contextualStrings: ["iPhone", "Samsung", "Galaxy", "Go", "To", "grade A", "grade B", "grade C", "reconditionné", "eBay", "SKU"] });
+      mod.start({ lang: "fr-FR", interimResults: true, continuous: opts.continuous ?? true, addsPunctuation: true, contextualStrings: ["iPhone", "Samsung", "Galaxy", "Go", "To", "grade A", "grade B", "grade C", "reconditionné", "eBay", "SKU"] });
     } catch {
       setListening(false);
       setError(speechErrorMessage("unknown"));
