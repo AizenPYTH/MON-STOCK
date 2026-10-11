@@ -66,7 +66,7 @@ describe("requête envoyée à OpenAI", () => {
     return { sdk: { chat: { completions: { create } } } as unknown as OpenAIChatLike, create };
   }
 
-  it("outils + flux : modèle, plafond, effort, cache, aucun stockage côté OpenAI, annulation transmise", async () => {
+  it("outils + flux : modèle, plafond, cache, aucun stockage côté OpenAI, annulation transmise ; pas d'effort de raisonnement avec des outils", async () => {
     const { sdk, create } = fakeSdk([chunk({ content: "ok" }), chunk({}, "stop")]);
     const signal = new AbortController().signal;
     const r = await openAILlm(sdk, "gpt-5.4-mini").complete(
@@ -75,7 +75,8 @@ describe("requête envoyée à OpenAI", () => {
     );
     expect(r.text).toBe("ok");
     const [body, opts] = create.mock.calls[0]! as unknown as [Record<string, unknown>, { signal: AbortSignal }];
-    expect(body).toMatchObject({ model: "gpt-5.4-mini", max_completion_tokens: 2500, reasoning_effort: "medium", stream: true, store: false, prompt_cache_key: "mon-stock-advisor", parallel_tool_calls: true });
+    expect(body).toMatchObject({ model: "gpt-5.4-mini", max_completion_tokens: 2500, stream: true, store: false, prompt_cache_key: "mon-stock-advisor", parallel_tool_calls: true });
+    expect(body).not.toHaveProperty("reasoning_effort");
     expect(body.tools).toHaveLength(1);
     expect(body).not.toHaveProperty("response_format");
     expect(opts.signal).toBe(signal);
@@ -88,6 +89,29 @@ describe("requête envoyée à OpenAI", () => {
     expect(body.response_format).toEqual({ type: "json_schema", json_schema: { name: "product_draft", strict: true, schema: { type: "object" } } });
     expect(body).not.toHaveProperty("tools");
     expect(body.reasoning_effort).toBe("low");
+  });
+});
+
+describe("paramètre refusé par OpenAI (400)", () => {
+  const h = new Headers();
+  it("un seul nouvel essai sans le paramètre refusé", async () => {
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new OpenAI.BadRequestError(400, { message: "Unsupported parameter: 'prompt_cache_key'", param: "prompt_cache_key" }, "Unsupported parameter: 'prompt_cache_key'", h))
+      .mockResolvedValueOnce(stream([chunk({ content: "ok" }), chunk({}, "stop")]));
+    const sdk = { chat: { completions: { create } } } as unknown as OpenAIChatLike;
+    const r = await openAILlm(sdk, "gpt-5.4-mini").complete({ system: "S", messages: [{ role: "user", content: "Q" }], tools: [{ name: "t", description: "d", input_schema: { type: "object" } }], maxTokens: 100, cacheKey: "k" });
+    expect(r.text).toBe("ok");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[0]![0]).toHaveProperty("prompt_cache_key");
+    expect(create.mock.calls[1]![0]).not.toHaveProperty("prompt_cache_key");
+    expect(create.mock.calls[1]![0]).toHaveProperty("tools");
+  });
+  it("autre refus (requête invalide) : pas de nouvel essai, erreur transmise", async () => {
+    const create = vi.fn().mockRejectedValue(new OpenAI.BadRequestError(400, { message: "Invalid messages" }, "Invalid messages", h));
+    const sdk = { chat: { completions: { create } } } as unknown as OpenAIChatLike;
+    await expect(openAILlm(sdk, "gpt-5.4-mini").complete({ system: "S", messages: [{ role: "user", content: "Q" }], maxTokens: 100 })).rejects.toBeInstanceOf(OpenAI.BadRequestError);
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });
 

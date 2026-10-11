@@ -1,6 +1,9 @@
 import "server-only";
 import OpenAI from "openai";
 import { AppError } from "@/lib/errors";
+import { createLogger } from "@/lib/logger";
+
+const log = createLogger("AI_LLM");
 
 /**
  * Accès au modèle de langage — CÔTÉ SERVEUR UNIQUEMENT. Fournisseur : OpenAI (API Chat Completions).
@@ -145,21 +148,56 @@ export async function collectStream(stream: AsyncIterable<OpenAI.Chat.Completion
   return { text: refusal && !text ? "" : text, toolCalls: mapped === "refusal" ? [] : toolCalls, finish: mapped, model };
 }
 
+/**
+ * Paramètre refusé par l'API (400) : `param` ou message qui le nomme. Certains modèles refusent
+ * `reasoning_effort` avec des outils dans Chat Completions, ou certains paramètres facultatifs.
+ */
+function rejectedParam(e: unknown): string | null {
+  if (!(e instanceof OpenAI.BadRequestError)) return null;
+  const param = typeof e.param === "string" ? e.param : null;
+  for (const p of ["reasoning_effort", "parallel_tool_calls", "prompt_cache_key", "store"]) if (param === p || (e.message ?? "").includes(p)) return p;
+  return null;
+}
+
+/** Journal technique sans secret : statut, code, paramètre et message d'OpenAI (tronqué). */
+function logApiError(e: unknown, model: string, withTools: boolean) {
+  if (e instanceof OpenAI.APIError) log.warn("requête OpenAI refusée", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
+}
+
 export function openAILlm(sdk: OpenAIChatLike, model: string): LlmClient {
   return {
     async complete(req, opts = {}) {
+      const withTools = Boolean(req.tools?.length);
       const body: Record<string, unknown> = {
         model,
         messages: toOpenAIMessages(req.system, req.messages),
         max_completion_tokens: req.maxTokens,
-        reasoning_effort: req.effort ?? "low",
+        // Avec des outils, l'effort de raisonnement n'est pas accepté par tous les modèles en
+        // Chat Completions : on laisse la valeur par défaut du modèle.
+        ...(withTools ? {} : { reasoning_effort: req.effort ?? "low" }),
         stream: true,
         store: false,
         ...(req.cacheKey ? { prompt_cache_key: req.cacheKey } : {}),
-        ...(req.tools?.length ? { tools: toOpenAITools(req.tools), parallel_tool_calls: true } : {}),
+        ...(withTools ? { tools: toOpenAITools(req.tools!), parallel_tool_calls: true } : {}),
         ...(req.json ? { response_format: { type: "json_schema", json_schema: { name: req.json.name, strict: true, schema: req.json.schema } } } : {}),
       };
-      const stream = await sdk.chat.completions.create(body, { signal: opts.signal });
+      let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
+      try {
+        stream = await sdk.chat.completions.create(body, { signal: opts.signal });
+      } catch (e) {
+        logApiError(e, model, withTools);
+        const p = rejectedParam(e);
+        if (!p || !(p in body)) throw e;
+        // Un seul nouvel essai, sans le paramètre facultatif refusé.
+        const { [p]: _dropped, ...retry } = body;
+        void _dropped;
+        try {
+          stream = await sdk.chat.completions.create(retry, { signal: opts.signal });
+        } catch (e2) {
+          logApiError(e2, model, withTools);
+          throw e2;
+        }
+      }
       return collectStream(stream, opts.onText, model);
     },
   };

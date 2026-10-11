@@ -19563,7 +19563,7 @@ function emptyListingsResult() {
   return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
 }
 async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log30 } = ctx;
+  const { admin, log: log31 } = ctx;
   const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   const seen = /* @__PURE__ */ new Set();
   let truncated = false;
@@ -19571,7 +19571,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     result.fetched += page2.listings.length;
     result.invalid += page2.invalid.length;
     for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log30.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+    for (const w2 of page2.warnings) log31.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
@@ -19584,7 +19584,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
   result.complete = !truncated;
   if (truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log30.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log31.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
   const active = result.complete ? await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
@@ -21333,7 +21333,9 @@ init_catalog_import();
 // src/services/ai/llm.ts
 init_empty();
 init_errors();
+init_logger();
 import OpenAI from "npm:openai@7.23.0";
+var log23 = createLogger("AI_LLM");
 var DEFAULT_AI_MODEL = "gpt-5.4-mini";
 function aiModel(env = process.env) {
   const m = env.OPENAI_MODEL?.trim();
@@ -21397,21 +21399,48 @@ async function collectStream(stream, onText, fallbackModel = "") {
   const mapped = refusal || finish2 === "content_filter" ? "refusal" : finish2 === "length" ? "length" : toolCalls.length > 0 ? "tool_calls" : "stop";
   return { text: refusal && !text3 ? "" : text3, toolCalls: mapped === "refusal" ? [] : toolCalls, finish: mapped, model };
 }
+function rejectedParam(e) {
+  if (!(e instanceof OpenAI.BadRequestError)) return null;
+  const param = typeof e.param === "string" ? e.param : null;
+  for (const p of ["reasoning_effort", "parallel_tool_calls", "prompt_cache_key", "store"]) if (param === p || (e.message ?? "").includes(p)) return p;
+  return null;
+}
+function logApiError(e, model, withTools) {
+  if (e instanceof OpenAI.APIError) log23.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
+}
 function openAILlm(sdk, model) {
   return {
     async complete(req, opts = {}) {
+      const withTools = Boolean(req.tools?.length);
       const body = {
         model,
         messages: toOpenAIMessages(req.system, req.messages),
         max_completion_tokens: req.maxTokens,
-        reasoning_effort: req.effort ?? "low",
+        // Avec des outils, l'effort de raisonnement n'est pas accepté par tous les modèles en
+        // Chat Completions : on laisse la valeur par défaut du modèle.
+        ...withTools ? {} : { reasoning_effort: req.effort ?? "low" },
         stream: true,
         store: false,
         ...req.cacheKey ? { prompt_cache_key: req.cacheKey } : {},
-        ...req.tools?.length ? { tools: toOpenAITools(req.tools), parallel_tool_calls: true } : {},
+        ...withTools ? { tools: toOpenAITools(req.tools), parallel_tool_calls: true } : {},
         ...req.json ? { response_format: { type: "json_schema", json_schema: { name: req.json.name, strict: true, schema: req.json.schema } } } : {}
       };
-      const stream = await sdk.chat.completions.create(body, { signal: opts.signal });
+      let stream;
+      try {
+        stream = await sdk.chat.completions.create(body, { signal: opts.signal });
+      } catch (e) {
+        logApiError(e, model, withTools);
+        const p = rejectedParam(e);
+        if (!p || !(p in body)) throw e;
+        const { [p]: _dropped, ...retry } = body;
+        void _dropped;
+        try {
+          stream = await sdk.chat.completions.create(retry, { signal: opts.signal });
+        } catch (e2) {
+          logApiError(e2, model, withTools);
+          throw e2;
+        }
+      }
       return collectStream(stream, opts.onText, model);
     }
   };
@@ -21963,7 +21992,7 @@ async function runAssistantTool(ctx, name, input) {
 }
 
 // src/services/ai/assistant.ts
-var log23 = createLogger("AI_ASSISTANT");
+var log24 = createLogger("AI_ASSISTANT");
 var assistantRequestSchema = z36.object({
   messages: z36.array(z36.object({ role: z36.enum(["user", "assistant"]), content: z36.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
@@ -22018,7 +22047,7 @@ async function askAssistant(ctx, request, deps = {}) {
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
-          if (r.isError) log23.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log24.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -22606,7 +22635,7 @@ async function sendcloudQuotes(req, env = process.env, now = /* @__PURE__ */ new
 
 // src/services/shipping/quotes.ts
 init_logger();
-var log24 = createLogger("SHIPPING");
+var log25 = createLogger("SHIPPING");
 var PROVIDERS = [
   { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: async (req, env, now) => ({ quotes: await packlinkQuotes(req, env, now), excluded: 0 }) },
   { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: async (req, env, now) => ({ quotes: await boxtalQuotes(req, env, now), excluded: 0 }) },
@@ -22637,7 +22666,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
         return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message, count: quotes.length }, quotes };
       } catch (e) {
         const message = isConnectorError(e) ? e.message : "Erreur inattendue.";
-        log24.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
+        log25.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
         return { status: { id: p.id, label: p.label, state: "error", message, count: 0 }, quotes: [] };
       }
     })
@@ -22700,7 +22729,7 @@ function stockErrorMessage(e) {
 }
 
 // src/features/stock/movement-service.ts
-var log25 = createLogger("STOCK");
+var log26 = createLogger("STOCK");
 async function applyManualMovement(ctx, d) {
   const signed = signedMovementQuantity(d);
   const { data, error } = await ctx.supabase.rpc("apply_inventory_movement", {
@@ -22715,7 +22744,7 @@ async function applyManualMovement(ctx, d) {
   });
   if (error) throw new AppError("VALIDATION", stockErrorMessage(error));
   const { data: sku } = await ctx.supabase.from("skus").select("code").eq("id", d.sku_id).eq("organization_id", ctx.organization.id).maybeSingle();
-  log25.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
+  log26.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
   return { quantityAfter: data?.quantity_after ?? null, skuCode: sku?.code ?? null };
 }
 
@@ -22723,7 +22752,7 @@ async function applyManualMovement(ctx, d) {
 init_errors();
 init_logger();
 init_admin();
-var log26 = createLogger("AI_ADVISOR_ACTIONS");
+var log27 = createLogger("AI_ADVISOR_ACTIONS");
 var ACTION_TTL_MS = 10 * 6e4;
 var ACTION_COLUMNS = "id, organization_id, user_id, conversation_id, kind, sku_id, payload, summary, amount, currency, status, expires_at, result, error";
 function actionToDTO(r) {
@@ -22804,13 +22833,13 @@ async function decideAdvisorAction(ctx, actionId, decision, deps = {}) {
   try {
     const done = await execute(ctx, claimed);
     const final = await finish(admin, row2.id, "executed", { result: { message: done.message, ...done.result } }, now);
-    log26.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
+    log27.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e et ex\xE9cut\xE9e : ${done.message}`);
     return { action: actionToDTO(final), message: done.message };
   } catch (e) {
     const message = e instanceof AppError ? e.message : "Ex\xE9cution impossible : rien n'a \xE9t\xE9 modifi\xE9.";
     const final = await finish(admin, row2.id, "failed", { error: message }, now);
-    log26.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
+    log27.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e mais non ex\xE9cut\xE9e : ${message}`);
     return { action: actionToDTO(final), message };
   }
@@ -23479,7 +23508,7 @@ async function runAdvisorTool(ctx, name, input) {
 }
 
 // src/services/ai/advisor.ts
-var log27 = createLogger("AI_ADVISOR");
+var log28 = createLogger("AI_ADVISOR");
 var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 6, maxTokens: 2500, deadlineMs: 1e5 };
 var ADVISOR_SYSTEM_STABLE = [
   "Tu es le conseiller e-commerce personnel de l'utilisateur dans MON STOCK (gestion de stock et de ventes d'un revendeur d'appareils \xE9lectroniques, principalement sur eBay). Tu es son employ\xE9 : tu analyses SES donn\xE9es, tu recommandes, tu pr\xE9pares des actions.",
@@ -23530,7 +23559,7 @@ function supabaseAdvisorStore(ctx) {
     async addMessage(conversationId, m) {
       const { data, error } = await ctx.supabase.from("advisor_messages").insert({ organization_id: org, conversation_id: conversationId, user_id: ctx.user.id, role: m.role, content: m.content.slice(0, 12e3), cards: (m.cards ?? []).slice(0, 12), sources: (m.sources ?? []).slice(0, 20), interrupted: m.interrupted ?? false }).select("id").single();
       if (error) {
-        log27.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
+        log28.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
         return null;
       }
       await ctx.supabase.from("advisor_conversations").update({ last_message_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", conversationId);
@@ -23624,7 +23653,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
               emit2({ type: "card", card: c });
             }
           }
-          if (r.isError) log27.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log28.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -24080,7 +24109,7 @@ init_errors();
 init_logger();
 init_admin();
 init_alerts();
-var log28 = createLogger("TRACKING");
+var log29 = createLogger("TRACKING");
 function trackingProviders(env = process.env) {
   return { laposte: laPosteConfigured(env), ship24: ship24Configured(env) };
 }
@@ -24098,7 +24127,7 @@ async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), en
     snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
   } catch (e) {
     const message = isConnectorError(e) ? e.message : "Erreur inattendue lors du suivi.";
-    log28.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
+    log29.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
     const retry = new Date(now.getTime() + 6 * 36e5).toISOString();
     await admin.from("tracked_parcels").update({ last_error: message.slice(0, 500), last_checked_at: now.toISOString(), next_check_at: retry, check_count: parcel.check_count + 1 }).eq("id", parcel.id);
     return { parcelId: parcel.id, status: parcel.status, provider, checked: false, message };
@@ -24148,7 +24177,7 @@ async function runDueTracking(now = /* @__PURE__ */ new Date(), admin = createAd
       else failed++;
     } catch (e) {
       failed++;
-      log28.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
+      log29.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
     }
   }
   return { checked, failed, skipped };
@@ -24183,7 +24212,7 @@ async function probeToolConnectors(fetchImpl = fetch) {
 }
 
 // server/edge/api.ts
-var log29 = createLogger("EDGE_API");
+var log30 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
@@ -24224,7 +24253,7 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log29.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
+  log30.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
   return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
 }
 async function finalizeEbayConnect(request) {
@@ -24235,7 +24264,7 @@ async function finalizeEbayConnect(request) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row2) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row2.created_by !== ctx.user.id || row2.organization_id !== ctx.organization.id) {
-    log29.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log30.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row2.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -24246,11 +24275,11 @@ async function finalizeEbayConnect(request) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
-    log29.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log30.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log29.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log30.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
@@ -24515,7 +24544,7 @@ async function route(request) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log29.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log30.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;
