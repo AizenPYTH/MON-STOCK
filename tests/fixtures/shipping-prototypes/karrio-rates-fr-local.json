@@ -1,0 +1,28 @@
+{
+ "messages": [
+  {
+   "carrier_id": "proto-chronopost",
+   "carrier_name": "chronopost",
+   "code": "SHIPPING_SDK_INTERNAL_ERROR",
+   "message": "<urlopen error Tunnel connection failed: 403 Forbidden>"
+  },
+  {
+   "carrier_id": "proto-gls",
+   "carrier_name": "gls",
+   "code": "SHIPPING_SDK_ORIGIN_NOT_SERVICED_ERROR",
+   "message": "this account cannot ship from origin FR"
+  },
+  {
+   "carrier_id": "proto-dpd",
+   "carrier_name": "dpd",
+   "code": "SHIPPING_SDK_ORIGIN_NOT_SERVICED_ERROR",
+   "message": "this account cannot ship from origin FR"
+  },
+  {
+   "carrier_id": "proto-colissimo",
+   "carrier_name": "colissimo",
+   "code": "SHIPPING_SDK_INTERNAL_ERROR",
+   "message": "module 'karrio.providers.colissimo' has no attribute 'parse_rate_response'"
+  }
+ ]
+}

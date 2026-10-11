@@ -1,0 +1,146 @@
+{
+  "_comment": "Extrait réel de POST /api/v3/shipping-options (Sendcloud, compte MON STOCK, 11/10/2026, calculate_quotes=true) pour un colis 1 kg 30x20x10 cm de 75011 vers 69003. Champs non utilisés retirés ; montants inchangés.",
+  "data": [
+    {
+      "code": "mondial_relay:service_point,dualapi/size=l,c2c",
+      "name": "Mondial Relay Point Relais",
+      "carrier": { "code": "mondial_relay", "name": "Mondial Relay" },
+      "functionalities": { "tracked": true, "last_mile": "service_point", "first_mile": "dropoff", "delivery_deadline": "best_effort", "service_area": "domestic" },
+      "contract": { "id": 7443, "carrier_code": "mondial_relay", "name": "Mondial Relay - Transactional Contract - France" },
+      "requirements": { "fields": ["to_email"], "is_service_point_required": true },
+      "quotes": [
+        {
+          "price": {
+            "breakdown": [
+              { "price": { "value": "4.39", "currency": "EUR" }, "label": "Label", "type": "price_without_insurance" },
+              { "price": { "value": "0", "currency": "EUR" }, "label": "Shipment protection (tax-exempt)", "type": "insurance_price" }
+            ],
+            "total": { "value": "4.39", "currency": "EUR" }
+          },
+          "lead_time": null
+        }
+      ],
+      "charging_type": "label_creation",
+      "quote_source": "sendcloud_prices",
+      "quote_error": null
+    },
+    {
+      "code": "mondial_relay:locker_delivery,dualapi",
+      "name": "Mondial Relay Locker Delivery",
+      "carrier": { "code": "mondial_relay", "name": "Mondial Relay" },
+      "functionalities": { "tracked": true, "last_mile": "locker", "first_mile": "pickup_dropoff", "delivery_deadline": "within_72h", "service_area": "international" },
+      "contract": { "id": 7443, "carrier_code": "mondial_relay", "name": "Mondial Relay - Transactional Contract - France" },
+      "requirements": { "fields": ["to_email"], "is_service_point_required": true },
+      "quotes": [
+        {
+          "price": {
+            "breakdown": [
+              { "price": { "value": "4.29", "currency": "EUR" }, "label": "Label", "type": "price_without_insurance" },
+              { "price": { "value": "0", "currency": "EUR" }, "label": "Shipment protection (tax-exempt)", "type": "insurance_price" }
+            ],
+            "total": { "value": "4.29", "currency": "EUR" }
+          },
+          "lead_time": 48
+        }
+      ],
+      "charging_type": "label_creation",
+      "quote_source": "sendcloud_prices",
+      "quote_error": null
+    },
+    {
+      "code": "colissimo:home/fr",
+      "name": "Colissimo Home",
+      "carrier": { "code": "colissimo", "name": "Colissimo" },
+      "functionalities": { "tracked": true, "last_mile": "home_delivery", "first_mile": "pickup_dropoff", "delivery_deadline": "best_effort", "service_area": "domestic" },
+      "contract": { "id": 1337, "carrier_code": "colissimo", "name": "Colissimo - Transactional Contract - France" },
+      "requirements": { "fields": [], "is_service_point_required": false },
+      "quotes": [
+        {
+          "price": {
+            "breakdown": [
+              { "price": { "value": "9.39", "currency": "EUR" }, "label": "Label", "type": "price_without_insurance" },
+              { "price": { "value": "0", "currency": "EUR" }, "label": "Shipment protection (tax-exempt)", "type": "insurance_price" },
+              { "price": { "value": "1.32", "currency": "EUR" }, "label": "Fuel surcharge (14.02%)", "type": "fuel" }
+            ],
+            "total": { "value": "10.71", "currency": "EUR" }
+          },
+          "lead_time": 48
+        }
+      ],
+      "charging_type": "label_creation",
+      "quote_source": "sendcloud_prices",
+      "quote_error": null
+    },
+    {
+      "code": "colissimo:post-office",
+      "name": "Colissimo Service Point",
+      "carrier": { "code": "colissimo", "name": "Colissimo" },
+      "functionalities": { "tracked": true, "last_mile": "locker_or_service_point", "first_mile": "pickup_dropoff", "delivery_deadline": "best_effort", "service_area": "domestic" },
+      "contract": { "id": 1337, "carrier_code": "colissimo", "name": "Colissimo - Transactional Contract - France" },
+      "requirements": { "fields": ["to_telephone"], "is_service_point_required": true },
+      "quotes": [
+        {
+          "price": {
+            "breakdown": [
+              { "price": { "value": "7.76", "currency": "EUR" }, "label": "Label", "type": "price_without_insurance" },
+              { "price": { "value": "0", "currency": "EUR" }, "label": "Shipment protection (tax-exempt)", "type": "insurance_price" },
+              { "price": { "value": "1.09", "currency": "EUR" }, "label": "Fuel surcharge (14.02%)", "type": "fuel" }
+            ],
+            "total": { "value": "8.85", "currency": "EUR" }
+          },
+          "lead_time": null
+        }
+      ],
+      "charging_type": "label_creation",
+      "quote_source": "sendcloud_prices",
+      "quote_error": null
+    },
+    {
+      "code": "mondial_relay:home_domestic,dualapi/c2c",
+      "name": "Mondial Relay Home Domestic",
+      "carrier": { "code": "mondial_relay", "name": "Mondial Relay" },
+      "functionalities": { "tracked": true, "last_mile": "home_delivery", "first_mile": "dropoff", "delivery_deadline": "best_effort", "service_area": "domestic" },
+      "contract": { "id": 7443, "carrier_code": "mondial_relay", "name": "Mondial Relay - Transactional Contract - France" },
+      "requirements": { "fields": ["to_email"], "is_service_point_required": false },
+      "quotes": [
+        {
+          "price": {
+            "breakdown": [
+              { "price": { "value": "6.03", "currency": "EUR" }, "label": "Label", "type": "price_without_insurance" },
+              { "price": { "value": "0", "currency": "EUR" }, "label": "Shipment protection (tax-exempt)", "type": "insurance_price" }
+            ],
+            "total": { "value": "6.03", "currency": "EUR" }
+          },
+          "lead_time": null
+        }
+      ],
+      "charging_type": "label_creation",
+      "quote_source": "sendcloud_prices",
+      "quote_error": null
+    },
+    {
+      "code": "sendcloud:letter",
+      "name": "Unstamped letter",
+      "carrier": { "code": "sendcloud", "name": "Sendcloud" },
+      "functionalities": { "tracked": false, "last_mile": "home_delivery", "first_mile": "dropoff", "form_factor": "mailbox", "delivery_deadline": "best_effort", "service_area": "domestic" },
+      "contract": null,
+      "requirements": { "fields": [], "is_service_point_required": false },
+      "quotes": [
+        {
+          "price": {
+            "breakdown": [
+              { "price": { "value": "0.00", "currency": "EUR" }, "label": "Label", "type": "price_without_insurance" },
+              { "price": { "value": "0", "currency": "EUR" }, "label": "Shipment protection (tax-exempt)", "type": "insurance_price" }
+            ],
+            "total": { "value": "0", "currency": "EUR" }
+          },
+          "lead_time": 10
+        }
+      ],
+      "charging_type": "label_creation",
+      "quote_source": "sendcloud_prices",
+      "quote_error": null
+    }
+  ],
+  "message": null
+}

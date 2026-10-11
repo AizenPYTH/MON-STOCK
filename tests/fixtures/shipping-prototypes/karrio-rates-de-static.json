@@ -1,0 +1,42 @@
+{
+ "messages": [
+  {
+   "message": "this account cannot ship from origin DE",
+   "code": "SHIPPING_SDK_ORIGIN_NOT_SERVICED_ERROR",
+   "level": null,
+   "details": null,
+   "carrier_name": "dpd",
+   "carrier_id": "proto-dpd"
+  }
+ ],
+ "rates": [
+  {
+   "id": "rat_df1bd9a08e194f10b5f33ceb9c5c9aeb",
+   "object_type": "rate",
+   "carrier_name": "gls",
+   "carrier_id": "proto-gls",
+   "currency": "EUR",
+   "service": "gls_parcel",
+   "total_charge": 0.0,
+   "transit_days": null,
+   "extra_charges": [
+    {
+     "name": "Base Charge",
+     "amount": 0.0,
+     "currency": "EUR",
+     "id": null
+    }
+   ],
+   "estimated_delivery": null,
+   "meta": {
+    "service_name": "GLS PARCEL",
+    "shipping_charges": 0.0,
+    "shipping_currency": "EUR",
+    "ext": "gls",
+    "carrier": "gls",
+    "rate_provider": "gls"
+   },
+   "test_mode": false
+  }
+ ]
+}
