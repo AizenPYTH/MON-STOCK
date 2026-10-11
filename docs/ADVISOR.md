@@ -2,7 +2,8 @@
 
 État au 11 octobre 2026 :
 - implémenté et testé avec des simulations (API Claude, base, voix) ;
-- **non déployé** : migration à appliquer, Edge Function à redéployer, `ANTHROPIC_API_KEY` à ajouter, nouveau build TestFlight nécessaire.
+- **déployé sur TEST** le 11 octobre : migration appliquée, Edge Function en version 22 (commit `bf3f645`), build TestFlight 9 lancé ;
+- **reste à faire** : ajouter `ANTHROPIC_API_KEY` (secrets de l'Edge Function). Sans elle, l'écran affiche « conseiller non activé ».
 
 ## 1. Ce qui fonctionne réellement (dans le code)
 
