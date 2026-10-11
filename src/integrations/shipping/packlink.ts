@@ -103,6 +103,7 @@ export function mapPacklinkServices(body: unknown, quotedAt: string): ShippingQu
       service: s.name?.trim() || s.category || "Service",
       priceInclVat: total,
       priceExclVat: base,
+      priceVatUnknown: null,
       currency: (s.currency ?? "EUR").toUpperCase(),
       transitDaysMin: transit.min,
       transitDaysMax: transit.max,

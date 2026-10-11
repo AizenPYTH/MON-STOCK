@@ -14286,7 +14286,7 @@ init_logger();
 init_crypto();
 init_admin();
 init_env();
-import { z as z40 } from "npm:zod@4.6.5";
+import { z as z41 } from "npm:zod@4.6.5";
 
 // src/lib/cron-auth.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
@@ -21848,7 +21848,9 @@ var RUNTIME_SECRET_NAMES = [
   "BOXTAL_CONTENT_CODE",
   "BOXTAL_API_URL",
   "LAPOSTE_OKAPI_KEY",
-  "SHIP24_API_KEY"
+  "SHIP24_API_KEY",
+  "SENDCLOUD_PUBLIC_KEY",
+  "SENDCLOUD_SECRET_KEY"
 ];
 async function loadRuntimeSecrets(env, fetchImpl = fetch) {
   const fromEnv = RUNTIME_SECRET_NAMES.filter((n) => Boolean(env[n]));
@@ -21966,6 +21968,7 @@ function mapBoxtalXml(xml, quotedAt) {
       service: text2(service.label) ?? text2(service.code) ?? "Service",
       priceInclVat: incl,
       priceExclVat: excl,
+      priceVatUnknown: null,
       currency: (text2(price.currency) ?? "EUR").toUpperCase(),
       transitDaysMin: null,
       transitDaysMax: null,
@@ -22072,6 +22075,7 @@ function mapPacklinkServices(body, quotedAt) {
       service: s.name?.trim() || s.category || "Service",
       priceInclVat: total,
       priceExclVat: base,
+      priceVatUnknown: null,
       currency: (s.currency ?? "EUR").toUpperCase(),
       transitDaysMin: transit.min,
       transitDaysMax: transit.max,
@@ -22095,13 +22099,251 @@ async function packlinkQuotes(req, env = process.env, now = /* @__PURE__ */ new 
   return mapPacklinkServices(body, now.toISOString());
 }
 
+// src/integrations/shipping/sendcloud.ts
+init_empty();
+import { z as z38 } from "npm:zod@4.6.5";
+
+// src/domain/tools/decimal.ts
+var abs = (x) => x < 0n ? -x : x;
+function gcd(a, b) {
+  a = abs(a);
+  b = abs(b);
+  while (b !== 0n) [a, b] = [b, a % b];
+  return a === 0n ? 1n : a;
+}
+function make(n, d) {
+  if (d === 0n) throw new RangeError("Division par z\xE9ro.");
+  if (d < 0n) {
+    n = -n;
+    d = -d;
+  }
+  const g = gcd(n, d);
+  return { n: n / g, d: d / g };
+}
+var neg = (a) => ({ n: -a.n, d: a.d });
+var isZero = (a) => a.n === 0n;
+function roundScaled(a, places = 2) {
+  const scale = 10n ** BigInt(places);
+  const num = abs(a.n) * scale;
+  let q = num / a.d;
+  if (num % a.d * 2n >= a.d) q += 1n;
+  return a.n < 0n ? -q : q;
+}
+function parseDecimal(input, opts = {}) {
+  let s = (input ?? "").replace(/[\s  ]/g, "").replace(/[€$£]|EUR/gi, "");
+  if (s === "") return { ok: false, error: "empty" };
+  let negative = false;
+  if (s.startsWith("-") || s.startsWith("\u2212")) {
+    negative = true;
+    s = s.slice(1);
+  } else if (s.startsWith("+")) s = s.slice(1);
+  if (s === "") return { ok: false, error: "invalid" };
+  const commas = (s.match(/,/g) ?? []).length;
+  const dots = (s.match(/\./g) ?? []).length;
+  if (commas > 1) return { ok: false, error: "invalid" };
+  if (commas === 1 && dots > 0) {
+    if (s.lastIndexOf(".") > s.indexOf(",")) return { ok: false, error: "invalid" };
+    if (!/^\d{1,3}(\.\d{3})+,\d*$/.test(s)) return { ok: false, error: "invalid" };
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (commas === 1) s = s.replace(",", ".");
+  else if (dots > 1) {
+    if (!/^\d{1,3}(\.\d{3})+$/.test(s)) return { ok: false, error: "invalid" };
+    s = s.replace(/\./g, "");
+  }
+  if (!/^\d*\.?\d*$/.test(s) || s === ".") return { ok: false, error: "invalid" };
+  const [intPart = "", fracPart = ""] = s.split(".");
+  if ((intPart.replace(/^0+/, "").length || 0) > (opts.maxIntegerDigits ?? 12)) return { ok: false, error: "too_large" };
+  if (fracPart.length > 12) return { ok: false, error: "invalid" };
+  const value = make(BigInt((intPart || "0") + fracPart), 10n ** BigInt(fracPart.length));
+  if (negative && !isZero(value)) {
+    if (!opts.allowNegative) return { ok: false, error: "negative" };
+    return { ok: true, value: neg(value) };
+  }
+  return { ok: true, value };
+}
+function formatDec(a, places = 2) {
+  const scaled = roundScaled(a, places);
+  const negative = scaled < 0n;
+  const digits2 = abs(scaled).toString().padStart(places + 1, "0");
+  const intPart = digits2.slice(0, digits2.length - places);
+  const frac = places > 0 ? digits2.slice(digits2.length - places) : "";
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, "\u202F");
+  return `${negative ? "\u2212" : ""}${grouped}${places > 0 ? "," + frac : ""}`;
+}
+var SYMBOL = { EUR: "\u20AC", USD: "$", GBP: "\xA3", CHF: "CHF", PLN: "z\u0142", CNY: "\xA5", JPY: "\xA5" };
+function formatMoneyDec(a, currency = "EUR", places = 2) {
+  const sym = SYMBOL[currency.toUpperCase()] ?? currency.toUpperCase();
+  return `${formatDec(a, places)}\xA0${sym}`;
+}
+
+// src/integrations/shipping/sendcloud.ts
+init_errors2();
+init_http();
+var SENDCLOUD_SHIPPING_OPTIONS_URL = "https://panel.sendcloud.sc/api/v3/shipping-options";
+var money6 = z38.object({ value: z38.union([z38.string(), z38.number()]).nullable().optional(), currency: z38.string().nullable().optional() }).passthrough();
+var optionSchema = z38.object({
+  code: z38.string().min(1),
+  name: z38.string().nullable().optional(),
+  carrier: z38.object({ code: z38.string().nullable().optional(), name: z38.string().nullable().optional() }).passthrough().nullable().optional(),
+  functionalities: z38.object({ tracked: z38.boolean().nullable().optional(), first_mile: z38.string().nullable().optional(), last_mile: z38.string().nullable().optional() }).passthrough().nullable().optional(),
+  requirements: z38.object({ fields: z38.array(z38.string()).nullable().optional(), is_service_point_required: z38.boolean().nullable().optional() }).passthrough().nullable().optional(),
+  quotes: z38.array(
+    z38.object({
+      price: z38.object({
+        total: money6.nullable().optional(),
+        breakdown: z38.array(z38.object({ type: z38.string().nullable().optional(), label: z38.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
+      }).passthrough().nullable().optional(),
+      lead_time: z38.number().nullable().optional()
+    }).passthrough()
+  ).nullable().optional(),
+  quote_error: z38.unknown().optional()
+}).passthrough();
+var PICKUP_LAST_MILE = /* @__PURE__ */ new Set(["service_point", "locker", "locker_or_service_point"]);
+var REQUIREMENT_LABEL = {
+  to_email: "E-mail du destinataire requis pour l'\xE9tiquette.",
+  to_telephone: "T\xE9l\xE9phone du destinataire requis pour l'\xE9tiquette."
+};
+function sendcloudConfigured(env = process.env) {
+  return (env.SENDCLOUD_PUBLIC_KEY?.trim().length ?? 0) >= 10 && (env.SENDCLOUD_SECRET_KEY?.trim().length ?? 0) >= 10;
+}
+function sendcloudShippingOptionsBody(req) {
+  return {
+    from_address: { country_code: req.fromCountry, postal_code: req.fromPostcode },
+    to_address: { country_code: req.toCountry, postal_code: req.toPostcode },
+    parcels: [
+      {
+        weight: { value: String(req.weightKg), unit: "kg" },
+        dimensions: { length: String(req.lengthCm), width: String(req.widthCm), height: String(req.heightCm), unit: "cm" }
+      }
+    ],
+    calculate_quotes: true
+  };
+}
+function positiveAmount(v2) {
+  if (v2 === null || v2 === void 0 || v2 === "") return null;
+  const s = typeof v2 === "number" ? Number.isFinite(v2) ? String(v2) : "" : String(v2).trim();
+  if (!/^\d+(\.\d+)?$/.test(s) || !/[1-9]/.test(s)) return null;
+  return s;
+}
+function amountLabel(value, currency) {
+  const parsed = parseDecimal(value);
+  return parsed.ok ? formatMoneyDec(parsed.value, currency) : `${value} ${currency}`;
+}
+function mapSendcloudOptions(body, quotedAt) {
+  const data = body !== null && typeof body === "object" ? body.data : void 0;
+  if (!Array.isArray(data)) throw new ConnectorError("INVALID_RESPONSE", "sendcloud", "R\xE9ponse Sendcloud inattendue (liste d'options absente).");
+  const quotes = [];
+  const excluded = [];
+  for (const raw of data) {
+    const parsed = optionSchema.safeParse(raw);
+    if (!parsed.success) {
+      excluded.push({ carrier: "Transporteur non pr\xE9cis\xE9", service: "Option illisible", reason: "Option incompl\xE8te dans la r\xE9ponse Sendcloud." });
+      continue;
+    }
+    const o = parsed.data;
+    const carrier = o.carrier?.name?.trim() || o.carrier?.code?.trim() || "Transporteur non pr\xE9cis\xE9";
+    const service = o.name?.trim() || o.code;
+    if (o.functionalities?.tracked === false) {
+      excluded.push({ carrier, service, reason: "Envoi sans suivi : exclu du comparateur." });
+      continue;
+    }
+    if (o.quote_error !== void 0 && o.quote_error !== null) {
+      excluded.push({ carrier, service, reason: "Sendcloud n'a pas pu calculer de prix pour cette option." });
+      continue;
+    }
+    const quote = o.quotes?.[0];
+    const total = positiveAmount(quote?.price?.total?.value);
+    const currency = quote?.price?.total?.currency?.trim().toUpperCase() ?? "";
+    if (!quote || total === null) {
+      excluded.push({ carrier, service, reason: "Prix absent ou nul renvoy\xE9 : non affich\xE9." });
+      continue;
+    }
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      excluded.push({ carrier, service, reason: "Devise absente dans la r\xE9ponse : prix non affich\xE9." });
+      continue;
+    }
+    const restrictions = [];
+    if (o.requirements?.is_service_point_required) restrictions.push("Point relais \xE0 choisir pour l'\xE9tiquette.");
+    for (const f of o.requirements?.fields ?? []) restrictions.push(REQUIREMENT_LABEL[f] ?? `Champ requis pour l'\xE9tiquette : ${f}.`);
+    for (const b of quote.price?.breakdown ?? []) {
+      if (b.type === "price_without_insurance") continue;
+      const amount = positiveAmount(b.price?.value);
+      if (amount) restrictions.push(`Dont ${b.label?.trim() || b.type || "suppl\xE9ment"} : ${amountLabel(amount, currency)}.`);
+    }
+    const transitDays = typeof quote.lead_time === "number" && quote.lead_time > 0 ? Math.ceil(quote.lead_time / 24) : null;
+    const firstMile = o.functionalities?.first_mile ?? null;
+    const lastMile = o.functionalities?.last_mile ?? null;
+    quotes.push({
+      key: `sendcloud:${o.code}`,
+      provider: "sendcloud",
+      providerLabel: "Sendcloud",
+      carrier,
+      service,
+      priceInclVat: null,
+      priceExclVat: null,
+      priceVatUnknown: total,
+      currency,
+      transitDaysMin: transitDays,
+      transitDaysMax: transitDays,
+      estimatedDelivery: null,
+      dropOff: firstMile === "dropoff" ? true : firstMile === "pickup" ? false : null,
+      deliveryToPickupPoint: lastMile === null ? null : PICKUP_LAST_MILE.has(lastMile) ? true : lastMile === "home_delivery" ? false : null,
+      tracking: o.functionalities?.tracked ?? null,
+      restrictions,
+      quotedAt
+    });
+  }
+  return { quotes, excluded };
+}
+function apiErrorDetail(body) {
+  const errors = body !== null && typeof body === "object" ? body.errors : void 0;
+  if (!Array.isArray(errors)) return null;
+  const first = errors.find((e) => e && typeof e === "object" && typeof e.detail === "string");
+  return first ? first.detail.replace(/\s+/g, " ").slice(0, 160) : null;
+}
+async function sendcloudQuotes(req, env = process.env, now = /* @__PURE__ */ new Date(), options = {}) {
+  const pub = env.SENDCLOUD_PUBLIC_KEY?.trim();
+  const secret = env.SENDCLOUD_SECRET_KEY?.trim();
+  if (!pub || !secret) throw new ConnectorError("NOT_CONFIGURED", "sendcloud", "Cl\xE9s Sendcloud absentes (secrets SENDCLOUD_PUBLIC_KEY et SENDCLOUD_SECRET_KEY).");
+  const res = await fetchWithRetry(
+    SENDCLOUD_SHIPPING_OPTIONS_URL,
+    {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`${pub}:${secret}`)}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(sendcloudShippingOptionsBody(req))
+    },
+    { provider: "sendcloud", timeoutMs: options.timeoutMs ?? 2e4, retries: 1, label: "shipping-options" }
+  );
+  if (res.status === 401) throw new ConnectorError("AUTH_EXPIRED", "sendcloud", "Cl\xE9s Sendcloud refus\xE9es : v\xE9rifiez les secrets SENDCLOUD_PUBLIC_KEY et SENDCLOUD_SECRET_KEY.", { httpStatus: 401 });
+  if (res.status === 403) throw new ConnectorError("AUTH_EXPIRED", "sendcloud", "Acc\xE8s refus\xE9 par Sendcloud : votre formule ou vos cl\xE9s ne permettent pas la consultation des tarifs par API.", { httpStatus: 403 });
+  const body = await readJson(res, "sendcloud");
+  if (!res.ok) {
+    const detail = apiErrorDetail(body);
+    throw new ConnectorError("API_ERROR", "sendcloud", `Sendcloud a refus\xE9 la demande de devis (HTTP ${res.status})${detail ? ` : ${detail}` : "."}`, { httpStatus: res.status });
+  }
+  if (body === null) throw new ConnectorError("INVALID_RESPONSE", "sendcloud", "R\xE9ponse Sendcloud vide ou illisible.");
+  return mapSendcloudOptions(body, now.toISOString());
+}
+
 // src/services/shipping/quotes.ts
 init_logger();
 var log24 = createLogger("SHIPPING");
 var PROVIDERS = [
-  { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: packlinkQuotes },
-  { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: boxtalQuotes }
+  { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: async (req, env, now) => ({ quotes: await packlinkQuotes(req, env, now), excluded: 0 }) },
+  { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: async (req, env, now) => ({ quotes: await boxtalQuotes(req, env, now), excluded: 0 }) },
+  {
+    id: "sendcloud",
+    label: "Sendcloud",
+    configured: sendcloudConfigured,
+    quote: async (req, env, now) => {
+      const r = await sendcloudQuotes(req, env, now);
+      return { quotes: r.quotes, excluded: r.excluded.length };
+    }
+  }
 ];
+function excludedNote(n) {
+  return n > 0 ? `${n} offre${n > 1 ? "s" : ""} \xE9cart\xE9e${n > 1 ? "s" : ""} (prix nul ou absent, envoi non suivi ou r\xE9ponse incompl\xE8te).` : null;
+}
 function shippingProvidersStatus(env = process.env) {
   return PROVIDERS.map((p) => ({ id: p.id, label: p.label, configured: p.configured(env) }));
 }
@@ -22110,8 +22352,10 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
     PROVIDERS.map(async (p) => {
       if (!p.configured(env)) return { status: { id: p.id, label: p.label, state: "not_configured", message: "Non configur\xE9 sur le serveur.", count: 0 }, quotes: [] };
       try {
-        const quotes = await p.quote(req, env, now);
-        return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message: quotes.length ? null : "Aucun service propos\xE9 pour ce colis et ce trajet.", count: quotes.length }, quotes };
+        const { quotes, excluded } = await p.quote(req, env, now);
+        const note = excludedNote(excluded);
+        const message = quotes.length ? note : ["Aucun service propos\xE9 pour ce colis et ce trajet.", note].filter(Boolean).join(" ");
+        return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message, count: quotes.length }, quotes };
       } catch (e) {
         const message = isConnectorError(e) ? e.message : "Erreur inattendue.";
         log24.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
@@ -22246,21 +22490,21 @@ init_errors2();
 
 // src/integrations/tracking/laposte.ts
 init_empty();
-import { z as z38 } from "npm:zod@4.6.5";
+import { z as z39 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var LAPOSTE_SUIVI_URL = "https://api.laposte.fr/suivi/v2/idships/";
-var responseSchema = z38.object({
-  returnCode: z38.number().optional(),
-  returnMessage: z38.string().optional(),
-  shipment: z38.object({
-    idShip: z38.string().optional(),
-    product: z38.string().nullable().optional(),
-    isFinal: z38.boolean().optional(),
-    estimDate: z38.string().nullable().optional(),
-    deliveryDate: z38.string().nullable().optional(),
-    url: z38.string().nullable().optional(),
-    event: z38.array(z38.object({ code: z38.string().nullable().optional(), label: z38.string().nullable().optional(), date: z38.string().nullable().optional(), order: z38.number().nullable().optional() }).passthrough()).optional()
+var responseSchema = z39.object({
+  returnCode: z39.number().optional(),
+  returnMessage: z39.string().optional(),
+  shipment: z39.object({
+    idShip: z39.string().optional(),
+    product: z39.string().nullable().optional(),
+    isFinal: z39.boolean().optional(),
+    estimDate: z39.string().nullable().optional(),
+    deliveryDate: z39.string().nullable().optional(),
+    url: z39.string().nullable().optional(),
+    event: z39.array(z39.object({ code: z39.string().nullable().optional(), label: z39.string().nullable().optional(), date: z39.string().nullable().optional(), order: z39.number().nullable().optional() }).passthrough()).optional()
   }).passthrough().optional()
 }).passthrough();
 function laPosteConfigured(env = process.env) {
@@ -22304,29 +22548,29 @@ async function laPosteTrack(trackingNumber, env = process.env) {
 
 // src/integrations/tracking/ship24.ts
 init_empty();
-import { z as z39 } from "npm:zod@4.6.5";
+import { z as z40 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var SHIP24_TRACK_URL = "https://api.ship24.com/public/v1/trackers/track";
-var eventSchema = z39.object({
-  status: z39.string().nullable().optional(),
-  occurrenceDatetime: z39.string().nullable().optional(),
-  datetime: z39.string().nullable().optional(),
-  location: z39.string().nullable().optional(),
-  courierCode: z39.string().nullable().optional(),
-  statusMilestone: z39.string().nullable().optional(),
-  statusCode: z39.string().nullable().optional()
+var eventSchema = z40.object({
+  status: z40.string().nullable().optional(),
+  occurrenceDatetime: z40.string().nullable().optional(),
+  datetime: z40.string().nullable().optional(),
+  location: z40.string().nullable().optional(),
+  courierCode: z40.string().nullable().optional(),
+  statusMilestone: z40.string().nullable().optional(),
+  statusCode: z40.string().nullable().optional()
 }).passthrough();
-var trackingSchema = z39.object({
-  shipment: z39.object({
-    statusMilestone: z39.string().nullable().optional(),
-    statusCode: z39.string().nullable().optional(),
-    delivery: z39.object({ estimatedDeliveryDate: z39.string().nullable().optional(), courierEstimatedDeliveryDate: z39.object({ from: z39.string().nullable().optional(), to: z39.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
+var trackingSchema = z40.object({
+  shipment: z40.object({
+    statusMilestone: z40.string().nullable().optional(),
+    statusCode: z40.string().nullable().optional(),
+    delivery: z40.object({ estimatedDeliveryDate: z40.string().nullable().optional(), courierEstimatedDeliveryDate: z40.object({ from: z40.string().nullable().optional(), to: z40.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
   }).passthrough().nullable().optional(),
-  events: z39.array(eventSchema).optional(),
-  statistics: z39.object({ timestamps: z39.object({ deliveredDatetime: z39.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
+  events: z40.array(eventSchema).optional(),
+  statistics: z40.object({ timestamps: z40.object({ deliveredDatetime: z40.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
 }).passthrough();
-var responseSchema2 = z39.object({ data: z39.object({ trackings: z39.array(trackingSchema) }).passthrough() }).passthrough();
+var responseSchema2 = z40.object({ data: z40.object({ trackings: z40.array(trackingSchema) }).passthrough() }).passthrough();
 function ship24Configured(env = process.env) {
   return Boolean(env.SHIP24_API_KEY && env.SHIP24_API_KEY.trim().length >= 10);
 }
@@ -22449,6 +22693,7 @@ init_empty();
 var TARGETS = [
   { id: "packlink", url: `${PACKLINK_BASE_URL}services?from[country]=FR&from[zip]=75001&to[country]=FR&to[zip]=33000&source=PRO&packages[0][height]=10&packages[0][width]=15&packages[0][length]=20&packages[0][weight]=1`, init: { method: "GET", headers: { Accept: "application/json" } } },
   { id: "boxtal", url: `${BOXTAL_DEFAULT_URL}cotation?shipper.pays=FR&shipper.code_postal=75001&recipient.pays=FR&recipient.code_postal=33000&colis_1.poids=1&colis_1.longueur=20&colis_1.largeur=15&colis_1.hauteur=10`, init: { method: "GET", headers: { Accept: "application/xml" } } },
+  { id: "sendcloud", url: SENDCLOUD_SHIPPING_OPTIONS_URL, init: { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ from_address: { country_code: "FR", postal_code: "75001" }, to_address: { country_code: "FR", postal_code: "33000" }, parcels: [{ weight: { value: "1", unit: "kg" } }], calculate_quotes: true }) } },
   { id: "laposte-suivi", url: `${LAPOSTE_SUIVI_URL}6A18987970674?lang=fr_FR`, init: { method: "GET", headers: { Accept: "application/json" } } },
   { id: "ship24", url: SHIP24_TRACK_URL, init: { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify({ trackingNumber: "6A18987970674" }) } }
 ];
@@ -22478,12 +22723,12 @@ var CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z40.object({ code: z40.string().min(1).max(2048), state: z40.string().min(16).max(200) });
-var syncSchema = z40.object({ connectionId: uuidParam, scope: z40.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z40.object({ hosts: z40.array(z40.string().min(3).max(120)).min(1).max(25), query: z40.string().min(2).max(80).optional() });
+var ebayFinalizeSchema = z41.object({ code: z41.string().min(1).max(2048), state: z41.string().min(16).max(200) });
+var syncSchema = z41.object({ connectionId: uuidParam, scope: z41.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z41.object({ hosts: z41.array(z41.string().min(3).max(120)).min(1).max(25), query: z41.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z40.object({ text: z40.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z40.object({ key: z40.string().min(1).max(80), attest: z40.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z41.object({ text: z41.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z41.object({ key: z41.string().min(1).max(80), attest: z41.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -22622,13 +22867,13 @@ async function route(request) {
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z40.object({ query: z40.string().min(2).max(120), source: z40.string().min(1).max(80) }));
+          const body = await parseBody(request, z41.object({ query: z41.string().min(2).max(120), source: z41.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request, z40.object({ keys: z40.array(z40.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request, z41.object({ keys: z41.array(z41.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
@@ -22637,11 +22882,11 @@ async function route(request) {
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z40.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z41.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z40.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request, z41.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
@@ -22665,7 +22910,7 @@ async function route(request) {
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery(request, z40.object({ sort: z40.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const q = parseQuery(request, z41.object({ sort: z41.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
       });
     }
@@ -22745,7 +22990,7 @@ async function route(request) {
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return prefillListing(ctx, parseQuery(request, z40.object({ skuId: uuidParam })).skuId);
+        return prefillListing(ctx, parseQuery(request, z41.object({ skuId: uuidParam })).skuId);
       });
     }
     if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));

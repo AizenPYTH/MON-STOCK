@@ -59,7 +59,7 @@ maximale (64 Ko par défaut ; fichier catalogue : 15 Mo, soit 21 Mo une fois enc
 | `POST /api/ai/product-draft` | rédacteur | phrase dictée → brouillon du formulaire produit (Claude, sortie structurée) ; rien n'est créé |
 | `POST /api/ai/assistant` | membre | questions sur les ventes, le stock, eBay : Claude appelle des outils de LECTURE exécutés avec la session de l'utilisateur (RLS) |
 | `GET /api/tools/status` | membre | plateformes d'expédition et API de suivi configurées (noms uniquement) |
-| `POST /api/shipping/quotes` | membre | devis réels Packlink PRO / Boxtal pour un colis (poids, dimensions, codes postaux) ; aucune plateforme = aucun prix |
+| `POST /api/shipping/quotes` | membre | devis réels Packlink PRO / Boxtal / Sendcloud pour un colis (poids, dimensions, codes postaux) ; consultation seulement, aucune étiquette ; aucune plateforme = aucun prix |
 | `POST /api/tracking/refresh` | rédacteur | actualise un colis suivi (La Poste Suivi v2 ou Ship24) ; seul le numéro est transmis |
 | `POST /api/cron/sync` · `/sourcing` · `/library-checks` · `/directory-checks` · `/scout` · `/tracking` | `CRON_SECRET` | tâches planifiées |
 | `POST /api/cron/connectors-probe` | `CRON_SECRET` | contrôle sans identifiants des API d'expédition et de suivi (le point d'accès doit répondre et exiger une authentification) |
@@ -80,6 +80,7 @@ Vault** via `server_runtime_secrets()` (exécutable par `service_role` uniquemen
 | `ANTHROPIC_API_KEY` | **à fournir** : clé de l'API Claude (console.anthropic.com → API Keys) dans Edge Functions → Secrets. Sans elle, `/api/ai/*` répond « non configuré » (jamais de réponse simulée) ; `/api/health` → `aiConfigured` |
 | `EBAY_LISTING_ENABLED` | facultatif, `true` pour autoriser la publication d'annonces (désactivée par défaut) |
 | `PACKLINK_API_KEY` | facultatif : devis d'expédition Packlink PRO (Packlink PRO → Paramètres → clé API) |
+| `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY` | facultatif : devis d'expédition Sendcloud, consultation uniquement (Sendcloud → Paramètres → Intégrations → Sendcloud API) |
 | `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE` (`BOXTAL_API_URL` facultatif) | facultatif : cotation Boxtal (identifiants API v1 ; code de catégorie de contenu de vos envois, liste fournie par Boxtal) |
 | `LAPOSTE_OKAPI_KEY` | facultatif : suivi La Poste / Colissimo / Chronopost (developer.laposte.fr → application → abonnement « Suivi v2 ») |
 | `SHIP24_API_KEY` | facultatif : suivi multi-transporteurs (dashboard.ship24.com → API keys) |
@@ -341,9 +342,17 @@ Comparatif des API : [docs/research/shipping-tracking-apis-2026-10.md](research/
 | --- | --- | --- |
 | Packlink PRO | `src/integrations/shipping/packlink.ts` (contrat du code officiel `packlink-dev/ecommerce_module_core`) | prêt ; **en attente de `PACKLINK_API_KEY`** ; hôte joignable (contrôle sans clé) |
 | Boxtal API v1 | `src/integrations/shipping/boxtal.ts` (contrat du SDK officiel `boxtal/php-library`) | prêt ; **en attente des identifiants v1 et du code de contenu** ; point d'accès actif (401 sans identifiants) |
-| Grilles de l'utilisateur | table `shipping_rate_cards` (RLS), calcul local | **fonctionnel** |
+| Sendcloud API v3 | `src/integrations/shipping/sendcloud.ts` : `POST /api/v3/shipping-options` uniquement (devis, jamais d'étiquette ni d'envoi) | prêt ; **en attente de `SENDCLOUD_PUBLIC_KEY` / `SENDCLOUD_SECRET_KEY`** ; format vérifié sur une réponse réelle du compte (11/10/2026, appel en lecture seule hors MON STOCK) |
+| Grilles de l'utilisateur | table `shipping_rate_cards` (RLS), calcul local ; affichées comme **estimations** | **fonctionnel** |
 
 Sans plateforme ni grille : aucun prix, message explicite (« MON STOCK n'invente aucun prix »).
+
+Règles communes des devis (`optionFromQuote`) :
+- un prix nul, négatif ou illisible n'est jamais une offre ;
+- HT / TTC n'est indiqué que si l'API le précise. Sendcloud ne le précise pas, donc l'app affiche « HT/TTC inconnu » ;
+- Sendcloud : les offres non suivies, en erreur, sans prix ou sans devise sont écartées et comptées dans le message de la source (« N offres écartées ») ;
+- les suppléments (carburant…) sont détaillés ;
+- délai : seulement le `lead_time` renvoyé, converti d'heures en jours.
 
 > Les clés de plateforme sont celles du serveur : tous les utilisateurs de ce déploiement voient
 > les devis de ce compte. En exploitation multi-clients, prévoir une clé par organisation.

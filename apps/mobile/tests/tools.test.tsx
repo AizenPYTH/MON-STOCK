@@ -127,6 +127,41 @@ describe("comparateur de frais de port", () => {
   });
 });
 
+describe("comparateur de frais de port : devis réels et estimations", () => {
+  it("devis Sendcloud (HT/TTC inconnu) distinct de la grille (estimation), offre écartée signalée", async () => {
+    mockCallApi.mockImplementation(async (p: string) => {
+      if (p === "/tools/status") return { shipping: [{ id: "packlink", label: "Packlink PRO", configured: false }, { id: "boxtal", label: "Boxtal", configured: false }, { id: "sendcloud", label: "Sendcloud", configured: true }], tracking: { laposte: false, ship24: false } };
+      if (p === "/shipping/quotes")
+        return {
+          quotedAt: "2026-10-11T08:00:00.000Z",
+          providers: [{ id: "sendcloud", label: "Sendcloud", state: "ok", count: 1, message: "1 offre écartée (prix nul ou absent, envoi non suivi ou réponse incomplète)." }],
+          quotes: [
+            { key: "sendcloud:mr", provider: "sendcloud", providerLabel: "Sendcloud", carrier: "Mondial Relay", service: "Mondial Relay Point Relais", priceInclVat: null, priceExclVat: null, priceVatUnknown: "4.39", currency: "EUR", transitDaysMin: null, transitDaysMax: null, estimatedDelivery: null, dropOff: true, deliveryToPickupPoint: true, tracking: true, restrictions: ["Point relais à choisir pour l'étiquette."], quotedAt: "2026-10-11T08:00:00.000Z" },
+            { key: "sendcloud:zero", provider: "sendcloud", providerLabel: "Sendcloud", carrier: "Zéro", service: "Gratuit ?", priceInclVat: null, priceExclVat: null, priceVatUnknown: "0", currency: "EUR", transitDaysMin: null, transitDaysMax: null, estimatedDelivery: null, dropOff: null, deliveryToPickupPoint: null, tracking: true, restrictions: [], quotedAt: "2026-10-11T08:00:00.000Z" },
+          ],
+        };
+      throw new Error(`appel inattendu ${p}`);
+    });
+    const card = { id: "c1", carrier: "La Poste", service: "Ma grille", from_countries: ["FR"], to_countries: ["FR"], bands: [{ maxWeightKg: 2, price: "8,99" }], currency: "EUR", max_length_cm: null, max_dimensions_sum_cm: null, volumetric_divisor: null, transit_days_min: 2, transit_days_max: 3, tracking: true, delivery_mode: null, notes: null, verified_at: "2026-09-01" };
+    mockFrom.mockImplementation((t: string) => (fakeSupabase({ [t]: { data: t === "shipping_rate_cards" ? [card] : [], error: null } }).client as unknown as { from: (x: string) => unknown }).from(t));
+    render(wrap(<ShippingTool />));
+    await waitFor(() => expect(screen.getByText("Sendcloud : connecté")).toBeTruthy());
+    fireEvent.changeText(screen.getByTestId("ship-weight"), "1");
+    for (const [label, v] of [["Longueur", "30"], ["Largeur", "20"], ["Hauteur", "10"]] as const) fireEvent.changeText(screen.getAllByLabelText(label)[0]!, v);
+    fireEvent.changeText(screen.getAllByPlaceholderText("75001")[0]!, "75011");
+    fireEvent.changeText(screen.getAllByPlaceholderText("10115")[0]!, "69003");
+    fireEvent.press(screen.getByTestId("ship-compare"));
+    await waitFor(() => expect(screen.getByText("Devis réel Sendcloud")).toBeTruthy());
+    expect(mockCallApi).toHaveBeenCalledWith("/shipping/quotes", expect.objectContaining({ method: "POST", body: expect.objectContaining({ fromPostcode: "75011", toPostcode: "69003" }) }));
+    expect(screen.getByText("HT/TTC inconnu")).toBeTruthy();
+    expect(screen.getByText("Estimation : votre grille")).toBeTruthy();
+    expect(screen.getByText("estimation (votre grille)")).toBeTruthy();
+    expect(screen.queryByText("Gratuit ?")).toBeNull();
+    expect(screen.getByText(/1 offre écartée/)).toBeTruthy();
+    expect(screen.getByText("2 options")).toBeTruthy();
+  });
+});
+
 describe("suivi de colis", () => {
   it("sans clé d'API : avertissement clair, aucun statut inventé", async () => {
     mockCallApi.mockResolvedValue({ shipping: [], tracking: { laposte: false, ship24: false } });

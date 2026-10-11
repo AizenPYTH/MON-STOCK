@@ -2,71 +2,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { KARRIO_LIVE_RATING_CARRIERS, karrioConfigured, karrioRateRequest, karrioTrackingStatus, mapKarrioRates } from "@/integrations/shipping/prototypes/karrio";
-import { mapSendcloudOptions, sendcloudConfigured, sendcloudShippingOptionsBody } from "@/integrations/shipping/prototypes/sendcloud";
 import { decimalText, isPositiveDecimal } from "@/integrations/shipping/prototypes/types";
 
 const fixture = (name: string) => JSON.parse(readFileSync(path.resolve(__dirname, "../fixtures/shipping-prototypes", name), "utf8"));
 const NOW = "2026-10-11T08:00:00.000Z";
 const REQ = { weightKg: 1, lengthCm: 30, widthCm: 20, heightCm: 10, fromCountry: "FR", fromPostcode: "75011", toCountry: "FR", toPostcode: "69003" };
-
-describe("prototype Sendcloud (réponse réelle du 11/10/2026)", () => {
-  const result = mapSendcloudOptions(fixture("sendcloud-shipping-options-fr-1kg.json"), NOW);
-
-  it("garde les 5 offres suivies avec leur prix exact, supplément carburant compris", () => {
-    expect(result.quotes.map((q) => [q.service, q.price])).toEqual([
-      ["Mondial Relay Point Relais", "4.39"],
-      ["Mondial Relay Locker Delivery", "4.29"],
-      ["Colissimo Home", "10.71"],
-      ["Colissimo Service Point", "8.85"],
-      ["Mondial Relay Home Domestic", "6.03"],
-    ]);
-    const home = result.quotes.find((q) => q.service === "Colissimo Home");
-    expect(home?.surcharges).toEqual([{ label: "Fuel surcharge (14.02%)", amount: "1.32" }]);
-  });
-
-  it("écarte la lettre non suivie à 0 € au lieu de l'afficher comme un prix", () => {
-    expect(result.quotes.some((q) => q.price === "0")).toBe(false);
-    expect(result.rejected).toEqual([{ carrier: "Sendcloud", service: "Unstamped letter", reason: "Envoi non suivi : exclu du comparateur." }]);
-  });
-
-  it("ne suppose ni la TVA ni un délai absent, et indique l'origine du prix", () => {
-    for (const q of result.quotes) {
-      expect(q.vatIncluded).toBeNull();
-      expect(q.priceBasis).toBe("aggregator_tariff");
-    }
-    expect(result.quotes.find((q) => q.service === "Mondial Relay Point Relais")?.transitHours).toBeNull();
-    expect(result.quotes.find((q) => q.service === "Colissimo Home")?.transitHours).toBe(48);
-  });
-
-  it("signale les conditions (point relais, e-mail, téléphone)", () => {
-    const relay = result.quotes.find((q) => q.service === "Mondial Relay Point Relais");
-    expect(relay?.deliveryToPickupPoint).toBe(true);
-    expect(relay?.requirements).toEqual(["Point relais à choisir.", "E-mail du destinataire requis."]);
-    expect(result.quotes.find((q) => q.service === "Colissimo Home")?.deliveryToPickupPoint).toBe(false);
-  });
-
-  it("écarte un devis en erreur ou sans prix", () => {
-    const r = mapSendcloudOptions({ data: [{ code: "x:y", name: "X", carrier: { name: "X" }, functionalities: { tracked: true }, quotes: [], quote_error: { detail: "weight" } }] }, NOW);
-    expect(r.quotes).toHaveLength(0);
-    expect(r.rejected[0]?.reason).toMatch(/Erreur de devis/);
-  });
-
-  it("refuse une réponse sans liste « data »", () => {
-    expect(() => mapSendcloudOptions({ detail: "Unauthorized" }, NOW)).toThrow(/inattendue/);
-  });
-
-  it("n'envoie que pays et code postal", () => {
-    const body = sendcloudShippingOptionsBody({ ...REQ, fromCity: "Paris", toCity: "Lyon" });
-    expect(body).toEqual({
-      from_address: { country_code: "FR", postal_code: "75011" },
-      to_address: { country_code: "FR", postal_code: "69003" },
-      parcels: [{ weight: { value: "1", unit: "kg" }, dimensions: { length: "30", width: "20", height: "10", unit: "cm" } }],
-      calculate_quotes: true,
-    });
-    expect(sendcloudConfigured({})).toBe(false);
-    expect(sendcloudConfigured({ SENDCLOUD_PUBLIC_KEY: "a", SENDCLOUD_SECRET_KEY: "b" })).toBe(true);
-  });
-});
 
 describe("prototype Karrio (réponses d'un serveur Karrio 2026.1.32 local)", () => {
   it("ne produit aucun prix quand les connecteurs français échouent ou ne desservent pas la France", () => {

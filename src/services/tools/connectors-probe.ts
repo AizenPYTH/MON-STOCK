@@ -1,6 +1,7 @@
 import "server-only";
 import { BOXTAL_DEFAULT_URL } from "@/integrations/shipping/boxtal";
 import { PACKLINK_BASE_URL } from "@/integrations/shipping/packlink";
+import { SENDCLOUD_SHIPPING_OPTIONS_URL } from "@/integrations/shipping/sendcloud";
 import { LAPOSTE_SUIVI_URL } from "@/integrations/tracking/laposte";
 import { SHIP24_TRACK_URL } from "@/integrations/tracking/ship24";
 
@@ -23,6 +24,7 @@ export interface ProbeResult {
 const TARGETS: { id: string; url: string; init: RequestInit }[] = [
   { id: "packlink", url: `${PACKLINK_BASE_URL}services?from[country]=FR&from[zip]=75001&to[country]=FR&to[zip]=33000&source=PRO&packages[0][height]=10&packages[0][width]=15&packages[0][length]=20&packages[0][weight]=1`, init: { method: "GET", headers: { Accept: "application/json" } } },
   { id: "boxtal", url: `${BOXTAL_DEFAULT_URL}cotation?shipper.pays=FR&shipper.code_postal=75001&recipient.pays=FR&recipient.code_postal=33000&colis_1.poids=1&colis_1.longueur=20&colis_1.largeur=15&colis_1.hauteur=10`, init: { method: "GET", headers: { Accept: "application/xml" } } },
+  { id: "sendcloud", url: SENDCLOUD_SHIPPING_OPTIONS_URL, init: { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ from_address: { country_code: "FR", postal_code: "75001" }, to_address: { country_code: "FR", postal_code: "33000" }, parcels: [{ weight: { value: "1", unit: "kg" } }], calculate_quotes: true }) } },
   { id: "laposte-suivi", url: `${LAPOSTE_SUIVI_URL}6A18987970674?lang=fr_FR`, init: { method: "GET", headers: { Accept: "application/json" } } },
   { id: "ship24", url: SHIP24_TRACK_URL, init: { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify({ trackingNumber: "6A18987970674" }) } },
 ];

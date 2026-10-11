@@ -1,4 +1,4 @@
-import { cmp, parseDecimal, toPlainDecimal, type Dec } from "@/domain/tools/decimal";
+import { cmp, parseDecimal, toPlainDecimal, ZERO, type Dec } from "@/domain/tools/decimal";
 
 /**
  * Comparateur de frais de port (module pur).
@@ -194,7 +194,10 @@ export function highlights(options: ShippingOption[]): { cheapest: string | null
   return { cheapest, fastest };
 }
 
-/** Devis d'API (texte décimal exact) → option comparable ; null si aucun prix exploitable. */
+/**
+ * Devis d'API (texte décimal exact) → option comparable ; null si aucun prix exploitable.
+ * Un prix nul ou négatif n'est jamais une offre. HT/TTC n'est indiqué que si l'API le précise.
+ */
 export function optionFromQuote(q: {
   key: string;
   providerLabel: string;
@@ -202,6 +205,8 @@ export function optionFromQuote(q: {
   service: string;
   priceInclVat: string | null;
   priceExclVat: string | null;
+  /** prix sans indication HT/TTC (ex. Sendcloud) */
+  priceVatUnknown?: string | null;
   currency: string;
   transitDaysMin: number | null;
   transitDaysMax: number | null;
@@ -212,9 +217,15 @@ export function optionFromQuote(q: {
   quotedAt: string;
   estimatedDelivery: string | null;
 }, parcel: Parcel): ShippingOption | null {
-  const incl = q.priceInclVat ? parseDecimal(q.priceInclVat) : null;
-  const excl = q.priceExclVat ? parseDecimal(q.priceExclVat) : null;
-  const price = incl?.ok ? incl.value : excl?.ok ? excl.value : null;
+  const positive = (text: string | null | undefined): Dec | null => {
+    if (!text) return null;
+    const r = parseDecimal(text);
+    return r.ok && cmp(r.value, ZERO) > 0 ? r.value : null;
+  };
+  const incl = positive(q.priceInclVat);
+  const excl = positive(q.priceExclVat);
+  const unknownVat = positive(q.priceVatUnknown);
+  const price = incl ?? excl ?? unknownVat;
   if (!price) return null;
   const modes: string[] = [];
   if (q.dropOff === true) modes.push("dépôt en point relais / bureau");
@@ -231,7 +242,7 @@ export function optionFromQuote(q: {
     service: q.service,
     price,
     currency: q.currency,
-    priceTax: incl?.ok ? "incl" : "excl",
+    priceTax: incl ? "incl" : excl ? "excl" : "unknown",
     transitDaysMin: q.transitDaysMin,
     transitDaysMax: q.transitDaysMax,
     tracking: q.tracking,

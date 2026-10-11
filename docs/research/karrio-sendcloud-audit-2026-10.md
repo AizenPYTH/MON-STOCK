@@ -166,3 +166,19 @@ iPhone (MON STOCK) ──► Edge Function « api » (Supabase, secrets côté s
 - `src/integrations/shipping/prototypes/sendcloud.ts` : devis Sendcloud v3, uniquement des envois suivis, prix strictement positifs.
 - `tests/unit/shipping-prototypes.test.ts` : 14 tests sur les vraies réponses enregistrées.
 - `tests/fixtures/shipping-prototypes/` : réponses Sendcloud et Karrio réelles, sans aucune donnée personnelle.
+
+## 11. Étape 1 réalisée : devis Sendcloud dans le comparateur (lecture seule)
+
+Autorisée le 11/10/2026, limitée à la consultation de tarifs.
+
+- **Connecteur `src/integrations/shipping/sendcloud.ts` :**
+  - un seul appel, `POST /api/v3/shipping-options` avec `calculate_quotes: true` ;
+  - aucune création, achat, annulation ni modification d'étiquette ou d'envoi ; un test vérifie qu'aucune autre adresse n'est présente dans le module ;
+  - remplace le prototype de la section 10, supprimé.
+- **Comparateur :** Packlink et Boxtal sont conservés ; Sendcloud s'ajoute comme 3ᵉ source. Les grilles manuelles restent en secours et sont affichées comme estimations.
+- **Secrets :** `SENDCLOUD_PUBLIC_KEY` et `SENDCLOUD_SECRET_KEY`, dans Edge Functions → Secrets. Aucune migration.
+- **Pas encore vérifié en direct par MON STOCK :** le seul appel réel est celui du 11/10/2026 via le connecteur MCP Sendcloud, en lecture seule. Le serveur MON STOCK n'a jamais appelé Sendcloud, faute de clés.
+- **À confirmer chez Sendcloud :**
+  - formule et accès API ;
+  - HT ou TTC des montants : l'aide Sendcloud dit que ses prix sont facturés hors TVA, mais l'API ne le précise pas, donc l'app affiche « HT/TTC inconnu » ;
+  - état `validating` des contrats Colissimo et Mondial Relay.

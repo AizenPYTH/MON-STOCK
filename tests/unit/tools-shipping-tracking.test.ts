@@ -166,7 +166,7 @@ describe("Service de devis", () => {
   it("sans plateforme configurée : aucun prix, état « non configuré » (jamais de tarif inventé)", async () => {
     const r = await quoteShipping(req, {});
     expect(r.quotes).toEqual([]);
-    expect(r.providers.map((p) => p.state)).toEqual(["not_configured", "not_configured"]);
+    expect(r.providers.map((p) => [p.id, p.state])).toEqual([["packlink", "not_configured"], ["boxtal", "not_configured"], ["sendcloud", "not_configured"]]);
   });
   it("une plateforme en erreur n'empêche pas les autres", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => (String(url).includes("packlink") ? new Response(JSON.stringify(PACKLINK_FIXTURE), { status: 200 }) : new Response("<error><message>Identifiants inconnus</message></error>", { status: 200 }))));
@@ -175,6 +175,7 @@ describe("Service de devis", () => {
     expect(r.providers).toEqual([
       expect.objectContaining({ id: "packlink", state: "ok", count: 2 }),
       expect.objectContaining({ id: "boxtal", state: "error", message: expect.stringMatching(/Identifiants inconnus/) }),
+      expect.objectContaining({ id: "sendcloud", state: "not_configured" }),
     ]);
     const opt = optionFromQuote(r.quotes[0]!, parcel);
     expect(opt && toCents(opt.price)).toBe(1013n);

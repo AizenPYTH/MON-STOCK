@@ -23,6 +23,8 @@ export const RUNTIME_SECRET_NAMES = [
   "BOXTAL_API_URL",
   "LAPOSTE_OKAPI_KEY",
   "SHIP24_API_KEY",
+  "SENDCLOUD_PUBLIC_KEY",
+  "SENDCLOUD_SECRET_KEY",
 ] as const;
 
 export interface RuntimeSecretsState {

@@ -781,7 +781,7 @@ export type ShippingQuoteRequest = z.infer<typeof shippingQuoteRequestSchema>;
 /** Devis d'une plateforme d'expédition connectée (prix réel du compte, au moment de la demande). */
 export interface ShippingQuoteDTO {
   key: string;
-  provider: "packlink" | "boxtal";
+  provider: "packlink" | "boxtal" | "sendcloud";
   providerLabel: string;
   carrier: string;
   service: string;
@@ -789,6 +789,8 @@ export interface ShippingQuoteDTO {
   priceInclVat: string | null;
   /** prix HT tel que renvoyé */
   priceExclVat: string | null;
+  /** prix renvoyé SANS indication HT/TTC par l'API (Sendcloud) : affiché « HT/TTC inconnu », jamais converti */
+  priceVatUnknown: string | null;
   currency: string;
   transitDaysMin: number | null;
   transitDaysMax: number | null;
@@ -804,7 +806,7 @@ export interface ShippingQuoteDTO {
 }
 
 export interface ShippingProviderStatusDTO {
-  id: "packlink" | "boxtal";
+  id: "packlink" | "boxtal" | "sendcloud";
   label: string;
   state: "ok" | "not_configured" | "error" | "no_result";
   message: string | null;

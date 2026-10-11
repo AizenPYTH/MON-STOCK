@@ -103,6 +103,7 @@ export function mapBoxtalXml(xml: string, quotedAt: string): ShippingQuoteDTO[] 
       service: text(service.label) ?? text(service.code) ?? "Service",
       priceInclVat: incl,
       priceExclVat: excl,
+      priceVatUnknown: null,
       currency: (text(price.currency) ?? "EUR").toUpperCase(),
       transitDaysMin: null,
       transitDaysMax: null,

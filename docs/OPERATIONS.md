@@ -65,6 +65,7 @@ Supabase Dashboard → projet → **Edge Functions → Secrets** (jamais dans Gi
 | `ANTHROPIC_API_KEY` | pour le produit dicté et l'assistant (§6) |
 | `EBAY_LISTING_ENABLED` = `true` | seulement quand vous décidez d'autoriser la publication d'annonces |
 | `PACKLINK_API_KEY` | devis d'expédition réels (Packlink PRO → Paramètres → clé API) |
+| `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY` | devis d'expédition Sendcloud, consultation uniquement (Sendcloud → Paramètres → Intégrations → Sendcloud API → clé publique et clé secrète). À mettre dans **Edge Functions → Secrets**, pas dans Vault. |
 | `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE` | cotation Boxtal (identifiants API v1, code de catégorie de contenu fourni par Boxtal) |
 | `LAPOSTE_OKAPI_KEY` | suivi La Poste / Colissimo / Chronopost (gratuit : developer.laposte.fr → application → abonnement « Suivi v2 ») |
 | `SHIP24_API_KEY` | suivi des autres transporteurs (dashboard.ship24.com → API keys ; offre gratuite limitée à 10 envois / mois) |
@@ -197,6 +198,7 @@ diagnostic, mode avion.
 - eBay OAuth, synchronisation, webhooks, annonces : réponses eBay simulées.
 - Produit dicté et assistant IA : réponses Claude simulées ; fonctionnement sans clé testé.
 - Devis Packlink PRO et Boxtal : réponses au format de leur code officiel, simulées.
+- Devis Sendcloud : réponse réelle du compte enregistrée le 11/10/2026 (appel en lecture seule via le connecteur Sendcloud, pas via MON STOCK), rejouée en test. Aucun appel du serveur MON STOCK à Sendcloud tant que les clés ne sont pas configurées.
 - Suivi La Poste et Ship24 : formats de la bibliothèque communautaire et de la spécification
   officielle, simulés.
 - Écrans mobiles : rendus en Jest. **À tester sur iPhone** (nouveau build nécessaire).
@@ -204,7 +206,7 @@ diagnostic, mode avion.
 ### 3. En attente d'un compte ou d'identifiants
 
 - Clés eBay et `ANTHROPIC_API_KEY`.
-- `PACKLINK_API_KEY` ou identifiants Boxtal v1 : devis d'expédition réels. En attendant, saisissez
+- `PACKLINK_API_KEY`, identifiants Boxtal v1 ou clés Sendcloud : devis d'expédition réels. En attendant, saisissez
   vos grilles tarifaires.
 - `LAPOSTE_OKAPI_KEY` et / ou `SHIP24_API_KEY` : statut réel des colis.
 - Comptes professionnels fournisseurs : Foxway, Mobilax, Foneday, Utopya, Nedis, Infortisa, DMI,

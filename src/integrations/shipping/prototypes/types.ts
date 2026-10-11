@@ -1,7 +1,8 @@
 /**
  * PROTOTYPE ISOLÉ (octobre 2026) — non branché dans l'application ni dans l'Edge Function.
- * Sert à évaluer Karrio (auto-hébergé) et Sendcloud (SaaS) avant toute décision : voir
+ * Sert à évaluer Karrio (auto-hébergé) avant toute décision : voir
  * docs/research/karrio-sendcloud-audit-2026-10.md. Aucune route, aucun écran ne l'importe.
+ * (Sendcloud est passé du prototype au connecteur réel src/integrations/shipping/sendcloud.ts.)
  */
 
 /** Origine du prix : API du transporteur (compte du marchand) ou tarif négocié par un agrégateur. */
@@ -15,7 +16,7 @@ export interface PrototypeSurcharge {
 
 export interface PrototypeQuote {
   key: string;
-  via: "karrio" | "sendcloud";
+  via: "karrio";
   carrier: string;
   service: string;
   /** total facturé tel que renvoyé (texte décimal exact, > 0) */

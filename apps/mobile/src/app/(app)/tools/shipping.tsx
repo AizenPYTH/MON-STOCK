@@ -14,7 +14,8 @@ const frDate = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").revers
 
 /**
  * Comparateur de frais de port : devis réels des plateformes connectées côté serveur (Packlink
- * PRO, Boxtal) + vos grilles saisies. Aucun tarif inventé : sans source, aucun prix.
+ * PRO, Boxtal, Sendcloud — consultation de tarifs uniquement) + vos grilles saisies, présentées
+ * comme des estimations. Aucun tarif inventé : sans source, aucun prix.
  */
 export default function ShippingToolScreen() {
   const [form, setForm] = useState({ weightKg: "", lengthCm: "", widthCm: "", heightCm: "", fromCountry: "FR", fromPostcode: "", toCountry: "FR", toPostcode: "", fromCity: "", toCity: "" });
@@ -141,7 +142,7 @@ export default function ShippingToolScreen() {
             </View>
             {apiError ? <AlertBanner text={apiError} tone="dark" /> : null}
             {(apiResult?.providers ?? [])
-              .filter((p) => p.state !== "ok" && p.state !== "not_configured")
+              .filter((p) => p.state !== "not_configured" && p.message)
               .map((p) => (
                 <Txt key={p.id} variant="label">
                   {p.label} : {p.message}
@@ -171,7 +172,7 @@ export default function ShippingToolScreen() {
             ) : null}
           </>
         ) : null}
-        <EstimateNote text="Devis des plateformes : prix de votre compte au moment de la demande. Grilles : vos tarifs saisis, à jour selon la date de vérification indiquée. Le prix final dépend de l'étiquette achetée." />
+        <EstimateNote text="Devis réels : prix renvoyés par la plateforme pour votre compte au moment de la demande (HT/TTC indiqué seulement si l'API le précise). Estimations : vos grilles saisies, à jour selon la date de vérification indiquée. Aucune étiquette n'est achetée depuis cet écran ; le prix final dépend de l'étiquette achetée." />
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -190,7 +191,7 @@ function OptionCard({ option: o, cheapest, fastest }: { option: ShippingOption; 
           <Txt variant="kpiSm" num>
             {formatMoneyDec(o.price, o.currency)}
           </Txt>
-          <Txt variant="label">{o.priceTax === "incl" ? "TTC" : o.priceTax === "excl" ? "HT" : "selon votre grille"}</Txt>
+          <Txt variant="label">{o.origin === "manual" ? "estimation (votre grille)" : o.priceTax === "incl" ? "TTC" : o.priceTax === "excl" ? "HT" : "HT/TTC inconnu"}</Txt>
         </View>
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
@@ -198,7 +199,7 @@ function OptionCard({ option: o, cheapest, fastest }: { option: ShippingOption; 
         {fastest ? <StatusChip label="Le plus rapide" tone="dark" /> : null}
         <StatusChip label={transit} tone="neutral" />
         <StatusChip label={o.tracking === true ? "Suivi inclus" : o.tracking === false ? "Sans suivi" : "Suivi : non précisé"} tone="neutral" />
-        <StatusChip label={o.origin === "api" ? `Devis ${o.provider}` : "Votre grille"} tone={o.origin === "api" ? "accent" : "neutral"} />
+        <StatusChip label={o.origin === "api" ? `Devis réel ${o.provider}` : "Estimation : votre grille"} tone={o.origin === "api" ? "accent" : "neutral"} />
       </View>
       {o.deliveryMode ? <Txt variant="label">{o.deliveryMode}</Txt> : null}
       {o.restrictions.map((r) => (
