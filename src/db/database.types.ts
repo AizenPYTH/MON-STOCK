@@ -891,6 +891,25 @@ isOneToOne: false
   Relationships: [
     { foreignKeyName: "tracked_parcels_order_id_fkey"; columns: ["order_id"]; isOneToOne: false; referencedRelation: "orders"; referencedColumns: ["id"] },
   ];
+},"advisor_conversations": {
+  Row: { created_at: string; id: string; last_message_at: string; organization_id: string; title: string; updated_at: string; user_id: string };
+  Insert: { created_at?: string; id?: string; last_message_at?: string; organization_id: string; title?: string; updated_at?: string; user_id?: string };
+  Update: { created_at?: string; id?: string; last_message_at?: string; organization_id?: string; title?: string; updated_at?: string; user_id?: string };
+  Relationships: [];
+},"advisor_messages": {
+  Row: { cards: Json; content: string; conversation_id: string; created_at: string; id: string; interrupted: boolean; organization_id: string; role: string; sources: Json; user_id: string };
+  Insert: { cards?: Json; content: string; conversation_id: string; created_at?: string; id?: string; interrupted?: boolean; organization_id: string; role: string; sources?: Json; user_id?: string };
+  Update: { cards?: Json; content?: string; conversation_id?: string; created_at?: string; id?: string; interrupted?: boolean; organization_id?: string; role?: string; sources?: Json; user_id?: string };
+  Relationships: [
+    { foreignKeyName: "advisor_messages_conversation_id_fkey"; columns: ["conversation_id"]; isOneToOne: false; referencedRelation: "advisor_conversations"; referencedColumns: ["id"] },
+  ];
+},"advisor_actions": {
+  Row: { amount: number | null; conversation_id: string | null; created_at: string; currency: string | null; decided_at: string | null; error: string | null; expires_at: string; id: string; kind: string; organization_id: string; payload: Json; result: Json | null; sku_id: string | null; status: string; summary: string; user_id: string };
+  Insert: { amount?: number | null; conversation_id?: string | null; created_at?: string; currency?: string | null; decided_at?: string | null; error?: string | null; expires_at: string; id?: string; kind: string; organization_id: string; payload: Json; result?: Json | null; sku_id?: string | null; status?: string; summary: string; user_id?: string };
+  Update: { amount?: number | null; conversation_id?: string | null; created_at?: string; currency?: string | null; decided_at?: string | null; error?: string | null; expires_at?: string; id?: string; kind?: string; organization_id?: string; payload?: Json; result?: Json | null; sku_id?: string | null; status?: string; summary?: string; user_id?: string };
+  Relationships: [
+    { foreignKeyName: "advisor_actions_conversation_id_fkey"; columns: ["conversation_id"]; isOneToOne: false; referencedRelation: "advisor_conversations"; referencedColumns: ["id"] },
+  ];
 },"sourcing_library_checks": {
   Row: { adapter: string | null; checked_at: string; duration_ms: number | null; http_status: number | null; key: string; message: string | null; product_count: number | null; robots_allowed: boolean | null; sample: Json; status: string };
   Insert: { adapter?: string | null; checked_at?: string; duration_ms?: number | null; http_status?: number | null; key: string; message?: string | null; product_count?: number | null; robots_allowed?: boolean | null; sample?: Json; status: string };

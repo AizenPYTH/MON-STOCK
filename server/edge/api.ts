@@ -29,6 +29,10 @@
  *   POST /api/ebay/sync                   synchronisation immédiate d'une connexion
  *   POST /api/ai/product-draft            phrase dictée → brouillon du formulaire produit (Claude ; rien n'est créé)
  *   POST /api/ai/assistant                questions sur les ventes / le stock / eBay (Claude + lecture seule sous RLS)
+ *   GET  /api/advisor/status              conseiller IA : configuré ?, limites
+ *   POST /api/advisor/chat                conseiller IA (texte / voix) : flux NDJSON si Accept: application/x-ndjson
+ *   POST /api/advisor/actions/confirm     exécute UNE action préparée, après revérification des droits (bouton de l'app)
+ *   POST /api/advisor/actions/cancel      annule une action préparée
  *   POST /api/cron/sync | /api/cron/sourcing | /api/cron/library-checks
  *                                         tâches planifiées (Authorization: Bearer CRON_SECRET)
  *
@@ -47,7 +51,7 @@ import { ebayEnv } from "@/lib/env";
 import { authorizeCron } from "@/lib/cron-auth";
 import { errorResponse, handle, parseBody, parseQuery, uuidParam } from "@/features/mobile-api/http";
 import { requireMobileOrgContext } from "@/features/mobile-api/context";
-import { shippingQuoteRequestSchema, sourcingSearchQuerySchema, trackingRefreshSchema } from "@/features/mobile-api/contract";
+import { ADVISOR_MESSAGE_MAX_CHARS, advisorActionDecisionSchema, advisorChatSchema, shippingQuoteRequestSchema, sourcingSearchQuerySchema, trackingRefreshSchema } from "@/features/mobile-api/contract";
 import { integrations, sourcingSearch, sourcingStatus } from "@/features/mobile-api/service";
 import { syncConnectionNow } from "@/features/integrations/sync-service";
 import { OAUTH_STATE_TTL_SECONDS, oauthErrorCodeFor } from "@/features/integrations/oauth-flow";
@@ -68,10 +72,13 @@ import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/servic
 import { buildRadar, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
-import { aiConfigured, claudeClient } from "@/services/ai/claude";
+import { AI_MODEL, aiConfigured, claudeClient } from "@/services/ai/claude";
 import { enforceAiQuota } from "@/services/ai/quota";
 import { draftProductFromText } from "@/services/ai/product-draft";
 import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
+import { advisorNdjsonStream, runAdvisorTurn } from "@/services/ai/advisor";
+import { decideAdvisorAction } from "@/services/ai/advisor-actions";
+import { AI_LIMITS } from "@/services/ai/quota";
 import { checkAssistantTools, checkReadOnlyRoutes } from "@/services/ai/tools-check";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
 import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
@@ -366,6 +373,33 @@ export async function route(request: Request): Promise<Response> {
         claudeClient();
         await enforceAiQuota(ctx, "assistant");
         return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
+      });
+    }
+    if (m === "GET" && path === "/advisor/status") {
+      return handle(async () => {
+        await requireMobileOrgContext(request);
+        return { configured: aiConfigured(), model: aiConfigured() ? AI_MODEL : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
+      });
+    }
+    if (m === "POST" && path === "/advisor/chat") {
+      try {
+        const ctx = await requireMobileOrgContext(request);
+        const body = await parseBody(request, advisorChatSchema);
+        claudeClient(); // « non configuré » avant de consommer le quota
+        await enforceAiQuota(ctx, "assistant");
+        if ((request.headers.get("accept") ?? "").includes("application/x-ndjson")) {
+          return new Response(advisorNdjsonStream(ctx, body), { status: 200, headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
+        }
+        return handle(() => runAdvisorTurn(ctx, body, () => undefined));
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+    if (m === "POST" && (path === "/advisor/actions/confirm" || path === "/advisor/actions/cancel")) {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const { actionId } = await parseBody(request, advisorActionDecisionSchema);
+        return decideAdvisorAction(ctx, actionId, path.endsWith("/confirm") ? "confirm" : "cancel");
       });
     }
     if (m === "GET" && path === "/integrations") return handle(async () => integrations(await requireMobileOrgContext(request)));

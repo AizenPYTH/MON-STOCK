@@ -558,6 +558,96 @@ export interface AssistantReplyDTO {
 }
 
 // ---------------------------------------------------------------------------
+// Conseiller e-commerce IA (texte + voix) : conversations, cartes, actions à confirmer
+// ---------------------------------------------------------------------------
+
+export const ADVISOR_MESSAGE_MAX_CHARS = 2000;
+
+export const advisorChatSchema = z.object({
+  /** conversation existante (sinon une nouvelle est créée) */
+  conversationId: z.string().uuid().nullable().optional(),
+  message: z.string().trim().min(1, "Posez votre question.").max(ADVISOR_MESSAGE_MAX_CHARS, `Message trop long (${ADVISOR_MESSAGE_MAX_CHARS} caractères maximum).`),
+  /** question dictée : réponse plus courte, adaptée à la lecture à voix haute */
+  voice: z.boolean().optional(),
+});
+export type AdvisorChatRequest = z.infer<typeof advisorChatSchema>;
+
+export const advisorActionDecisionSchema = z.object({ actionId: z.string().uuid() });
+
+export type AdvisorActionType = "adjust_stock" | "update_sku_price";
+export type AdvisorActionStatus = "pending" | "executing" | "executed" | "cancelled" | "expired" | "failed";
+
+/** Action PRÉPARÉE par le conseiller : rien n'est exécuté sans le bouton « Confirmer ». */
+export interface AdvisorActionDTO {
+  id: string;
+  type: AdvisorActionType;
+  status: AdvisorActionStatus;
+  /** phrase de confirmation : action, objet concerné, montant éventuel */
+  summary: string;
+  /** montant concerné (texte décimal exact) ; null si l'action n'a pas de coût */
+  amount: string | null;
+  currency: string | null;
+  expiresAt: string;
+  /** résultat ou erreur après décision */
+  outcome: string | null;
+}
+
+export type AdvisorCardTone = "neutral" | "success" | "warning" | "danger";
+
+export interface AdvisorCardRowDTO {
+  label: string;
+  /** valeur déjà formatée (« 1 234,50 € », « 12 u. ») */
+  value: string;
+  detail: string | null;
+  tone: AdvisorCardTone;
+}
+
+/** Carte de résultat calculée par le SERVEUR à partir des données (jamais rédigée par le modèle). */
+export interface AdvisorCardDTO {
+  kind: "kpis" | "list" | "action" | "draft";
+  title: string;
+  subtitle: string | null;
+  rows: AdvisorCardRowDTO[];
+  /** données manquantes ou limites du calcul */
+  warnings: string[];
+  action: AdvisorActionDTO | null;
+  /** brouillon de message (kind « draft ») : jamais envoyé automatiquement */
+  text: string | null;
+}
+
+export interface AdvisorReplyDTO {
+  conversationId: string;
+  messageId: string | null;
+  answer: string;
+  cards: AdvisorCardDTO[];
+  sources: string[];
+  /** réponse coupée (délai, limite) : affichée comme incomplète */
+  interrupted: boolean;
+  model: string | null;
+}
+
+/** Événements du flux NDJSON de POST /advisor/chat (une ligne JSON par événement). */
+export type AdvisorStreamEvent =
+  | { type: "conversation"; conversationId: string }
+  | { type: "status"; label: string }
+  | { type: "text"; delta: string }
+  | { type: "card"; card: AdvisorCardDTO }
+  | { type: "done"; reply: AdvisorReplyDTO }
+  | { type: "error"; code: string; message: string };
+
+export interface AdvisorActionDecisionDTO {
+  action: AdvisorActionDTO;
+  /** message affiché (et ajouté à la conversation) */
+  message: string;
+}
+
+export interface AdvisorStatusDTO {
+  configured: boolean;
+  model: string | null;
+  limits: { perUserPerHour: number; perOrganizationPerDay: number; maxMessageChars: number };
+}
+
+// ---------------------------------------------------------------------------
 // Import de catalogue fournisseur (fichier transmis par le fournisseur)
 // ---------------------------------------------------------------------------
 

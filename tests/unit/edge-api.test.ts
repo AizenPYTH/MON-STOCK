@@ -158,7 +158,7 @@ describe("Edge Function api : routage et retour OAuth eBay", () => {
   });
 
   it("routes IA : jeton utilisateur exigé avant tout appel à Claude", async () => {
-    for (const p of ["/ai/assistant", "/ai/product-draft"]) {
+    for (const p of ["/ai/assistant", "/ai/product-draft", "/advisor/chat", "/advisor/actions/confirm", "/advisor/actions/cancel"]) {
       const res = await route(new Request(`https://x.supabase.co/functions/v1/api${p}`, { method: "POST", body: JSON.stringify({ text: "iPhone 13" }) }));
       expect(res.status).toBe(401);
       expect((await res.json()).error.code).toBe("AUTH_REQUIRED");

@@ -190,6 +190,13 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
   await one("ai_usage_events", "insert into public.ai_usage_events (organization_id, user_id, kind) values ($1, $2, 'assistant') returning id", [orgId, ownerId]);
   await one("shipping_rate_cards", "insert into public.shipping_rate_cards (organization_id, carrier, service, bands) values ($1, 'Colissimo', 'Domicile', '[{\"maxWeightKg\":1,\"price\":\"7.35\"}]'::jsonb) returning id", [orgId]);
   await one("tracked_parcels", "insert into public.tracked_parcels (organization_id, tracking_number, carrier_code, label) values ($1, $2, 'colissimo', 'Fixture') returning id", [orgId, `6A${slug.replace(/[^0-9]/g, "").padEnd(11, "0").slice(0, 11)}`]);
+  const conv = await one("advisor_conversations", "insert into public.advisor_conversations (organization_id, user_id, title) values ($1, $2, 'Bilan') returning id", [orgId, ownerId]);
+  await one("advisor_messages", "insert into public.advisor_messages (organization_id, conversation_id, user_id, role, content) values ($1, $2, $3, 'user', 'Bilan du mois ?') returning id", [orgId, conv, ownerId]);
+  await one(
+    "advisor_actions",
+    "insert into public.advisor_actions (organization_id, user_id, conversation_id, kind, sku_id, payload, summary, expires_at) values ($1, $2, $3, 'adjust_stock', $4, '{}'::jsonb, 'Ajouter 1 unité', now() + interval '10 minutes') returning id",
+    [orgId, ownerId, conv, sku],
+  );
   await one("organization_invitations", "insert into public.organization_invitations (organization_id, email, role) values ($1, $2, 'member') returning id", [orgId, `invite-${slug}@example.test`]);
   ids["organizations"] = orgId;
   ids["organization_members"] = ownerId;

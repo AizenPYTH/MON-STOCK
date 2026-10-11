@@ -12,6 +12,13 @@ const available = await canConnect();
 const d = available ? describe : describe.skip;
 
 const DENIED = /row-level security|permission denied/;
+/**
+ * Tables PERSONNELLES (lignes d'un seul utilisateur, conseiller IA) : la ligne copiée appartient au
+ * propriétaire ; la conversation qu'elle référence est invisible pour un autre membre, et la garde
+ * « même organisation » refuse donc la référence avant la RLS. C'est un refus, pas une fuite.
+ */
+const PERSONAL_TABLES = new Set(["advisor_messages", "advisor_actions"]);
+const deniedFor = (table: string, error: string) => DENIED.test(error) || (PERSONAL_TABLES.has(table) && /CROSS_ORGANIZATION_REFERENCE/.test(error));
 
 async function insertableColumns(c: Client, table: string): Promise<string[]> {
   const { rows } = await c.query<{ attname: string }>(
@@ -36,7 +43,7 @@ async function writeMatrix(c: Client, org: OrgFixture, userId: string, tables: s
       const colList = cols.map(quoteIdent).join(", ");
       const ins = await trySql(c, `insert into public.${quoteIdent(table)} (${colList}) select ${colList} from jsonb_populate_record(null::public.${quoteIdent(table)}, $1::jsonb)`, [JSON.stringify(row)]);
       if (ins.ok) problems.push(`${table}: INSERT accepté`);
-      else if (!DENIED.test(ins.error)) problems.push(`${table}: INSERT erreur inattendue ${ins.error}`);
+      else if (!deniedFor(table, ins.error)) problems.push(`${table}: INSERT erreur inattendue ${ins.error}`);
     }
     const settable = cols.find((col) => !["id", "organization_id", "user_id", "sku_id", "connection_id", "state"].includes(col)) ?? cols[0]!;
     const upd = await trySql(c, `update public.${quoteIdent(table)} set ${quoteIdent(settable)} = ${quoteIdent(settable)} where ${key} = $1`, [org.orgId]);
