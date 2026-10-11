@@ -15,6 +15,7 @@ import { requireSupabase } from "~/lib/supabase";
 import { userMessage } from "~/lib/errors";
 import { useDictation } from "~/lib/speech";
 import { speak, stopSpeaking, ttsAvailable } from "~/lib/tts";
+import { useVoicePreference } from "~/lib/voice-pref";
 import { color, radius, size, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -23,7 +24,7 @@ import { fontFamily } from "~/theme/typography";
  * compte (calculs et outils exécutés sur le serveur, sous les droits de l'utilisateur).
  *
  * Voix : dictée de l'appareil (transcription locale iOS / Android) → serveur → réponse affichée au
- * fil de l'eau et lue par la synthèse vocale de l'appareil. Le micro n'écoute QUE après un appui
+ * fil de l'eau et lue par la voix naturelle du serveur (OpenAI), ou à défaut par celle de l'appareil. Le micro n'écoute QUE après un appui
  * explicite ; le « mode conversation » (relance automatique de l'écoute après la réponse) doit être
  * activé par l'utilisateur et se coupe tout seul après une écoute sans parole.
  * Actions : uniquement préparées par le conseiller ; exécution sur appui de « Confirmer ».
@@ -38,6 +39,8 @@ type Item = {
   interrupted?: boolean;
   error?: boolean;
   streaming?: boolean;
+  /** identifiant enregistré de la réponse (voix du serveur) */
+  messageId?: string | null;
 };
 
 const SUGGESTIONS = [
@@ -75,6 +78,9 @@ export default function AdvisorScreen() {
   const lastVoiceRef = useRef(false);
 
   const status = useQuery({ queryKey: [orgId, "advisor", "status"], queryFn: () => fetchAdvisorStatus(orgId), staleTime: 5 * 60_000, retry: 1 });
+  // voix naturelle du serveur (OpenAI) si annoncée ; sinon voix de l'appareil
+  const [preferredVoice] = useVoicePreference();
+  const voiceOptions = (messageId: string | null | undefined) => ({ messageId, organizationId: orgId, serverVoice: Boolean(status.data?.voice), voice: preferredVoice });
 
   useEffect(() => NetInfo.addEventListener((s) => setOffline(s.isConnected === false || s.isInternetReachable === false)), []);
 
@@ -86,7 +92,7 @@ export default function AdvisorScreen() {
       .then((ms) => {
         if (cancelled) return;
         setConversationId(params.conversationId!);
-        setItems(ms.map((m) => ({ key: m.id, role: m.role, content: m.content, cards: m.cards, sources: m.sources, interrupted: m.interrupted })));
+        setItems(ms.map((m) => ({ key: m.id, role: m.role, content: m.content, cards: m.cards, sources: m.sources, interrupted: m.interrupted, messageId: m.id })));
       })
       .catch((e) => toast({ text: userMessage(e), tone: "error" }));
     return () => {
@@ -169,20 +175,24 @@ export default function AdvisorScreen() {
         },
         { signal: controller.signal },
       );
-      updateLast((it) => ({ ...it, content: reply.answer, cards: reply.cards, sources: reply.sources, interrupted: reply.interrupted, streaming: false }));
+      updateLast((it) => ({ ...it, content: reply.answer, cards: reply.cards, sources: reply.sources, interrupted: reply.interrupted, streaming: false, messageId: reply.messageId }));
       if (voice && ttsAvailable()) {
         setPhase("speaking");
-        await speak(reply.answer, {
-          onDone: () => {
-            setPhase("idle");
-            if (conversationModeRef.current) void startListening();
+        await speak(
+          reply.answer,
+          {
+            onDone: () => {
+              setPhase("idle");
+              if (conversationModeRef.current) void startListening();
+            },
+            onStopped: () => setPhase("idle"),
+            onError: (m) => {
+              setPhase("idle");
+              toast({ text: m, tone: "error" });
+            },
           },
-          onStopped: () => setPhase("idle"),
-          onError: (m) => {
-            setPhase("idle");
-            toast({ text: m, tone: "error" });
-          },
-        });
+          voiceOptions(reply.messageId),
+        );
       } else setPhase("idle");
     } catch (e) {
       const message = userMessage(e);
@@ -330,7 +340,7 @@ export default function AdvisorScreen() {
             ))
           )}
           {lastAssistant && ttsAvailable() && shownPhase === "idle" ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Écouter la dernière réponse" onPress={() => { setPhase("speaking"); void speak(lastAssistant.content, { onDone: () => setPhase("idle"), onStopped: () => setPhase("idle"), onError: () => setPhase("idle") }); }} style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: color.line }} testID="advisor-replay">
+            <Pressable accessibilityRole="button" accessibilityLabel="Écouter la dernière réponse" onPress={() => { setPhase("speaking"); void speak(lastAssistant.content, { onDone: () => setPhase("idle"), onStopped: () => setPhase("idle"), onError: () => setPhase("idle") }, voiceOptions(lastAssistant.messageId)); }} style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: color.line }} testID="advisor-replay">
               <Volume2 size={14} color={color.ink2} />
               <Txt variant="label">Écouter la réponse</Txt>
             </Pressable>

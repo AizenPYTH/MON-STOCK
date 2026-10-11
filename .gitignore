@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# comparaison manuelle des voix (scripts/tts-compare.mjs)
+tts-compare/

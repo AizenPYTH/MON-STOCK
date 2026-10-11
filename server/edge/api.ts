@@ -30,6 +30,8 @@
  *   POST /api/ai/product-draft            phrase dictée → brouillon du formulaire produit (OpenAI ; rien n'est créé)
  *   POST /api/ai/assistant                questions sur les ventes / le stock / eBay (OpenAI + lecture seule sous RLS)
  *   GET  /api/advisor/status              conseiller IA : configuré ?, limites
+ *   GET  /api/advisor/speech?messageId=   voix du conseiller (OpenAI) : lecture d'une réponse déjà reçue (audio/mpeg ; voice=marin|cedar)
+ *   GET  /api/advisor/voice-sample?voice= même texte de démonstration, pour comparer les voix (quota IA)
  *   POST /api/advisor/chat                conseiller IA (texte / voix) : flux NDJSON si Accept: application/x-ndjson
  *   POST /api/advisor/actions/confirm     exécute UNE action préparée, après revérification des droits (bouton de l'app)
  *   POST /api/advisor/actions/cancel      annule une action préparée
@@ -73,6 +75,7 @@ import { buildRadar, radarSettingsSchema, saveCostSettings } from "@/services/ra
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
 import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
+import { synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
 import { enforceAiQuota } from "@/services/ai/quota";
 import { draftProductFromText } from "@/services/ai/product-draft";
 import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
@@ -378,8 +381,31 @@ export async function route(request: Request): Promise<Response> {
     if (m === "GET" && path === "/advisor/status") {
       return handle(async () => {
         await requireMobileOrgContext(request);
-        return { configured: aiConfigured(), model: aiConfigured() ? aiModel() : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
+        return { configured: aiConfigured(), model: aiConfigured() ? aiModel() : null, voice: aiConfigured() ? { provider: "openai", name: ttsVoice(), choices: [...TTS_CHOICES] } : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
       });
+    }
+    if (m === "GET" && path === "/advisor/speech") {
+      try {
+        const ctx = await requireMobileOrgContext(request);
+        const messageId = url.searchParams.get("messageId") ?? "";
+        if (!/^[0-9a-f-]{36}$/i.test(messageId)) throw new AppError("VALIDATION", "Réponse à lire invalide.");
+        llmClient(); // « non configuré » sans clé
+        const audio = await synthesizeAdvisorMessage(ctx, messageId, { voice: url.searchParams.get("voice") });
+        return new Response(audio, { status: 200, headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+      } catch (e) {
+        return errorResponse(e);
+      }
+    }
+    if (m === "GET" && path === "/advisor/voice-sample") {
+      try {
+        const ctx = await requireMobileOrgContext(request);
+        llmClient(); // « non configuré » avant de consommer le quota
+        await enforceAiQuota(ctx, "assistant");
+        const audio = await synthesizeVoiceSample(url.searchParams.get("voice"));
+        return new Response(audio, { status: 200, headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+      } catch (e) {
+        return errorResponse(e);
+      }
     }
     if (m === "POST" && path === "/advisor/chat") {
       try {

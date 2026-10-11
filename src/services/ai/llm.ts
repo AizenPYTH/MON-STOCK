@@ -160,7 +160,7 @@ function rejectedParam(e: unknown): string | null {
 }
 
 /** Journal technique sans secret : statut, code, paramètre et message d'OpenAI (tronqué). */
-function logApiError(e: unknown, model: string, withTools: boolean) {
+export function logApiError(e: unknown, model: string, withTools: boolean) {
   if (e instanceof OpenAI.APIError) log.warn("requête OpenAI refusée", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
 }
 
@@ -203,12 +203,19 @@ export function openAILlm(sdk: OpenAIChatLike, model: string): LlmClient {
   };
 }
 
+let sdk: OpenAI | null = null;
 let client: LlmClient | null = null;
 
-export function llmClient(): LlmClient {
+/** Client OpenAI du serveur (texte et voix) ; « non configuré » sans clé. */
+export function openAISdk(): OpenAI {
   if (!aiConfigured()) throw new AppError("NOT_CONFIGURED", AI_NOT_CONFIGURED);
   // Délais compatibles avec la limite d'exécution de l'Edge Function (≈ 150 s).
-  client ??= openAILlm(new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: 55_000 }) as unknown as OpenAIChatLike, aiModel());
+  sdk ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: 55_000 });
+  return sdk;
+}
+
+export function llmClient(): LlmClient {
+  client ??= openAILlm(openAISdk() as unknown as OpenAIChatLike, aiModel());
   return client;
 }
 

@@ -644,6 +644,8 @@ export interface AdvisorActionDecisionDTO {
 export interface AdvisorStatusDTO {
   configured: boolean;
   model: string | null;
+  /** voix du serveur (synthèse OpenAI) ; absente : voix de l'appareil */
+  voice?: { provider: "openai"; name: string; choices?: string[] } | null;
   limits: { perUserPerHour: number; perOrganizationPerDay: number; maxMessageChars: number };
 }
 

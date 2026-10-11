@@ -8,8 +8,12 @@ import { useActiveOrg } from "~/org/org-provider";
 import { ROLE_LABEL } from "~/org/org-service";
 import { appConfig } from "~/lib/config";
 import { BRANDS } from "~/brands/registry";
+import { useState } from "react";
+import { Check, Volume2 } from "lucide-react-native";
+import { playVoiceSample, stopSpeaking } from "~/lib/tts";
+import { useVoicePreference, VOICE_CHOICES, type VoiceId } from "~/lib/voice-pref";
 import { Avatar, BrandDisclaimer, BrandMark, Button, Card, DetailHeader, ListRow, Screen, SectionHeader, StatusChip, Txt, initialsOf, useToast } from "~/components/ui";
-import { space } from "~/theme/tokens";
+import { color, space } from "~/theme/tokens";
 
 /** Compte, organisation active (changement par appareil), intégrations, déconnexion. */
 export default function SettingsScreen() {
@@ -36,7 +40,7 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <DetailHeader parentLabel="Intelligence" />
+      <DetailHeader parentLabel="Aujourd'hui" />
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
         <Avatar initials={initialsOf(fullName ?? user?.email)} size={48} />
         <View style={{ flex: 1 }}>
@@ -80,6 +84,9 @@ export default function SettingsScreen() {
       <Txt variant="label">Amazon, Shopify et WooCommerce : disponibles prochainement (non connectables pour l'instant).</Txt>
       <BrandDisclaimer />
 
+      <SectionHeader title="Voix du conseiller" />
+      <VoiceChooser organizationId={active.organization.id} />
+
       <SectionHeader title="Application" />
       <Card padded>
         <Txt variant="label">
@@ -90,5 +97,50 @@ export default function SettingsScreen() {
 
       <Button label="Se déconnecter" variant="secondary" onPress={confirmSignOut} />
     </Screen>
+  );
+}
+
+/**
+ * Comparaison à l'oreille des voix OpenAI (même texte représentatif de MON STOCK) et choix de la
+ * voix de lecture des réponses. Chaque échantillon n'est synthétisé qu'une fois (cache local).
+ */
+function VoiceChooser({ organizationId }: { organizationId: string }) {
+  const [voice, setVoice] = useVoicePreference();
+  const [playing, setPlaying] = useState<VoiceId | null>(null);
+  const toast = useToast();
+  const listen = (v: VoiceId) => {
+    if (playing === v) {
+      void stopSpeaking();
+      setPlaying(null);
+      return;
+    }
+    setPlaying(v);
+    void playVoiceSample(v, organizationId, {
+      onDone: () => setPlaying(null),
+      onStopped: () => setPlaying(null),
+      onError: (m) => {
+        setPlaying(null);
+        toast({ text: m, tone: "error" });
+      },
+    });
+  };
+  return (
+    <Card>
+      {VOICE_CHOICES.map((c, i) => (
+        <ListRow
+          key={c.id}
+          testID={`voice-${c.id}`}
+          title={c.label}
+          subtitle={voice === c.id ? "Voix utilisée pour lire les réponses" : "Toucher pour choisir cette voix"}
+          left={voice === c.id ? <Check size={18} color={color.success} strokeWidth={2.6} /> : <View style={{ width: 18 }} />}
+          right={<Button label={playing === c.id ? "Arrêter" : "Écouter"} compact variant="secondary" icon={<Volume2 size={16} color={color.ink} />} onPress={() => listen(c.id)} testID={`voice-listen-${c.id}`} />}
+          onPress={() => setVoice(c.id)}
+          last={i === VOICE_CHOICES.length - 1}
+        />
+      ))}
+      <View style={{ paddingHorizontal: space[4], paddingBottom: space[3] }}>
+        <Txt variant="label">Même texte d'exemple pour les deux voix (voix de synthèse OpenAI, générée par le serveur ; compte dans le quota IA). Si la voix du serveur est indisponible, la voix de l'appareil prend le relais.</Txt>
+      </View>
+    </Card>
   );
 }

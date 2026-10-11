@@ -163,6 +163,10 @@ describe("Edge Function api : routage et retour OAuth eBay", () => {
       expect(res.status).toBe(401);
       expect((await res.json()).error.code).toBe("AUTH_REQUIRED");
     }
+    const speech = await route(new Request("https://x.supabase.co/functions/v1/api/advisor/speech?messageId=11111111-1111-4111-8111-111111111111"));
+    expect(speech.status).toBe(401);
+    const sample = await route(new Request("https://x.supabase.co/functions/v1/api/advisor/voice-sample?voice=cedar"));
+    expect(sample.status).toBe(401);
   });
 
   it("retour eBay : seuls code/state au format attendu sont relayés vers l'application", () => {

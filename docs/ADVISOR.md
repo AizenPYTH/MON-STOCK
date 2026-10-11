@@ -18,7 +18,7 @@
 - **Voix**, toujours déclenchée par un appui explicite :
   1. dictée française de l'appareil (`expo-speech-recognition`, déjà présent), avec la permission demandée au premier appui ;
   2. le texte transcrit est envoyé avec `voice: true` (réponse courte, adaptée à l'oral) ;
-  3. la réponse est lue par la voix française de l'appareil (`expo-speech`), phrase par phrase ; au-delà de 700 caractères, la lecture s'arrête et renvoie à l'écran.
+  3. la réponse est lue par une **voix de synthèse OpenAI** (voix naturelle « marin » ou « cedar », au choix dans Réglages → Voix du conseiller), sinon par la voix française de l'appareil (`expo-speech`). Voir §2 bis.
 
   Interruption : le bouton ■ arrête la lecture, l'écoute et la requête. Un nouvel appui sur le micro coupe la lecture et réécoute. Le **mode conversation** (micro relancé après chaque réponse) n'est actif que si l'utilisateur l'allume, et il se coupe après une écoute sans parole ou après une erreur.
 - **Données réelles**, sous les droits de l'utilisateur (RLS). Outils (`src/services/ai/advisor-tools.ts`) :
@@ -62,6 +62,37 @@ Possibilité d'évoluer sans tout refaire : brancher plus tard une voix serveur 
 
 Pourquoi l'Edge Function existante et pas une fonction dédiée : même authentification, même RLS, mêmes quotas et mêmes secrets. Le flux NDJSON y fonctionne (`ReadableStream`), et `fetch` d'Expo SDK 57 lit les flux (`expo/fetch`).
 
+## 2 bis. Voix de lecture (synthèse OpenAI)
+
+Il s'agit de **lire les réponses** avec une voix naturelle. Ce n'est **pas** la conversation vocale en temps réel de ChatGPT (Realtime API, audio dans les deux sens), qui reste une évolution possible.
+
+- **Serveur** (`src/services/ai/speech.ts`) :
+  - modèle `gpt-4o-mini-tts` (`OPENAI_TTS_MODEL` pour changer) ;
+  - voix `marin` ou `cedar` (`OPENAI_TTS_VOICE` = voix par défaut ; le choix de l'utilisateur prime) ;
+  - consignes de voix : français de France naturel, ton chaleureux et posé, intonation vivante mais sobre, pauses naturelles, débit légèrement modéré, ni GPS ni standard téléphonique, sans exagération.
+- **Texte envoyé** (`src/domain/ai/speakable.ts`, partagé avec l'application) :
+  - retirés : Markdown (titres, gras, code, liens), tableaux (cellules reformulées), listes, URL, émojis, noms techniques (`business_report` → « business report ») ;
+  - unités dites à l'oral : euros, pour cent, jours, mille euros, numéro, « par rapport à » ;
+  - limite de 900 caractères (≈ 1 minute), coupée à la fin d'une phrase.
+- **Routes** (authentifiées) :
+  - `GET /advisor/speech?messageId=&voice=` lit UNIQUEMENT une réponse du conseiller appartenant à l'utilisateur (relue sous sa session, RLS). Aucun texte arbitraire n'est synthétisé.
+  - `GET /advisor/voice-sample?voice=` lit un texte de démonstration fixe et compte dans le quota IA.
+  - Limite : 60 lectures par heure et par utilisateur, par instance du serveur (mémoire). Une limite en base demanderait d'ajouter un type d'événement à `ai_usage_events` (migration non faite).
+  - Erreurs : chaque échec (clé, modèle, quota OpenAI, réseau) est **journalisé** côté serveur (statut, code, message tronqué, aucun secret).
+- **Application** (`apps/mobile/src/lib/tts.ts`) :
+  - l'audio est **téléchargé une seule fois** par réponse et par voix, puis gardé en cache (40 fichiers au plus) : une relecture ne coûte rien ;
+  - un seul lecteur à la fois ; une nouvelle lecture ou ■ arrête l'audio en cours immédiatement ;
+  - arrêt au passage en arrière-plan ;
+  - lecture **même en mode silencieux** (`playsInSilentMode`) ;
+  - en cas d'échec (serveur, réseau, délai de 15 s), la voix de l'appareil prend le relais.
+- **Comparer marin et cedar** :
+  - dans l'application : Réglages → Voix du conseiller → « Écouter » sur chaque voix (même texte), puis toucher la voix préférée ;
+  - sur un ordinateur : `OPENAI_API_KEY=… node scripts/tts-compare.mjs` génère `marin.mp3` et `cedar.mp3`.
+
+  **Aucune des deux voix n'a été écoutée par Claude** : l'API OpenAI n'est pas joignable depuis l'environnement de développement. « marin » est le choix par défaut sans écoute ; à vous de comparer.
+- **Coût** : environ 0,015 $ par minute d'audio produite (prix tiers indicatif pour `gpt-4o-mini-tts`), soit environ 1 centime par réponse lue. Les relectures en cache sont gratuites.
+- **Nouveaux modules natifs** : `expo-audio` et `expo-file-system`. Un nouveau build TestFlight est nécessaire ; les builds précédents gardent la voix de l'appareil.
+
 ## 3. Sécurité et confirmations
 
 - **Clés** : `OPENAI_API_KEY` reste uniquement côté serveur. Les requêtes sont envoyées avec `store: false` (pas de stockage des échanges par OpenAI pour réutilisation dans le tableau de bord). Le bundle iOS a été analysé (`npm run scan:bundle`) : aucun secret.
@@ -88,7 +119,7 @@ L'abonnement ChatGPT (Plus, Pro…) ne couvre **pas** l'API OpenAI : elle est fa
 | Poste | Coût |
 | --- | --- |
 | Transcription (dictée de l'appareil) | 0 € |
-| Synthèse vocale (voix de l'appareil) | 0 € |
+| Synthèse vocale | voix OpenAI : environ 1 centime par réponse lue, relecture gratuite (cache) ; voix de l'appareil : 0 € |
 | Hébergement | Edge Function Supabase existante (quotas de votre formule Supabase) |
 | Modèle | OpenAI `gpt-5.4-mini` (défaut) : 0,75 $ par million de jetons en entrée, 4,50 $ en sortie, entrée en cache 0,075 $. Ces prix viennent de sources tierces concordantes ; la page officielle d'OpenAI n'est pas accessible depuis cet environnement, donc à vérifier sur votre compte. |
 
