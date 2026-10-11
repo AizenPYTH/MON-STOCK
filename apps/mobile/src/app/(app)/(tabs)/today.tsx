@@ -11,13 +11,11 @@ import { userMessage } from "~/lib/errors";
 import { formatClock, formatCompactMoney, formatLongDate, formatMoneyRounded, formatNumber, formatSignedPercent } from "~/lib/format";
 import {
   AlertBanner,
-  Avatar,
   BarChart,
   Card,
   Dot,
   EmptyState,
   ErrorState,
-  HeroCard,
   KpiCard,
   KpiGrid,
   ListRow,
@@ -27,21 +25,22 @@ import {
   Skeleton,
   SkeletonList,
   TabHeader,
+  Tile,
   Thumb,
   Txt,
-  initialsOf,
 } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 type Segment = "today" | "analysis";
 
-export default function IntelligenceScreen() {
+export default function TodayScreen() {
   const [segment, setSegment] = useState<Segment>("today");
   const [period, setPeriod] = useState<Period>(30);
   const user = useUser();
   const { active } = useActiveOrg();
 
-  const avatar = <Avatar initials={initialsOf((user?.user_metadata as { full_name?: string } | undefined)?.full_name ?? user?.email)} label="Compte et réglages" onPress={() => router.push("/settings")} />;
+  const fullName = (user?.user_metadata as { full_name?: string } | undefined)?.full_name?.trim();
+  const greeting = fullName ? `Bonjour ${fullName.split(/\s+/)[0]}` : "Aujourd'hui";
 
   const periodPicker = (
     <Pressable
@@ -68,9 +67,9 @@ export default function IntelligenceScreen() {
   );
 
   return segment === "today" ? (
-    <Today header={<TabHeader overline={formatLongDate(new Date())} title="Aujourd'hui" right={avatar} />} segment={<Segmented value={segment} onChange={setSegment} options={SEGMENTS} />} currency={active.organization.currency} />
+    <Today header={<TabHeader overline={formatLongDate(new Date())} title={greeting} />} segment={<Segmented value={segment} onChange={setSegment} options={SEGMENTS} />} currency={active.organization.currency} />
   ) : (
-    <Analysis header={<TabHeader title="Intelligence" right={periodPicker} />} segment={<Segmented value={segment} onChange={setSegment} options={SEGMENTS} />} period={period} currency={active.organization.currency} />
+    <Analysis header={<TabHeader overline={`Analyse · ${period} j`} title={greeting} right={periodPicker} />} segment={<Segmented value={segment} onChange={setSegment} options={SEGMENTS} />} period={period} currency={active.organization.currency} />
   );
 }
 
@@ -135,23 +134,36 @@ function Today({ header, segment, currency }: { header: React.ReactNode; segment
       <AssistantEntry />
       {today.isPending ? (
         <>
-          <Skeleton w="100%" h={130} r={radius.xxl} />
+          <Skeleton w="100%" h={208} r={radius.xxl} />
           <SkeletonList rows={3} thumb={false} />
         </>
       ) : today.isError ? (
         <ErrorState description={`${userMessage(today.error)}${today.dataUpdatedAt ? ` Dernières données : ${formatClock(new Date(today.dataUpdatedAt).toISOString())}.` : ""}`} onRetry={() => void today.refetch()} />
       ) : (
         <>
-          <HeroCard
-            label="Chiffre d'affaires du jour"
-            value={formatMoneyRounded(today.data.revenueToday, currency)}
-            stats={[
-              { label: "Ventes", value: formatNumber(today.data.ordersToday) },
-              { label: "Marge", value: today.data.marginTodayPercent === null ? "—" : `${Math.round(today.data.marginTodayPercent)} %` },
-              { label: "vs hier", value: formatSignedPercent(today.data.vsYesterdayPercent), tone: (today.data.vsYesterdayPercent ?? 0) >= 0 ? "success" : "danger" },
+          {todo[0] ? <AlertBanner text={`À faire : ${todo[0].text}`} onPress={todo[0].go} /> : null}
+          <KpiGrid columns={2}>
+            {[
+              <Tile
+                key="ca"
+                tone="dark"
+                label="CA du jour"
+                value={formatMoneyRounded(today.data.revenueToday, currency)}
+                reason={`${today.data.vsYesterdayPercent === null ? "pas de comparaison" : `${formatSignedPercent(today.data.vsYesterdayPercent)} vs hier`} · ${formatNumber(today.data.ordersToday)} vente${today.data.ordersToday > 1 ? "s" : ""}`}
+                reasonTone={today.data.vsYesterdayPercent === null ? undefined : today.data.vsYesterdayPercent >= 0 ? "success" : "danger"}
+              />,
+              <Tile
+                key="margin"
+                tone="success"
+                label="Marge du jour"
+                value={today.data.marginTodayPercent === null ? null : `≈ ${Math.round(today.data.marginTodayPercent)} %`}
+                reason={today.data.marginTodayPercent === null ? "coûts d'achat inconnus" : "estimée sur les coûts connus"}
+              />,
+              <Tile key="out" tone={catalog.data && catalog.data.counts.out > 0 ? "danger" : "neutral"} label="Rupture" value={catalog.data ? formatNumber(catalog.data.counts.out) : null} reason={catalog.data ? "produits à 0" : "stock indisponible"} onPress={() => router.push({ pathname: "/stock", params: { filter: "out" } })} />,
+              <Tile key="low" tone={catalog.data && catalog.data.counts.low > 0 ? "accent" : "neutral"} label="Faible" value={catalog.data ? formatNumber(catalog.data.counts.low) : null} reason={catalog.data ? "sous le seuil" : "stock indisponible"} onPress={() => router.push({ pathname: "/stock", params: { filter: "low" } })} />,
             ]}
-          />
-          {todo.length > 0 ? (
+          </KpiGrid>
+          {todo.length > 1 ? (
             <>
               <SectionHeader title="À faire" />
               <Card>
@@ -203,8 +215,8 @@ function Analysis({ header, segment, period, currency }: { header: React.ReactNo
       <AssistantEntry />
       {analysis.isPending || catalog.isPending ? (
         <>
-          <Skeleton w="100%" h={170} r={radius.lg} />
-          <Skeleton w="100%" h={120} r={radius.xl} />
+          <Skeleton w="100%" h={208} r={radius.xxl} />
+          <Skeleton w="100%" h={120} r={radius.xxl} />
         </>
       ) : analysis.isError || catalog.isError ? (
         <ErrorState description={userMessage(analysis.error ?? catalog.error)} onRetry={() => void Promise.all([catalog.refetch(), analysis.refetch()])} />
@@ -215,9 +227,9 @@ function Analysis({ header, segment, period, currency }: { header: React.ReactNo
           <KpiGrid columns={2}>
             {[
               <KpiCard key="ca" dark label="Chiffre d'affaires" value={formatMoneyRounded(d.revenue, currency)} hint={d.revenueChangePercent === null ? "Pas de période précédente" : `${formatSignedPercent(d.revenueChangePercent)} vs période préc.`} hintTone={d.revenueChangePercent !== null && d.revenueChangePercent >= 0 ? "success" : d.revenueChangePercent === null ? undefined : "danger"} />,
-              <KpiCard key="profit" label="Marge nette (est.)" value={d.netProfit === null ? "—" : formatMoneyRounded(d.netProfit, currency)} hint={d.netProfitShare === null ? "Coûts d'achat inconnus" : `${Math.round(d.netProfitShare)} % du CA${d.skusWithoutMargin > 0 ? ` · ${d.skusWithoutMargin} SKU exclus` : ""}`} />,
+              <KpiCard key="profit" label="Marge nette" value={d.netProfit === null ? "—" : `≈ ${formatMoneyRounded(d.netProfit, currency)}`} hint={d.netProfitShare === null ? "Coûts d'achat inconnus" : `${Math.round(d.netProfitShare)} % du CA${d.skusWithoutMargin > 0 ? ` · ${d.skusWithoutMargin} SKU exclus` : ""}`} />,
               <KpiCard key="sales" label="Ventes" value={formatNumber(d.orders)} hint={d.averageBasket === null ? "—" : `panier moyen ${formatMoneyRounded(d.averageBasket, currency)}`} />,
-              <KpiCard key="cover" label="Couverture stock" value={d.coverDays === null ? "—" : `${formatNumber(d.coverDays)} j`} hint={`valeur stock ${formatCompactMoney(d.stockValue, currency)}`} />,
+              <KpiCard key="cover" label="Couverture stock" value={d.coverDays === null ? "—" : `${formatNumber(d.coverDays)} j`} hint={`valeur ≈ ${formatCompactMoney(d.stockValue, currency)}`} />,
             ]}
           </KpiGrid>
           <Card padded>

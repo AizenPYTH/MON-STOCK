@@ -7,5 +7,5 @@ import { color } from "~/theme/tokens";
 export default function Index() {
   const session = useSession();
   if (session.status === "loading") return <View style={{ flex: 1, backgroundColor: color.bg }} accessibilityLabel="Ouverture de MON STOCK" />;
-  return <Redirect href={session.status === "signedIn" ? "/intelligence" : "/login"} />;
+  return <Redirect href={session.status === "signedIn" ? "/today" : "/login"} />;
 }

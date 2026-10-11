@@ -7,7 +7,7 @@ import { useCatalog } from "~/data/hooks";
 import { filterCatalog, type CatalogFilter, type ProductGroup } from "~/data/catalog";
 import { useDebounced } from "~/lib/use-debounced";
 import { userMessage } from "~/lib/errors";
-import { AlertBanner, EmptyState, ErrorState, FilterChip, IconButton, ListRow, QtyBadge, RowFrame, Screen, SearchField, Skeleton, SkeletonList, TabHeader, Thumb } from "~/components/ui";
+import { AlertBanner, Button, EmptyState, ErrorState, FilterChip, ListRow, QtyBadge, Screen, SearchField, Skeleton, SkeletonList, TabHeader, Thumb, useTabBarClearance } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 
@@ -23,7 +23,8 @@ export default function StockScreen() {
   const products = useMemo(() => (catalog.data ? filterCatalog(catalog.data.products, filter, query) : []), [catalog.data, filter, query]);
   const counts = catalog.data?.counts;
   const { permissions } = useActiveOrg();
-  const addButton = permissions.canWrite ? <IconButton icon={<Plus size={20} color={color.inkOnDark} strokeWidth={2.4} />} label="Nouveau produit" filled onPress={() => router.push("/product/new")} /> : undefined;
+  const clearance = useTabBarClearance();
+  const addButton = permissions.canWrite ? <Button label="Produit" compact icon={<Plus size={18} color={color.inkOnDark} strokeWidth={2.6} />} accessibilityHint="Créer un nouveau produit" onPress={() => router.push("/product/new")} testID="stock-new-product" /> : undefined;
 
   const header = (
     <View style={{ gap: space.blockGap, paddingBottom: space[3] }}>
@@ -43,7 +44,7 @@ export default function StockScreen() {
     return (
       <Screen scroll={false}>
         <TabHeader title="Stock" />
-        <Skeleton w="100%" h={44} r={radius.lg} />
+        <Skeleton w="100%" h={52} r={radius.pill} />
         <View style={{ flexDirection: "row", gap: space[2] }}>
           <Skeleton w={84} h={32} r={radius.pill} />
           <Skeleton w={96} h={32} r={radius.pill} />
@@ -67,7 +68,7 @@ export default function StockScreen() {
         keyExtractor={(p) => p.productId}
         ListHeaderComponent={header}
         refreshControl={<RefreshControl refreshing={catalog.isRefetching} onRefresh={() => void catalog.refetch()} />}
-        contentContainerStyle={{ paddingBottom: space[8] }}
+        contentContainerStyle={{ paddingBottom: space[8] + clearance }}
         style={{ marginHorizontal: -screenX, paddingHorizontal: screenX, maxWidth }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
@@ -82,23 +83,30 @@ export default function StockScreen() {
             <EmptyState title="Aucun produit ne correspond" description="Modifiez la recherche ou le filtre." />
           )
         }
-        renderItem={({ item, index }) => <ProductRow product={item} first={index === 0} last={index === products.length - 1} />}
+        ItemSeparatorComponent={RowGap}
+        renderItem={({ item }) => <ProductRow product={item} />}
       />
     </Screen>
   );
 }
 
-function ProductRow({ product: p, first, last }: { product: ProductGroup; first: boolean; last: boolean }) {
+function RowGap() {
+  return <View style={{ height: space[2] }} />;
+}
+
+/** Ligne autonome du handoff : carte blanche rayon 16, vignette 44, badge quantité 44×44. */
+function ProductRow({ product: p }: { product: ProductGroup }) {
+  const state = p.level === "out" ? "Rupture" : p.level === "low" ? "Faible" : null;
   return (
-    <RowFrame first={first} last={last}>
+    <View style={{ backgroundColor: color.surface, borderRadius: radius.xl, overflow: "hidden" }}>
       <ListRow
         left={<Thumb uri={p.imageUrl} />}
         title={p.name}
-        subtitle={`${p.code} · ${p.skus.length} variante${p.skus.length > 1 ? "s" : ""}`}
+        subtitle={`${state ? `${state} · ` : ""}${p.code} · ${p.skus.length} variante${p.skus.length > 1 ? "s" : ""}`}
         right={<QtyBadge qty={p.totalAvailable} level={p.level} />}
         onPress={() => router.push({ pathname: "/product/[productId]", params: { productId: p.productId } })}
-        last={last}
+        last
       />
-    </RowFrame>
+    </View>
   );
 }

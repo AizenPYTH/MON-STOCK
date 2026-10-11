@@ -6,5 +6,5 @@ export type TextVariant = keyof typeof typeScale;
 /** Texte typé par la échelle typographique du design ; `num` active les chiffres tabulaires. */
 export function Txt({ variant = "body", num = false, color, style, ...props }: TextProps & { variant?: TextVariant; num?: boolean; color?: string }) {
   const extra: TextStyle | null = color ? { color } : null;
-  return <Text maxFontSizeMultiplier={1.6} {...props} style={[typeScale[variant], num ? tabular : null, extra, style]} />;
+  return <Text maxFontSizeMultiplier={1.4} {...props} style={[typeScale[variant], num ? tabular : null, extra, style]} />;
 }

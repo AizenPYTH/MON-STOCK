@@ -9,8 +9,8 @@ import { useLayout } from "~/theme/layout";
 
 export function EmptyState({ icon, title, description, actions = [] }: { icon?: ReactNode; title: string; description: string; actions?: { label: string; onPress: () => void; variant?: "primary" | "secondary"; disabled?: boolean }[] }) {
   return (
-    <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: space[8], paddingHorizontal: space[6], gap: space[3] }}>
-      {icon ? <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: color.line, alignItems: "center", justifyContent: "center" }}>{icon}</View> : null}
+    <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: space[6], paddingHorizontal: space[5], gap: space[3], backgroundColor: color.surface, borderRadius: radius.xxl }}>
+      {icon ? <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: color.bg, alignItems: "center", justifyContent: "center" }}>{icon}</View> : null}
       <Txt variant="headline" style={{ textAlign: "center" }}>
         {title}
       </Txt>
@@ -20,7 +20,7 @@ export function EmptyState({ icon, title, description, actions = [] }: { icon?: 
       {actions.length > 0 ? (
         <View style={{ alignSelf: "stretch", gap: space[2], marginTop: space[2] }}>
           {actions.map((a) => (
-            <Button key={a.label} label={a.label} onPress={a.onPress} variant={a.variant ?? "primary"} disabled={a.disabled} />
+            <Button key={a.label} label={a.label} onPress={a.onPress} variant={a.variant === "secondary" ? "ghost" : "primary"} disabled={a.disabled} compact />
           ))}
         </View>
       ) : null}
@@ -30,14 +30,14 @@ export function EmptyState({ icon, title, description, actions = [] }: { icon?: 
 
 export function ErrorState({ title = "Impossible de charger les données", description, onRetry }: { title?: string; description: string; onRetry?: () => void }) {
   return (
-    <View style={{ backgroundColor: color.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: color.line, padding: space[5], alignItems: "center", gap: space[2] }} accessibilityRole="alert">
-      <Txt variant="headline" style={{ fontSize: 16, textAlign: "center" }}>
+    <View style={{ backgroundColor: color.dangerSoft, borderRadius: radius.xxl, padding: space[5], alignItems: "center", gap: space[2] }} accessibilityRole="alert">
+      <Txt variant="headline" color={color.dangerInk} style={{ fontSize: 16, textAlign: "center" }}>
         {title}
       </Txt>
-      <Txt variant="bodyRegular" style={{ textAlign: "center" }}>
+      <Txt variant="bodyRegular" color={color.dangerInk} style={{ textAlign: "center" }}>
         {description}
       </Txt>
-      {onRetry ? <Button label="Réessayer" onPress={onRetry} compact style={{ marginTop: space[2] }} /> : null}
+      {onRetry ? <Button label="Réessayer" onPress={onRetry} compact variant="secondary" style={{ marginTop: space[2] }} /> : null}
     </View>
   );
 }
@@ -50,12 +50,12 @@ export function Skeleton({ w, h, r = radius.sm }: { w: number | `${number}%`; h:
     loop.start();
     return () => loop.stop();
   }, [opacity]);
-  return <Animated.View style={{ width: w, height: h, borderRadius: r, backgroundColor: color.skeleton, opacity }} />;
+  return <Animated.View style={{ width: w, height: h, borderRadius: r, backgroundColor: color.skeletonStrong, opacity }} />;
 }
 
 export function SkeletonList({ rows = 8, thumb = true }: { rows?: number; thumb?: boolean }) {
   return (
-    <View accessibilityLabel="Chargement" accessibilityRole="progressbar" style={{ backgroundColor: color.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: color.line, overflow: "hidden" }}>
+    <View accessibilityLabel="Chargement" accessibilityRole="progressbar" style={{ backgroundColor: color.surface, borderRadius: radius.xxl, overflow: "hidden" }}>
       {Array.from({ length: rows }, (_, i) => (
         <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[3], paddingHorizontal: space[4], borderBottomWidth: i === rows - 1 ? 0 : 1, borderBottomColor: color.lineSoft }}>
           {thumb ? <Skeleton w={44} h={44} r={radius.md} /> : null}
@@ -97,10 +97,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {toast ? (
         <Animated.View
           pointerEvents="box-none"
-          style={{ position: "absolute", left: space[5], right: space[5], top: insets.top + space[2], transform: [{ translateY: y }] }}
+          style={{ position: "absolute", left: space[4], right: space[4], top: insets.top + space[2], transform: [{ translateY: y }] }}
           accessibilityLiveRegion="polite"
         >
-          <View style={[{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: color.surfaceDark, borderRadius: radius.lg, paddingVertical: space[3], paddingHorizontal: 14 }, shadow.toast]} accessibilityRole="alert">
+          <View style={[{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: color.surfaceDark, borderRadius: radius.xl, paddingVertical: space[3], paddingHorizontal: 14 }, shadow.toast]} accessibilityRole="alert">
             <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: toast.tone === "error" ? color.danger : color.success, alignItems: "center", justifyContent: "center" }}>
               {toast.tone === "error" ? <Txt variant="micro" color={color.inkOnDark}>!</Txt> : <Check size={12} color={color.inkOnDark} strokeWidth={3} />}
             </View>
@@ -144,7 +144,7 @@ export function BottomSheet({ visible, title, description, children, onClose }: 
         <Pressable style={{ flex: 1, backgroundColor: color.overlay }} accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} />
         <View
           accessibilityViewIsModal
-          style={{ backgroundColor: color.bg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingTop: space[3], paddingHorizontal: space[5], paddingBottom: Math.max(insets.bottom, space[4]) + space[4], gap: space[3], width: "100%", maxWidth, alignSelf: "center" }}
+          style={{ backgroundColor: color.bg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingTop: space[3], paddingHorizontal: space[4], paddingBottom: Math.max(insets.bottom, 34), gap: space[3], width: "100%", maxWidth, alignSelf: "center" }}
         >
           <View style={{ alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: color.lineStrong, marginBottom: space[2] }} />
           <Txt variant="title2" accessibilityRole="header">

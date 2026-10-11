@@ -7,6 +7,6 @@ import { color } from "~/theme/tokens";
 export default function AuthLayout() {
   const session = useSession();
   if (session.status === "loading") return <View style={{ flex: 1, backgroundColor: color.bg }} />;
-  if (session.status === "signedIn") return <Redirect href="/intelligence" />;
+  if (session.status === "signedIn") return <Redirect href="/today" />;
   return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bg } }} />;
 }

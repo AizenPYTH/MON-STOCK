@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import { Pressable, TextInput, View, type TextInputProps } from "react-native";
 import * as Haptics from "expo-haptics";
 import { CircleAlert, Minus, Plus, Search } from "lucide-react-native";
@@ -6,20 +6,29 @@ import { color, radius, size, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 import { Txt } from "~/components/ui/text";
 
-export const TextField = forwardRef<TextInput, TextInputProps & { label: string; error?: string; hint?: string }>(function TextField({ label, error, hint, style, ...props }, ref) {
+export const TextField = forwardRef<TextInput, TextInputProps & { label: string; error?: string; hint?: string }>(function TextField({ label, error, hint, style, onFocus, onBlur, ...props }, ref) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
         {label}
       </Txt>
-      <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: color.surface, borderWidth: error ? 1.5 : 1, borderColor: error ? color.danger : color.line, borderRadius: radius.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: color.surface, borderWidth: error ? 1.5 : focused ? 2 : 1, borderColor: error ? color.danger : focused ? color.ink : color.line, borderRadius: radius.md }}>
         <TextInput
           ref={ref}
           accessibilityLabel={label}
           accessibilityHint={error ?? hint}
           placeholderTextColor={color.ink3}
-          maxFontSizeMultiplier={1.6}
-          style={[{ flex: 1, paddingVertical: space[3], paddingHorizontal: 14, minHeight: size.touchMin, fontFamily: fontFamily[700], fontSize: 17, color: color.ink }, style]}
+          maxFontSizeMultiplier={1.4}
+          onFocus={(e) => {
+            setFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            onBlur?.(e);
+          }}
+          style={[{ flex: 1, paddingVertical: space[3], paddingHorizontal: 14, minHeight: size.input, fontFamily: fontFamily[700], fontSize: 17, color: color.ink }, style]}
           {...props}
         />
         {error ? <CircleAlert size={18} color={color.danger} style={{ marginRight: space[3] }} /> : null}
@@ -37,7 +46,7 @@ export const TextField = forwardRef<TextInput, TextInputProps & { label: string;
 
 export function SearchField({ value, onChangeText, placeholder }: { value: string; onChangeText: (v: string) => void; placeholder: string }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], height: size.touchMin, backgroundColor: color.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: color.line, paddingHorizontal: space[3] }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], height: size.input, backgroundColor: color.surface, borderRadius: radius.pill, paddingHorizontal: space[4] }}>
       <Search size={18} color={color.ink3} strokeWidth={2} />
       <TextInput
         value={value}
@@ -49,7 +58,7 @@ export function SearchField({ value, onChangeText, placeholder }: { value: strin
         autoCorrect={false}
         clearButtonMode="while-editing"
         returnKeyType="search"
-        maxFontSizeMultiplier={1.6}
+        maxFontSizeMultiplier={1.4}
         style={{ flex: 1, fontFamily: fontFamily[600], fontSize: 15, color: color.ink, paddingVertical: 0 }}
       />
     </View>
@@ -78,9 +87,7 @@ export function Stepper({ value, onChange, min = 0, disabled = false, busy = fal
         borderRadius: size.stepperButton / 2,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: filled ? color.ink : color.surface,
-        borderWidth: filled ? 0 : 1,
-        borderColor: color.line,
+        backgroundColor: filled ? color.ink : color.bg,
         opacity: disabled || (delta < 0 && value <= min) ? 0.4 : pressed ? 0.85 : 1,
       })}
     >

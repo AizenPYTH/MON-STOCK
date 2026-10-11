@@ -169,7 +169,7 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | **Sources fournisseurs** | Bibliothèque vérifiée chaque jour en direct (robots.txt + produits avec prix, exemples affichés) ; activation après attestation des CGU | `sourcing_library_checks`, `supplier_sources` |
 | **eBay** | Connexion OAuth (page officielle eBay dans une session système), finalisation liée à l'utilisateur, première synchronisation, « Synchroniser maintenant », dernière synchro réussie, dernier passage, erreurs, reconnexion ; annonces → association à un SKU ; déduction des ventes en attente | Edge Function (tokens chiffrés côté serveur) + `map_listing_to_sku`, `apply_pending_sales_for_sku` |
 | Ventes | Commandes par jour, à expédier, annonces eBay | `orders`, `channel_listings` |
-| Intelligence | Aujourd'hui / Analyse 7-30-90 j | vues analytiques |
+| Aujourd'hui (onglet initial, ex-« Intelligence ») | Aujourd'hui (tuiles CA, marge ≈, ruptures, stock faible ; « À faire ») / Analyse 7-30-90 j | vues analytiques |
 | **Produit à la voix (IA)** | « Dites ou écrivez le produit » : dictée iOS en français, phrase comprise par Claude (marque, modèle, variantes, prix d'achat/vente, quantités, ambiguïtés signalées) → formulaire pré-rempli, création après vérification | Edge Function `/ai/product-draft` (clé `ANTHROPIC_API_KEY` serveur) |
 | **Conseiller (IA, texte + voix)** | Aujourd'hui → « Parlez à votre conseiller » : conversation écrite ou vocale (dictée et voix de l'appareil), réponse au fil de l'eau, cartes de résultats (ventes, marges, stock, commandes, colis, frais de port), actions préparées à confirmer, historique des conversations ; voir docs/ADVISOR.md | Edge Function `/advisor/*` (outils sous la session de l'utilisateur) + tables `advisor_*` (RLS personnelle) |
 | Commande fournisseur | Brouillon depuis la comparaison ou le radar (jamais envoyé automatiquement) | `purchase_orders` |
@@ -189,6 +189,53 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Suivi de colis | Détection du transporteur (suggestion) ou choix manuel ; La Poste Suivi v2 / Ship24 ; liste, statut, historique, date estimée fournie par l'API ; actualisation automatique sobre ; alertes livré / problème / retard ; commande associée facultative ; statut jamais saisi à la main | `tracked_parcels` + `/tracking/refresh` |
 | Fournisseurs (annuaire) | 120 fournisseurs ; niveau d'accès réel (connecté, importable, accessible, vérifié, identifié) et prochaine action ; filtres | `/sourcing/directory` |
 | Import protégé | Fichier suspect (lignes illisibles, catalogue tronqué, prix décalés, doublons) : import suspendu, rien n'est modifié, « Importer quand même » après vérification | `/sourcing/import` |
+
+### 4.1 bis Refonte « Atelier », vert pomme (handoff du 11 octobre 2026)
+
+Le handoff `design_handoff_mon_stock_refonte` est en place pour les **fondations**. Il est appliqué à tous les écrans, puisque ceux-ci réutilisent les composants partagés.
+
+**Jetons** (`src/theme/*`)
+- palette verte (`ink` #1E7A1A, `surfaceDark` #23861C, fond #F1FAEA), règle des accents conservée ;
+- rayons 6 / 12 / 16 / 20 / 28 ; bouton 52 (44 compact), champ 52 ;
+- marge d'écran 16 (12 sur iPhone SE, 20 au-delà de 430 pt) ; typographie kpi 30/34 et body 700 ;
+- `maxFontSizeMultiplier` 1,4.
+
+**Navigation**
+- 5 onglets **Aujourd'hui · Stock · Ventes · Sourcing · Outils**, Aujourd'hui en premier et à l'ouverture ;
+- l'onglet `intelligence` devient `today` ; `/intelligence` redirige vers `/today`, donc les anciens liens restent valables ;
+- barre d'onglets **flottante** (`FloatingTabBar`) : pilule verte, onglet actif blanc ; libellé « Auj. » et hauteur 56 sur petit écran ;
+- les écrans d'onglet réservent la place (`useTabBarClearance`) ;
+- l'avatar en haut à droite de chaque onglet ouvre Réglages, puis Diagnostic.
+
+**Composants** (`src/components/ui`)
+- `Button` = Pill : pilule, variante `destructive`, appui scale 0,97 ;
+- `Card` sans bordure, rayon 20 ; `Segmented` sur fond enfoncé ;
+- `FilterChip` 9×14, avec les tons ambre et rouge en fond doux ;
+- `StatusChip` 4×8 ; `QtyBadge` 44×44 ;
+- `EmptyState` en carte blanche ; `ErrorState` en encart rouge doux ;
+- `Toast` rayon 16 ; feuille rayon 28 ; `SearchField` pilule de 52 ;
+- `TextField` : focus avec bordure 2.
+
+**Langage de confiance** (nouveaux composants)
+- `Tile` : tons dark, success, accent, danger, neutral ; sans valeur, elle passe en `unknown` (« — », bordure pointillée, jamais 0) ;
+- `TrustBadge` : API connectée, saisie manuelle, fichier, catalogue public, non vérifié, donnée manquante, fraîcheur ;
+- `Estimate` : « ≈ » et la raison au tap ;
+- `QualityBars`.
+
+**Écrans retravaillés**
+- Aujourd'hui : bandeau « À faire », 4 tuiles, « ≈ » sur les marges estimées ;
+- Stock : lignes autonomes et bouton « + Produit » ;
+- Outils : grille de tuiles en 3 colonnes (2 sur petit écran), « À venir » à 55 %.
+
+**Pas encore fait** (ordre du handoff, étapes 3 à 7)
+- Stepper64, ajustement optimiste annulable 5 s et balayages ;
+- Ventes : « Expédier » et suivi lié ;
+- détails des outils : AmountField, ResultCard ;
+- Sourcing : recherche progressive, barre empilée et import suspendu en feuille ;
+- barre de commande universelle, widgets et Live Activity ;
+- **thème sombre** (jetons `color.dark` fournis, pas encore branchés) ;
+- préférences apparence et haptique ;
+- file d'actions hors ligne : à arbitrer, car elle contredit l'écart assumé du §4.4 (aucune écriture rejouée sans confirmation de la base).
 
 ### 4.2 bis Correctif TestFlight build 4
 

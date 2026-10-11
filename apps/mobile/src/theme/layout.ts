@@ -1,8 +1,8 @@
 import { useWindowDimensions } from "react-native";
 
 /**
- * Règles responsive du handoff : largeur de référence 390 ; < 360 → grilles 3 colonnes en 2 ;
- * ≥ 430 → marge horizontale 24 ; tablette ≥ 768 → contenu centré (largeur max 560).
+ * Règles responsive du handoff : largeur de référence 390 ; marge d'écran 16 (12 sur iPhone SE,
+ * 20 si ≥ 430) ; < 360 ou texte agrandi > 1,3 → grilles réduites ; tablette ≥ 768 → contenu centré.
  */
 export function useLayout() {
   const { width, fontScale } = useWindowDimensions();
@@ -10,7 +10,7 @@ export function useLayout() {
   return {
     width,
     compact,
-    screenX: width >= 430 ? 24 : 20,
+    screenX: width < 360 ? 12 : width >= 430 ? 20 : 16,
     maxWidth: width >= 768 ? 560 : undefined,
     kpiColumns: compact ? 2 : 3,
   };

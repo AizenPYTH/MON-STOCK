@@ -1,34 +1,31 @@
 import type { ColorValue } from "react-native";
 import { Tabs } from "expo-router/tabs";
-import { BarChart3, Package, Tag, Truck, Wrench, type LucideIcon } from "lucide-react-native";
+import { Package, Sun, Tag, Truck, Wrench, type LucideIcon } from "lucide-react-native";
+import { FloatingTabBar, TabBarClearanceContext, useTabBarSpace } from "~/components/ui/tab-bar";
 import { color } from "~/theme/tokens";
-import { fontFamily } from "~/theme/typography";
 
 function tabIcon(Icon: LucideIcon) {
-  function TabIcon({ color: c, focused }: { color: ColorValue; focused: boolean }) {
-    return <Icon size={24} color={c as string} strokeWidth={focused ? 2.2 : 1.8} />;
+  function TabIcon({ color: c, focused, size }: { color: ColorValue; focused: boolean; size: number }) {
+    return <Icon size={size} color={c as string} strokeWidth={focused ? 2.4 : 2} />;
   }
   return TabIcon;
 }
 
-/** 5 onglets (Stock, Ventes, Sourcing, Intelligence, Outils) ; pas de badge numérique (les alertes vivent dans « À faire »). */
+/**
+ * 5 onglets (handoff « Atelier ») : Aujourd'hui · Stock · Ventes · Sourcing · Outils, barre
+ * flottante. Réglages et Diagnostic passent par l'avatar (haut droite). Pas de badge numérique.
+ */
 export default function TabsLayout() {
+  const clearance = useTabBarSpace();
   return (
-    <Tabs
-      initialRouteName="intelligence"
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: color.ink,
-        tabBarInactiveTintColor: color.ink3,
-        tabBarStyle: { backgroundColor: color.surface, borderTopColor: color.line, borderTopWidth: 1 },
-        tabBarLabelStyle: { fontFamily: fontFamily[700], fontSize: 10 },
-      }}
-    >
-      <Tabs.Screen name="stock" options={{ title: "Stock", tabBarIcon: tabIcon(Package) }} />
-      <Tabs.Screen name="sales" options={{ title: "Ventes", tabBarIcon: tabIcon(Tag) }} />
-      <Tabs.Screen name="sourcing" options={{ title: "Sourcing", tabBarIcon: tabIcon(Truck) }} />
-      <Tabs.Screen name="intelligence" options={{ title: "Intelligence", tabBarIcon: tabIcon(BarChart3) }} />
-      <Tabs.Screen name="tools" options={{ title: "Outils", tabBarIcon: tabIcon(Wrench), tabBarAccessibilityLabel: "Mes outils" }} />
-    </Tabs>
+    <TabBarClearanceContext.Provider value={clearance}>
+      <Tabs initialRouteName="today" tabBar={(props) => <FloatingTabBar {...props} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: color.bg } }}>
+        <Tabs.Screen name="today" options={{ title: "Aujourd'hui", tabBarIcon: tabIcon(Sun) }} />
+        <Tabs.Screen name="stock" options={{ title: "Stock", tabBarIcon: tabIcon(Package) }} />
+        <Tabs.Screen name="sales" options={{ title: "Ventes", tabBarIcon: tabIcon(Tag) }} />
+        <Tabs.Screen name="sourcing" options={{ title: "Sourcing", tabBarIcon: tabIcon(Truck) }} />
+        <Tabs.Screen name="tools" options={{ title: "Outils", tabBarIcon: tabIcon(Wrench), tabBarAccessibilityLabel: "Mes outils" }} />
+      </Tabs>
+    </TabBarClearanceContext.Provider>
   );
 }

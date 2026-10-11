@@ -25,7 +25,7 @@ const routes = {
   "(auth)/login": () => <Text>Écran de connexion</Text>,
   "(app)/_layout": AppLayout,
   "(app)/(tabs)/_layout": TabsLayout,
-  "(app)/(tabs)/intelligence": () => <Text>Aujourd'hui (écran)</Text>,
+  "(app)/(tabs)/today": () => <Text>Aujourd'hui (écran)</Text>,
   "(app)/(tabs)/stock": () => <Text>Stock (écran)</Text>,
   "(app)/(tabs)/sales": () => <Text>Ventes (écran)</Text>,
   "(app)/(tabs)/sourcing": () => <Text>Sourcing (écran)</Text>,
@@ -55,13 +55,14 @@ describe("navigation protégée", () => {
     expect(await screen.findByText("Créer votre organisation")).toBeTruthy();
   });
 
-  it("l'application s'ouvre sur Intelligence › Aujourd'hui, avec 4 onglets", async () => {
+  it("l'application s'ouvre sur l'onglet Aujourd'hui (barre flottante)", async () => {
     mockSessionState.current = { status: "signedIn", session: { user: { id: "u1" } } };
     mockOrgState.current = ready();
     const r = renderRouter(routes, { initialUrl: "/" });
     expect(await screen.findByText("Aujourd'hui (écran)")).toBeTruthy();
-    expect(r.getPathname()).toBe("/intelligence");
-    for (const tab of ["Stock", "Ventes", "Sourcing", "Intelligence"]) expect(screen.getAllByText(tab).length).toBeGreaterThan(0);
+    expect(r.getPathname()).toBe("/today");
+    for (const tab of ["Aujourd'hui", "Stock", "Ventes", "Sourcing"]) expect(screen.getByLabelText(tab)).toBeTruthy();
+    expect(screen.getByLabelText("Aujourd'hui").props.accessibilityState).toEqual({ selected: true });
     expect(screen.queryByText("Réglages")).toBeNull();
   });
 

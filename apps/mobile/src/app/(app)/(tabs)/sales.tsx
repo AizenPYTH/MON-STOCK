@@ -7,7 +7,7 @@ import { useListings, useOrders, useSalesKpis } from "~/data/hooks";
 import { groupOrdersByDay, ORDER_CHIP, type OrderListItem } from "~/data/sales";
 import { userMessage } from "~/lib/errors";
 import { formatLongDate, formatMoneyRounded, formatNumber } from "~/lib/format";
-import { EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, RowFrame, Screen, Segmented, Skeleton, SkeletonList, StatusChip, TabHeader, Txt } from "~/components/ui";
+import { EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, RowFrame, Screen, Segmented, Skeleton, SkeletonList, StatusChip, TabHeader, Txt, useTabBarClearance } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 
@@ -28,6 +28,7 @@ export default function SalesScreen() {
   const orders = useOrders(toShipOnly ? "paid" : undefined);
   const listings = useListings(segment === "listings");
   const { screenX } = useLayout();
+  const clearance = useTabBarClearance();
 
   const rows = useMemo(() => (orders.data?.pages.flatMap((p) => p.rows) ?? []) as OrderListItem[], [orders.data]);
   const sections = useMemo(() => groupOrdersByDay(rows, new Date(), formatLongDate), [rows]);
@@ -46,7 +47,7 @@ export default function SalesScreen() {
       />
       {segment === "orders" ? (
         k.isPending ? (
-          <Skeleton w="100%" h={74} r={radius.lg} />
+          <Skeleton w="100%" h={96} r={radius.xxl} />
         ) : k.data ? (
           <KpiGrid>
             {[
@@ -68,6 +69,7 @@ export default function SalesScreen() {
           keyExtractor={(l) => l.id}
           ListHeaderComponent={header}
           style={{ marginHorizontal: -screenX, paddingHorizontal: screenX }}
+          contentContainerStyle={{ paddingBottom: space[8] + clearance }}
           refreshControl={<RefreshControl refreshing={listings.isRefetching} onRefresh={() => void listings.refetch()} />}
           onEndReached={() => listings.hasNextPage && !listings.isFetchingNextPage && void listings.fetchNextPage()}
           renderSectionHeader={() => null}
@@ -115,7 +117,7 @@ export default function SalesScreen() {
         ListHeaderComponent={header}
         stickySectionHeadersEnabled={false}
         style={{ marginHorizontal: -screenX, paddingHorizontal: screenX }}
-        contentContainerStyle={{ paddingBottom: space[8] }}
+        contentContainerStyle={{ paddingBottom: space[8] + clearance }}
         refreshControl={<RefreshControl refreshing={orders.isRefetching} onRefresh={() => void Promise.all([orders.refetch(), k.refetch()])} />}
         onEndReachedThreshold={0.5}
         onEndReached={() => orders.hasNextPage && !orders.isFetchingNextPage && void orders.fetchNextPage()}

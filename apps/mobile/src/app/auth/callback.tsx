@@ -17,7 +17,7 @@ export default function AuthCallbackScreen() {
     started.current = true;
     completeAuthCallback(params)
       .then((r) => {
-        if (r.ok) router.replace(r.next === "/update-password" ? "/update-password" : "/intelligence");
+        if (r.ok) router.replace(r.next === "/update-password" ? "/update-password" : "/today");
         else setError(r.error);
       })
       .catch((e) => setError(userMessage(e)));

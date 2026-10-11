@@ -9,7 +9,7 @@ import { userMessage } from "~/lib/errors";
 import { formatNumber } from "~/lib/format";
 import { BottomSheet, Button, Card, DetailHeader, ErrorState, FilterChip, Screen, Skeleton, StickyActions, TextField, Txt, useToast } from "~/components/ui";
 import { variantTitle } from "~/components/stock";
-import { radius, space } from "~/theme/tokens";
+import { color, radius, space } from "~/theme/tokens";
 
 /** Motifs proposés → type de mouvement (même modèle que le web : la base contrôle le sens et le stock négatif). */
 const REASONS: { key: string; label: string; type: MovementType; sign: "any" | "in" | "out" }[] = [
@@ -113,7 +113,7 @@ export default function AdjustScreen() {
               Stock actuel : <Txt variant="body" num>{formatNumber(current)}</Txt>
             </Txt>
             <View style={{ gap: 6 }}>
-              <Txt variant="label" color="#141413" style={{ fontFamily: "Manrope_700Bold" }}>
+              <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
                 Motif
               </Txt>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>

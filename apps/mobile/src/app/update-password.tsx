@@ -28,7 +28,7 @@ export default function UpdatePasswordScreen() {
       setFields(r.fieldErrors ?? {});
       return;
     }
-    router.replace("/intelligence");
+    router.replace("/today");
   }
 
   return (

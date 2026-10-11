@@ -6,8 +6,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { color, radius, shadow, size, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
+import { Avatar, initialsOf } from "~/components/ui/controls";
+import { useTabBarClearance } from "~/components/ui/tab-bar";
+import { useUser } from "~/auth/session-provider";
 
-/** Écran : SafeArea, fond `bg`, marge horizontale 20 (24 si ≥ 430), contenu centré sur tablette. */
+/**
+ * Écran : SafeArea, fond `bg`, marge horizontale 16 (12 sur iPhone SE, 20 si ≥ 430), contenu
+ * centré sur tablette ; dans un onglet, le bas réserve la place de la barre flottante.
+ */
 export function Screen({
   children,
   scroll = true,
@@ -22,11 +28,12 @@ export function Screen({
   contentGap?: number;
 }) {
   const { screenX, maxWidth } = useLayout();
+  const clearance = useTabBarClearance();
   const inner: ViewStyle = { paddingHorizontal: screenX, gap: contentGap, width: "100%", maxWidth, alignSelf: "center" };
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: color.bg }} edges={["top", "left", "right"]}>
       {scroll ? (
-        <ScrollView contentContainerStyle={[inner, { paddingTop: space[2], paddingBottom: space[8] }]} keyboardShouldPersistTaps="handled" refreshControl={refreshControl as never}>
+        <ScrollView contentContainerStyle={[inner, { paddingTop: space[2], paddingBottom: space[8] + clearance }]} keyboardShouldPersistTaps="handled" refreshControl={refreshControl as never}>
           {children}
         </ScrollView>
       ) : (
@@ -37,19 +44,36 @@ export function Screen({
   );
 }
 
-/** En-tête d'onglet : titre `title1` (+ sur-titre éventuel) et actions à droite. */
-export function TabHeader({ title, overline, right }: { title: string; overline?: string; right?: ReactNode }) {
+/**
+ * En-tête d'onglet : titre `title1` (+ sur-titre éventuel), actions à droite et, dans un onglet,
+ * l'avatar (40 pt) qui ouvre Réglages et Diagnostic.
+ */
+export function TabHeader({ title, overline, right, avatar }: { title: string; overline?: string; right?: ReactNode; avatar?: boolean }) {
+  const inTabs = useTabBarClearance() > 0;
+  const showAvatar = avatar ?? inTabs;
+  const { compact } = useLayout();
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingTop: space[3] }}>
       <View style={{ flexShrink: 1 }}>
         {overline ? <Txt variant="label">{overline}</Txt> : null}
-        <Txt variant="title1" accessibilityRole="header" numberOfLines={1}>
+        <Txt variant="title1" accessibilityRole="header" numberOfLines={1} style={compact ? { fontSize: 24, lineHeight: 30 } : null}>
           {title}
         </Txt>
       </View>
-      {right ? <View style={{ flexDirection: "row", gap: space[2] }}>{right}</View> : null}
+      {right || showAvatar ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
+          {right}
+          {showAvatar ? <AccountAvatar /> : null}
+        </View>
+      ) : null}
     </View>
   );
+}
+
+function AccountAvatar() {
+  const user = useUser();
+  const name = (user?.user_metadata as { full_name?: string } | undefined)?.full_name ?? user?.email;
+  return <Avatar initials={initialsOf(name)} size={size.iconButton} label="Compte, réglages et diagnostic" onPress={() => router.push("/settings")} />;
 }
 
 /** En-tête d'écran de détail : chevron + libellé du parent, action à droite. */
@@ -60,7 +84,7 @@ export function DetailHeader({ parentLabel, right, onBack }: { parentLabel: stri
         accessibilityRole="button"
         accessibilityLabel={`Retour : ${parentLabel}`}
         hitSlop={8}
-        onPress={onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/intelligence")))}
+        onPress={onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/today")))}
         style={{ flexDirection: "row", alignItems: "center", gap: 2, minHeight: size.touchMin, paddingRight: space[3] }}
       >
         <ChevronLeft size={22} color={color.ink} strokeWidth={2} />
@@ -92,14 +116,14 @@ export function Card({ children, padded = false, style, accessibilityLabel }: { 
   return (
     <View
       accessibilityLabel={accessibilityLabel}
-      style={[{ backgroundColor: color.surface, borderWidth: 1, borderColor: color.line, borderRadius: radius.xl, overflow: "hidden" }, padded ? { paddingVertical: 14, paddingHorizontal: 16 } : null, style]}
+      style={[{ backgroundColor: color.surface, borderRadius: radius.xxl, overflow: "hidden" }, padded ? { padding: space[4] } : null, style]}
     >
       {children}
     </View>
   );
 }
 
-/** Ligne de liste : vignette éventuelle, titre, sous-titre, élément droit ; fond `lineSoft` à l'appui. */
+/** Ligne de liste : vignette éventuelle, titre, sous-titre, élément droit ; fond `surfaceSunken` à l'appui. */
 export function ListRow({
   title,
   subtitle,
@@ -129,8 +153,8 @@ export function ListRow({
         gap: space[3],
         paddingVertical: space[3],
         paddingHorizontal: space[4],
-        minHeight: 56,
-        backgroundColor: pressed ? color.lineSoft : "transparent",
+        minHeight: 64,
+        backgroundColor: pressed ? color.surfaceSunken : "transparent",
         borderBottomWidth: last ? 0 : 1,
         borderBottomColor: color.lineSoft,
       }}
@@ -186,15 +210,10 @@ export function RowFrame({ children, first, last }: { children: ReactNode; first
     <View
       style={{
         backgroundColor: color.surface,
-        borderColor: color.line,
-        borderLeftWidth: 1,
-        borderRightWidth: 1,
-        borderTopWidth: first ? 1 : 0,
-        borderBottomWidth: last ? 1 : 0,
-        borderTopLeftRadius: first ? radius.xl : 0,
-        borderTopRightRadius: first ? radius.xl : 0,
-        borderBottomLeftRadius: last ? radius.xl : 0,
-        borderBottomRightRadius: last ? radius.xl : 0,
+        borderTopLeftRadius: first ? radius.xxl : 0,
+        borderTopRightRadius: first ? radius.xxl : 0,
+        borderBottomLeftRadius: last ? radius.xxl : 0,
+        borderBottomRightRadius: last ? radius.xxl : 0,
         overflow: "hidden",
       }}
     >
