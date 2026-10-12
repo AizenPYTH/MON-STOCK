@@ -70,6 +70,7 @@ Supabase Dashboard → projet → **Edge Functions → Secrets** (jamais dans Gi
 | `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE` | cotation Boxtal (identifiants API v1, code de catégorie de contenu fourni par Boxtal) |
 | `LAPOSTE_OKAPI_KEY` | suivi La Poste / Colissimo / Chronopost (gratuit : developer.laposte.fr → application → abonnement « Suivi v2 ») |
 | `SHIP24_API_KEY` | suivi des autres transporteurs (dashboard.ship24.com → API keys ; offre gratuite limitée à 10 envois / mois) |
+| `DHL_API_KEY` | suivi officiel DHL, gratuit (developer.dhl.com → créer une application → API « Shipment Tracking - Unified » ; 250 appels / jour) |
 
 Générés automatiquement dans Vault (ne pas modifier) : `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`,
 `EBAY_WEBHOOK_VERIFICATION_TOKEN`. Un nouveau secret est pris en compte par la fonction sans
@@ -210,7 +211,7 @@ diagnostic, mode avion.
 - Clés eBay et `OPENAI_API_KEY`.
 - `PACKLINK_API_KEY`, identifiants Boxtal v1 ou clés Sendcloud : devis d'expédition réels. En attendant, saisissez
   vos grilles tarifaires.
-- `LAPOSTE_OKAPI_KEY` et / ou `SHIP24_API_KEY` : statut réel des colis.
+- `LAPOSTE_OKAPI_KEY`, `DHL_API_KEY` (gratuites) et / ou `SHIP24_API_KEY` : statut réel des colis. Sans clé, le bouton « Suivre sur le site du transporteur » reste disponible (pages publiques, gratuit).
 - Comptes professionnels fournisseurs : Foxway, Mobilax, Foneday, Utopya, Nedis, Infortisa, DMI,
   Home Screen Distribution, TelePart, MICHAEL AG… Ils donnent accès aux catalogues sous forme de
   fichiers, de flux ou d'API.

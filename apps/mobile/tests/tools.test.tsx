@@ -7,6 +7,7 @@ import EbayFeesTool from "../src/app/(app)/tools/ebay-fees";
 import ShippingTool from "../src/app/(app)/tools/shipping";
 import TrackingList from "../src/app/(app)/tools/tracking/index";
 import NewParcel from "../src/app/(app)/tools/tracking/new";
+import { trackingSourceText } from "../src/components/tracking";
 
 /**
  * « Mes outils » (mobile) : catalogue, calculateur de TVA (exact, instantané, sans serveur),
@@ -123,7 +124,7 @@ describe("frais eBay", () => {
 
 describe("comparateur de frais de port", () => {
   it("sans plateforme ni grille : aucun prix, message explicite", async () => {
-    mockCallApi.mockImplementation((path: string) => (path === "/tools/status" ? Promise.resolve({ shipping: [{ id: "packlink", label: "Packlink PRO", configured: false }, { id: "boxtal", label: "Boxtal", configured: false }], tracking: { laposte: false, ship24: false } }) : Promise.reject(new Error(path))));
+    mockCallApi.mockImplementation((path: string) => (path === "/tools/status" ? Promise.resolve({ shipping: [{ id: "packlink", label: "Packlink PRO", configured: false }, { id: "boxtal", label: "Boxtal", configured: false }], tracking: { laposte: false, ship24: false, dhl: false } }) : Promise.reject(new Error(path))));
     const Screen = ShippingTool;
     render(wrap(<Screen />));
     await waitFor(() => expect(screen.getByText(/Aucun tarif réel disponible/)).toBeTruthy());
@@ -137,7 +138,7 @@ describe("comparateur de frais de port", () => {
 describe("comparateur de frais de port : devis réels et estimations", () => {
   it("devis Sendcloud (HT/TTC inconnu) distinct de la grille (estimation), offre écartée signalée", async () => {
     mockCallApi.mockImplementation(async (p: string) => {
-      if (p === "/tools/status") return { shipping: [{ id: "packlink", label: "Packlink PRO", configured: false }, { id: "boxtal", label: "Boxtal", configured: false }, { id: "sendcloud", label: "Sendcloud", configured: true }], tracking: { laposte: false, ship24: false } };
+      if (p === "/tools/status") return { shipping: [{ id: "packlink", label: "Packlink PRO", configured: false }, { id: "boxtal", label: "Boxtal", configured: false }, { id: "sendcloud", label: "Sendcloud", configured: true }], tracking: { laposte: false, ship24: false, dhl: false } };
       if (p === "/shipping/quotes")
         return {
           quotedAt: "2026-10-11T08:00:00.000Z",
@@ -175,7 +176,7 @@ describe("comparateur de frais de port : devis réels et estimations", () => {
 
 describe("suivi de colis", () => {
   it("sans clé d'API : avertissement clair, aucun statut inventé", async () => {
-    mockCallApi.mockResolvedValue({ shipping: [], tracking: { laposte: false, ship24: false } });
+    mockCallApi.mockResolvedValue({ shipping: [], tracking: { laposte: false, ship24: false, dhl: false } });
     const Screen = TrackingList;
     render(wrap(<Screen />));
     await waitFor(() => expect(screen.getByText(/Aucune API de suivi n'est encore configurée/)).toBeTruthy());
@@ -189,5 +190,11 @@ describe("suivi de colis", () => {
     fireEvent.changeText(screen.getByTestId("tracking-number"), "1Z5R89390357567127");
     expect(screen.getByText(/Détecté : UPS/)).toBeTruthy();
     expect(screen.getByText("Transporteur : UPS")).toBeTruthy();
+  });
+  it("source du suivi : API officielles La Poste / DHL ou Ship24", () => {
+    expect(trackingSourceText("laposte")).toBe("API La Poste Suivi");
+    expect(trackingSourceText("dhl")).toBe("API DHL Suivi");
+    expect(trackingSourceText("ship24")).toBe("Ship24");
+    expect(trackingSourceText(null)).toBeNull();
   });
 });

@@ -916,6 +916,7 @@ export const trackingRefreshSchema = z.object({ parcelId: z.string().uuid() });
 export interface TrackingProvidersDTO {
   laposte: boolean;
   ship24: boolean;
+  dhl: boolean;
 }
 
 export interface TrackingRefreshDTO {

@@ -137,17 +137,58 @@ export function detectCarriers(raw: string): CarrierCandidate[] {
   return out;
 }
 
-export type TrackingProviderId = "laposte" | "ship24";
+export type TrackingProviderId = "laposte" | "ship24" | "dhl";
 
 /**
- * API à interroger : La Poste « Suivi v2 » pour le groupe La Poste (gratuit, officiel), sinon
- * l'agrégateur multi-transporteurs. null = aucune API configurée pour ce numéro.
+ * API à interroger : les API officielles gratuites d'abord (La Poste « Suivi v2 » pour le groupe
+ * La Poste, DHL « Shipment Tracking - Unified » pour DHL), sinon l'agrégateur multi-transporteurs.
+ * null = aucune API configurée pour ce numéro.
  */
-export function chooseProvider(carrier: CarrierCode | null, configured: { laposte: boolean; ship24: boolean }): TrackingProviderId | null {
+export function chooseProvider(carrier: CarrierCode | null, configured: { laposte: boolean; ship24: boolean; dhl?: boolean }): TrackingProviderId | null {
   if (carrier && LA_POSTE_GROUP.includes(carrier) && configured.laposte) return "laposte";
+  if (carrier === "dhl" && configured.dhl) return "dhl";
   if (configured.ship24) return "ship24";
   if (carrier === null && configured.laposte) return "laposte";
   return null;
+}
+
+/** Suivi universel gratuit (17TRACK, page web publique, sans clé ni API) : secours pour tout numéro. */
+export function universalTrackingUrl(trackingNumber: string): string {
+  return `https://t.17track.net/fr#nums=${encodeURIComponent(trackingNumber.trim())}`;
+}
+
+/**
+ * Page publique de suivi du transporteur (gratuite, ouverte dans le navigateur) ; aucune donnée
+ * n'est envoyée par MON STOCK. Transporteur inconnu ou sans page directe → 17TRACK.
+ */
+export function carrierTrackingUrl(carrier: CarrierCode | null, trackingNumber: string, postcode?: string | null): { url: string; label: string; universal: boolean } {
+  const n = encodeURIComponent(trackingNumber.trim());
+  const site = (url: string) => ({ url, label: carrier ? CARRIER_LABEL[carrier] : "17TRACK", universal: false });
+  switch (carrier) {
+    case "laposte":
+    case "colissimo":
+      return site(`https://www.laposte.fr/outils/suivre-vos-envois?code=${n}`);
+    case "chronopost":
+      return site(`https://www.chronopost.fr/tracking-no-cms/suivi-page?listeNumerosLT=${n}`);
+    case "ups":
+      return site(`https://www.ups.com/track?loc=fr_FR&tracknum=${n}`);
+    case "dhl":
+      return site(`https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${n}`);
+    case "dpd":
+      return site(`https://trace.dpd.fr/fr/trace/${n}`);
+    case "gls":
+      return site(`https://gls-group.com/FR/fr/suivi-colis?match=${n}`);
+    case "mondial_relay":
+      return site(`https://www.mondialrelay.fr/suivi-de-colis/?numeroExpedition=${n}${postcode?.trim() ? `&codePostal=${encodeURIComponent(postcode.trim())}` : ""}`);
+    case "colis_prive":
+      return site(`https://www.colisprive.com/moncolis/pages/detailColis.aspx?numColis=${n}`);
+    case "fedex":
+      return site(`https://www.fedex.com/fr-fr/tracking.html?tracknumbers=${n}`);
+    case "amazon":
+      return site(`https://track.amazon.com/tracking/${n}`);
+    default:
+      return { url: universalTrackingUrl(trackingNumber), label: "17TRACK", universal: true };
+  }
 }
 
 /** Codes d'événement La Poste « Suivi v2 » → statut normalisé (code inconnu → null). */

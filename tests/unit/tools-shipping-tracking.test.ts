@@ -4,7 +4,8 @@ vi.mock("server-only", () => ({}));
 
 import { toCents } from "@/domain/tools/decimal";
 import { billableWeight, compareManualCards, highlights, optionFromQuote, parseBands, parseCountryList, parseParcel, quoteFromCard, rateCardFromRow, sortOptions, type Parcel, type RateCard } from "@/domain/tools/shipping";
-import { chooseProvider, detectCarriers, laPosteEventStatus, nextCheckAt, normalizeTrackingNumber, s10CheckDigit, ship24MilestoneStatus, sortEvents, trackingAlerts, validateTrackingNumber, type TrackingSnapshot } from "@/domain/tools/tracking";
+import { carrierTrackingUrl, chooseProvider, detectCarriers, laPosteEventStatus, nextCheckAt, normalizeTrackingNumber, s10CheckDigit, ship24MilestoneStatus, sortEvents, trackingAlerts, universalTrackingUrl, validateTrackingNumber, type TrackingSnapshot } from "@/domain/tools/tracking";
+import { dhlConfigured, dhlStatus, dhlTrack, mapDhlResponse } from "@/integrations/tracking/dhl";
 import { mapPacklinkServices, packlinkConfigured, packlinkQuotes, packlinkSearchUrl, parseTransit } from "@/integrations/shipping/packlink";
 import { boxtalConfigured, boxtalQuoteUrl, mapBoxtalXml, nextCollectionDate } from "@/integrations/shipping/boxtal";
 import { laPosteTrack, mapLaPosteResponse } from "@/integrations/tracking/laposte";
@@ -211,6 +212,23 @@ describe("Suivi : numéros et détection du transporteur", () => {
     expect(chooseProvider(null, { laposte: true, ship24: false })).toBe("laposte");
     expect(chooseProvider("colissimo", { laposte: false, ship24: false })).toBeNull();
   });
+  it("routage DHL : API officielle DHL d'abord pour DHL, Ship24 sinon", () => {
+    expect(chooseProvider("dhl", { laposte: true, ship24: true, dhl: true })).toBe("dhl");
+    expect(chooseProvider("dhl", { laposte: false, ship24: true, dhl: false })).toBe("ship24");
+    expect(chooseProvider("dhl", { laposte: false, ship24: false, dhl: false })).toBeNull();
+    expect(chooseProvider("ups", { laposte: false, ship24: false, dhl: true })).toBeNull();
+    expect(chooseProvider("colissimo", { laposte: true, ship24: false, dhl: true })).toBe("laposte");
+  });
+  it("pages publiques des transporteurs (numéro encodé) et 17TRACK en secours", () => {
+    expect(carrierTrackingUrl("colissimo", "6A18987970674")).toEqual({ url: "https://www.laposte.fr/outils/suivre-vos-envois?code=6A18987970674", label: "Colissimo", universal: false });
+    expect(carrierTrackingUrl("dhl", "JJD 0001").url).toBe("https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=JJD%200001");
+    expect(carrierTrackingUrl("mondial_relay", "12345678", "75001").url).toBe("https://www.mondialrelay.fr/suivi-de-colis/?numeroExpedition=12345678&codePostal=75001");
+    expect(carrierTrackingUrl("mondial_relay", "12345678").url).not.toContain("codePostal");
+    for (const c of ["laposte", "chronopost", "ups", "dpd", "gls", "colis_prive", "fedex", "amazon"] as const) expect(carrierTrackingUrl(c, "X1").url).toMatch(/^https:\/\/[^ ]+X1/);
+    expect(carrierTrackingUrl(null, " AB12 ")).toEqual({ url: "https://t.17track.net/fr#nums=AB12", label: "17TRACK", universal: true });
+    expect(carrierTrackingUrl("relais_colis", "AB12").universal).toBe(true);
+    expect(universalTrackingUrl("A&B")).toBe("https://t.17track.net/fr#nums=A%26B");
+  });
   it("statuts La Poste et Ship24 ; code inconnu jamais interprété", () => {
     expect(laPosteEventStatus("DI1")).toBe("delivered");
     expect(laPosteEventStatus("MD2")).toBe("out_for_delivery");
@@ -360,7 +378,7 @@ describe("Service de suivi (actualisation)", () => {
   it("avec La Poste : statut et événements de l'API enregistrés, alerte de livraison", async () => {
     const f = fakeAdmin();
     const delivered: TrackingSnapshot = { status: "delivered", statusDetail: "Votre colis est livré.", estimatedDelivery: null, deliveredAt: "2026-10-11T09:00:00+02:00", events: sortEvents([{ at: "2026-10-11T09:00:00+02:00", label: "Votre colis est livré.", location: null, status: "delivered", code: "DI1" }]), carrierLabel: "Colissimo", providerUrl: null };
-    const r = await refreshParcel(f.admin, row, now, { LAPOSTE_OKAPI_KEY: "okapi-key-123456" }, { laposte: async () => delivered, ship24: async () => { throw new Error("ne doit pas être appelé"); } });
+    const r = await refreshParcel(f.admin, row, now, { LAPOSTE_OKAPI_KEY: "okapi-key-123456" }, { laposte: async () => delivered, ship24: async () => { throw new Error("ne doit pas être appelé"); }, dhl: async () => { throw new Error("ne doit pas être appelé"); } });
     expect(r).toMatchObject({ checked: true, provider: "laposte", status: "delivered" });
     expect(f.updates[0]).toMatchObject({ status: "delivered", provider: "laposte", next_check_at: null, check_count: 3, last_error: null });
     expect(f.alerts[0]).toMatchObject({ type: "parcel_delivered", dedupe_key: "parcel_delivered:p1", organization_id: "o1" });
@@ -368,10 +386,77 @@ describe("Service de suivi (actualisation)", () => {
   it("API en erreur : statut connu conservé, erreur enregistrée, nouvel essai dans 6 h", async () => {
     const f = fakeAdmin();
     const { ConnectorError } = await import("@/integrations/core/errors");
-    const r = await refreshParcel(f.admin, row, now, { SHIP24_API_KEY: "ship24-key-123456", LAPOSTE_OKAPI_KEY: "okapi-key-123456" }, { laposte: async () => { throw new ConnectorError("RATE_LIMITED", "laposte", "Quota API laposte atteint (HTTP 429) : réessayez dans quelques minutes."); }, ship24: async () => { throw new Error("non"); } });
+    const r = await refreshParcel(f.admin, row, now, { SHIP24_API_KEY: "ship24-key-123456", LAPOSTE_OKAPI_KEY: "okapi-key-123456" }, { laposte: async () => { throw new ConnectorError("RATE_LIMITED", "laposte", "Quota API laposte atteint (HTTP 429) : réessayez dans quelques minutes."); }, ship24: async () => { throw new Error("non"); }, dhl: async () => { throw new Error("non"); } });
     expect(r).toMatchObject({ checked: false, provider: "laposte" });
     expect(f.updates[0]).not.toHaveProperty("status");
     expect(f.updates[0]).toMatchObject({ next_check_at: "2026-10-11T16:00:00.000Z", last_error: expect.stringMatching(/Quota/) });
     expect(f.alerts).toEqual([]);
+  });
+});
+
+describe("API officielle DHL (Shipment Tracking - Unified)", () => {
+  const body = {
+    shipments: [
+      {
+        id: "00340434292135100186",
+        service: "parcel-de",
+        status: { timestamp: "2026-10-11T09:12:00+02:00", statusCode: "transit", status: "In transit", description: "The shipment is out for delivery" },
+        estimatedTimeOfDelivery: "2026-10-11T18:00:00+02:00",
+        events: [
+          { timestamp: "2026-10-10T08:00:00+02:00", statusCode: "pre-transit", description: "Données électroniques reçues", location: { address: { addressLocality: "Bonn", countryCode: "DE" } } },
+          { timestamp: "2026-10-11T09:12:00+02:00", statusCode: "transit", description: "The shipment is out for delivery" },
+          { timestamp: "2026-10-10T20:00:00+02:00", statusCode: "weird-code", description: "Code inconnu" },
+        ],
+      },
+    ],
+  };
+  it("statuts normalisés ; code inconnu jamais interprété", () => {
+    expect(dhlStatus("delivered")).toBe("delivered");
+    expect(dhlStatus("failure")).toBe("exception");
+    expect(dhlStatus("pre-transit")).toBe("info_received");
+    expect(dhlStatus("transit", "Out for delivery")).toBe("out_for_delivery");
+    expect(dhlStatus("transit", "Ready for collection at Parcelshop")).toBe("available_for_pickup");
+    expect(dhlStatus("transit", "Arrived at hub")).toBe("in_transit");
+    expect(dhlStatus("unknown")).toBe("unknown");
+    expect(dhlStatus("autre")).toBeNull();
+    expect(dhlStatus(null)).toBeNull();
+  });
+  it("réponse → instantané : événements triés, lieu, date estimée, lien public", () => {
+    const s = mapDhlResponse(body, 200);
+    expect(s.status).toBe("out_for_delivery");
+    expect(s.events.map((e) => e.at)).toEqual(["2026-10-11T09:12:00+02:00", "2026-10-10T20:00:00+02:00", "2026-10-10T08:00:00+02:00"]);
+    expect(s.events[2]).toMatchObject({ location: "Bonn, DE", status: "info_received" });
+    expect(s.events[1]!.status).toBeNull();
+    expect(s).toMatchObject({ estimatedDelivery: "2026-10-11T18:00:00+02:00", deliveredAt: null, carrierLabel: "DHL Parcel-de", providerUrl: "https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=00340434292135100186" });
+  });
+  it("404 ou liste vide → numéro inconnu ; livré → date de livraison", () => {
+    expect(mapDhlResponse(null, 404).status).toBe("not_found");
+    expect(mapDhlResponse({ shipments: [] }, 200).status).toBe("not_found");
+    const d = mapDhlResponse({ shipments: [{ id: "1", status: { statusCode: "delivered", timestamp: "2026-10-11T10:00:00Z" } }] }, 200);
+    expect(d).toMatchObject({ status: "delivered", deliveredAt: "2026-10-11T10:00:00Z" });
+  });
+  it("clé : absente → non configuré ; refusée → message clair ; quota → RATE_LIMITED", async () => {
+    expect(dhlConfigured({})).toBe(false);
+    expect(dhlConfigured({ DHL_API_KEY: "dhl-key-123456" })).toBe(true);
+    await expect(dhlTrack("1", {})).rejects.toMatchObject({ code: "NOT_CONFIGURED" });
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toContain("trackingNumber=JJD%201");
+      expect((init.headers as Record<string, string>)["DHL-API-Key"]).toBe("dhl-key-123456");
+      return new Response("{}", { status: 401 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(dhlTrack("JJD 1", { DHL_API_KEY: "dhl-key-123456" })).rejects.toMatchObject({ code: "AUTH_EXPIRED" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 429 })));
+    await expect(dhlTrack("JJD 1", { DHL_API_KEY: "dhl-key-123456" })).rejects.toMatchObject({ code: "RATE_LIMITED" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })));
+    expect((await dhlTrack("00340434292135100186", { DHL_API_KEY: "dhl-key-123456" })).status).toBe("out_for_delivery");
+  });
+  it("service : colis DHL suivi via l'API DHL quand la clé est présente", async () => {
+    const f = fakeAdmin();
+    const row = { id: "p2", organization_id: "o1", tracking_number: "00340434292135100186", carrier_code: "dhl", label: "Colis", status: "in_transit", destination_country: null, created_at: "2026-10-10T08:00:00Z", check_count: 0, archived_at: null };
+    const snap = mapDhlResponse(body, 200);
+    const r = await refreshParcel(f.admin, row, new Date("2026-10-11T10:00:00Z"), { DHL_API_KEY: "dhl-key-123456", SHIP24_API_KEY: "ship24-key-123456" }, { laposte: async () => { throw new Error("non"); }, ship24: async () => { throw new Error("non"); }, dhl: async () => snap });
+    expect(r).toMatchObject({ checked: true, provider: "dhl", status: "out_for_delivery" });
+    expect(f.updates[0]).toMatchObject({ provider: "dhl", status: "out_for_delivery" });
   });
 });

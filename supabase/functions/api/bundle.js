@@ -14286,7 +14286,7 @@ init_logger();
 init_crypto();
 init_admin();
 init_env();
-import { z as z43 } from "npm:zod@4.6.5";
+import { z as z44 } from "npm:zod@4.6.5";
 
 // src/lib/cron-auth.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
@@ -23915,6 +23915,7 @@ var RUNTIME_SECRET_NAMES = [
   "BOXTAL_API_URL",
   "LAPOSTE_OKAPI_KEY",
   "SHIP24_API_KEY",
+  "DHL_API_KEY",
   "SENDCLOUD_PUBLIC_KEY",
   "SENDCLOUD_SECRET_KEY"
 ];
@@ -23975,6 +23976,7 @@ var FINAL_STATUSES = /* @__PURE__ */ new Set(["delivered", "returned", "expired"
 var PROBLEM_STATUSES = /* @__PURE__ */ new Set(["failed_attempt", "exception", "returned"]);
 function chooseProvider(carrier, configured) {
   if (carrier && LA_POSTE_GROUP.includes(carrier) && configured.laposte) return "laposte";
+  if (carrier === "dhl" && configured.dhl) return "dhl";
   if (configured.ship24) return "ship24";
   if (carrier === null && configured.laposte) return "laposte";
   return null;
@@ -24195,6 +24197,82 @@ async function ship24Track(trackingNumber, opts = {}, env = process.env) {
   return mapShip24Response(json2);
 }
 
+// src/integrations/tracking/dhl.ts
+init_empty();
+import { z as z43 } from "npm:zod@4.6.5";
+init_errors2();
+init_http();
+var DHL_TRACK_URL = "https://api-eu.dhl.com/track/shipments";
+var place = z43.object({ address: z43.object({ addressLocality: z43.string().nullable().optional(), countryCode: z43.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
+var event = z43.object({ timestamp: z43.string().nullable().optional(), statusCode: z43.string().nullable().optional(), status: z43.string().nullable().optional(), description: z43.string().nullable().optional(), location: place }).passthrough();
+var responseSchema3 = z43.object({
+  shipments: z43.array(
+    z43.object({
+      id: z43.string().optional(),
+      service: z43.string().nullable().optional(),
+      status: event.nullable().optional(),
+      estimatedTimeOfDelivery: z43.string().nullable().optional(),
+      events: z43.array(event).optional()
+    }).passthrough()
+  ).optional()
+}).passthrough();
+function dhlConfigured(env = process.env) {
+  return Boolean(env.DHL_API_KEY && env.DHL_API_KEY.trim().length >= 10);
+}
+function dhlStatus(statusCode, text3) {
+  const c = (statusCode ?? "").toLowerCase();
+  const t = (text3 ?? "").toLowerCase();
+  if (c === "delivered") return "delivered";
+  if (c === "failure") return "exception";
+  if (c === "pre-transit") return "info_received";
+  if (c === "transit") {
+    if (/out for delivery|en cours de livraison|with delivery courier/.test(t)) return "out_for_delivery";
+    if (/service ?point|parcel ?shop|point relais|ready for (collection|pickup)/.test(t)) return "available_for_pickup";
+    return "in_transit";
+  }
+  if (c === "unknown") return "unknown";
+  return null;
+}
+var where = (l) => {
+  const a = l?.address;
+  const s = [a?.addressLocality, a?.countryCode].filter(Boolean).join(", ");
+  return s || null;
+};
+function mapDhlResponse(body, httpStatus) {
+  if (httpStatus === 404) return { status: "not_found", statusDetail: "Num\xE9ro inconnu de DHL.", estimatedDelivery: null, deliveredAt: null, events: [], carrierLabel: null, providerUrl: null };
+  const parsed = responseSchema3.safeParse(body);
+  if (!parsed.success) throw new ConnectorError("INVALID_RESPONSE", "dhl", "R\xE9ponse DHL inattendue.");
+  const s = parsed.data.shipments?.[0];
+  if (!s) return { status: "not_found", statusDetail: "Num\xE9ro inconnu de DHL.", estimatedDelivery: null, deliveredAt: null, events: [], carrierLabel: null, providerUrl: null };
+  const events = sortEvents(
+    (s.events ?? []).map((e) => ({ at: e.timestamp ?? null, label: (e.description ?? e.status ?? "").trim() || "\xC9v\xE9nement", location: where(e.location), status: dhlStatus(e.statusCode, `${e.status ?? ""} ${e.description ?? ""}`), code: e.statusCode ?? null }))
+  );
+  const current = s.status ? dhlStatus(s.status.statusCode, `${s.status.status ?? ""} ${s.status.description ?? ""}`) : null;
+  const status = current ?? events.find((e) => e.status !== null)?.status ?? (events.length > 0 ? "unknown" : "pending");
+  const delivered = status === "delivered" ? s.status?.timestamp ?? events.find((e) => e.status === "delivered")?.at ?? null : null;
+  return {
+    status,
+    statusDetail: (s.status?.description ?? s.status?.status ?? events[0]?.label ?? null) || null,
+    estimatedDelivery: s.estimatedTimeOfDelivery ?? null,
+    deliveredAt: delivered,
+    events,
+    carrierLabel: s.service ? `DHL ${s.service.charAt(0).toUpperCase()}${s.service.slice(1)}` : "DHL",
+    providerUrl: s.id ? `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${encodeURIComponent(s.id)}` : null
+  };
+}
+async function dhlTrack(trackingNumber, env = process.env) {
+  const key2 = env.DHL_API_KEY?.trim();
+  if (!key2) throw new ConnectorError("NOT_CONFIGURED", "dhl", "Cl\xE9 DHL absente (secret DHL_API_KEY).");
+  const url = `${DHL_TRACK_URL}?trackingNumber=${encodeURIComponent(trackingNumber)}&language=fr`;
+  const res = await fetchWithRetry(url, { method: "GET", headers: { "DHL-API-Key": key2, Accept: "application/json" } }, { provider: "dhl", timeoutMs: 15e3, retries: 1, label: "track/shipments" });
+  if (res.status === 401 || res.status === 403) throw new ConnectorError("AUTH_EXPIRED", "dhl", "Cl\xE9 DHL refus\xE9e ou non abonn\xE9e \xE0 \xAB Shipment Tracking - Unified \xBB (DHL_API_KEY).", { httpStatus: res.status });
+  if (res.status === 429) throw new ConnectorError("RATE_LIMITED", "dhl", "Quota DHL atteint (250 appels par jour au d\xE9part) : r\xE9essayez plus tard.", { httpStatus: 429 });
+  if (res.status === 404) return mapDhlResponse(null, 404);
+  const body = await readJson(res, "dhl");
+  if (!res.ok) throw new ConnectorError("API_ERROR", "dhl", `DHL a r\xE9pondu HTTP ${res.status}.`, { httpStatus: res.status });
+  return mapDhlResponse(body, res.status);
+}
+
 // src/services/tracking/tracking.ts
 init_errors();
 init_logger();
@@ -24202,20 +24280,20 @@ init_admin();
 init_alerts();
 var log30 = createLogger("TRACKING");
 function trackingProviders(env = process.env) {
-  return { laposte: laPosteConfigured(env), ship24: ship24Configured(env) };
+  return { laposte: laPosteConfigured(env), ship24: ship24Configured(env), dhl: dhlConfigured(env) };
 }
 var PARCEL_COLUMNS = "id, organization_id, tracking_number, carrier_code, label, status, destination_country, created_at, check_count, archived_at";
-async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), env = process.env, track = { laposte: laPosteTrack, ship24: ship24Track }) {
+async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), env = process.env, track = { laposte: laPosteTrack, ship24: ship24Track, dhl: dhlTrack }) {
   const providers = trackingProviders(env);
   const provider = chooseProvider(parcel.carrier_code ?? null, providers);
   if (!provider) {
-    const message = "Aucune API de suivi configur\xE9e sur le serveur (LAPOSTE_OKAPI_KEY ou SHIP24_API_KEY).";
+    const message = "Aucune API de suivi configur\xE9e sur le serveur (LAPOSTE_OKAPI_KEY, DHL_API_KEY ou SHIP24_API_KEY).";
     await admin.from("tracked_parcels").update({ last_error: message, next_check_at: new Date(now.getTime() + 12 * 36e5).toISOString(), last_checked_at: now.toISOString() }).eq("id", parcel.id);
     return { parcelId: parcel.id, status: parcel.status, provider: null, checked: false, message };
   }
   let snapshot;
   try {
-    snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
+    snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : provider === "dhl" ? await track.dhl(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
   } catch (e) {
     const message = isConnectorError(e) ? e.message : "Erreur inattendue lors du suivi.";
     log30.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
@@ -24254,7 +24332,7 @@ async function refreshParcelForOrg(ctx, parcelId, admin = createAdminSupabaseCli
 }
 async function runDueTracking(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient(), limit = 30, env = process.env) {
   const providers = trackingProviders(env);
-  if (!providers.laposte && !providers.ship24) return { checked: 0, failed: 0, skipped: 0 };
+  if (!providers.laposte && !providers.ship24 && !providers.dhl) return { checked: 0, failed: 0, skipped: 0 };
   const { data, error } = await admin.from("tracked_parcels").select(PARCEL_COLUMNS).is("archived_at", null).not("next_check_at", "is", null).lte("next_check_at", now.toISOString()).order("next_check_at", { ascending: true }).limit(limit);
   if (error) throw fromPostgrestError(error);
   let checked = 0;
@@ -24281,7 +24359,8 @@ var TARGETS = [
   { id: "boxtal", url: `${BOXTAL_DEFAULT_URL}cotation?shipper.pays=FR&shipper.code_postal=75001&recipient.pays=FR&recipient.code_postal=33000&colis_1.poids=1&colis_1.longueur=20&colis_1.largeur=15&colis_1.hauteur=10`, init: { method: "GET", headers: { Accept: "application/xml" } } },
   { id: "sendcloud", url: SENDCLOUD_SHIPPING_OPTIONS_URL, init: { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ from_address: { country_code: "FR", postal_code: "75001" }, to_address: { country_code: "FR", postal_code: "33000" }, parcels: [{ weight: { value: "1", unit: "kg" } }], calculate_quotes: true }) } },
   { id: "laposte-suivi", url: `${LAPOSTE_SUIVI_URL}6A18987970674?lang=fr_FR`, init: { method: "GET", headers: { Accept: "application/json" } } },
-  { id: "ship24", url: SHIP24_TRACK_URL, init: { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify({ trackingNumber: "6A18987970674" }) } }
+  { id: "ship24", url: SHIP24_TRACK_URL, init: { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify({ trackingNumber: "6A18987970674" }) } },
+  { id: "dhl", url: `${DHL_TRACK_URL}?trackingNumber=00340434292135100186`, init: { method: "GET", headers: { Accept: "application/json" } } }
 ];
 async function probeToolConnectors(fetchImpl = fetch) {
   return Promise.all(
@@ -24309,12 +24388,12 @@ var CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z43.object({ code: z43.string().min(1).max(2048), state: z43.string().min(16).max(200) });
-var syncSchema = z43.object({ connectionId: uuidParam, scope: z43.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z43.object({ hosts: z43.array(z43.string().min(3).max(120)).min(1).max(25), query: z43.string().min(2).max(80).optional() });
+var ebayFinalizeSchema = z44.object({ code: z44.string().min(1).max(2048), state: z44.string().min(16).max(200) });
+var syncSchema = z44.object({ connectionId: uuidParam, scope: z44.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z44.object({ hosts: z44.array(z44.string().min(3).max(120)).min(1).max(25), query: z44.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z43.object({ text: z43.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z43.object({ key: z43.string().min(1).max(80), attest: z43.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z44.object({ text: z44.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z44.object({ key: z44.string().min(1).max(80), attest: z44.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -24453,13 +24532,13 @@ async function route(request) {
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z43.object({ query: z43.string().min(2).max(120), source: z43.string().min(1).max(80) }));
+          const body = await parseBody(request, z44.object({ query: z44.string().min(2).max(120), source: z44.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request, z43.object({ keys: z43.array(z43.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request, z44.object({ keys: z44.array(z44.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
@@ -24468,11 +24547,11 @@ async function route(request) {
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z43.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z44.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z43.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request, z44.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
@@ -24496,7 +24575,7 @@ async function route(request) {
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery(request, z43.object({ sort: z43.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const q = parseQuery(request, z44.object({ sort: z44.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
       });
     }
@@ -24626,7 +24705,7 @@ async function route(request) {
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return prefillListing(ctx, parseQuery(request, z43.object({ skuId: uuidParam })).skuId);
+        return prefillListing(ctx, parseQuery(request, z44.object({ skuId: uuidParam })).skuId);
       });
     }
     if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));

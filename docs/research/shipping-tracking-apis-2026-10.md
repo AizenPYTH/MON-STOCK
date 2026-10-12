@@ -48,7 +48,9 @@ Données brutes : [`shipping-apis-2026-10.json`](./shipping-apis-2026-10.json) e
 | 17TRACK v2.4 | 3 400+ (Colis Privé, Relais Colis, DPD FR confirmés) | 200 numéros une fois (depuis le 07/01/2026) | packs annuels (~119 $ / 5 000, tiers) | non : chemins des événements et de la date estimée non confirmés |
 | AfterShip | 1 100+ | plan gratuit sans API | API dès Premium (~59 $/mois, ancien tarif) | non : trop cher pour un petit revendeur |
 | TrackingMore, ParcelsApp | 1 000–1 500 | 50 / 3 envois | 9–74 $/mois (tiers, contradictoire) | non |
-| DHL Unified, UPS Track | leur réseau | gratuit (DHL : 250 appels/jour) | — | non (couverts par Ship24) |
+| **DHL Shipment Tracking - Unified** (officiel) | DHL | gratuit (250 appels/jour, 1 appel / 5 s au départ) | — | **oui** (`DHL_API_KEY`), prioritaire pour DHL (12/10/2026) |
+| UPS Track | UPS | gratuit après validation de compte développeur | — | non (couvert par Ship24 + lien public) |
+| Pages publiques des transporteurs, 17TRACK web | tous | gratuit, sans clé | — | **oui** : bouton « Suivre sur le site du transporteur » (lien, aucune API) |
 
 **Choix** : La Poste (gratuit, officiel, la majorité des envois d'un revendeur français) +
 Ship24 (contrat vérifié dans la spécification officielle, détection automatique). Seul le numéro

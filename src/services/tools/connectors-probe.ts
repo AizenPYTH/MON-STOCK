@@ -4,6 +4,7 @@ import { PACKLINK_BASE_URL } from "@/integrations/shipping/packlink";
 import { SENDCLOUD_SHIPPING_OPTIONS_URL } from "@/integrations/shipping/sendcloud";
 import { LAPOSTE_SUIVI_URL } from "@/integrations/tracking/laposte";
 import { SHIP24_TRACK_URL } from "@/integrations/tracking/ship24";
+import { DHL_TRACK_URL } from "@/integrations/tracking/dhl";
 
 /**
  * Contrôle réel, SANS identifiants, des API d'expédition et de suivi : chaque point d'accès doit
@@ -27,6 +28,7 @@ const TARGETS: { id: string; url: string; init: RequestInit }[] = [
   { id: "sendcloud", url: SENDCLOUD_SHIPPING_OPTIONS_URL, init: { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ from_address: { country_code: "FR", postal_code: "75001" }, to_address: { country_code: "FR", postal_code: "33000" }, parcels: [{ weight: { value: "1", unit: "kg" } }], calculate_quotes: true }) } },
   { id: "laposte-suivi", url: `${LAPOSTE_SUIVI_URL}6A18987970674?lang=fr_FR`, init: { method: "GET", headers: { Accept: "application/json" } } },
   { id: "ship24", url: SHIP24_TRACK_URL, init: { method: "POST", headers: { "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify({ trackingNumber: "6A18987970674" }) } },
+  { id: "dhl", url: `${DHL_TRACK_URL}?trackingNumber=00340434292135100186`, init: { method: "GET", headers: { Accept: "application/json" } } },
 ];
 
 export async function probeToolConnectors(fetchImpl: typeof fetch = fetch): Promise<ProbeResult[]> {

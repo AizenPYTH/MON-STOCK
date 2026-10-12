@@ -16,12 +16,12 @@ export default function TrackingListScreen() {
   const parcels = useParcels(archived);
   const status = useToolsStatus();
   const { permissions } = useActiveOrg();
-  const noApi = status.data ? !status.data.tracking.laposte && !status.data.tracking.ship24 : false;
+  const noApi = status.data ? !status.data.tracking.laposte && !status.data.tracking.ship24 && !status.data.tracking.dhl : false;
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={parcels.isRefetching} onRefresh={() => void parcels.refetch()} />}>
       <ToolHeader title="Suivi de colis" description="Statut, étapes et livraison estimée de vos envois, actualisés automatiquement." />
-      {noApi ? <AlertBanner text="Aucune API de suivi n'est encore configurée sur le serveur : les colis sont enregistrés mais leur statut ne peut pas être récupéré. Aucun statut n'est inventé." tone="dark" /> : null}
+      {noApi ? <AlertBanner text="Aucune API de suivi n'est encore configurée sur le serveur : les colis sont enregistrés mais leur statut ne peut pas être récupéré automatiquement (aucun statut n'est inventé). Ouvrez un colis pour le suivre gratuitement sur le site du transporteur." tone="dark" /> : null}
       {permissions.canWrite ? <Button testID="tracking-add" label="Suivre un colis" onPress={() => router.push("/tools/tracking/new")} /> : null}
       <Segmented
         options={[

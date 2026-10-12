@@ -87,6 +87,7 @@ Vault** via `server_runtime_secrets()` (exécutable par `service_role` uniquemen
 | `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE` (`BOXTAL_API_URL` facultatif) | facultatif : cotation Boxtal (identifiants API v1 ; code de catégorie de contenu de vos envois, liste fournie par Boxtal) |
 | `LAPOSTE_OKAPI_KEY` | facultatif : suivi La Poste / Colissimo / Chronopost (developer.laposte.fr → application → abonnement « Suivi v2 ») |
 | `SHIP24_API_KEY` | facultatif : suivi multi-transporteurs (dashboard.ship24.com → API keys) |
+| `DHL_API_KEY` | facultatif, gratuit : suivi officiel DHL (developer.dhl.com → application → API « Shipment Tracking - Unified » ; 250 appels / jour) |
 
 Tâches planifiées (pg_cron, `supabase/ops/schedule-edge-cron.sql`) :
 
@@ -365,7 +366,13 @@ Règles communes des devis (`optionFromQuote`) :
 | API | Pour | Connecteur | État |
 | --- | --- | --- | --- |
 | La Poste Suivi v2 (officiel, gratuit) | La Poste, Colissimo, Chronopost | `src/integrations/tracking/laposte.ts` | prêt ; **en attente de `LAPOSTE_OKAPI_KEY`** ; point d'accès actif (401 sans clé) |
+| DHL Shipment Tracking - Unified (officiel, gratuit) | DHL (Express, Parcel, eCommerce) | `src/integrations/tracking/dhl.ts` | prêt ; **en attente de `DHL_API_KEY`** ; 250 appels / jour, 1 appel / 5 s au départ |
 | Ship24 (multi-transporteurs, détection automatique) | tous les autres transporteurs | `src/integrations/tracking/ship24.ts` (spécification OpenAPI officielle) | prêt ; **en attente de `SHIP24_API_KEY`** ; point d'accès actif |
+| Pages publiques des transporteurs + 17TRACK (gratuit, sans clé) | tous | `carrierTrackingUrl` (`src/domain/tools/tracking.ts`) | actif : bouton « Suivre sur le site du transporteur » dans le détail d'un colis, ouvert dans le navigateur (aucune donnée envoyée par MON STOCK) |
+
+Ordre de choix : API officielle gratuite (La Poste pour son groupe, DHL pour DHL), sinon Ship24.
+Migration `20261012000100_tracking_dhl_provider.sql` (additive : élargit `tracked_parcels.provider`
+à `dhl` ; retour arrière manuel dans `supabase/ops/rollback/`).
 
 - **Colis :** table `tracked_parcels` (RLS, garde « même organisation »).
 - **Colonnes réservées au serveur :** le statut, l'historique, la date estimée et la source ne

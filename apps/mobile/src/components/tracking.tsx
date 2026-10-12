@@ -25,9 +25,9 @@ export function carrierBrand(p: Pick<TrackedParcel, "carrierCode" | "carrierLabe
   return brandById(p.carrierCode) ?? brandFromText(p.carrierLabel);
 }
 
-/** Source du suivi : API officielle La Poste ou agrégateur Ship24 (aucune affiliation). */
+/** Source du suivi : API officielles La Poste / DHL ou agrégateur Ship24 (aucune affiliation). */
 export function trackingSourceText(provider: string | null): string | null {
-  return provider === "laposte" ? "API La Poste Suivi" : provider === "ship24" ? "Ship24" : provider;
+  return provider === "laposte" ? "API La Poste Suivi" : provider === "dhl" ? "API DHL Suivi" : provider === "ship24" ? "Ship24" : provider;
 }
 
 /** Date ISO → « 12/10/2026 14:05 » (sans Intl) ; date seule → « 12/10/2026 ». */

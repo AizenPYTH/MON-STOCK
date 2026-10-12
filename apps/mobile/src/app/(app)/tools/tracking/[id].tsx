@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Linking, RefreshControl, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { CARRIER_LABEL, FINAL_STATUSES, TRACKING_STATUS_LABEL, type CarrierCode } from "@/domain/tools/tracking";
+import { CARRIER_LABEL, carrierTrackingUrl, FINAL_STATUSES, TRACKING_STATUS_LABEL, universalTrackingUrl, type CarrierCode } from "@/domain/tools/tracking";
 import { CopyButton, ToolHeader } from "~/components/tools";
 import { carrierBrand, carrierText, frDateTime, ParcelStatusChip, trackingSourceText } from "~/components/tracking";
 import { AlertBanner, BottomSheet, BrandMark, Button, Card, ErrorState, FilterChip, Screen, SectionHeader, SkeletonList, TextField, Timeline, Txt, useToast } from "~/components/ui";
@@ -42,6 +42,8 @@ export default function ParcelDetailScreen() {
   const p = parcel.data;
   const canWrite = permissions.canWrite;
   const final = FINAL_STATUSES.has(p.status);
+  const site = carrierTrackingUrl(p.carrierCode, p.trackingNumber);
+  const siteUrl = p.providerUrl ?? site.url;
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={parcel.isRefetching} onRefresh={() => void parcel.refetch()} />}>
@@ -64,7 +66,9 @@ export default function ParcelDetailScreen() {
         </Txt>
         {p.lastError ? <AlertBanner text={p.lastError} tone="dark" /> : null}
         {p.order ? <Txt variant="label">Commande associée : {p.order.orderNumber ?? "—"}{p.order.buyer ? ` · ${p.order.buyer}` : ""}</Txt> : null}
-        {p.providerUrl ? <Button label="Ouvrir le suivi du transporteur" variant="ghost" compact onPress={() => void Linking.openURL(p.providerUrl!)} /> : null}
+        <Button testID="parcel-carrier-site" label={site.universal && !p.providerUrl ? "Suivre sur 17TRACK" : "Suivre sur le site du transporteur"} variant="ghost" compact onPress={() => void Linking.openURL(siteUrl)} />
+        {!site.universal ? <Button testID="parcel-17track" label="Vérifier aussi sur 17TRACK" variant="ghost" compact onPress={() => void Linking.openURL(universalTrackingUrl(p.trackingNumber))} /> : null}
+        <Txt variant="label">Pages publiques et gratuites, ouvertes dans le navigateur ; MON STOCK n'est affilié à aucun de ces sites.</Txt>
       </Card>
       {canWrite ? (
         <Button
