@@ -168,7 +168,11 @@ export function detectCarriers(raw: string): CarrierCandidate[] {
   }
   if (/^1Z[A-Z0-9]{15}\d$/.test(n)) return [{ carrier: "ups", confidence: "high", reason: "Format UPS (1Z…, 18 caractères)." }];
   if (/^TB[ACM]\d{12}$/.test(n)) return [{ carrier: "amazon", confidence: "high", reason: "Format Amazon Logistics (TBA…)." }];
-  if (/^\d[A-Z]\d{11}$/.test(n)) return [{ carrier: "colissimo", confidence: "medium", reason: "Format Colissimo / La Poste (13 caractères, ex. 6A…)." }];
+  if (/^\d[A-Z]\d{11}$/.test(n)) {
+    const valid = colissimoCheckDigit(n.slice(2, 12)) === Number(n[12]);
+    return [{ carrier: "colissimo", confidence: valid ? "high" : "medium", reason: `Format Colissimo / La Poste (13 caractères, ex. 6A…)${valid ? ", clé de contrôle valide" : ""}.` }];
+  }
+  if (/^8\d{13}[A-Z]?$/.test(n)) return [{ carrier: "laposte", confidence: "medium", reason: "Format Lettre suivie La Poste (14 chiffres, clé facultative)." }];
   if (/^J[A-Z]{2,3}\d{9,10}$/.test(n)) return [{ carrier: "dhl", confidence: "medium", reason: "Format de colis DHL (J…)." }];
   if (/^\d+$/.test(n)) {
     // Formats purement numériques : partagés par plusieurs transporteurs → suggestions faibles.
@@ -181,6 +185,70 @@ export function detectCarriers(raw: string): CarrierCandidate[] {
     if (len === 14) out.push({ carrier: "dpd", confidence: "low", reason: "14 chiffres : souvent DPD." });
   }
   return out;
+}
+
+/**
+ * Clé de contrôle Colissimo (ID13) : calculée sur les 10 chiffres de série (après le code produit
+ * « 6A », « 9V »…), chiffres de rang pair × 3 + rang impair, complément à la dizaine (10 → 0).
+ * Vérifiée sur l'exemple de la note La Poste « GeoLabel national 2.1 » : 9V 00001 48195 → 2.
+ */
+export function colissimoCheckDigit(serial: string): number | null {
+  if (!/^\d{10}$/.test(serial)) return null;
+  const sum = serial.split("").reduce((acc, d, i) => acc + Number(d) * (i % 2 === 1 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10;
+}
+
+/** Forme canonique pour le suivi et les doublons : la clé facultative d'une Lettre suivie est retirée. */
+export function canonicalTrackingNumber(n: string): string {
+  return /^8\d{13}[A-Z]$/.test(n) ? n.slice(0, 14) : n;
+}
+
+export interface ScannedTracking {
+  number: string;
+  carrier: CarrierCode | null;
+  /** comment le numéro a été lu (affiché à l'utilisateur) */
+  source: "laposte_letter" | "colissimo_label" | "s10" | "direct" | "embedded";
+}
+
+/**
+ * Numéro de suivi à partir du contenu brut d'un code-barres scanné. Les étiquettes La Poste
+ * « nouvelle génération » (1D enrichi commençant par « % ») contiennent bien plus que le numéro :
+ *  - Lettre suivie : 14 chiffres aux positions 9 à 22 (ex. « %0000000 88000157045824 600250A18^ ») ;
+ *  - Colissimo : « 11 » aux positions 9-10, code produit aux positions 11-12, série aux positions
+ *    13 à 22, clé recalculée → ID13 (ex. 6A…).
+ * Sinon : numéro lu tel quel s'il en a la forme, ou numéro connu (S10 Chronopost / international,
+ * Colissimo, UPS…) retrouvé à l'intérieur d'un code 2D. null si rien d'exploitable.
+ */
+export function extractTrackingFromScan(raw: string): ScannedTracking | null {
+  const cleaned = raw
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/^\][A-Za-z]\d/, "")
+    .trim()
+    .toUpperCase();
+  if (!cleaned) return null;
+  if (cleaned.startsWith("%") && cleaned.length >= 22) {
+    const at = (from: number, to: number) => cleaned.slice(from - 1, to);
+    if (at(9, 10) === "11" && /^\d[A-Z0-9]$/.test(at(11, 12)) && /^\d{10}$/.test(at(13, 22))) {
+      return { number: `${at(11, 22)}${colissimoCheckDigit(at(13, 22))}`, carrier: "colissimo", source: "colissimo_label" };
+    }
+    if (/^\d{14}$/.test(at(9, 22))) return { number: at(9, 22), carrier: "laposte", source: "laposte_letter" };
+  }
+  const compact = normalizeTrackingNumber(cleaned);
+  if (/^[A-Z0-9]{8,40}$/.test(compact) && !compact.startsWith("%")) {
+    const best = detectCarriers(compact)[0];
+    return { number: canonicalTrackingNumber(compact), carrier: best && best.confidence !== "low" ? best.carrier : null, source: "direct" };
+  }
+  // Code 2D ou chaîne composite : numéro reconnaissable à l'intérieur.
+  const s10 = /[A-Z]{2}\d{9}[A-Z]{2}/.exec(cleaned);
+  if (s10) {
+    const best = detectCarriers(s10[0])[0];
+    return { number: s10[0], carrier: best && best.confidence !== "low" ? best.carrier : null, source: "s10" };
+  }
+  for (const re of [/1Z[A-Z0-9]{15}\d/, /(?<![A-Z0-9])\d[A-Z]\d{11}(?![A-Z0-9])/, /TB[ACM]\d{12}/]) {
+    const m = re.exec(cleaned);
+    if (m) return { number: m[0], carrier: detectCarriers(m[0])[0]?.carrier ?? null, source: "embedded" };
+  }
+  return null;
 }
 
 export type TrackingProviderId = "laposte" | "ship24" | "dhl";

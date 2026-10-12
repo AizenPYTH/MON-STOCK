@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { fakeSupabase } from "./fake-supabase";
 import ToolsTab from "../src/app/(app)/(tabs)/tools";
 import VatTool from "../src/app/(app)/tools/vat";
@@ -22,12 +22,20 @@ import { trackingSourceText } from "../src/components/tracking";
 const mockCallApi = jest.fn();
 const mockFrom = jest.fn();
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockSetString = jest.fn(() => Promise.resolve(true));
 jest.mock("~/lib/api", () => ({ callApi: (...a: unknown[]) => mockCallApi(...a) }));
 jest.mock("expo-clipboard", () => ({ setStringAsync: (...a: unknown[]) => mockSetString(...(a as [])) }));
 jest.mock("~/org/org-provider", () => ({ useActiveOrg: () => ({ active: { organization: { id: "org-1", name: "Boutique", currency: "EUR", settings: {} } }, permissions: { canWrite: true, isAdmin: true } }) }));
-jest.mock("expo-router", () => ({ router: { back: jest.fn(), push: (...a: unknown[]) => mockPush(...a), replace: jest.fn(), canGoBack: () => true }, useLocalSearchParams: () => ({}) }));
-jest.mock("expo-camera", () => ({ CameraView: () => null, useCameraPermissions: () => [{ granted: false, canAskAgain: true }, jest.fn(async () => ({ granted: false, canAskAgain: true }))] }));
+jest.mock("expo-router", () => ({ router: { back: jest.fn(), push: (...a: unknown[]) => mockPush(...a), replace: (...a: unknown[]) => mockReplace(...a), canGoBack: () => true }, useLocalSearchParams: () => ({}) }));
+const mockCamera: { onScan?: (r: { data: string }) => void } = {};
+jest.mock("expo-camera", () => ({
+  CameraView: (props: { onBarcodeScanned?: (r: { data: string }) => void }) => {
+    mockCamera.onScan = props.onBarcodeScanned;
+    return null;
+  },
+  useCameraPermissions: () => [{ granted: true, canAskAgain: true }, jest.fn(async () => ({ granted: true, canAskAgain: true }))],
+}));
 jest.mock("~/lib/supabase", () => ({ requireSupabase: () => ({ from: (t: string) => mockFrom(t) }) }));
 
 jest.setTimeout(30_000);
@@ -259,6 +267,27 @@ describe("suivi de colis", () => {
     fireEvent.changeText(screen.getByTestId("tracking-number"), "1Z5R89390357567127");
     expect(screen.getByText("UPS détecté")).toBeTruthy();
     expect(screen.getByTestId("tracking-submit")).toBeEnabled();
+  });
+  it("scan en série : code La Poste enrichi décodé, « Scanner un autre », doublon signalé, « Suivre 2 colis »", async () => {
+    const fake = fakeSupabase({ tracked_parcels: { data: { id: "p-new" }, error: null } });
+    mockFrom.mockImplementation((t: string) => (fake.client as unknown as { from: (x: string) => unknown }).from(t));
+    mockCallApi.mockResolvedValue({ parcelId: "p-new", status: "unknown", provider: null, checked: false, message: "Aucune API" });
+    render(wrap(<NewParcel />));
+    fireEvent.press(screen.getByTestId("tracking-scan"));
+    await waitFor(() => expect(mockCamera.onScan).toBeDefined());
+    act(() => mockCamera.onScan!({ data: "%000000088000157045824600250A18^" }));
+    expect(screen.getByTestId("scan-pending")).toHaveTextContent("88000157045824 · La Poste");
+    fireEvent.press(screen.getByTestId("scan-another"));
+    act(() => mockCamera.onScan!({ data: "%000000088000157045824600250A18^" }));
+    await waitFor(() => expect(screen.getByText(/déjà scanné/)).toBeTruthy());
+    act(() => mockCamera.onScan!({ data: "6A18987970674" }));
+    expect(screen.getByTestId("scan-pending")).toHaveTextContent("6A18987970674 · Colissimo");
+    expect(screen.getByText("Suivre 2 colis")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("scan-follow"));
+    await waitFor(() => expect(fake.queries.filter((q) => q.target === "tracked_parcels").length).toBe(2));
+    const inserted = fake.queries.filter((q) => q.target === "tracked_parcels").map((q) => (q.calls.find((c) => c.method === "insert")!.args[0] as { tracking_number: string; carrier_code: string }));
+    expect(inserted.map((r) => [r.tracking_number, r.carrier_code])).toEqual([["88000157045824", "laposte"], ["6A18987970674", "colissimo"]]);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/tools/tracking"));
   });
   it("source du suivi : API officielles La Poste / DHL ou Ship24", () => {
     expect(trackingSourceText("laposte")).toBe("API La Poste Suivi");

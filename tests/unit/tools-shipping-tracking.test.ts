@@ -199,7 +199,8 @@ describe("Suivi : numéros et détection du transporteur", () => {
     expect(detectCarriers("RB123456785GB")[0]).toMatchObject({ carrier: "other" });
     expect(detectCarriers("1Z5R89390357567127")).toEqual([expect.objectContaining({ carrier: "ups", confidence: "high" })]);
     expect(detectCarriers("TBA000000000000")[0]!.carrier).toBe("amazon");
-    expect(detectCarriers("6A18987970674")[0]).toMatchObject({ carrier: "colissimo", confidence: "medium" });
+    expect(detectCarriers("6A18987970674")[0]).toMatchObject({ carrier: "colissimo", confidence: "high" }); // clé Colissimo valide
+    expect(detectCarriers("6A18987970675")[0]).toMatchObject({ carrier: "colissimo", confidence: "medium" });
     const digits = detectCarriers("09980000020033");
     expect(digits.every((c) => c.confidence === "low")).toBe(true);
     expect(digits.map((c) => c.carrier)).toContain("dpd");
