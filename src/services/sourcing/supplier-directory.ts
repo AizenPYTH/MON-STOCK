@@ -248,7 +248,7 @@ export async function checkDirectoryWebsite(entry: DirectoryEntry, fetchImpl?: t
   if (!entry.website) return { ...base, reachable: false, http_status: null, message: "Aucun site officiel identifié par la recherche.", duration_ms: 0 };
   const userAgent = serverEnv().SOURCING_USER_AGENT;
   try {
-    const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8_000);
+    const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8_000, resolver);
     const robotsFound = robots.status === "ok";
     const disallowAll = robotsFound ? !evaluateRobots(robots.rules, userAgent, "/").allowed : null;
     const home = await fetchText(entry.website, { userAgent, timeoutMs: 12_000, maxBytes: 6_000_000, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });

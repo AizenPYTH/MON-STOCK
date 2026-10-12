@@ -13,10 +13,14 @@
  *   GET  /api/sourcing/library            bibliothèque de sources (catalogue + état d'activation)
  *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (attestation de l'utilisateur)
  *   GET  /api/radar?sort=…                radar d'opportunités d'achat (offres réelles × ventes réelles × coûts)
+ *   GET  /api/radar/offer?id=&quantity=   détail d'une offre : appréciation, scénarios de quantité, offres concurrentes
  *   POST /api/radar/settings              paramètres de coûts (TVA, frais, emballage, retours, douane) — administrateur
  *   GET  /api/sourcing/directory          annuaire de fournisseurs qualifiés (statuts prouvés, e-mails de demande d'accès)
  *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
  *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
+ *   GET  /api/sourcing/sources            sources : statut affiché, offres exploitables, dernier succès, prochain passage
+ *   POST /api/sourcing/sources/sync       « Synchroniser maintenant » (rédacteur ; verrou et délai de 2 min)
+ *   POST /api/sourcing/sources/schedule   fréquence et activation d'une source (administrateur)
  *   GET  /api/sourcing/imports            historique des imports (fichier, empreinte, compteurs, utilisateur)
  *   GET  /api/sourcing/imports/detail?id= détail d'un import et lignes ignorées avec leur raison
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
@@ -73,9 +77,10 @@ import { scoutHosts } from "@/services/sourcing/source-scout";
 import { runChainSelfTest, runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
 import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listingRequestSchema, prefillListing, publishListingForOrg } from "@/services/channels/ebay-listing-service";
 import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/services/sourcing/offer-linking";
-import { buildRadar, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
+import { buildRadar, buildRadarOffer, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
+import { listSourcesForOrg, setSourceSchedule, sourceScheduleSchema, syncSourceNow } from "@/services/sourcing/source-sync";
 import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
 import { synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
 import { enforceAiQuota } from "@/services/ai/quota";
@@ -334,6 +339,13 @@ export async function route(request: Request): Promise<Response> {
         return refreshParcelForOrg(ctx, (await parseBody(request, trackingRefreshSchema)).parcelId);
       });
     }
+    if (m === "GET" && path === "/radar/offer") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const q = parseQuery(request, z.object({ id: uuidParam, quantity: z.coerce.number().int().min(1).max(100_000).optional() }));
+        return buildRadarOffer(ctx, q.id, q.quantity ? [q.quantity] : []);
+      });
+    }
     if (m === "POST" && path === "/radar/settings") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { admin: true });
@@ -353,6 +365,19 @@ export async function route(request: Request): Promise<Response> {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, catalogPreviewSchema, CATALOG_BODY_LIMIT);
         return previewCatalogFileForOrg(ctx, body);
+      });
+    }
+    if (m === "GET" && path === "/sourcing/sources") return handle(async () => listSourcesForOrg(await requireMobileOrgContext(request)));
+    if (m === "POST" && path === "/sourcing/sources/sync") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return syncSourceNow(ctx, (await parseBody(request, z.object({ sourceId: uuidParam }))).sourceId);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/sources/schedule") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { admin: true });
+        return setSourceSchedule(ctx, await parseBody(request, sourceScheduleSchema));
       });
     }
     if (m === "GET" && path === "/sourcing/imports") {

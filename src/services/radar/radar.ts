@@ -1,7 +1,8 @@
 import "server-only";
 import type { Json } from "@/db/database.types";
 import type { OrgContext } from "@/features/auth/dal";
-import type { RadarDTO, RadarItemDTO, RadarRestockDTO } from "@/features/mobile-api/contract";
+import type { RadarDTO, RadarItemDTO, RadarOfferDetailDTO, RadarRestockDTO } from "@/features/mobile-api/contract";
+import { assessOffer, quantityScenarios, type SourceHistory } from "@/domain/sourcing/assessment";
 import { AppError, fromPostgrestError } from "@/lib/errors";
 import { compareRadar, evaluateRadarOffer, missingSettings, type PriceOrigin, type RadarCostSettings, type RadarOfferInput, type RadarSkuInput, type RadarSort } from "@/domain/sourcing/radar";
 import { readCostSettings, radarSettingsSchema } from "@/domain/sourcing/radar-settings";
@@ -26,7 +27,19 @@ export function priceOriginOf(sourceType: string, sourceConfig: Json | null): Pr
 }
 
 const OFFER_SELECT =
-  "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, tax_type, shipping_cost, moq, available_quantity, stock_status, last_seen_at, country, supplier:suppliers(name, country), source:supplier_sources(source_type, config)";
+  "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, original_currency, fx_rate, tax_type, shipping_cost, shipping_currency, moq, available_quantity, stock_status, last_seen_at, country, ship_from_country, vat_regime, warranty_months, order_multiple, source_id, grade, condition, delivery_max_days, supplier:suppliers(name, country, internal_score), source:supplier_sources(source_type, config, consecutive_failures)";
+
+/**
+ * Frais de port dans la devise de l'organisation : même devise que le prix normalisé → tels quels ;
+ * devise du prix d'origine → convertis au même taux daté ; autre devise → inconnus (jamais additionnés tels quels).
+ */
+export function shippingInOrgCurrency(o: { shipping_cost: number | null; shipping_currency: string | null; original_currency: string | null; normalized_currency: string | null; fx_rate: number | null }): number | null {
+  if (o.shipping_cost === null || o.shipping_cost === undefined) return null;
+  const cur = (o.shipping_currency ?? o.original_currency ?? "").toUpperCase();
+  if (o.normalized_currency && cur === o.normalized_currency.toUpperCase()) return o.shipping_cost;
+  if (o.original_currency && cur === o.original_currency.toUpperCase() && o.fx_rate) return Math.round(o.shipping_cost * o.fx_rate * 100) / 100;
+  return null;
+}
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   if (v === null || v === undefined) return null;
@@ -90,6 +103,8 @@ export async function buildRadar(ctx: OrgContext, options: { sort?: RadarSort; n
   const perSku = new Map<string, number[]>();
   for (const o of offers) if (o.normalized_price !== null) perSku.set(o.sku_id!, [...(perSku.get(o.sku_id!) ?? []), o.normalized_price]);
 
+  // source, score fournisseur et échecs consécutifs par offre (pour l'appréciation)
+  const meta = new Map<string, { sourceId: string; supplierScore: number | null; failures: number }>();
   const items: RadarItemDTO[] = offers.map((o) => {
     const sku = skus.get(o.sku_id!)!;
     const supplier = one(o.supplier);
@@ -97,13 +112,14 @@ export async function buildRadar(ctx: OrgContext, options: { sort?: RadarSort; n
     const input: RadarOfferInput = {
       offerId: o.id,
       supplierName: supplier?.name ?? "Fournisseur",
-      supplierCountry: supplier?.country ?? o.country ?? null,
+      // pays d'expédition déclaré d'abord (droits de douane hors UE), sinon pays du fournisseur
+      supplierCountry: o.ship_from_country ?? supplier?.country ?? o.country ?? null,
       title: o.title_original,
       sourceUrl: o.source_url,
       price: o.normalized_price,
       currency: o.normalized_currency,
       taxType: o.tax_type,
-      shippingCost: o.shipping_cost,
+      shippingCost: shippingInOrgCurrency(o),
       moq: o.moq,
       availableQuantity: o.available_quantity,
       stockStatus: o.stock_status,
@@ -120,8 +136,38 @@ export async function buildRadar(ctx: OrgContext, options: { sort?: RadarSort; n
       if (o.normalized_price === min && max > min) evaluation.reasons.unshift(`Meilleur prix parmi ${competing.length} offres (écart ${(max - min).toFixed(2)}).`);
     }
     const s = saved.get(o.id);
-    return { supplierId: o.supplier_id, sku: { id: sku.skuId, code: sku.code, name: sku.name, currency: sku.currency, units30d: sku.units30d, quantityAvailable: sku.quantityAvailable }, offer: input, savedAt: s?.created_at ?? null, priceAtSave: s?.price_at_save ?? null, evaluation, offersForSku: competing.length };
+    const details = { shipFromCountry: o.ship_from_country ?? null, warrantyMonths: o.warranty_months ?? null, vatRegime: o.vat_regime ?? null, orderMultiple: o.order_multiple ?? null, condition: o.condition ?? null, grade: o.grade ?? null, deliveryMaxDays: o.delivery_max_days ?? null };
+    meta.set(o.id, { sourceId: o.source_id, supplierScore: supplier?.internal_score ?? null, failures: source?.consecutive_failures ?? 0 });
+    // l'appréciation est calculée plus bas, une fois toutes les offres du même produit connues
+    return { supplierId: o.supplier_id, sku: { id: sku.skuId, code: sku.code, name: sku.name, currency: sku.currency, units30d: sku.units30d, quantityAvailable: sku.quantityAvailable }, offer: input, savedAt: s?.created_at ?? null, priceAtSave: s?.price_at_save ?? null, evaluation, offersForSku: competing.length, details, assessment: undefined as unknown as RadarItemDTO["assessment"] };
   });
+
+  // Appréciation en trois notes : coûts rendus des autres offres du même produit + historique de la source.
+  const history = await loadSourceHistory(ctx, [...new Set(offers.map((o) => o.source_id))], [...new Set(offers.map((o) => o.supplier_id))]);
+  for (const raw of items) {
+    const peers = items.filter((x) => x.sku.id === raw.sku.id && x.offer.offerId !== raw.offer.offerId).map((x) => x.evaluation.landedCost).filter((c): c is number => c !== null);
+    const m = meta.get(raw.offer.offerId)!;
+    const h = history.get(m.sourceId);
+    const source: SourceHistory = { runs: h?.runs ?? 0, successfulRuns: h?.success ?? 0, consecutiveFailures: m.failures, receivedPurchaseOrders: history.get(`po:${raw.supplierId}`)?.runs ?? 0, supplierScore: m.supplierScore };
+    raw.assessment = assessOffer({
+      landedUnitCost: raw.evaluation.landedCost,
+      peerLandedCosts: peers,
+      estimatedProfit: raw.evaluation.estimatedProfit,
+      marginPercent: raw.evaluation.marginPercent,
+      availableQuantity: raw.offer.availableQuantity,
+      stockStatus: raw.offer.stockStatus,
+      moq: raw.offer.moq,
+      ageDays: raw.evaluation.ageDays,
+      priceOrigin: raw.offer.priceOrigin,
+      taxType: raw.offer.taxType,
+      vatRegime: raw.details.vatRegime,
+      shippingKnown: raw.offer.shippingCost !== null,
+      deliveryKnown: raw.details.deliveryMaxDays !== null,
+      gradeOrCondition: Boolean(raw.details.grade) || (raw.details.condition !== null && raw.details.condition !== "unknown"),
+      warrantyKnown: raw.details.warrantyMonths !== null,
+      source,
+    });
+  }
   items.sort(compareRadar(options.sort ?? "score"));
 
   // réapprovisionnement : produits vendus dont le stock couvre moins de 14 jours
@@ -153,6 +199,71 @@ export async function buildRadar(ctx: OrgContext, options: { sort?: RadarSort; n
     },
     computedAt: now.toISOString(),
   };
+}
+
+/**
+ * Historique de fiabilité : synchronisations / imports terminés des 60 derniers jours par source
+ * (journal sync_runs, réf. = source ou flux) et commandes fournisseur reçues (« po:<fournisseur> »).
+ */
+async function loadSourceHistory(ctx: OrgContext, sourceIds: string[], supplierIds: string[]): Promise<Map<string, { runs: number; success: number }>> {
+  const out = new Map<string, { runs: number; success: number }>();
+  if (sourceIds.length === 0) return out;
+  const orgId = ctx.organization.id;
+  const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+  const { data: feeds } = await ctx.supabase.from("supplier_feeds").select("id, source_id").eq("organization_id", orgId).in("source_id", sourceIds.slice(0, 200));
+  const refToSource = new Map<string, string>(sourceIds.map((id) => [id, id]));
+  for (const f of feeds ?? []) refToSource.set(f.id, f.source_id);
+  const { data: runs } = await ctx.supabase.from("sync_runs").select("source_ref, status").eq("organization_id", orgId).in("source_ref", [...refToSource.keys()].slice(0, 400)).in("status", ["success", "partial", "failed"]).gte("started_at", since).limit(5000);
+  for (const r of runs ?? []) {
+    const src = r.source_ref ? refToSource.get(r.source_ref) : null;
+    if (!src) continue;
+    const e = out.get(src) ?? { runs: 0, success: 0 };
+    e.runs++;
+    if (r.status !== "failed") e.success++;
+    out.set(src, e);
+  }
+  if (supplierIds.length) {
+    const { data: pos } = await ctx.supabase.from("purchase_orders").select("supplier_id").eq("organization_id", orgId).eq("status", "received").in("supplier_id", supplierIds.slice(0, 200)).limit(5000);
+    for (const po of pos ?? []) {
+      const k = `po:${po.supplier_id}`;
+      const e = out.get(k) ?? { runs: 0, success: 0 };
+      e.runs++;
+      out.set(k, e);
+    }
+  }
+  return out;
+}
+
+/** Détail d'une offre du radar : appréciation, scénarios de quantité et offres concurrentes. */
+export async function buildRadarOffer(ctx: OrgContext, offerId: string, extraQuantities: number[] = [], now: Date = new Date()): Promise<RadarOfferDetailDTO> {
+  const radar = await buildRadar(ctx, { now });
+  const item = radar.items.find((i) => i.offer.offerId === offerId);
+  if (!item) throw new AppError("NOT_FOUND", "Offre absente du radar (non rapprochée d'un SKU, expirée ou d'une autre organisation).");
+  const { data: sku } = await ctx.supabase.from("v_stock_overview").select("avg_sale_price_30d, sale_price").eq("organization_id", ctx.organization.id).eq("sku_id", item.sku.id).maybeSingle();
+  const sale = sku?.avg_sale_price_30d ?? sku?.sale_price ?? null;
+  const country = item.offer.supplierCountry?.toUpperCase() ?? null;
+  const EU = new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
+  const scenarios = quantityScenarios(
+    {
+      salePrice: sale,
+      saleLabel: sku?.avg_sale_price_30d !== null && sku?.avg_sale_price_30d !== undefined ? "Prix de vente moyen constaté (30 j)" : "Prix de vente du SKU",
+      purchasePrice: item.offer.price,
+      purchaseTaxType: item.offer.taxType,
+      supplierShipping: item.offer.shippingCost,
+      moq: item.offer.moq,
+      orderMultiple: item.details.orderMultiple,
+      availableQuantity: item.offer.availableQuantity,
+      supplierOrigin: country ? (EU.has(country) ? "eu" : "non_eu") : "unknown",
+      originLabel: country,
+    },
+    radar.settings,
+    extraQuantities,
+  );
+  const peers = radar.items
+    .filter((i) => i.sku.id === item.sku.id && i.offer.offerId !== offerId)
+    .map((i) => ({ offerId: i.offer.offerId, supplierName: i.offer.supplierName, price: i.offer.price, landedCost: i.evaluation.landedCost, availableQuantity: i.offer.availableQuantity, stockStatus: i.offer.stockStatus, ageDays: i.evaluation.ageDays, verdict: i.assessment.verdict }))
+    .sort((a, b) => (a.landedCost ?? Infinity) - (b.landedCost ?? Infinity));
+  return { item, scenarios, peers, settings: radar.settings };
 }
 
 /** Enregistre les paramètres de coûts (administrateur), sans toucher aux autres réglages de l'organisation. */

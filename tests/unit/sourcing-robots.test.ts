@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseRobotsTxt, evaluateRobots, checkRobotsForUrls, userAgentToken } from "@/services/sourcing/crawler/robots";
+import { parseRobotsTxt, evaluateRobots, checkRobotsForUrls, fetchRobots, userAgentToken } from "@/services/sourcing/crawler/robots";
+
+const PUBLIC = async () => [{ address: "93.184.216.34" }];
 
 const ROBOTS = `# commentaire
 User-agent: *
@@ -39,19 +41,34 @@ describe("robots.txt", () => {
   });
   it("vérifie une liste d'URLs sans réseau (fetch simulé)", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) => new Response(String(url).endsWith("/robots.txt") ? ROBOTS : "", { status: 200 })) as unknown as typeof fetch;
-    const ok = await checkRobotsForUrls("https://example.com", ["https://example.com/products/1"], "MonStockBot/0.1", fetchImpl);
+    const ok = await checkRobotsForUrls("https://example.com", ["https://example.com/products/1"], "MonStockBot/0.1", fetchImpl, PUBLIC);
     expect(ok.allowed).toBe(true);
     expect(ok.crawlDelay).toBe(2);
-    const ko = await checkRobotsForUrls("https://example.com", ["https://example.com/catalog/export"], "MonStockBot/0.1", fetchImpl);
+    const ko = await checkRobotsForUrls("https://example.com", ["https://example.com/catalog/export"], "MonStockBot/0.1", fetchImpl, PUBLIC);
     expect(ko.allowed).toBe(false);
     expect(ko.disallowedUrls.length).toBe(1);
   });
   it("refuse par prudence si robots.txt est inaccessible, autorise s'il est absent", async () => {
     const err = vi.fn(async () => new Response("", { status: 500 })) as unknown as typeof fetch;
-    expect((await checkRobotsForUrls("https://example.com", ["https://example.com/a"], "MonStockBot", err)).allowed).toBe(false);
+    expect((await checkRobotsForUrls("https://example.com", ["https://example.com/a"], "MonStockBot", err, PUBLIC)).allowed).toBe(false);
     const missing = vi.fn(async () => new Response("", { status: 404 })) as unknown as typeof fetch;
-    const r = await checkRobotsForUrls("https://example.com", ["https://example.com/a"], "MonStockBot", missing);
+    const r = await checkRobotsForUrls("https://example.com", ["https://example.com/a"], "MonStockBot", missing, PUBLIC);
     expect(r.allowed).toBe(true);
     expect(r.robotsStatus).toBe("missing");
+  });
+});
+
+describe("robots.txt : protection SSRF", () => {
+  it("adresse privée refusée (aucune requête), redirection vers les métadonnées cloud refusée", async () => {
+    const fetchImpl = vi.fn(async () => new Response("User-agent: *\nAllow: /", { status: 200 }));
+    const internal = await fetchRobots("https://intranet.example", "MonStockBot", fetchImpl as never, 5_000, async () => [{ address: "10.0.0.5" }]);
+    expect(internal.status).toBe("error");
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const literal = await fetchRobots("http://169.254.169.254", "MonStockBot", fetchImpl as never, 5_000, PUBLIC);
+    expect(literal.status).toBe("error");
+    const redirect = vi.fn(async (url: string) => (url.includes("example.com") ? new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data" } }) : new Response("x")));
+    const bounced = await fetchRobots("https://example.com", "MonStockBot", redirect as never, 5_000, PUBLIC);
+    expect(bounced.status).toBe("error");
+    expect(redirect).toHaveBeenCalledTimes(1);
   });
 });

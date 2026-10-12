@@ -286,7 +286,7 @@ export async function checkLibrarySource(s: LibrarySource, runtime: Pick<Adapter
   const userAgent = serverEnv().SOURCING_USER_AGENT;
   if (adapter.urlsForQuery) {
     const urls = adapter.urlsForQuery(config, parsed, s.probeQuery);
-    const robots = await checkRobotsForUrls(s.baseUrl, urls, userAgent, runtime.fetchImpl ?? fetch).catch((e: unknown) => ({ allowed: false, details: e instanceof Error ? e.message : String(e), crawlDelay: null }) as const);
+    const robots = await checkRobotsForUrls(s.baseUrl, urls, userAgent, runtime.fetchImpl ?? fetch, runtime.resolver).catch((e: unknown) => ({ allowed: false, details: e instanceof Error ? e.message : String(e), crawlDelay: null }) as const);
     base.robotsAllowed = robots.allowed;
     if (!robots.allowed) return { ...base, status: "robots_disallowed", message: robots.details, durationMs: Date.now() - t0 };
   }

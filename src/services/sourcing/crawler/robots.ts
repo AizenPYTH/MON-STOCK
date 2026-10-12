@@ -1,3 +1,4 @@
+import { fetchText } from "@/services/sourcing/http";
 /**
  * robots.txt : récupération et interprétation pour notre User-Agent.
  * Règles : groupe le plus spécifique (token de notre UA, sinon *), motif le plus long
@@ -121,7 +122,14 @@ export interface RobotsFetchResult {
   error: string | null;
 }
 
-export async function fetchRobots(baseUrl: string, userAgent: string, fetchImpl: typeof fetch = fetch, timeoutMs = 10_000): Promise<RobotsFetchResult> {
+/** Résolution DNS injectable (tests) ; par défaut, celle du système. */
+export type HostResolver = (host: string) => Promise<Array<{ address: string }>>;
+
+/**
+ * robots.txt via `fetchText` : URL publique uniquement (aucune adresse privée, interne ou de
+ * métadonnées cloud, y compris après redirection), taille bornée à 512 Ko, délai borné.
+ */
+export async function fetchRobots(baseUrl: string, userAgent: string, fetchImpl: typeof fetch = fetch, timeoutMs = 10_000, resolver?: HostResolver): Promise<RobotsFetchResult> {
   const empty: RobotsRules = { groups: [], sitemaps: [] };
   let origin: string;
   try {
@@ -129,18 +137,13 @@ export async function fetchRobots(baseUrl: string, userAgent: string, fetchImpl:
   } catch {
     return { status: "error", rules: empty, httpStatus: null, error: "URL de base invalide." };
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(`${origin}/robots.txt`, { headers: { "User-Agent": userAgent, Accept: "text/plain" }, redirect: "follow", signal: controller.signal });
+    const res = await fetchText(`${origin}/robots.txt`, { userAgent, accept: "text/plain", fetchImpl, timeoutMs, maxBytes: 512 * 1024, resolver });
     if (res.status === 404 || res.status === 410) return { status: "missing", rules: empty, httpStatus: res.status, error: null };
     if (!res.ok) return { status: "error", rules: empty, httpStatus: res.status, error: `robots.txt inaccessible (HTTP ${res.status}).` };
-    const text = await res.text();
-    return { status: "ok", rules: parseRobotsTxt(text.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
+    return { status: "ok", rules: parseRobotsTxt(res.text), httpStatus: res.status, error: null };
   } catch (e) {
     return { status: "error", rules: empty, httpStatus: null, error: e instanceof Error ? e.message : "Erreur réseau." };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -153,8 +156,8 @@ export interface RobotsCheck {
   details: string;
 }
 
-export async function checkRobotsForUrls(baseUrl: string, urls: string[], userAgent: string, fetchImpl: typeof fetch = fetch): Promise<RobotsCheck> {
-  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl);
+export async function checkRobotsForUrls(baseUrl: string, urls: string[], userAgent: string, fetchImpl: typeof fetch = fetch, resolver?: HostResolver): Promise<RobotsCheck> {
+  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl, 10_000, resolver);
   if (fetched.status === "error") {
     // Impossible de vérifier : on refuse par prudence (jamais de crawl à l'aveugle).
     return { allowed: false, robotsStatus: "error", crawlDelay: null, disallowedUrls: urls, details: fetched.error ?? "robots.txt inaccessible." };

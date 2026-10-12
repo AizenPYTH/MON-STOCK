@@ -1,8 +1,7 @@
 import "server-only";
 import { createLogger } from "@/lib/logger";
 import { refreshFxRates } from "@/services/sourcing/fx-rates";
-import { runDueFeeds, type IngestResult } from "@/services/sourcing/feed-ingestion";
-import { runDueCrawls, type CrawlRunResult } from "@/services/sourcing/crawler/crawler-manager";
+import { runScheduledSources } from "@/services/sourcing/source-sync";
 import { evaluateSourcingAlerts, type AlertsRunSummary } from "@/services/sourcing/alerts";
 
 const log = createLogger("SOURCING_SYNC");
@@ -11,13 +10,13 @@ export interface SourcingSyncSummary {
   startedAt: string;
   finishedAt: string;
   fx: { ok: boolean; date: string | null; count: number; error: string | null };
-  feeds: IngestResult[];
-  crawls: CrawlRunResult[];
+  /** sources planifiées échues (pages publiques attestées, flux distants, API), avec reprise progressive */
+  sources: { sourceId: string; status: string; message: string }[];
   alerts: AlertsRunSummary | { error: string };
 }
 
 /**
- * Point d'entrée du cron : taux de change → flux échus → crawls échus → alertes.
+ * Point d'entrée du cron : taux de change → sources échues (crawl, flux, API) → alertes.
  * Chaque flux / crawl / évaluation d'alertes écrit sa propre ligne sync_runs (par organisation).
  * Le rafraîchissement des taux est global (table fx_rates sans organisation) : journalisé ici.
  */
@@ -31,17 +30,11 @@ export async function runSourcingSync(now: Date = new Date()): Promise<SourcingS
     fx = { ok: false, date: null, count: 0, error: e instanceof Error ? e.message : String(e) };
     log.warn("fx refresh failed", { error: fx.error });
   }
-  let feeds: IngestResult[] = [];
+  let sources: SourcingSyncSummary["sources"] = [];
   try {
-    feeds = await runDueFeeds(now);
+    sources = await runScheduledSources(now);
   } catch (e) {
-    log.error("due feeds failed", { error: e instanceof Error ? e.message : String(e) });
-  }
-  let crawls: CrawlRunResult[] = [];
-  try {
-    crawls = await runDueCrawls(now);
-  } catch (e) {
-    log.error("due crawls failed", { error: e instanceof Error ? e.message : String(e) });
+    log.error("scheduled sources failed", { error: e instanceof Error ? e.message : String(e) });
   }
   let alerts: SourcingSyncSummary["alerts"];
   try {
@@ -50,7 +43,7 @@ export async function runSourcingSync(now: Date = new Date()): Promise<SourcingS
     alerts = { error: e instanceof Error ? e.message : String(e) };
     log.error("alerts evaluation failed", { error: alerts.error });
   }
-  const summary: SourcingSyncSummary = { startedAt, finishedAt: new Date().toISOString(), fx, feeds, crawls, alerts };
-  log.info("sourcing sync finished", { fx: fx.ok, feeds: feeds.length, crawls: crawls.length });
+  const summary: SourcingSyncSummary = { startedAt, finishedAt: new Date().toISOString(), fx, sources, alerts };
+  log.info("sourcing sync finished", { fx: fx.ok, sources: sources.length });
   return summary;
 }

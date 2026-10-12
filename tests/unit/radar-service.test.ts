@@ -16,9 +16,9 @@ const stock = [
   { sku_id: "s2", code: "S22-128", product_name: "Galaxy S22", variant_name: "Standard", currency: "EUR", avg_sale_price_30d: null, sale_price: null, cost_price: null, units_30d: 0, quantity_available: 3, reorder_point: null },
 ];
 const offers = [
-  { id: "o1", sku_id: "s1", title_original: "iPhone 13 128 Noir A", source_url: "https://x.example/p/1", normalized_price: 300, normalized_currency: "EUR", tax_type: "ht", shipping_cost: 20, moq: 2, available_quantity: 5, stock_status: "in_stock", last_seen_at: "2026-10-10T08:00:00Z", country: "FR", supplier: { name: "Grossiste A", country: "FR" }, source: { source_type: "CSV", config: { kind: "catalog_file_import" } } },
-  { id: "o2", sku_id: "s1", title_original: "iPhone 13 128 Noir A", source_url: null, normalized_price: 340, normalized_currency: "EUR", tax_type: "ht", shipping_cost: null, moq: 1, available_quantity: null, stock_status: "unknown", last_seen_at: "2026-09-01T08:00:00Z", country: null, supplier: { name: "Grossiste B", country: "NL" }, source: { source_type: "API", config: {} } },
-  { id: "o3", sku_id: "s2", title_original: "Galaxy S22", source_url: null, normalized_price: 200, normalized_currency: "EUR", tax_type: "ht", shipping_cost: 0, moq: 1, available_quantity: 2, stock_status: "in_stock", last_seen_at: "2026-10-09T08:00:00Z", country: "FR", supplier: { name: "Grossiste A", country: "FR" }, source: { source_type: "MANUAL", config: {} } },
+  { id: "o1", sku_id: "s1", title_original: "iPhone 13 128 Noir A", source_url: "https://x.example/p/1", normalized_price: 300, normalized_currency: "EUR", original_currency: "EUR", fx_rate: 1, shipping_currency: "EUR", tax_type: "ht", shipping_cost: 20, moq: 2, available_quantity: 5, stock_status: "in_stock", last_seen_at: "2026-10-10T08:00:00Z", country: "FR", supplier: { name: "Grossiste A", country: "FR" }, source: { source_type: "CSV", config: { kind: "catalog_file_import" } } },
+  { id: "o2", sku_id: "s1", title_original: "iPhone 13 128 Noir A", source_url: null, normalized_price: 340, normalized_currency: "EUR", original_currency: "EUR", fx_rate: 1, shipping_currency: "EUR", tax_type: "ht", shipping_cost: null, moq: 1, available_quantity: null, stock_status: "unknown", last_seen_at: "2026-09-01T08:00:00Z", country: null, supplier: { name: "Grossiste B", country: "NL" }, source: { source_type: "API", config: {} } },
+  { id: "o3", sku_id: "s2", title_original: "Galaxy S22", source_url: null, normalized_price: 200, normalized_currency: "EUR", original_currency: "EUR", fx_rate: 1, shipping_currency: "EUR", tax_type: "ht", shipping_cost: 0, moq: 1, available_quantity: 2, stock_status: "in_stock", last_seen_at: "2026-10-09T08:00:00Z", country: "FR", supplier: { name: "Grossiste A", country: "FR" }, source: { source_type: "MANUAL", config: {} } },
 ];
 const channels = [{ provider: "ebay", fee_percent: 12, payment_fee_percent: 0, payment_fee_fixed: 0.35, default_shipping_cost: 8, is_active: true }];
 
@@ -51,6 +51,12 @@ describe("radar d'opportunités (serveur)", () => {
     expect(o2.evaluation.missing).toContain("transport fournisseur");
     // sans prix de vente : données insuffisantes, jamais une opportunité
     expect(r.items.find((i) => i.offer.offerId === "o3")!.evaluation.status).toBe("insufficient_data");
+    // appréciation en trois notes : o1 (moins cher, stock confirmé) devant o2 (stock inconnu, prix ancien)
+    expect(first.assessment.competitiveness.reasons[0]).toMatch(/le plus bas parmi 2 offres/);
+    expect(o2.assessment.competitiveness.reasons.join(" ")).toMatch(/Stock non confirmé/);
+    expect(o2.assessment.verdict).not.toBe("opportunity");
+    expect(first.assessment.sourceReliability.reasons.join(" ")).toMatch(/Moins de 3 synchronisations/);
+    expect(r.items.find((i) => i.offer.offerId === "o3")!.assessment.verdict).toBe("insufficient_data");
     // réapprovisionnement : iPhone 13 (1 en stock, 6 ventes / 30 j), meilleure offre proposée
     expect(r.restock).toEqual([{ skuId: "s1", code: "IP13-128-NR-A", name: "Apple iPhone 13 · 128 Go Noir", quantityAvailable: 1, units30d: 6, daysOfCover: 5, bestOfferId: "o1", bestPrice: 300, bestSupplier: "Grossiste A" }]);
     // toutes les lectures sont filtrées sur l'organisation
@@ -83,5 +89,15 @@ describe("radar d'opportunités (serveur)", () => {
     const { ctx: c2 } = ctxWith({ organizations: { data: { settings: {} }, error: { message: "new row violates row-level security policy" } } });
     await expect(saveCostSettings(c2, s)).rejects.toThrow();
     expect(denied).toBeTruthy();
+  });
+});
+
+describe("radar : frais de port dans la devise de l'organisation", () => {
+  it("même devise : tels quels ; devise d'origine : convertis au taux de l'offre ; autre devise : inconnus", async () => {
+    const { shippingInOrgCurrency } = await import("@/services/radar/radar");
+    expect(shippingInOrgCurrency({ shipping_cost: 20, shipping_currency: "EUR", original_currency: "EUR", normalized_currency: "EUR", fx_rate: 1 })).toBe(20);
+    expect(shippingInOrgCurrency({ shipping_cost: 25, shipping_currency: "GBP", original_currency: "GBP", normalized_currency: "EUR", fx_rate: 1.168 })).toBe(29.2);
+    expect(shippingInOrgCurrency({ shipping_cost: 25, shipping_currency: "USD", original_currency: "GBP", normalized_currency: "EUR", fx_rate: 1.168 })).toBeNull();
+    expect(shippingInOrgCurrency({ shipping_cost: null, shipping_currency: null, original_currency: "EUR", normalized_currency: "EUR", fx_rate: 1 })).toBeNull();
   });
 });

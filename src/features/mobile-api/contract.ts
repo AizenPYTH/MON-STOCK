@@ -733,6 +733,31 @@ export interface CatalogImportDTO {
   };
 }
 
+export interface SourceOverviewDTO {
+  id: string;
+  name: string;
+  supplierId: string;
+  supplierName: string | null;
+  country: string | null;
+  kind: "file_import" | "public_web" | "remote_feed" | "connection" | "manual";
+  methodLabel: string;
+  status: "connected" | "to_configure" | "manual_import" | "running" | "error" | "disabled";
+  statusLabel: string;
+  /** offres actives (exploitables) */
+  activeOffers: number;
+  lastSyncAt: string | null;
+  lastSuccessfulSyncAt: string | null;
+  nextRunAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  frequency: "manual" | "hourly" | "every_6_hours" | "daily";
+  frequencyLabel: string;
+  /** synchronisation automatique possible (page publique attestée, flux distant, API) */
+  schedulable: boolean;
+  canSyncNow: boolean;
+  primaryAction: "sync_now" | "import_file" | "enable" | "configure";
+}
+
 export type ImportJobStatus = "running" | "completed" | "partial" | "failed" | "quarantined" | "skipped_duplicate";
 
 export interface ImportJobDTO {
@@ -812,6 +837,7 @@ export interface DirectoryEntryDTO {
 
 export type { RadarCostSettings, RadarEvaluation, RadarOfferInput, RadarSort, PriceOrigin } from "@/domain/sourcing/radar";
 import type { RadarCostSettings as _Settings, RadarEvaluation as _Eval, RadarOfferInput as _Offer } from "@/domain/sourcing/radar";
+import type { OfferAssessment as _Assessment, QuantityScenario as _Scenario } from "@/domain/sourcing/assessment";
 
 export interface RadarItemDTO {
   supplierId: string;
@@ -821,6 +847,18 @@ export interface RadarItemDTO {
   priceAtSave: number | null;
   evaluation: _Eval;
   offersForSku: number;
+  /** trois notes séparées (compétitivité, fiabilité de la source, confiance des données) + verdict */
+  assessment: _Assessment;
+  /** informations complémentaires annoncées par le fournisseur (jamais déduites) */
+  details: { shipFromCountry: string | null; warrantyMonths: number | null; vatRegime: string | null; orderMultiple: number | null; condition: string | null; grade: string | null; deliveryMaxDays: number | null };
+}
+
+export interface RadarOfferDetailDTO {
+  item: RadarItemDTO;
+  scenarios: _Scenario[];
+  /** autres offres actives du même produit, du coût rendu le plus bas au plus haut */
+  peers: { offerId: string; supplierName: string; price: number | null; landedCost: number | null; availableQuantity: number | null; stockStatus: string; ageDays: number | null; verdict: _Assessment["verdict"] }[];
+  settings: _Settings;
 }
 
 export interface RadarRestockDTO {
