@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseFeedContent, mapRow, previewFeed, suggestMapping, toNumber, toDeliveryRange, toTaxType, getPath, type FieldMapping } from "@/services/sourcing/feed-parsers";
 
 const CSV = `sku;Désignation;Prix HT;Devise;Stock;MOQ;EAN;Délai
-IP13-128-BLK;Apple iPhone 13 128GB Noir Grade A;229,90;EUR;45;10;0194252707013;3-5
+IP13-128-BLK;Apple iPhone 13 128GB Noir Grade A;229,90;EUR;45;10;0194252707012;3-5
 IP13-256-BLU;Apple iPhone 13 256GB Bleu Grade B;249;EUR;0;5;;7
 BAD;Sans prix;;EUR;3;1;;2`;
 
@@ -15,7 +15,7 @@ describe("feed parsers", () => {
     expect(parsed.columns).toContain("Désignation");
     const first = mapRow(parsed.rows[0]!, mapping);
     expect(first.errors).toEqual([]);
-    expect(first.offer).toMatchObject({ externalOfferId: "IP13-128-BLK", price: 229.9, currency: "EUR", availableQuantity: 45, moq: 10, ean: "0194252707013", deliveryMinDays: 3, deliveryMaxDays: 5, taxType: "ht", stockStatus: "in_stock" });
+    expect(first.offer).toMatchObject({ externalOfferId: "IP13-128-BLK", price: 229.9, currency: "EUR", availableQuantity: 45, moq: 10, ean: "0194252707012", deliveryMinDays: 3, deliveryMaxDays: 5, taxType: "ht", stockStatus: "in_stock" });
     const second = mapRow(parsed.rows[1]!, mapping);
     expect(second.offer?.stockStatus).toBe("out_of_stock");
     expect(second.offer?.ean).toBeNull();

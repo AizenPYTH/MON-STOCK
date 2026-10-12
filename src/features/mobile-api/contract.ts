@@ -660,6 +660,19 @@ export type CatalogMappingValue = string | { const: string };
 export type CatalogMapping = Partial<Record<string, CatalogMappingValue>>;
 
 export interface CatalogPreviewDTO {
+  /** empreinte SHA-256 du fichier */
+  fileSha256: string;
+  fileSize: number;
+  /** signature du modèle de fichier (en-têtes) */
+  headerSignature: string;
+  /** origine du mapping affiché : saisi, mémorisé pour ce fournisseur, ou proposé */
+  mappingSource: "user" | "saved" | "suggested";
+  /** confiance des propositions : high = en-tête connu, medium = en-tête approchant */
+  mappingConfidence: Partial<Record<string, "high" | "medium">>;
+  /** références présentes plusieurs fois dans le fichier (seule la première est gardée) */
+  duplicates: number;
+  /** même fichier déjà importé avec succès pour ce fournisseur */
+  alreadyImported: { jobId: string; at: string; fileName: string | null } | null;
   format: CatalogFileFormat;
   columns: string[];
   suggestedMapping: CatalogMapping;
@@ -677,7 +690,12 @@ export interface CatalogPreviewDTO {
     taxType: string | null;
     quantity: number | null;
     ean: string | null;
+    brand: string | null;
+    condition: string | null;
+    grade: string | null;
+    moq: number | null;
     errors: string[];
+    warnings: string[];
   }[];
   fields: readonly string[];
 }
@@ -686,6 +704,10 @@ export interface CatalogImportDTO {
   supplierId: string;
   sourceId: string;
   feedId: string;
+  /** ligne de l'historique des imports */
+  importJobId: string | null;
+  /** fichier identique déjà importé : rien n'a été fait (relancer avec allowSameFile) */
+  alreadyImported: { jobId: string; at: string } | null;
   result: {
     runId: string | null;
     status: "success" | "partial" | "failed";
@@ -701,7 +723,39 @@ export interface CatalogImportDTO {
     /** import suspendu par le contrôle de qualité : rien n'a été écrit (relancer avec force après vérification) */
     quarantined?: boolean;
     quality?: { decision: "accept" | "quarantine"; issues: { code: string; message: string }[]; warnings: string[] };
+    created?: number;
+    updated?: number;
+    unchanged?: number;
+    unrecognized?: number;
+    totalRows?: number;
+    truncated?: boolean;
+    mode?: "partial" | "snapshot";
   };
+}
+
+export type ImportJobStatus = "running" | "completed" | "partial" | "failed" | "quarantined" | "skipped_duplicate";
+
+export interface ImportJobDTO {
+  id: string;
+  supplierId: string | null;
+  supplierName: string | null;
+  sourceId: string | null;
+  origin: "file" | "remote_feed";
+  fileName: string | null;
+  fileSize: number | null;
+  format: CatalogFileFormat;
+  mode: "partial" | "snapshot";
+  status: ImportJobStatus;
+  counts: { read: number; valid: number; created: number; updated: number; unchanged: number; duplicates: number; invalid: number; rejected: number; unrecognized: number; expired: number };
+  truncated: boolean;
+  message: string | null;
+  createdBy: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface ImportJobDetailDTO extends ImportJobDTO {
+  issues: { line: number | null; kind: "invalid" | "duplicate" | "rejected" | "unrecognized" | "warning"; reference: string | null; message: string; excerpt: Record<string, unknown> | null }[];
 }
 
 // ---------------------------------------------------------------------------

@@ -103,16 +103,16 @@ export async function runImportSelfTest(): Promise<{ ok: boolean; result: unknow
     // 1. Import valide (6 offres + 1 ligne sans prix).
     const file = toFile([...base, ["TEST-IMPORT-7", "Article sans prix (test serveur)", "", "0"]], "controle.csv");
     const preview = previewCatalogFile({ file }, "EUR");
-    const first = await importCatalogFile(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contrôle (test serveur)" });
+    const first = await importCatalogFile(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contrôle (test serveur)", mode: "snapshot", allowSameFile: true });
     const priceOf = async () => (await admin.from("sourcing_offers").select("original_price").eq("organization_id", org.id).eq("external_offer_id", "TEST-IMPORT-4").maybeSingle()).data?.original_price ?? null;
     const priceAfterFirst = await priceOf();
     // 2. Fichier défectueux (colonne de prix décalée : prix × 100) → import suspendu, rien n'est modifié.
     const shifted = toFile(base.map((r) => [r[0]!, r[1]!, String(Math.round(Number(r[2]!.replace(/\s/g, "").replace(",", ".")) * 100)), r[3]!]), "controle-defectueux.csv");
-    const bad = await importCatalogFile(ctx, { file: shifted, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const bad = await importCatalogFile(ctx, { file: shifted, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId, mode: "snapshot", allowSameFile: true });
     const priceAfterBad = await priceOf();
     // 3. Mise à jour normale avec une ligne en double → acceptée, doublon ignoré.
     const update = toFile([...base.map((r) => (r[0] === "TEST-IMPORT-4" ? [r[0], r[1]!, "74,90", r[3]!] : r)), base[0]!], "controle-maj.csv");
-    const third = await importCatalogFile(ctx, { file: update, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const third = await importCatalogFile(ctx, { file: update, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId, mode: "snapshot", allowSameFile: true });
     const priceAfterUpdate = await priceOf();
     const { count } = await admin.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
     const { data: run } = await admin.from("sync_runs").select("status").eq("organization_id", org.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
@@ -165,7 +165,7 @@ export async function runChainSelfTest(): Promise<{ ok: boolean; steps: Record<s
     const { data: created, error: skuErr } = await admin.rpc("create_sku", {
       p_organization_id: org.id,
       p_variant: { name: "128 Go / Noir / Grade A", condition: "refurbished", grade: "A", attributes: { storage: "128 Go", color: "Noir", grade: "A" } },
-      p_sku: { code: "TEST-CHAINE-IP13", cost_price: 330, sale_price: 600, currency: "EUR", barcode: "0194252707323" },
+      p_sku: { code: "TEST-CHAINE-IP13", cost_price: 330, sale_price: 600, currency: "EUR", barcode: "0194252707326" },
       p_product_id: null,
       p_product: { name: "Article de contrôle (test serveur)", brand: "Apple", category: "Smartphone", attributes: { model: "iPhone 13" } },
       p_initial_quantity: 1,
@@ -174,14 +174,14 @@ export async function runChainSelfTest(): Promise<{ ok: boolean; steps: Record<s
     const skuId = (created as { sku_id?: string } | null)?.sku_id ?? null;
     steps.sku = Boolean(skuId);
     // le code-barres passé dans p_sku n'étant pas forcément repris par create_sku, il est fixé explicitement
-    if (skuId) await admin.from("skus").update({ barcode: "0194252707323" }).eq("id", skuId);
+    if (skuId) await admin.from("skus").update({ barcode: "0194252707326" }).eq("id", skuId);
 
     const ctx = { supabase: admin, user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" } as User, profile: null, organization: org, role: "owner", memberships: [] } as unknown as OrgContext;
-    const csv = ["Réf.;Désignation article;EAN;Prix HT (€);Qté dispo", "CTRL-1;iPhone 13 128 Go Noir Grade A (test serveur);0194252707323;300,00;5"].join("\r\n");
+    const csv = ["Réf.;Désignation article;EAN;Prix HT (€);Qté dispo", "CTRL-1;iPhone 13 128 Go Noir Grade A (test serveur);0194252707326;300,00;5"].join("\r\n");
     const { importCatalogFile, previewCatalogFile } = await import("@/services/sourcing/catalog-import");
     const file = { fileName: "controle.csv", contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
     const preview = previewCatalogFile({ file }, "EUR");
-    const imported = await importCatalogFile(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contrôle (test serveur)" });
+    const imported = await importCatalogFile(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contrôle (test serveur)", mode: "partial", allowSameFile: true });
     steps.import = { stored: imported.result.stored, status: imported.result.status };
     const { data: offer } = await admin.from("sourcing_offers").select("sku_id").eq("organization_id", org.id).maybeSingle();
     steps.autoMatched = offer?.sku_id === skuId;

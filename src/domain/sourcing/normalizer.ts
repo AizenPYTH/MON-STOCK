@@ -177,6 +177,15 @@ function titleCase(s: string): string {
     .join(" ");
 }
 
+/**
+ * Vrai si la clé normalisée identifie un produit précis (marque, modèle et capacité connus) :
+ * seule une telle clé peut transmettre une correspondance SKU déjà confirmée à une autre offre.
+ * Une clé incomplète (« -|-|-|-|unknown|- ») regrouperait des produits sans rapport.
+ */
+export function isIdentifyingProduct(p: Pick<NormalizedProduct, "brand" | "model" | "storage">): boolean {
+  return Boolean(p.brand && p.model && p.storage);
+}
+
 export function buildNormalizedKey(p: Pick<NormalizedProduct, "brand" | "model" | "storage" | "color" | "condition" | "grade">): string {
   return [p.brand ?? UNKNOWN, p.model ?? UNKNOWN, p.storage?.toLowerCase() ?? UNKNOWN, p.color ?? UNKNOWN, p.condition, p.grade?.toLowerCase() ?? UNKNOWN].join("|");
 }

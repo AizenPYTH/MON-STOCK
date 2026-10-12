@@ -2,7 +2,7 @@ import "server-only";
 import type { AdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Json, TablesInsert } from "@/db/database.types";
 import type { SourceType, StockStatus, TaxType } from "@/db/types";
-import { normalizeProduct, type NormalizedProduct } from "@/domain/sourcing/normalizer";
+import { isIdentifyingProduct, normalizeProduct, type NormalizedProduct } from "@/domain/sourcing/normalizer";
 import { validateOffer, type ValidationResult } from "@/domain/sourcing/validation";
 import type { RawOffer } from "@/domain/sourcing/types";
 import { getFxRate } from "@/services/sourcing/fx-rates";
@@ -31,12 +31,18 @@ export interface StorageContext {
   suggestMatches?: boolean;
   createdBy?: string | null;
   now?: Date;
+  /** import à l'origine de l'écriture (historique des imports) */
+  importJobId?: string | null;
 }
 
 export interface StoreOfferResult {
   outcome: "stored" | "rejected";
   offerId: string | null;
   created: boolean;
+  /** prix, devise, stock, MOQ ou statut différents de la version enregistrée (toujours vrai à la création) */
+  changed: boolean;
+  /** marque ou modèle non reconnus : rapprochement automatique impossible, à vérifier */
+  unrecognized: boolean;
   validation: ValidationResult;
   normalized: NormalizedProduct;
   fxUnavailable: boolean;
@@ -94,7 +100,7 @@ export async function storeOffer(ctx: StorageContext, raw: RawOffer): Promise<St
 
   const { data: existing } = await supabase
     .from("sourcing_offers")
-    .select("id, original_price, original_currency, sku_id, normalized_product_id, status")
+    .select("id, original_price, original_currency, sku_id, normalized_product_id, status, available_quantity, stock_status, moq")
     .eq("organization_id", organizationId)
     .eq("source_id", ctx.sourceId)
     .eq("external_offer_id", raw.externalOfferId)
@@ -120,7 +126,7 @@ export async function storeOffer(ctx: StorageContext, raw: RawOffer): Promise<St
         .update({ status: "suspicious", anomalies: validation.anomalyCodes, last_seen_at: nowIso })
         .eq("id", existing.id);
     }
-    return { outcome: "rejected", offerId: existing?.id ?? null, created: false, validation, normalized, fxUnavailable: false, matchedSkuId: null };
+    return { outcome: "rejected", offerId: existing?.id ?? null, created: false, changed: false, unrecognized: !normalized.brand || !normalized.model, validation, normalized, fxUnavailable: false, matchedSkuId: null };
   }
 
   const fx = await getFxRate(currency, ctx.organizationCurrency);
@@ -153,7 +159,8 @@ export async function storeOffer(ctx: StorageContext, raw: RawOffer): Promise<St
     external_offer_id: raw.externalOfferId,
     title_original: raw.title.slice(0, 500),
     normalized_product_id: product.id,
-    sku_id: existing?.sku_id ?? product.skuId ?? null,
+    // Correspondance héritée du produit normalisé seulement si sa clé identifie un produit précis.
+    sku_id: existing?.sku_id ?? (isIdentifyingProduct(normalized) ? product.skuId : null) ?? null,
     brand: normalized.brand,
     model: normalized.model,
     storage: normalized.storage,
@@ -186,6 +193,13 @@ export async function storeOffer(ctx: StorageContext, raw: RawOffer): Promise<St
     last_seen_at: nowIso,
     expired_at: null,
     raw: (raw.raw ?? null) as Json,
+    order_multiple: raw.orderMultiple ?? null,
+    vat_regime: raw.vatRegime ?? null,
+    ship_from_country: raw.shipFromCountry ?? null,
+    warranty_months: raw.warrantyMonths ?? null,
+    available_from: raw.availableFrom ?? null,
+    supplier_updated_at: raw.supplierUpdatedAt ?? null,
+    ...(ctx.importJobId ? { last_import_job_id: ctx.importJobId } : {}),
   };
   if (!existing) {
     row.first_seen_at = nowIso;
@@ -209,7 +223,15 @@ export async function storeOffer(ctx: StorageContext, raw: RawOffer): Promise<St
     }
   }
 
-  return { outcome: "stored", offerId: saved.id, created: !existing, validation, normalized, fxUnavailable, matchedSkuId };
+  const changed =
+    !existing ||
+    Number(existing.original_price) !== validation.effectivePrice ||
+    existing.original_currency !== currency ||
+    (existing.available_quantity ?? null) !== (quantity ?? null) ||
+    existing.stock_status !== stockStatus ||
+    (existing.moq ?? null) !== (validation.effectiveMoq ?? null) ||
+    existing.status !== validation.status;
+  return { outcome: "stored", offerId: saved.id, created: !existing, changed, unrecognized: !normalized.brand || !normalized.model, validation, normalized, fxUnavailable, matchedSkuId };
 }
 
 /** Marque « expired » les offres actives d'une source non revues depuis le début d'une synchronisation. Jamais de suppression. */

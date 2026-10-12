@@ -6,8 +6,8 @@
 import { parse as parseCsv } from "csv-parse/sync";
 import { XMLParser } from "fast-xml-parser";
 import { z } from "zod";
-import { RAW_OFFER_FIELDS, type RawOffer, type RawOfferField, type StockStatus, type TaxType } from "@/domain/sourcing/types";
-import { normalizeCondition } from "@/domain/sourcing/normalizer";
+import { RAW_OFFER_FIELDS, type RawOffer, type RawOfferField, type StockStatus, type TaxType, type VatRegimeCode } from "@/domain/sourcing/types";
+import { isValidGtin, normalizeCondition } from "@/domain/sourcing/normalizer";
 
 export type FeedFormat = "csv" | "xml" | "json";
 
@@ -199,6 +199,63 @@ export function toDeliveryRange(v: unknown): { min: number | null; max: number |
   return { min: n, max: n };
 }
 
+/** Régime de TVA annoncé (« marge », « margin scheme », « autoliquidation », « 0 % »…) ; jamais déduit du pays. */
+export function toVatRegime(v: unknown): VatRegimeCode | null {
+  const s = String(v ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  if (!s) return null;
+  if (/marg|differenz|§ ?25a|art\.? ?297|regime particulier/.test(s)) return "margin";
+  if (/reverse|autoliquid|intracom|ic supply|0 ?%|zero[\s-]?rated|steuerfrei innergem/.test(s)) return "reverse_charge";
+  if (/exon|exempt|franchise|293 ?b/.test(s)) return "exempt";
+  if (/normal|standard|incl|ttc|20 ?%|21 ?%|19 ?%|regular|regelbesteuer/.test(s)) return "normal";
+  return "unknown";
+}
+
+/** Date seule AAAA-MM-JJ : ISO, JJ/MM/AAAA, JJ.MM.AAAA ou numéro de série Excel ; sinon null. */
+export function toDateOnly(v: unknown): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  const iso = (y: number, m: number, d: number) => {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? dt.toISOString().slice(0, 10) : null;
+  };
+  const s = String(v).trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return iso(Number(m[1]), Number(m[2]), Number(m[3]));
+  m = /^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/.exec(s);
+  if (m) return iso(Number(m[3]), Number(m[2]), Number(m[1]));
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = Math.floor(Number(s));
+    if (serial >= 36526 && serial <= 73050) return new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+/** Horodatage ISO (mise à jour annoncée par le fournisseur) ; date seule acceptée ; sinon null. */
+export function toTimestamp(v: unknown): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+    const t = Date.parse(s.replace(" ", "T"));
+    return Number.isNaN(t) ? null : new Date(t).toISOString();
+  }
+  const d = toDateOnly(s);
+  return d ? `${d}T00:00:00.000Z` : null;
+}
+
+/** Garantie en mois : « 12 », « 12 mois », « 1 an », « 2 years », « 90 jours » (≈ 3 mois). */
+export function toWarrantyMonths(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const s = String(v).toLowerCase();
+  const n = toNumber(s.replace(/[^\d.,]/g, " ").trim().split(/\s+/)[0] ?? "");
+  if (n === null || n < 0) return null;
+  const months = /(an|year|jahr)/.test(s) ? n * 12 : /(jour|day|tag)/.test(s) ? n / 30 : /(semaine|week|woche)/.test(s) ? (n * 7) / 30 : n;
+  const r = Math.round(months);
+  return r >= 0 && r <= 120 ? r : null;
+}
+
 function str(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -214,6 +271,8 @@ export interface MappingDefaults {
 export interface MappedRow {
   offer: RawOffer | null;
   errors: string[];
+  /** remarques non bloquantes (EAN invalide écarté…) */
+  warnings?: string[];
 }
 
 export function mapRow(row: Record<string, unknown>, mapping: FieldMapping, defaults: MappingDefaults = {}): MappedRow {
@@ -241,6 +300,13 @@ export function mapRow(row: Record<string, unknown>, mapping: FieldMapping, defa
 
   if (errors.length > 0 || !externalOfferId || !title) return { offer: null, errors };
 
+  const warnings: string[] = [];
+  const eanDigits = str(read("ean"))?.replace(/\D/g, "") || null;
+  let ean: string | null = null;
+  if (eanDigits) {
+    if ([8, 12, 13, 14].includes(eanDigits.length) && isValidGtin(eanDigits)) ean = eanDigits;
+    else warnings.push(`EAN « ${eanDigits.slice(0, 20)} » invalide (clé de contrôle ou longueur) : ignoré pour le rapprochement.`);
+  }
   const deliveryBoth = toDeliveryRange(read("delivery_days"));
   const dMin = toInt(read("delivery_min_days")) ?? deliveryBoth.min;
   const dMax = toInt(read("delivery_max_days")) ?? deliveryBoth.max;
@@ -266,7 +332,7 @@ export function mapRow(row: Record<string, unknown>, mapping: FieldMapping, defa
     deliveryMaxDays: dMax,
     country: str(read("country"))?.toUpperCase().slice(0, 2) ?? defaults.country ?? null,
     url: str(read("url")),
-    ean: str(read("ean"))?.replace(/\D/g, "") || null,
+    ean,
     mpn: str(read("mpn")),
     brand: str(read("brand")),
     model: str(read("model")),
@@ -275,16 +341,28 @@ export function mapRow(row: Record<string, unknown>, mapping: FieldMapping, defa
     grade: str(read("grade")),
     condition: read("condition") !== undefined ? normalizeCondition(str(read("condition"))) : null,
     supplierSku: str(read("supplier_sku")),
+    orderMultiple: (() => {
+      const n = toInt(read("order_multiple"));
+      return n !== null && n > 0 ? n : null;
+    })(),
+    vatRegime: toVatRegime(read("vat_regime")),
+    shipFromCountry: (() => {
+      const c = str(read("ship_from_country"))?.toUpperCase() ?? null;
+      return c && /^[A-Z]{2}$/.test(c) ? c : null;
+    })(),
+    warrantyMonths: toWarrantyMonths(read("warranty_months")),
+    availableFrom: toDateOnly(read("available_from")),
+    supplierUpdatedAt: toTimestamp(read("supplier_updated_at")),
     raw: row,
   };
-  return { offer, errors };
+  return { offer, errors, warnings };
 }
 
 export interface FeedPreview {
   columns: string[];
   total: number;
   warnings: string[];
-  sample: Array<{ index: number; row: Record<string, unknown>; offer: RawOffer | null; errors: string[] }>;
+  sample: Array<{ index: number; row: Record<string, unknown>; offer: RawOffer | null; errors: string[]; warnings?: string[] }>;
   validCount: number;
   invalidCount: number;
 }
@@ -303,7 +381,10 @@ export function previewFeed(content: string, format: FeedFormat, mapping: FieldM
 
 /** Mapping automatique proposé à partir des noms de colonnes (jamais appliqué sans validation). */
 export function suggestMapping(columns: string[]): FieldMapping {
-  const candidates: Record<RawOfferField, RegExp> = {
+  return suggestMappingDetailed(columns).mapping;
+}
+
+const STRICT_HEADER_PATTERNS: Record<RawOfferField, RegExp> = {
     external_offer_id: /^(id|offer[_\s-]?id|ref(erence)?|article|item[_\s-]?id|product[_\s-]?id)$/i,
     supplier_sku: /^(sku|supplier[_\s-]?sku|ref(erence)?[_\s-]?fournisseur|code|g:id)$/i,
     title: /^(title|titre|name|nom|designation|désignation|libelle|libellé|description|g:title)$/i,
@@ -327,14 +408,29 @@ export function suggestMapping(columns: string[]): FieldMapping {
     storage: /^(storage|stockage|capacite|capacité|memory|memoire|mémoire)$/i,
     color: /^(color|colour|couleur|g:color)$/i,
     grade: /^(grade|classe)$/i,
-    condition: /^(condition|etat|état|g:condition)$/i,
+    condition: /^(condition|etat|état|g:condition|zustand)$/i,
+    order_multiple: /^(order[_\s-]?multiple|multiple|pack[_\s-]?size|colisage|conditionnement|vpe)$/i,
+    vat_regime: /^(vat[_\s-]?regime|vat[_\s-]?scheme|regime[_\s-]?tva|régime[_\s-]?tva|tax[_\s-]?scheme|besteuerung)$/i,
+    ship_from_country: /^(ship[_\s-]?from|ships[_\s-]?from|warehouse|entrepot|entrepôt|lager|location|stock[_\s-]?location)$/i,
+    warranty_months: /^(warranty|garantie|gewährleistung|gewahrleistung)$/i,
+    available_from: /^(available[_\s-]?from|eta|arrival|arrivage|date[_\s-]?dispo|lieferdatum)$/i,
+    supplier_updated_at: /^(updated|updated[_\s-]?at|last[_\s-]?update|date[_\s-]?maj|mise[_\s-]?a[_\s-]?jour|stand)$/i,
   };
+export type MappingConfidence = "high" | "medium";
+
+/**
+ * Mapping proposé + confiance par champ : « high » = en-tête exact connu, « medium » = en-tête
+ * approchant (accents, unités, langue). Toujours soumis à la validation de l'utilisateur.
+ */
+export function suggestMappingDetailed(columns: string[], strict: Record<RawOfferField, RegExp> = STRICT_HEADER_PATTERNS): { mapping: FieldMapping; confidence: Partial<Record<RawOfferField, MappingConfidence>> } {
   const out: FieldMapping = {};
+  const confidence: Partial<Record<RawOfferField, MappingConfidence>> = {};
   const used = new Set<string>();
   for (const field of RAW_OFFER_FIELDS) {
-    const col = columns.find((c) => candidates[field].test(c.trim()));
+    const col = columns.find((c) => !used.has(c) && strict[field].test(c.trim()));
     if (col) {
       out[field] = col;
+      confidence[field] = "high";
       used.add(col);
     }
   }
@@ -346,10 +442,11 @@ export function suggestMapping(columns: string[]): FieldMapping {
     const col = columns.find((c) => !used.has(c) && patterns.some((re) => re.test(looseHeader(c))));
     if (col) {
       out[field] = col;
+      confidence[field] = "medium";
       used.add(col);
     }
   }
-  return out;
+  return { mapping: out, confidence };
 }
 
 /** En-tête normalisé : minuscules, sans accents, ponctuation et unités remplacées par des espaces. */
@@ -364,22 +461,28 @@ export function looseHeader(h: string): string {
 }
 
 const LOOSE_HEADER_PATTERNS: Array<[RawOfferField, RegExp[]]> = [
-  ["ean", [/ (ean|gtin|ean13|upc|code barre|barcode) /]],
+  ["ean", [/ (ean|gtin|ean13|upc|code barre|barcode|strichcode) /]],
   ["mpn", [/ (mpn|part number|ref fabricant|reference fabricant) /]],
-  ["supplier_sku", [/ (ref|reference|sku|code article|code produit|article no|art nr|item no|part no|ref fournisseur|ref fourn) /]],
-  ["title", [/ (designation|libelle|description|product name|nom produit|nom article|article|produit|titre|title|name) /]],
-  ["price", [/ (prix|price|tarif|cost|cout|pu|unit price|net price|prix net|prix achat|prix revendeur|prix pro) /]],
-  ["currency", [/ (devise|currency|monnaie) /]],
+  ["supplier_sku", [/ (ref|reference|sku|code article|code produit|article no|art nr|item no|item code|part no|ref fournisseur|ref fourn|artikelnummer|artikel nr|art nr) /]],
+  ["title", [/ (designation|libelle|description|product name|product|nom produit|nom article|article|produit|titre|title|name|bezeichnung|artikelbezeichnung|beschreibung) /]],
+  ["price", [/ (prix|price|tarif|cost|cout|pu|unit price|net price|wholesale price|wholesale|dealer price|prix net|prix achat|prix revendeur|prix pro|preis|einzelpreis|nettopreis|ek preis|haendlerpreis) /]],
+  ["currency", [/ (devise|currency|monnaie|wahrung|cur) /]],
   ["tax_type", [/ (ht|ttc|tva|vat) incl /, / (type de prix|tax) /]],
-  ["available_quantity", [/ (qte|qty|quantite|quantity|stock|dispo|disponible|available|en stock) /]],
-  ["moq", [/ (moq|minimum|min qty|qte min|quantite minimum) /]],
-  ["brand", [/ (marque|brand|fabricant|manufacturer|constructeur) /]],
-  ["model", [/ (modele|model) /]],
-  ["storage", [/ (capacite|stockage|storage|memoire|memory|rom) /]],
-  ["color", [/ (couleur|color|colour|coloris) /]],
-  ["grade", [/ (grade|classe|qualite esthetique) /]],
-  ["condition", [/ (etat|condition|state) /]],
+  ["moq", [/ (moq|minimum order|min order|minimum|min qty|qte min|quantite minimum|mindestmenge|mindestbestellmenge) /]],
+  ["available_quantity", [/ (qte|qty|quantite|quantity|stock|dispo|disponible|available|en stock|menge|bestand|verfugbar|lagerbestand) /]],
+  ["brand", [/ (marque|brand|fabricant|manufacturer|constructeur|marke|hersteller) /]],
+  ["model", [/ (modele|model|modell) /]],
+  ["storage", [/ (capacite|stockage|storage|memoire|memory|rom|gb|go|speicher|kapazitat) /]],
+  ["color", [/ (couleur|color|colour|coloris|farbe) /]],
+  ["grade", [/ (grade|classe|qualite esthetique|quality|qualitat|klasse) /]],
+  ["condition", [/ (etat|condition|state|zustand) /]],
+  ["order_multiple", [/ (multiple|pack size|colisage|conditionnement|vpe|verpackungseinheit) /]],
+  ["vat_regime", [/ (regime tva|vat scheme|vat regime|tax scheme|margin scheme|besteuerung|differenzbesteuerung) /]],
+  ["ship_from_country", [/ (ship from|ships from|warehouse|entrepot|expedie depuis|lagerort|lager|stock location) /]],
+  ["warranty_months", [/ (garantie|warranty|gewahrleistung) /]],
+  ["available_from", [/ (eta|available from|arrival|arrivage|date dispo|disponible le|lieferdatum|verfugbar ab) /]],
+  ["supplier_updated_at", [/ (last update|updated|date maj|mise a jour|stand|aktualisiert) /]],
   ["url", [/ (url|lien|link) /]],
-  ["shipping_cost", [/ (port|livraison|shipping|transport) /]],
-  ["delivery_days", [/ (delai|lead time|delivery) /]],
+  ["shipping_cost", [/ (port|frais de livraison|shipping|shipping cost|delivery cost|transport|versandkosten|versand) /]],
+  ["delivery_days", [/ (delai|lead time|delivery time|delivery days|lieferzeit) /]],
 ];

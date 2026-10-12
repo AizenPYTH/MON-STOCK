@@ -35,8 +35,21 @@ export interface RawOffer {
   grade?: string | null;
   condition?: ProductCondition | string | null;
   supplierSku?: string | null;
+  /** multiple de commande (lot de 5, carton de 10…) */
+  orderMultiple?: number | null;
+  /** régime de TVA annoncé par le fournisseur (jamais déduit du pays) */
+  vatRegime?: VatRegimeCode | null;
+  /** pays d'expédition, distinct du pays du fournisseur */
+  shipFromCountry?: string | null;
+  warrantyMonths?: number | null;
+  /** date de disponibilité (arrivage), AAAA-MM-JJ */
+  availableFrom?: string | null;
+  /** date de mise à jour indiquée par le fournisseur (ISO) */
+  supplierUpdatedAt?: string | null;
   raw?: unknown;
 }
+
+export type VatRegimeCode = "normal" | "margin" | "reverse_charge" | "exempt" | "unknown";
 
 export const RAW_OFFER_FIELDS = [
   "external_offer_id",
@@ -63,6 +76,12 @@ export const RAW_OFFER_FIELDS = [
   "grade",
   "condition",
   "supplier_sku",
+  "order_multiple",
+  "vat_regime",
+  "ship_from_country",
+  "warranty_months",
+  "available_from",
+  "supplier_updated_at",
 ] as const;
 export type RawOfferField = (typeof RAW_OFFER_FIELDS)[number];
 
@@ -91,4 +110,10 @@ export const RAW_OFFER_FIELD_LABELS: Record<RawOfferField, string> = {
   grade: "Grade",
   condition: "État",
   supplier_sku: "Référence fournisseur",
+  order_multiple: "Multiple de commande",
+  vat_regime: "Régime de TVA (normal, marge…)",
+  ship_from_country: "Pays d'expédition",
+  warranty_months: "Garantie (mois)",
+  available_from: "Disponible à partir du",
+  supplier_updated_at: "Mise à jour fournisseur",
 };

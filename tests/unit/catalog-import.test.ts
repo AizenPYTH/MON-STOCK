@@ -98,7 +98,7 @@ describe("aperçu d'import (aucune écriture)", () => {
     expect(p.validCount).toBe(4);
     expect(p.invalidCount).toBe(1);
     expect(p.warnings.join(" ")).toMatch(/Windows-1252/);
-    expect(p.sample[0]).toMatchObject({ line: 2, reference: "IP13-128-NR-B", price: 329.9, currency: "EUR", taxType: "ht", quantity: 12, ean: "0194252707323" });
+    expect(p.sample[0]).toMatchObject({ line: 2, reference: "IP13-128-NR-B", price: 329.9, currency: "EUR", taxType: "ht", quantity: 12, ean: "0194252707326" });
     expect(p.sample[3]).toMatchObject({ line: 5, price: null });
     expect(p.sample[3]!.errors.join(" ")).toMatch(/Prix manquant/);
     expect(p.sample[4]).toMatchObject({ price: 1249, quantity: 2 });

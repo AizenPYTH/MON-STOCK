@@ -17,6 +17,8 @@
  *   GET  /api/sourcing/directory          annuaire de fournisseurs qualifiés (statuts prouvés, e-mails de demande d'accès)
  *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
  *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
+ *   GET  /api/sourcing/imports            historique des imports (fichier, empreinte, compteurs, utilisateur)
+ *   GET  /api/sourcing/imports/detail?id= détail d'un import et lignes ignorées avec leur raison
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
  *   POST /api/ebay/connect                URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur)
  *   GET|POST /api/ebay/webhook            notifications eBay (suppression de compte, commandes) — signées par eBay
@@ -73,7 +75,7 @@ import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listi
 import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/services/sourcing/offer-linking";
 import { buildRadar, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
-import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFile } from "@/services/sourcing/catalog-import";
+import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
 import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
 import { synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
 import { enforceAiQuota } from "@/services/ai/quota";
@@ -350,7 +352,20 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, catalogPreviewSchema, CATALOG_BODY_LIMIT);
-        return previewCatalogFile(body, ctx.organization.default_currency);
+        return previewCatalogFileForOrg(ctx, body);
+      });
+    }
+    if (m === "GET" && path === "/sourcing/imports") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const q = parseQuery(request, z.object({ supplierId: uuidParam.optional(), limit: z.coerce.number().int().min(1).max(200).optional() }));
+        return listImportJobs(ctx, { supplierId: q.supplierId ?? null, limit: q.limit ?? 50 });
+      });
+    }
+    if (m === "GET" && path === "/sourcing/imports/detail") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        return getImportJob(ctx, parseQuery(request, z.object({ id: uuidParam })).id);
       });
     }
     if (m === "POST" && path === "/sourcing/import") {
