@@ -21,6 +21,8 @@
  *   GET  /api/sourcing/sources            sources : statut affiché, offres exploitables, dernier succès, prochain passage
  *   POST /api/sourcing/sources/sync       « Synchroniser maintenant » (rédacteur ; verrou et délai de 2 min)
  *   POST /api/sourcing/sources/schedule   fréquence et activation d'une source (administrateur)
+ *   POST /api/sourcing/feeds/preview      aperçu d'un flux distant autorisé (CSV / XML / JSON en HTTPS) — rien n'est enregistré
+ *   POST /api/sourcing/feeds              ajout du flux (attestation d'accord du fournisseur, identifiants chiffrés)
  *   GET  /api/sourcing/imports            historique des imports (fichier, empreinte, compteurs, utilisateur)
  *   GET  /api/sourcing/imports/detail?id= détail d'un import et lignes ignorées avec leur raison
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
@@ -81,6 +83,7 @@ import { buildRadar, buildRadarOffer, radarSettingsSchema, saveCostSettings } fr
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
 import { listSourcesForOrg, setSourceSchedule, sourceScheduleSchema, syncSourceNow } from "@/services/sourcing/source-sync";
+import { createRemoteFeed, previewRemoteFeed, remoteFeedCreateSchema, remoteFeedPreviewSchema } from "@/services/sourcing/remote-feeds";
 import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
 import { synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
 import { enforceAiQuota } from "@/services/ai/quota";
@@ -378,6 +381,18 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { admin: true });
         return setSourceSchedule(ctx, await parseBody(request, sourceScheduleSchema));
+      });
+    }
+    if (m === "POST" && path === "/sourcing/feeds/preview") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return previewRemoteFeed(ctx, await parseBody(request, remoteFeedPreviewSchema));
+      });
+    }
+    if (m === "POST" && path === "/sourcing/feeds") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return createRemoteFeed(ctx, await parseBody(request, remoteFeedCreateSchema));
       });
     }
     if (m === "GET" && path === "/sourcing/imports") {

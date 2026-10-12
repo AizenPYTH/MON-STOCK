@@ -52,6 +52,8 @@ export interface LibrarySource {
   notes: string;
   /** requête de vérification (doit renvoyer des produits pertinents) */
   probeQuery: string;
+  /** accès automatisé interdit par les conditions du fournisseur : jamais vérifié ni activable */
+  blocked?: string;
 }
 
 const shopifyTerms = (base: string) => `${base}/policies/terms-of-service`;
@@ -247,10 +249,11 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     country: "FR",
     currency: "EUR",
     taxType: "ht",
-    termsUrl: "https://www.utopya.fr",
+    termsUrl: "https://www.utopya.fr/c-g-v",
     access: "public_json",
-    notes: "Distributeur B2B de pièces et accessoires (Paris). Prix pros potentiellement réservés aux comptes : vérification requise.",
+    notes: "Distributeur B2B de pièces et accessoires (Paris). Sa FAQ indique ne proposer ni export Excel ni API ; ses CGV (art. 14) interdisent tout accès automatisé (robots, scrapers, scripts), sauf API officielle sous contrat écrit.",
     probeQuery: "iphone 13",
+    blocked: "Accès automatisé interdit par les CGV d'Utopya (article 14, clause pénale). Utilisez la saisie manuelle ou un fichier explicitement fourni par Utopya ; seule une API sous contrat écrit permettrait une synchronisation.",
   },
 ];
 
@@ -328,6 +331,8 @@ export async function runLibraryChecks(keys?: string[]): Promise<LibraryCheckRes
   const out: LibraryCheckResult[] = [];
   for (const s of SOURCE_LIBRARY) {
     if (keys && !keys.includes(s.key)) continue;
+    // conditions du fournisseur : aucune requête, même de vérification
+    if (s.blocked) continue;
     let r: LibraryCheckResult;
     try {
       r = await checkLibrarySourceDetect(s);
@@ -367,6 +372,8 @@ export interface LibraryEntryDTO {
   activatable: boolean;
   /** source déjà activée dans l'organisation */
   sourceId: string | null;
+  /** raison du blocage (conditions du fournisseur) */
+  blocked: string | null;
 }
 
 export async function sourceLibrary(ctx: OrgContext): Promise<{ entries: LibraryEntryDTO[] }> {
@@ -396,8 +403,9 @@ export async function sourceLibrary(ctx: OrgContext): Promise<{ entries: Library
         termsUrl: s.termsUrl,
         notes: s.notes,
         check: c ? { status: c.status as LibraryCheckResult["status"], checkedAt: c.checked_at, productCount: c.product_count, message: c.message, sample: c.sample } : null,
-        activatable: c?.status === "ok",
+        activatable: !s.blocked && c?.status === "ok",
         sourceId: activated.get(s.key) ?? null,
+        blocked: s.blocked ?? null,
       };
     }),
   };
@@ -411,6 +419,7 @@ export async function sourceLibrary(ctx: OrgContext): Promise<{ entries: Library
 export async function activateLibrarySource(ctx: OrgContext, key: string): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
   const s = getLibrarySource(key);
   if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
+  if (s.blocked) throw new AppError("FORBIDDEN", s.blocked);
   const { data: check } = await ctx.supabase.from("sourcing_library_checks").select("status, checked_at, adapter").eq("key", key).maybeSingle();
   if (check?.status !== "ok") throw new AppError("VALIDATION", "Cette source n'a pas passé la vérification en direct (robots.txt + produits avec prix) : elle ne peut pas être activée.");
 

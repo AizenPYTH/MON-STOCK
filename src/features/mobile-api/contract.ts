@@ -829,6 +829,18 @@ export interface DirectoryEntryDTO {
   /** dernière vérification du site depuis le serveur */
   check: { checkedAt: string; reachable: boolean; httpStatus: number | null; robotsFound: boolean | null; robotsDisallowAll: boolean | null; sitemapFound: boolean | null; platform: string | null; message: string | null } | null;
   email: { fr: { subject: string; body: string }; en: { subject: string; body: string } };
+  /** fiche d'intégration B2B (méthode, autorisation, questions à poser), si étudiée */
+  b2b: {
+    method: "remote_feed" | "file_import" | "portal_only" | "manual_only";
+    methodLabel: string;
+    fallback: "remote_feed" | "file_import" | "portal_only" | "manual_only" | null;
+    automation: "on_agreement" | "forbidden" | "unknown";
+    automationLabel: string;
+    activation: string;
+    questions: string[];
+    evidence: "search_snippets";
+    checkedAt: string;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------

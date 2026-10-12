@@ -5872,5 +5872,151 @@
    "https://www.portatilmovil.com/it/content/73-vendita-allingrosso-portatili-ricondizionati"
   ],
   "checkedAt": "2026-10-10"
+ },
+ {
+  "key": "thephonehub",
+  "name": "ThePhoneHub",
+  "segment": "D_distributor",
+  "country": "BE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.thephonehub.eu/",
+  "catalogUrl": "https://www.thephonehub.eu/",
+  "categories": [
+   "smartphones",
+   "consoles",
+   "accessoires"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung",
+   "Google",
+   "Xiaomi"
+  ],
+  "productTypes": [
+   "new",
+   "refurbished"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Accès sur demande à l'équipe commerciale (hello@thephonehub.eu) : prix de gros, flux CSV « live » et clés API fournis aux partenaires.",
+  "accessModes": [
+   "feed_csv",
+   "api"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": "MOQ indiqués dans le flux (selon la page d'accueil)",
+  "shipping": "DHL / UPS dans l'UE (selon le site)",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Annonce un flux CSV permanent (stock temps réel, prix unitaire, MOQ) et une API REST (stock, commandes, webhooks) : le candidat le plus simple à brancher dès l'accès obtenu.",
+  "howToGetCatalog": "Écrire à hello@thephonehub.eu en demandant le lien CSV partenaire et/ou des clés API ; puis Sourcing → Sources → « Ajouter un flux autorisé » avec le lien reçu.",
+  "verified": "Extraits indexés de la page d'accueil et de la page contact (12/10/2026) ; pages non ouvertes directement depuis le serveur ; aucun accès testé.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.thephonehub.eu/",
+   "https://www.thephonehub.eu/contact"
+  ],
+  "checkedAt": "2026-10-12"
+ },
+ {
+  "key": "distrihub",
+  "name": "DistriHUB (Varle)",
+  "segment": "D_distributor",
+  "country": "LT",
+  "deliveryZones": [
+   "EU",
+   "UK"
+  ],
+  "website": "https://distrihub.eu/",
+  "catalogUrl": "https://distrihub.eu/fr/wholesale/smartphones",
+  "categories": [
+   "smartphones",
+   "informatique",
+   "électronique grand public"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Compte d'entreprise vérifié (achat pour revente) ; onboarding annoncé de 1 à 2 semaines ; prix de gros et disponibilité visibles dans le flux après configuration.",
+  "accessModes": [
+   "feed_xml",
+   "feed_csv",
+   "feed_json",
+   "api",
+   "edi"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": "300 € par commande ; frais de 39 € sous 1 500 € (FAQ, à reconfirmer)",
+  "shipping": "CIP dans l'UE, DAP Royaume-Uni (FAQ)",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Agrège plus de 400 distributeurs européens dans un seul catalogue et un seul flux ; l'EAN fait référence pour le rapprochement. Surtout du neuf.",
+  "howToGetCatalog": "Créer un compte acheteur, demander le flux (CSV ou XML de préférence) limité aux smartphones ; puis « Ajouter un flux autorisé ».",
+  "verified": "Extraits indexés de la page d'accueil, de la FAQ et des pages marques (12/10/2026) ; page smartphones non indexée ; aucun accès testé.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://distrihub.eu/",
+   "https://distrihub.eu/brands"
+  ],
+  "checkedAt": "2026-10-12"
+ },
+ {
+  "key": "smartchoice",
+  "name": "SmartChoice",
+  "segment": "A_refurb",
+  "country": "EE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://shop.smartchoice.ee/",
+  "catalogUrl": "https://shop.smartchoice.ee/stock",
+  "categories": [
+   "iPhone d'occasion gradés",
+   "Samsung d'occasion gradés"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "used",
+   "refurbished"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Inscription gratuite pour voir le stock et les prix de gros ; pas de minimum de commande annoncé ; TVA sur marge ou autoliquidation.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": "Aucun minimum annoncé",
+  "shipping": "DHL / DPD, expédition le jour ouvré suivant (site)",
+  "warranty": "30 jours (site)",
+  "partQuality": null,
+  "whyUseful": "Appareils gradés A+ à C, IMEI contrôlés, sans minimum de commande.",
+  "howToGetCatalog": "Créer un compte, puis demander un export (CSV / XLSX) ou un lien de flux de la page stock ; à défaut, saisie manuelle.",
+  "verified": "Extraits indexés du site (12/10/2026) ; aucun export ni API trouvés ; aucun accès testé.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://shop.smartchoice.ee/"
+  ],
+  "checkedAt": "2026-10-12"
  }
 ]

@@ -5,6 +5,7 @@ import { createLogger } from "@/lib/logger";
 import type { Json } from "@/db/database.types";
 import type { SyncTrigger, TaxType } from "@/db/types";
 import { fetchText } from "@/services/sourcing/http";
+import { loadFeedAuthHeaders } from "@/services/sourcing/feed-secrets";
 import { fieldMappingSchema, feedOptionsSchema, mapRow, parseFeedContent, previewFeed, type FeedFormat, type FeedPreview, type FieldMapping, type FeedOptions, type MappingDefaults } from "@/services/sourcing/feed-parsers";
 import { expireUnseenOffers, storeOffer } from "@/services/sourcing/offer-storage";
 import { finishSyncRun, isDue, recordSyncErrors, startSyncRun, type SyncErrorInput } from "@/services/sourcing/sync-runs";
@@ -79,8 +80,8 @@ export function parseFeedConfig(feed: { field_mapping: Json; options: Json }): {
   return { mapping: mapping.success ? mapping.data : {}, options: options.success ? options.data : {} };
 }
 
-export async function fetchFeedContent(url: string, format: FeedFormat, encoding: string | null | undefined, fetchImpl?: typeof fetch): Promise<string> {
-  const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], encoding, fetchImpl });
+export async function fetchFeedContent(url: string, format: FeedFormat, encoding: string | null | undefined, fetchImpl?: typeof fetch, headers?: Record<string, string>, resolver?: (host: string) => Promise<Array<{ address: string }>>): Promise<string> {
+  const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], encoding, fetchImpl, headers, resolver });
   if (!res.ok) throw new Error(`Le flux a répondu HTTP ${res.status}.`);
   return res.text;
 }
@@ -116,7 +117,7 @@ async function knownPriceRatios(admin: AdminSupabaseClient, sourceId: string, of
   return ratios;
 }
 
-export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger; createdBy?: string | null; content?: string | null; fetchImpl?: typeof fetch; admin?: AdminSupabaseClient; force?: boolean; mode?: IngestMode; importJobId?: string | null } = { trigger: "manual" }): Promise<IngestResult> {
+export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger; createdBy?: string | null; content?: string | null; fetchImpl?: typeof fetch; admin?: AdminSupabaseClient; force?: boolean; mode?: IngestMode; importJobId?: string | null; resolver?: (host: string) => Promise<Array<{ address: string }>> } = { trigger: "manual" }): Promise<IngestResult> {
   // Flux à URL : catalogue complet par défaut (comportement historique) ; fichier importé : choix explicite.
   const mode: IngestMode = options.mode ?? "snapshot";
   const admin = options.admin ?? createAdminSupabaseClient();
@@ -149,7 +150,8 @@ export async function ingestFeed(feedId: string, options: { trigger: SyncTrigger
     let content = options.content ?? null;
     if (!content) {
       if (!feed.url) throw new Error("Ce flux n'a pas d'URL : importez un fichier manuellement.");
-      content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl);
+      // identifiants éventuels du flux, déchiffrés côté serveur uniquement
+      content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl, await loadFeedAuthHeaders(admin, feed.id), options.resolver);
     }
     const parsed = parseFeedContent(content, feed.format, feedOptions);
     for (const w of parsed.warnings) log.info("feed warning", { feedId, warning: w });

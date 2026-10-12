@@ -6,6 +6,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
 import { fetchText } from "@/services/sourcing/http";
 import { fetchRobots, evaluateRobots } from "@/services/sourcing/crawler/robots";
+import { AUTOMATION_LABEL, B2B_METHOD_LABEL, B2B_PROFILES } from "@/services/sourcing/data/b2b-profiles";
 import { getLibrarySource } from "@/services/sourcing/source-library";
 
 /**
@@ -180,8 +181,10 @@ export function directoryKeyForSupplierName(name: string): string | null {
 // E-mail de demande d'accès (FR / EN) — rien n'est envoyé automatiquement
 // ---------------------------------------------------------------------------
 
-export function accessRequestEmail(entry: Pick<DirectoryEntry, "name" | "categories">, lang: "fr" | "en", org: { name: string; country?: string | null }): { subject: string; body: string } {
+export function accessRequestEmail(entry: Pick<DirectoryEntry, "name" | "categories"> & { key?: string }, lang: "fr" | "en", org: { name: string; country?: string | null }): { subject: string; body: string } {
   const cats = entry.categories.join(", ") || (lang === "fr" ? "vos produits" : "your products");
+  // Questions propres au fournisseur (fiche d'intégration), en français uniquement : jamais traduites automatiquement.
+  const specific = lang === "fr" && entry.key ? (B2B_PROFILES[entry.key]?.questions ?? []) : [];
   if (lang === "fr") {
     return {
       subject: `Demande d'ouverture de compte professionnel et d'accès catalogue — ${org.name}`,
@@ -196,6 +199,7 @@ export function accessRequestEmail(entry: Pick<DirectoryEntry, "name" | "categor
         "3. La disponibilité du stock et les délais / frais de livraison vers la France.",
         "4. Les conditions de garantie, de retour et, pour les appareils reconditionnés, la définition de vos grades.",
         "5. S'il existe un fichier catalogue ou un flux automatisé (CSV, Excel, XML, JSON ou API) comprenant références, EAN, prix, stock et MOQ, ainsi que sa fréquence de mise à jour et ses conditions d'utilisation.",
+        ...specific.map((q, i) => `${i + 6}. ${q}`),
         "",
         "Nous intégrons les tarifs de nos fournisseurs dans notre logiciel de gestion de stock ; un fichier ou un flux régulier nous permettrait de vous consulter en priorité.",
         "",
@@ -379,6 +383,7 @@ export async function directoryForOrg(ctx: OrgContext): Promise<{ entries: Direc
       check: check
         ? { checkedAt: check.checked_at, reachable: check.reachable, httpStatus: check.http_status, robotsFound: check.robots_found, robotsDisallowAll: check.robots_disallow_all, sitemapFound: check.sitemap_found, platform: check.platform, message: check.message }
         : null,
+      b2b: B2B_PROFILES[e.key] ? { ...B2B_PROFILES[e.key]!, methodLabel: B2B_METHOD_LABEL[B2B_PROFILES[e.key]!.method], automationLabel: AUTOMATION_LABEL[B2B_PROFILES[e.key]!.automation] } : null,
       email: { fr: accessRequestEmail(e, "fr", { name: ctx.organization.name, country: ctx.organization.country }), en: accessRequestEmail(e, "en", { name: ctx.organization.name, country: ctx.organization.country }) },
     };
   });
