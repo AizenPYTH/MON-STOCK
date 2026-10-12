@@ -97,7 +97,7 @@ export const TabHeader = markHeader(function TabHeader<T extends string = string
   sub?: string;
   right?: ReactNode;
   avatar?: boolean;
-  hero?: { value: string; label?: string; stats?: HeaderStat[] };
+  hero?: { value: string; label?: string; sub?: string; color?: string; stats?: HeaderStat[] };
   tabs?: HeaderTabs<T>;
 }) {
   const inTabs = useInTabs();
@@ -127,7 +127,7 @@ function AccountAvatar() {
 }
 
 /** En-tête d'écran de détail (bandeau nuit) : « ‹ Parent », action à droite, titre et sous-titre facultatifs. */
-export const DetailHeader = markHeader(function DetailHeader({ parentLabel, right, onBack, title, sub, hero }: { parentLabel: string; right?: ReactNode; onBack?: () => void; title?: string; sub?: string; hero?: { value: string; label?: string; stats?: HeaderStat[] } }) {
+export const DetailHeader = markHeader(function DetailHeader({ parentLabel, right, onBack, title, sub, hero }: { parentLabel: string; right?: ReactNode; onBack?: () => void; title?: string; sub?: string; hero?: { value: string; label?: string; sub?: string; color?: string; stats?: HeaderStat[] } }) {
   return <NightHeader back={{ label: parentLabel, onPress: onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/today"))) }} right={right} title={title} sub={sub} hero={hero} />;
 });
 

@@ -10,7 +10,8 @@ import { Txt } from "~/components/ui/text";
  * (26/32 tabulaire) et unité. Aucun TextInput : la valeur est saisie avec le `Keypad`.
  *  - active : fond blanc, bordure 2 bleu nuit ;
  *  - missing : bordure pointillée ambre, valeur « — » ;
- *  - highlight : résultat mis en avant (fond bleu nuit, valeur 30/36 claire).
+ *  - highlight : résultat mis en avant (fond bleu nuit, valeur 30/36 en menthe, négatif en rose) ;
+ *  - caret : curseur après la valeur (case en cours de saisie) ; badge : pastille menthe à droite.
  */
 export function ValueField({
   label,
@@ -20,6 +21,10 @@ export function ValueField({
   missing = false,
   highlight = false,
   tag,
+  sub,
+  badge,
+  caret = false,
+  negative = false,
   error,
   onPress,
   testID,
@@ -31,6 +36,13 @@ export function ValueField({
   missing?: boolean;
   highlight?: boolean;
   tag?: string;
+  /** ligne sous le libellé (« marge 25 % ») */
+  sub?: string | null;
+  /** pastille menthe à droite (« moins cher ») */
+  badge?: string;
+  caret?: boolean;
+  /** résultat négatif (rose sur fond nuit) */
+  negative?: boolean;
   error?: string;
   onPress?: () => void;
   testID?: string;
@@ -38,7 +50,8 @@ export function ValueField({
   const { compact } = useLayout();
   const shown = missing && !value ? "—" : value || "0";
   const bg = highlight ? color.brand : active ? color.surface : color.bg;
-  const fg = highlight ? color.inkOnDark : value ? color.ink : color.ink3;
+  const blank = !value || value === "—";
+  const fg = highlight ? (blank ? color.inkOnDarkSubtle : negative ? color.dangerOnDark : color.mint) : blank ? color.ink3 : color.ink;
   const labelColor = highlight ? color.inkOnDarkMuted : active ? color.brand : color.ink3;
   const body = (
     <View
@@ -66,20 +79,33 @@ export function ValueField({
             {tag}
           </Txt>
         ) : null}
+        {sub ? (
+          <Txt variant="micro" color={highlight ? color.inkOnDarkMuted : color.ink3} style={{ fontFamily: "Manrope_700Bold" }}>
+            {sub}
+          </Txt>
+        ) : null}
       </View>
       <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, flexShrink: 1, alignSelf: compact ? "flex-end" : "auto" }}>
         <Txt variant="title1" num color={fg} adjustsFontSizeToFit numberOfLines={1} style={{ fontSize: highlight ? 30 : 26, lineHeight: highlight ? 36 : 32 }}>
           {shown}
         </Txt>
+        {caret ? <View style={{ width: 2, height: 24, backgroundColor: color.brand, alignSelf: "center" }} /> : null}
         {unit ? (
           <Txt variant="body" color={highlight ? color.inkOnDarkMuted : color.ink3} style={{ fontFamily: "Manrope_700Bold" }}>
             {unit}
           </Txt>
         ) : null}
+        {badge ? (
+          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: color.mint, alignSelf: "center", marginLeft: 4 }}>
+            <Txt variant="micro" color={color.onMint} style={{ fontFamily: "Manrope_800ExtraBold" }}>
+              {badge}
+            </Txt>
+          </View>
+        ) : null}
       </View>
     </View>
   );
-  const a11y = `${label} : ${missing && !value ? "non renseigné" : `${value || "0"}${unit ? ` ${unit}` : ""}`}${active ? ", champ en cours de saisie" : ""}${error ? `, ${error}` : ""}`;
+  const a11y = `${label} : ${missing && !value ? "non renseigné" : `${value || "0"}${unit ? ` ${unit}` : ""}`}${sub ? `, ${sub}` : ""}${badge ? `, ${badge}` : ""}${active ? ", champ en cours de saisie" : ""}${error ? `, ${error}` : ""}`;
   return (
     <View style={{ gap: 4 }}>
       {onPress ? (

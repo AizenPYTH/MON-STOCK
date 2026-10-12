@@ -217,8 +217,14 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
   - **Ventes** : chiffre d'affaires sur 7 jours, à expédier, remboursements et annonces dans le bandeau ; onglets **À expédier · Toutes · Annonces**. Ce sont les filtres existants : le « En attente » de la maquette demanderait un filtre multi-statut côté données, non modifié ;
   - **Outils** : listes groupées par usage ;
   - **TVA** : écran de référence « calculatrice ». Taux en grands onglets dans le bandeau, champs HT / TVA / TTC, clavier intégré sans clavier système, touche « Copier ». Le champ touché devient la saisie ; le calcul exact `evaluateVatForm` est inchangé ; un autre taux s'ajoute dans une feuille.
+- **Outils « version simple »** (handoff du 12 octobre 2026, `MON STOCK v3 - Outils.dc.html`) :
+  - catalogue en grille de 8 tuiles (TVA · Marge · Prix · Frais eBay · Remise · Devises · Port · Colis), un nom et un symbole ;
+  - les 6 calculs partagent `CalcScreen` (`components/calc-screen.tsx`) : onglets dans le bandeau, 2 à 4 cases, résultat en bleu nuit et chiffre menthe, clavier intégré, « Copier ». Calcul décimal exact dans `src/domain/tools/quick-calc.ts` (testé) ;
+  - Prix : onglets 10 / 20 / 30 / 40 % de marge voulue (sur le prix de vente), arrondi au centime supérieur. Frais eBay : aucun taux par défaut (le taux du canal eBay est repris s'il existe). Devises : taux BCE et sa date sur une ligne ;
+  - les versions complètes (régime de TVA, commissions, frais bancaires, modes de remise) restent accessibles par « Détaillé » (`/tools/*-detail`) ;
+  - Port : onglets 250 g · 500 g · 1 kg · 2 kg, une case par grille, « moins cher » marqué, prix modifiable au clavier et enregistré dans la grille (`setBandPrice`). Devis réels Sendcloud / Packlink / Boxtal : bouton « Devis » (`/tools/shipping-quotes`) ;
+  - Colis en 3 écrans : liste (point, nom, transporteur et heure, statut), ajout (case N° de suivi, Coller, Scanner avec `expo-camera`, transporteur détecté, « Suivre », options en feuille), détail (statut en grand dans le bandeau, étapes, « Actualiser »). Sans réponse d'une API : « Non vérifié » et « Site du transporteur ».
 - **Pas encore fait** :
-  - clavier intégré pour les autres outils (marge, prix de vente, frais eBay, remise, devises), qui gardent leurs champs actuels au nouveau style ;
   - titres des écrans de détail dans le bandeau (le titre reste dans le corps) ;
   - thème sombre.
 

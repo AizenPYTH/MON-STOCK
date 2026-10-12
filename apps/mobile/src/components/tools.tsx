@@ -24,8 +24,8 @@ export const TOOL_ICONS: Record<ToolIcon, LucideIcon> = {
   "trending-up": TrendingUp,
 };
 
-export const ToolHeader = markHeader(function ToolHeader({ title, description }: { title: string; description?: string }) {
-  return <DetailHeader parentLabel="Mes outils" title={title} sub={description} />;
+export const ToolHeader = markHeader(function ToolHeader({ title, description, parentLabel = "Outils" }: { title: string; description?: string; parentLabel?: string }) {
+  return <DetailHeader parentLabel={parentLabel} title={title} sub={description} />;
 });
 
 /**

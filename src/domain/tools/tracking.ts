@@ -57,6 +57,52 @@ export const TRACKING_STATUS_LABEL: Record<TrackingStatus, string> = {
   unknown: "Statut non disponible",
 };
 
+/** Libellé court (liste, bandeau du détail ; maquette v3 Outils). */
+export const TRACKING_STATUS_SHORT: Record<TrackingStatus, string> = {
+  pending: "En attente",
+  info_received: "Étiquette créée",
+  in_transit: "En transit",
+  out_for_delivery: "En livraison",
+  available_for_pickup: "En point relais",
+  failed_attempt: "Échec de livraison",
+  exception: "Incident",
+  delivered: "Livré",
+  returned: "Retourné",
+  expired: "Expiré",
+  not_found: "Numéro inconnu",
+  unknown: "Non vérifié",
+};
+
+export type ParcelTone = "problem" | "progress" | "unverified" | "delivered" | "waiting";
+
+/**
+ * Statut affiché d'un colis : « Non vérifié » tant qu'aucune API de suivi n'a répondu (jamais de
+ * statut inventé), sinon le statut renvoyé par l'API, avec sa tonalité (point de couleur).
+ */
+export function parcelDisplay(p: { status: TrackingStatus; provider: string | null; lastCheckedAt: string | null }): { label: string; tone: ParcelTone; verified: boolean } {
+  const verified = p.provider !== null && p.status !== "unknown";
+  if (!verified) return { label: "Non vérifié", tone: "unverified", verified: false };
+  const label = TRACKING_STATUS_SHORT[p.status];
+  if (p.status === "delivered") return { label, tone: "delivered", verified };
+  if (p.status === "exception" || p.status === "failed_attempt" || p.status === "returned") return { label, tone: "problem", verified };
+  if (p.status === "pending" || p.status === "info_received" || p.status === "not_found" || p.status === "expired") return { label, tone: "waiting", verified };
+  return { label, tone: "progress", verified };
+}
+
+/** « à l'instant », « il y a 5 min », « il y a 2 h », « hier », « il y a 3 j » (sans Intl). */
+export function relativeFr(iso: string | null, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const min = Math.max(0, Math.round((now.getTime() - t) / 60_000));
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `il y a ${h} h`;
+  const d = Math.round(h / 24);
+  return d <= 1 ? "hier" : `il y a ${d} j`;
+}
+
 /** Statuts finaux : plus d'actualisation automatique. */
 export const FINAL_STATUSES = new Set<TrackingStatus>(["delivered", "returned", "expired"]);
 

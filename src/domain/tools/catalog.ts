@@ -29,17 +29,19 @@ export interface ToolDefinition {
   route: string | null;
   /** le résultat dépend d'un service serveur (sinon calcul local et instantané) */
   usesServer: boolean;
+  /** tuile du catalogue (maquette v3 : un nom court et un symbole) ; null = hors grille */
+  tile?: { label: string; glyph: string; dark?: boolean } | null;
 }
 
 export const TOOLS: ToolDefinition[] = [
-  { id: "vat", title: "Calculateur de TVA", description: "HT → TTC, TTC → HT ou TVA seule, taux au choix.", icon: "percent", category: "tax_currency", availability: "available", route: "/tools/vat", usesServer: false },
-  { id: "margin", title: "Calculateur de marge", description: "Prix d'achat, prix de vente et frais → bénéfice et taux de marge.", icon: "calculator", category: "pricing", availability: "available", route: "/tools/margin", usesServer: false },
-  { id: "selling-price", title: "Calculateur de prix de vente", description: "Coût, frais et marge souhaitée → prix de vente nécessaire.", icon: "tag", category: "pricing", availability: "available", route: "/tools/selling-price", usesServer: false },
-  { id: "ebay-fees", title: "Calculateur de frais eBay", description: "Ce qu'il reste réellement après commissions et frais de vente.", icon: "receipt", category: "pricing", availability: "available", route: "/tools/ebay-fees", usesServer: false },
-  { id: "discount", title: "Calculateur de remise", description: "Prix remisé, pourcentage de remise ou prix initial.", icon: "badge-percent", category: "pricing", availability: "available", route: "/tools/discount", usesServer: false },
-  { id: "currency", title: "Convertisseur de devises", description: "Taux BCE datés et frais bancaires séparés.", icon: "coins", category: "tax_currency", availability: "available", route: "/tools/currency", usesServer: true },
-  { id: "shipping", title: "Comparateur de frais de port", description: "Transporteurs classés par prix ou rapidité selon le colis.", icon: "truck", category: "shipping", availability: "available", route: "/tools/shipping", usesServer: true },
-  { id: "tracking", title: "Suivi de colis", description: "Statut, étapes et livraison estimée de vos envois.", icon: "package-search", category: "shipping", availability: "available", route: "/tools/tracking", usesServer: true },
+  { id: "vat", title: "Calculateur de TVA", description: "HT → TTC, TTC → HT ou TVA seule, taux au choix.", icon: "percent", category: "tax_currency", availability: "available", route: "/tools/vat", usesServer: false, tile: { label: "TVA", glyph: "%", dark: true } },
+  { id: "margin", title: "Calculateur de marge", description: "Prix d'achat, prix de vente et frais → bénéfice et taux de marge.", icon: "calculator", category: "pricing", availability: "available", route: "/tools/margin", usesServer: false, tile: { label: "Marge", glyph: "+€" } },
+  { id: "selling-price", title: "Calculateur de prix de vente", description: "Coût, frais et marge souhaitée → prix de vente nécessaire.", icon: "tag", category: "pricing", availability: "available", route: "/tools/selling-price", usesServer: false, tile: { label: "Prix", glyph: "€" } },
+  { id: "ebay-fees", title: "Calculateur de frais eBay", description: "Ce qu'il reste réellement après commissions et frais de vente.", icon: "receipt", category: "pricing", availability: "available", route: "/tools/ebay-fees", usesServer: false, tile: { label: "Frais eBay", glyph: "eB" } },
+  { id: "discount", title: "Calculateur de remise", description: "Prix remisé, pourcentage de remise ou prix initial.", icon: "badge-percent", category: "pricing", availability: "available", route: "/tools/discount", usesServer: false, tile: { label: "Remise", glyph: "−%" } },
+  { id: "currency", title: "Convertisseur de devises", description: "Taux BCE datés et frais bancaires séparés.", icon: "coins", category: "tax_currency", availability: "available", route: "/tools/currency", usesServer: true, tile: { label: "Devises", glyph: "$€" } },
+  { id: "shipping", title: "Comparateur de frais de port", description: "Transporteurs classés par prix ou rapidité selon le colis.", icon: "truck", category: "shipping", availability: "available", route: "/tools/shipping", usesServer: true, tile: { label: "Port", glyph: "kg" } },
+  { id: "tracking", title: "Suivi de colis", description: "Statut, étapes et livraison estimée de vos envois.", icon: "package-search", category: "shipping", availability: "available", route: "/tools/tracking", usesServer: true, tile: { label: "Colis", glyph: "→", dark: true } },
   { id: "supplier-prices", title: "Comparateur de prix fournisseurs", description: "Offres réelles de vos fournisseurs pour un même produit (radar).", icon: "scale", category: "sourcing", availability: "available", route: "/radar", usesServer: true },
   { id: "purchase-profitability", title: "Rentabilité d'un lot", description: "Coût d'un lot réparti par article et revente estimée.", icon: "trending-up", category: "sourcing", availability: "soon", route: null, usesServer: false },
 ];
@@ -47,6 +49,11 @@ export const TOOLS: ToolDefinition[] = [
 export function toolsByCategory(tools: ToolDefinition[] = TOOLS): { category: ToolCategory; label: string; tools: ToolDefinition[] }[] {
   const order: ToolCategory[] = ["pricing", "tax_currency", "shipping", "sourcing"];
   return order.map((category) => ({ category, label: TOOL_CATEGORY_LABEL[category], tools: tools.filter((t) => t.category === category) })).filter((g) => g.tools.length > 0);
+}
+
+/** Tuiles du catalogue, dans l'ordre de la maquette (TVA · Marge · Prix · Frais eBay · Remise · Devises · Port · Colis). */
+export function toolTiles(tools: ToolDefinition[] = TOOLS): (ToolDefinition & { tile: NonNullable<ToolDefinition["tile"]> })[] {
+  return tools.filter((t): t is ToolDefinition & { tile: NonNullable<ToolDefinition["tile"]> } => Boolean(t.tile) && t.availability === "available" && t.route !== null);
 }
 
 export function findTool(id: string): ToolDefinition | undefined {

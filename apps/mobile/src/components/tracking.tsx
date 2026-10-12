@@ -1,5 +1,6 @@
-import { CARRIER_LABEL, PROBLEM_STATUSES, TRACKING_STATUS_LABEL, type TrackingStatus } from "@/domain/tools/tracking";
+import { CARRIER_LABEL, PROBLEM_STATUSES, TRACKING_STATUS_LABEL, type ParcelTone, type TrackingStatus } from "@/domain/tools/tracking";
 import { StatusChip, type ChipTone } from "~/components/ui";
+import { color } from "~/theme/tokens";
 import { brandById, brandFromText, type BrandEntry } from "~/brands/registry";
 import type { TrackedParcel } from "~/data/tracking";
 
@@ -37,3 +38,12 @@ export function frDateTime(iso: string | null): string | null {
   if (!m) return iso;
   return `${m[3]}/${m[2]}/${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ""}`;
 }
+
+/** Couleurs de la maquette : point (fond clair), texte (contraste AA) et chiffre du bandeau nuit. */
+export const PARCEL_TONE: Record<ParcelTone, { dot: string; text: string; onDark: string }> = {
+  problem: { dot: color.danger, text: color.dangerInk, onDark: color.dangerOnDark },
+  progress: { dot: color.brand, text: color.ink, onDark: color.inkOnDark },
+  unverified: { dot: color.accent, text: color.accentInkOnSoft, onDark: color.accent },
+  delivered: { dot: color.success, text: color.success, onDark: color.mint },
+  waiting: { dot: color.ink3, text: color.ink3, onDark: color.inkOnDarkMuted },
+};

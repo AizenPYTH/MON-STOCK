@@ -1,214 +1,147 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, View } from "react-native";
+import { View } from "react-native";
 import { router } from "expo-router";
-import { formatMoneyDec } from "@/domain/tools/decimal";
-import { compareManualCards, highlights, optionFromQuote, parseParcel, sortOptions, type Parcel, type ShippingOption, type ShippingSort } from "@/domain/tools/shipping";
-import type { ShippingQuotesDTO } from "@/features/mobile-api/contract";
-import { AmountField, EstimateNote, ToolHeader } from "~/components/tools";
-import { brandById, brandFromText } from "~/brands/registry";
-import { AlertBanner, BrandDisclaimer, BrandMark, Button, Card, EmptyState, Screen, SectionHeader, Segmented, StatusChip, TextField, Txt } from "~/components/ui";
-import { useRateCards, useShippingQuotes, useToolsStatus } from "~/data/hooks";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import { formatDec } from "@/domain/tools/decimal";
+import { PORT_DEFAULT_CARRIERS, PORT_WEIGHTS, portRows, setBandPrice, toEntry } from "@/domain/tools/quick-calc";
+import type { RateCard } from "@/domain/tools/shipping";
+import { HeaderAction, showEntry } from "~/components/calc-screen";
+import { applyKey, ErrorState, Keypad, NightHeader, Screen, SkeletonList, Txt, useToast, ValueField, type KeypadKey } from "~/components/ui";
+import { useRateCards, useSaveRateCard } from "~/data/hooks";
+import type { RateCardInput } from "~/data/shipping";
 import { userMessage } from "~/lib/errors";
+import { useLayout } from "~/theme/layout";
 import { color, space } from "~/theme/tokens";
 
-const frDate = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : null);
+const today = () => new Date().toISOString().slice(0, 10);
 
-/**
- * Comparateur de frais de port : devis réels des plateformes connectées côté serveur (Packlink
- * PRO, Boxtal, Sendcloud — consultation de tarifs uniquement) + vos grilles saisies, présentées
- * comme des estimations. Aucun tarif inventé : sans source, aucun prix.
- */
-export default function ShippingToolScreen() {
-  const [form, setForm] = useState({ weightKg: "", lengthCm: "", widthCm: "", heightCm: "", fromCountry: "FR", fromPostcode: "", toCountry: "FR", toPostcode: "", fromCity: "", toCity: "" });
-  const [sort, setSort] = useState<ShippingSort>("price");
-  const [submitted, setSubmitted] = useState<Parcel | null>(null);
-  const [apiResult, setApiResult] = useState<ShippingQuotesDTO | null>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
-  const status = useToolsStatus();
-  const cards = useRateCards();
-  const quotes = useShippingQuotes();
-  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
-  const parsed = parseParcel(form);
-  const [showErrors, setShowErrors] = useState(false);
-  const errors = showErrors ? parsed.errors : {};
-  const apiProviders = status.data?.shipping.filter((p) => p.configured) ?? [];
-
-  function compare() {
-    setShowErrors(true);
-    if (!parsed.parcel) return;
-    const parcel = parsed.parcel;
-    setSubmitted(parcel);
-    setApiResult(null);
-    setApiError(null);
-    if (apiProviders.length > 0) {
-      if (!form.fromPostcode.trim() || !form.toPostcode.trim()) {
-        setApiError("Codes postaux de départ et d'arrivée requis pour interroger les plateformes.");
-        return;
-      }
-      quotes.mutate(
-        { weightKg: parcel.weightKg, lengthCm: parcel.lengthCm, widthCm: parcel.widthCm, heightCm: parcel.heightCm, fromCountry: parcel.fromCountry, toCountry: parcel.toCountry, fromPostcode: form.fromPostcode.trim(), toPostcode: form.toPostcode.trim(), fromCity: form.fromCity.trim() || undefined, toCity: form.toCity.trim() || undefined },
-        { onSuccess: setApiResult, onError: (e) => setApiError(userMessage(e)) },
-      );
-    }
-  }
-
-  let options: ShippingOption[] = [];
-  let excluded: { key: string; carrier: string; service: string; reason: string }[] = [];
-  if (submitted) {
-    const manual = compareManualCards(cards.data ?? [], submitted, sort);
-    excluded = manual.excluded;
-    const api = (apiResult?.quotes ?? []).map((q) => optionFromQuote(q, submitted)).filter((o): o is ShippingOption => o !== null);
-    options = sortOptions([...api, ...manual.options], sort);
-  }
-  const hl = highlights(options);
-  const noSource = apiProviders.length === 0 && (cards.data?.length ?? 0) === 0;
-
-  return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <Screen>
-        <ToolHeader title="Comparateur de frais de port" description="Comparez les transporteurs pour un colis : prix, délai et services." />
-        <Card padded style={{ gap: space[2] }}>
-          <Txt variant="label">Sources de tarifs</Txt>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-            {(status.data?.shipping ?? []).map((p) => (
-              <StatusChip key={p.id} label={`${p.label} : ${p.configured ? "connecté" : "non configuré"}`} tone={p.configured ? "success" : "neutral"} />
-            ))}
-            <StatusChip label={`Vos grilles : ${cards.data?.length ?? 0}`} tone={(cards.data?.length ?? 0) > 0 ? "success" : "neutral"} />
-          </View>
-          {status.isError ? <Txt variant="label">État des plateformes indisponible (hors ligne ?). Vos grilles restent utilisables.</Txt> : null}
-          <Button label="Gérer mes grilles tarifaires" variant="ghost" compact onPress={() => router.push("/tools/shipping-rates")} />
-        </Card>
-        {noSource && !status.isPending && !cards.isPending ? (
-          <AlertBanner text="Aucun tarif réel disponible : aucune plateforme d'expédition n'est connectée et vous n'avez saisi aucune grille. MON STOCK n'invente aucun prix." tone="dark" onPress={() => router.push("/tools/shipping-rates")} />
-        ) : null}
-        <SectionHeader title="Colis" />
-        <Card padded style={{ gap: space[3] }}>
-          <AmountField testID="ship-weight" label="Poids" value={form.weightKg} onChangeText={(v) => set("weightKg", v)} suffix="kg" placeholder="0,5" error={errors.weightKg} />
-          <View style={{ flexDirection: "row", gap: space[2] }}>
-            <View style={{ flex: 1 }}>
-              <AmountField label="Longueur" value={form.lengthCm} onChangeText={(v) => set("lengthCm", v)} suffix="cm" placeholder="—" error={errors.lengthCm} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AmountField label="Largeur" value={form.widthCm} onChangeText={(v) => set("widthCm", v)} suffix="cm" placeholder="—" error={errors.widthCm} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AmountField label="Hauteur" value={form.heightCm} onChangeText={(v) => set("heightCm", v)} suffix="cm" placeholder="—" error={errors.heightCm} />
-            </View>
-          </View>
-        </Card>
-        <SectionHeader title="Trajet" />
-        <Card padded style={{ gap: space[3] }}>
-          <View style={{ flexDirection: "row", gap: space[2] }}>
-            <View style={{ width: 90 }}>
-              <TextField label="Départ" value={form.fromCountry} onChangeText={(v) => set("fromCountry", v.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))} autoCapitalize="characters" error={errors.fromCountry} placeholder="FR" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <TextField label="Code postal" value={form.fromPostcode} onChangeText={(v) => set("fromPostcode", v.slice(0, 12))} placeholder="75001" keyboardType="numbers-and-punctuation" />
-            </View>
-          </View>
-          <View style={{ flexDirection: "row", gap: space[2] }}>
-            <View style={{ width: 90 }}>
-              <TextField label="Arrivée" value={form.toCountry} onChangeText={(v) => set("toCountry", v.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))} autoCapitalize="characters" error={errors.toCountry} placeholder="DE" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <TextField label="Code postal" value={form.toPostcode} onChangeText={(v) => set("toPostcode", v.slice(0, 12))} placeholder="10115" keyboardType="numbers-and-punctuation" />
-            </View>
-          </View>
-          {apiProviders.some((p) => p.id === "boxtal") ? (
-            <View style={{ flexDirection: "row", gap: space[2] }}>
-              <View style={{ flex: 1 }}>
-                <TextField label="Ville de départ" value={form.fromCity} onChangeText={(v) => set("fromCity", v.slice(0, 80))} placeholder="Facultatif" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <TextField label="Ville d'arrivée" value={form.toCity} onChangeText={(v) => set("toCity", v.slice(0, 80))} placeholder="Facultatif" />
-              </View>
-            </View>
-          ) : null}
-        </Card>
-        <Button testID="ship-compare" label="Comparer" onPress={compare} loading={quotes.isPending} />
-        {submitted ? (
-          <>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] }}>
-              <SectionHeader title={`${options.length} option${options.length > 1 ? "s" : ""}`} />
-              <View style={{ width: 200 }}>
-                <Segmented
-                  options={[
-                    { value: "price" as ShippingSort, label: "Prix" },
-                    { value: "speed" as ShippingSort, label: "Rapidité" },
-                  ]}
-                  value={sort}
-                  onChange={setSort}
-                />
-              </View>
-            </View>
-            {apiError ? <AlertBanner text={apiError} tone="dark" /> : null}
-            {(apiResult?.providers ?? [])
-              .filter((p) => p.state !== "not_configured" && p.message)
-              .map((p) => (
-                <Txt key={p.id} variant="label">
-                  {p.label} : {p.message}
-                </Txt>
-              ))}
-            {options.length === 0 && !quotes.isPending ? (
-              <EmptyState
-                title="Aucun tarif pour ce colis"
-                description={noSource ? "Connectez une plateforme d'expédition (administrateur) ou saisissez vos grilles tarifaires." : "Aucune grille ni plateforme ne couvre ce poids, ces dimensions ou ce trajet."}
-                actions={[{ label: "Saisir une grille", onPress: () => router.push("/tools/shipping-rates/new") }]}
-              />
-            ) : null}
-            {options.map((o) => (
-              <OptionCard key={o.key} option={o} cheapest={hl.cheapest === o.key} fastest={hl.fastest === o.key} />
-            ))}
-            {excluded.length ? (
-              <Card padded style={{ gap: 4 }}>
-                <Txt variant="label" color={color.ink}>
-                  Grilles non applicables
-                </Txt>
-                {excluded.map((x) => (
-                  <Txt key={x.key} variant="label">
-                    {x.carrier} {x.service} : {x.reason}
-                  </Txt>
-                ))}
-              </Card>
-            ) : null}
-          </>
-        ) : null}
-        <BrandDisclaimer />
-        <EstimateNote text="Devis réels : prix renvoyés par la plateforme pour votre compte au moment de la demande (HT/TTC indiqué seulement si l'API le précise). Estimations : vos grilles saisies, à jour selon la date de vérification indiquée. Aucune étiquette n'est achetée depuis cet écran ; le prix final dépend de l'étiquette achetée." />
-      </Screen>
-    </KeyboardAvoidingView>
-  );
+function inputOf(card: RateCard, bands: RateCard["bands"]): RateCardInput {
+  return { carrier: card.carrier, service: card.service, fromCountries: card.fromCountries, toCountries: card.toCountries, bands, currency: card.currency, maxLengthCm: card.maxLengthCm, maxDimensionsSumCm: card.maxDimensionsSumCm, volumetricDivisor: card.volumetricDivisor, transitDaysMin: card.transitDaysMin, transitDaysMax: card.transitDaysMax, tracking: card.tracking, deliveryMode: card.deliveryMode, notes: card.notes, verifiedAt: today() };
 }
 
-function OptionCard({ option: o, cheapest, fastest }: { option: ShippingOption; cheapest: boolean; fastest: boolean }) {
-  const transit = o.transitDaysMin !== null || o.transitDaysMax !== null ? (o.transitDaysMin === o.transitDaysMax || o.transitDaysMax === null ? `${o.transitDaysMin ?? o.transitDaysMax} j` : `${o.transitDaysMin ?? "?"}–${o.transitDaysMax} j`) : "Délai non communiqué";
-  return (
-    <Card padded style={{ gap: space[2] }} accessibilityLabel={`${o.carrier} ${o.service}, ${formatMoneyDec(o.price, o.currency)}, ${transit}`}>
-      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space[2] }}>
-        <View style={{ flex: 1 }}>
-          <BrandMark brand={brandFromText(o.carrier)} fallbackName={o.carrier} kind="carrier" detail={o.service} testID={`ship-carrier-${o.key}`} />
-        </View>
-        <View style={{ alignItems: "flex-end" }}>
-          <Txt variant="kpiSm" num>
-            {formatMoneyDec(o.price, o.currency)}
+/**
+ * Port (maquette v3 « version simple ») : onglets de poids, une case par transporteur avec VOTRE
+ * prix (grilles enregistrées), le moins cher marqué. Toucher un prix permet de le modifier au
+ * clavier ; « OK » l'enregistre dans la grille. Aucun tarif inventé : sans prix, « — ».
+ * Devis réels des plateformes connectées (Sendcloud…) : bouton « Devis ».
+ */
+export default function PortToolScreen() {
+  const cards = useRateCards();
+  const save = useSaveRateCard();
+  const toast = useToast();
+  const insets = useSafeAreaInsets();
+  const { compact, screenX } = useLayout();
+  const [tab, setTab] = useState(String(PORT_WEIGHTS[1]!.kg));
+  const [active, setActive] = useState<string | null>(null);
+  const [entry, setEntry] = useState("");
+  const weight = Number(tab);
+
+  const header = (
+    <NightHeader
+      back={{ label: "Outils", onPress: () => (router.canGoBack() ? router.back() : router.replace("/tools")) }}
+      right={
+        <>
+          <Txt variant="body" color={color.inkOnDarkMuted} accessibilityRole="header" style={{ fontFamily: "Manrope_800ExtraBold" }}>
+            Port
           </Txt>
-          <Txt variant="label">{o.origin === "manual" ? "estimation (votre grille)" : o.priceTax === "incl" ? "TTC" : o.priceTax === "excl" ? "HT" : "HT/TTC inconnu"}</Txt>
+          <HeaderAction label="Devis" href="/tools/shipping-quotes" testID="port-quotes" />
+        </>
+      }
+      tabs={{ value: tab, onChange: (v) => {
+          setTab(v);
+          setActive(null);
+          setEntry("");
+        }, size: "lg", options: PORT_WEIGHTS.map((w) => ({ value: String(w.kg), label: w.label, a11y: `colis de ${w.label}` })) }}
+    />
+  );
+  if (cards.isPending)
+    return (
+      <Screen scroll={false} header={header}>
+        <SkeletonList rows={3} thumb={false} />
+      </Screen>
+    );
+  if (cards.isError)
+    return (
+      <Screen scroll={false} header={header}>
+        <ErrorState description={`Grilles indisponibles : ${userMessage(cards.error)}`} onRetry={() => void cards.refetch()} />
+      </Screen>
+    );
+
+  const list = cards.data;
+  const rows = list.length ? portRows(list, weight) : PORT_DEFAULT_CARRIERS.map((c) => ({ id: `new:${c}`, label: c, price: null, cheapest: false }));
+
+  function focus(id: string) {
+    if (id === active) return;
+    const row = rows.find((r) => r.id === id);
+    setActive(id);
+    setEntry(toEntry(row?.price ?? null));
+  }
+  function onKey(k: KeypadKey) {
+    if (!active) return;
+    setEntry((e) => applyKey(e, k));
+  }
+  function commit() {
+    if (!active) return;
+    const id = active;
+    const card = list.find((c) => c.id === id);
+    const carrier = id.startsWith("new:") ? id.slice(4) : null;
+    const input: RateCardInput | null = card
+      ? inputOf(card, setBandPrice(card.bands, weight, entry))
+      : carrier && entry
+        ? { carrier, service: "", fromCountries: ["FR"], toCountries: ["FR"], bands: setBandPrice([], weight, entry), currency: "EUR", maxLengthCm: null, maxDimensionsSumCm: null, volumetricDivisor: null, transitDaysMin: null, transitDaysMax: null, tracking: null, deliveryMode: null, notes: null, verifiedAt: today() }
+        : null;
+    if (!input) {
+      setActive(null);
+      return;
+    }
+    if (input.bands.length === 0) {
+      toast({ text: "Une grille garde au moins un prix : gérez-la depuis « Devis » → « Gérer mes grilles ».", tone: "error" });
+      return;
+    }
+    save.mutate(
+      { id: card ? card.id : null, input },
+      {
+        onSuccess: () => {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          toast({ text: "Prix enregistré", tone: "success" });
+          setActive(null);
+          setEntry("");
+        },
+        onError: (e) => toast({ text: userMessage(e), tone: "error" }),
+      },
+    );
+  }
+
+  return (
+    <Screen
+      contentGap={space[2] + 2}
+      header={header}
+      footer={
+        <View style={{ paddingHorizontal: screenX, paddingTop: space[2], paddingBottom: Math.max(insets.bottom, space[3]) + space[2], backgroundColor: color.surface }}>
+          <Keypad onKey={onKey} keyHeight={compact ? 42 : 56} action={{ label: save.isPending ? "…" : "OK", onPress: commit, disabled: !active || save.isPending }} />
         </View>
-      </View>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
-        {cheapest ? <StatusChip label="Le moins cher" tone="success" /> : null}
-        {fastest ? <StatusChip label="Le plus rapide" tone="dark" /> : null}
-        <StatusChip label={transit} tone="neutral" />
-        <StatusChip label={o.tracking === true ? "Suivi inclus" : o.tracking === false ? "Sans suivi" : "Suivi : non précisé"} tone="neutral" />
-        <StatusChip label={o.origin === "api" ? `Devis réel ${brandById(o.provider)?.name ?? o.provider}` : "Estimation : votre grille"} tone={o.origin === "api" ? "accent" : "neutral"} />
-      </View>
-      {o.deliveryMode ? <Txt variant="label">{o.deliveryMode}</Txt> : null}
-      {o.restrictions.map((r) => (
-        <Txt key={r} variant="label">
-          – {r}
-        </Txt>
-      ))}
-      <Txt variant="label">{o.origin === "api" ? `Devis du ${frDate(o.quotedAt)} ${o.quotedAt?.slice(11, 16) ?? ""} UTC` : o.quotedAt ? `Grille vérifiée le ${frDate(o.quotedAt)}` : "Grille : date de vérification non renseignée"}</Txt>
-    </Card>
+      }
+    >
+      {rows.map((r) => {
+        const on = r.id === active;
+        return (
+          <ValueField
+            key={r.id}
+            testID={`port-${r.label}`}
+            label={r.label}
+            unit="€"
+            value={on ? showEntry(entry) : r.price ? formatDec(r.price) : "—"}
+            active={on}
+            caret={on}
+            badge={!on && r.cheapest ? "moins cher" : undefined}
+            onPress={() => focus(r.id)}
+          />
+        );
+      })}
+      <Txt variant="micro" color={color.ink3} style={{ textAlign: "center", fontFamily: "Manrope_600SemiBold" }}>
+        {list.length ? "Vos tarifs · touchez un prix pour le modifier" : "Saisissez vos tarifs : touchez un transporteur, tapez le prix, OK"}
+      </Txt>
+    </Screen>
   );
 }

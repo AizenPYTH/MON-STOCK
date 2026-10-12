@@ -21,7 +21,7 @@ export function useOnDark() {
 }
 
 export type HeaderStat = { label: string; value: string; tone?: "positive" | "warning" | "negative" };
-export type HeaderTabs<T extends string> = { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; size?: "md" | "lg" };
+export type HeaderTabs<T extends string> = { options: { value: T; label: string; unit?: string; a11y?: string }[]; value: T; onChange: (v: T) => void; size?: "md" | "lg" };
 
 const STAT_TONE = { positive: color.mint, warning: color.accent, negative: color.dangerOnDark } as const;
 
@@ -40,7 +40,7 @@ export function NightHeader<T extends string = string>({
   over?: string;
   title?: string;
   sub?: string;
-  hero?: { value: string; label?: string; stats?: HeaderStat[] };
+  hero?: { value: string; label?: string; sub?: string; color?: string; stats?: HeaderStat[] };
   tabs?: HeaderTabs<T>;
   /** gère la zone de statut (désactivé si l'écran la gère déjà) */
   topInset?: boolean;
@@ -89,15 +89,20 @@ export function NightHeader<T extends string = string>({
             </Txt>
           ) : null}
           {hero ? (
-            <View style={{ marginTop: space[3], gap: space[2] }} accessible accessibilityLabel={`${hero.label ? `${hero.label} : ` : ""}${hero.value}${hero.stats?.length ? `. ${hero.stats.map((s) => `${s.label} ${s.value}`).join(", ")}` : ""}`}>
+            <View style={{ marginTop: space[3], gap: space[2] }} accessible accessibilityLabel={`${hero.label ? `${hero.label} : ` : ""}${hero.value}${hero.sub ? `, ${hero.sub}` : ""}${hero.stats?.length ? `. ${hero.stats.map((s) => `${s.label} ${s.value}`).join(", ")}` : ""}`}>
               {hero.label ? (
                 <Txt variant="label" color={color.inkOnDarkMuted}>
                   {hero.label}
                 </Txt>
               ) : null}
-              <Txt variant="hero" num color={color.inkOnDark} adjustsFontSizeToFit numberOfLines={1}>
+              <Txt variant="hero" num color={hero.color ?? color.inkOnDark} adjustsFontSizeToFit numberOfLines={1}>
                 {hero.value}
               </Txt>
+              {hero.sub ? (
+                <Txt variant="label" color={color.inkOnDarkMuted} style={{ marginTop: -space[1] }}>
+                  {hero.sub}
+                </Txt>
+              ) : null}
               {hero.stats?.length ? (
                 <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: space[5], rowGap: space[2] }}>
                   {hero.stats.map((s) => (
@@ -131,17 +136,22 @@ function HeaderTabsRow<T extends string>({ tabs, large }: { tabs: HeaderTabs<T>;
             key={o.value}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            accessibilityLabel={o.label}
+            accessibilityLabel={o.a11y ?? (o.unit ? `${o.label} ${o.unit}` : o.label)}
             onPress={() => {
               if (selected) return;
               void Haptics.selectionAsync().catch(() => {});
               tabs.onChange(o.value);
             }}
-            style={{ flex: 1, height: large ? 64 : 46, alignItems: "center", justifyContent: "center", borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: selected ? color.surface : "transparent" }}
+            style={{ flex: 1, height: large ? 70 : 46, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 2, paddingHorizontal: 2, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: selected ? color.surface : "transparent" }}
           >
-            <Txt variant="body" color={selected ? color.ink : color.inkOnDarkSubtle} numberOfLines={1} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: large ? 28 : 15, lineHeight: large ? 34 : 20 }}>
+            <Txt variant="body" color={selected ? color.ink : color.inkOnDarkSubtle} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.2} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: large ? (o.label.length > 4 ? 21 : 28) : 15, lineHeight: large ? 34 : 20, letterSpacing: large ? -0.8 : 0, flexShrink: 1 }}>
               {o.label}
             </Txt>
+            {o.unit ? (
+              <Txt variant="body" color={selected ? color.ink : color.inkOnDarkSubtle} maxFontSizeMultiplier={1.2} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: large ? 16 : 13, lineHeight: large ? 22 : 18 }}>
+                {o.unit}
+              </Txt>
+            ) : null}
           </Pressable>
         );
       })}
