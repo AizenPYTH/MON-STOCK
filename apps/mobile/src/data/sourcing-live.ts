@@ -69,6 +69,8 @@ export interface LibraryEntry {
   notes: string;
   check: { status: string; checkedAt: string; productCount: number | null; message: string | null; sample: unknown } | null;
   activatable: boolean;
+  /** accès automatisé interdit par les conditions du fournisseur (raison affichée) */
+  blocked?: string | null;
   sourceId: string | null;
 }
 

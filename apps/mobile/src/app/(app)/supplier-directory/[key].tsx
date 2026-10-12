@@ -102,6 +102,29 @@ export default function SupplierDirectoryEntryScreen() {
         <Button label="Access request e-mail (English)" variant="ghost" onPress={() => mail("en")} />
       </View>
 
+      {e.b2b ? (
+        <>
+          <SectionHeader title="Intégration B2B" />
+          <Card padded style={{ gap: space[2] }} accessibilityLabel={`Intégration : ${e.b2b.methodLabel}`}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              <StatusChip label={e.b2b.methodLabel} tone="dark" />
+              <StatusChip label={e.b2b.automationLabel} tone={e.b2b.automation === "forbidden" ? "danger" : e.b2b.automation === "on_agreement" ? "success" : "neutral"} />
+            </View>
+            <Txt variant="body">{e.b2b.activation}</Txt>
+            <Txt variant="label" color={color.ink}>
+              Questions à poser au fournisseur
+            </Txt>
+            {e.b2b.questions.map((q) => (
+              <Txt key={q} variant="label">
+                – {q}
+              </Txt>
+            ))}
+            <Txt variant="label">Informations tirées d'extraits publics le {e.b2b.checkedAt.split("-").reverse().join("/")}, non vérifiées avec un compte : à confirmer avec le fournisseur. Les questions sont reprises dans l'e-mail en français.</Txt>
+          </Card>
+          {permissions.canWrite && e.b2b.method === "remote_feed" ? <Button label="Ajouter le flux de ce fournisseur" variant="secondary" onPress={() => router.push("/sourcing-feed-new")} testID="directory-add-feed" /> : null}
+        </>
+      ) : null}
+
       <SectionHeader title="Fiche" />
       <Card padded style={{ gap: space[2] }}>
         {facts

@@ -140,6 +140,72 @@ Principe : on **étend** les tables et services existants ; aucune table concurr
 - **API ThePhoneHub et DistriHUB** : aucune documentation publique. Le connecteur API sera écrit sur leur documentation réelle ; aucune réponse n'est simulée.
 - **Aucun achat, aucune commande, aucune publication.** Le radar ne fait que recommander.
 
-## 3. État d'avancement
+## 3. État d'avancement (12/10/2026)
 
-Mis à jour en fin de mission (section 4).
+### 3.1 Livré (branche `claude/laughing-bardeen-bdn16j`)
+
+| Lot | Contenu |
+| --- | --- |
+| Import générique | modes partiel / catalogue complet ; empreinte SHA-256 (fichier identique → `skipped_duplicate`, réimport sur confirmation) ; compteurs nouvelles / mises à jour / inchangées / ignorées ; 500 incidents par import avec extrait ; mapping mémorisé par fournisseur + signature d'en-têtes ; confiance `high` / `medium` ; EAN contrôlé (clé) ; 7 champs nouveaux ; en-têtes FR / EN / DE |
+| Flux distant autorisé | `remote-feeds.ts` : HTTPS public, SSRF (redirections revalidées), 20 Mo, 30 s, attestation horodatée obligatoire, en-tête ou identifiant chiffrés AES-256-GCM dans `supplier_feed_secrets` |
+| Sources | `source-sync.ts`, `source-health.ts`, `domain/sourcing/schedule.ts` : statut réel, `next_run_at`, backoff 15 min → 24 h, alerte après 3 échecs, synchronisation manuelle (délai 2 min), fréquence réglable par un admin |
+| Appréciation | `domain/sourcing/assessment.ts` : compétitivité / fiabilité de la source / confiance des données (null = données insuffisantes), verdict expliqué, scénarios de quantité (MOQ, multiple, ×2, tout le stock) |
+| Défauts 1 à 9 | corrigés (rattachement SKU limité aux fiches identifiées, port converti, robots.txt via `fetchText`, mode partiel par défaut, historique, mapping, EAN, robustesse, trois notes séparées) |
+| Fournisseurs | fiches B2B (`data/b2b-profiles.ts`) pour 7 grossistes ; ThePhoneHub, DistriHUB, SmartChoice ajoutés à l'annuaire ; Utopya bloqué (CGV art. 14) |
+| Mobile | « Mes sources », « Ajouter un flux autorisé », historique et détail des imports, assistant d'import enrichi, radar (3 notes, verdict, scénarios, offres concurrentes), fiche B2B dans l'annuaire, raison du blocage dans la bibliothèque |
+
+`sourcing_import_issues.id` est un uuid (et non un entier) : les matrices de sécurité détectent les fuites par identifiant, et un entier court produisait de faux positifs.
+
+### 3.2 Vérifié, et comment
+
+| Vérification | Résultat |
+| --- | --- |
+| Tests unitaires serveur (Vitest) | 100 fichiers, 942 tests réussis |
+| Tests d'intégration (PostgreSQL 16 local, toutes les migrations) | 24 fichiers, 167 tests réussis, dont `sourcing-b2b.test.ts` (6) et les matrices de sécurité générées, qui couvrent les 4 nouvelles tables |
+| Tests mobiles (Jest) | 26 fichiers, 167 tests réussis, dont `sourcing-b2b.test.tsx` (9) |
+| Migration | appliquée, retirée par le script de retour arrière, réappliquée, rejouée (idempotente) **en local uniquement** |
+| typecheck, lint, bundle Edge | OK (0 erreur de lint) |
+
+Toutes les réponses fournisseurs des tests sont **simulées** (fetch factice, base en mémoire ou locale). Aucun fournisseur n'a été contacté.
+
+### 3.3 Connecteurs : ce qui est réellement prouvé
+
+- **Prouvé sur données réelles (avant cette mission)** : les 3 sources publiques `sitemap-jsonld` (Brico-phone, pièces détachées CZ, Refreshed Apples) — 132 offres réelles vues le 10/10.
+- **Prouvé avec des fichiers d'essai, pas avec un vrai fichier fournisseur** : import CSV / XLSX / XML / JSON (encodages, séparateurs, virgule décimale, formules jamais exécutées).
+- **Testé seulement avec des mocks** : flux distant autorisé (ThePhoneHub, DistriHUB, Google Sheet Refreshed Apples), synchronisation planifiée, backoff, alertes.
+- **Pas de connecteur API** : ThePhoneHub et DistriHUB n'ont pas de documentation publique ; rien n'est simulé à leur place.
+
+### 3.4 Activation par fournisseur
+
+| Fournisseur | Ce qu'il faut obtenir | Dans l'application |
+| --- | --- | --- |
+| ThePhoneHub | compte partenaire, puis lien CSV (ou jeton) | Mes sources → Ajouter un flux autorisé (CSV, en-tête si jeton) → tester → colonnes → attester → Synchroniser maintenant |
+| DistriHUB | compte acheteur validé (1–2 semaines), URL du flux CSV / XML smartphones | idem (CSV ou XML) |
+| Refreshed Apples | accord écrit + lien d'export CSV du Google Sheet (`…/export?format=csv`) | idem ; la source publique existante reste active |
+| Foxway | compte revendeur, export Excel de la stocklist | Mes sources → Importer un fichier ; mapping mémorisé dès le 2ᵉ import |
+| Mobile Depot Europe | liste en XLSX ou CSV (pas PDF) | Importer un fichier |
+| SmartChoice | export CSV / XLSX demandé au fournisseur | Importer un fichier ; à défaut saisie |
+| Utopya | contrat d'API officiel (exception de l'article 14) | aucune synchronisation ; saisie ou fichier fourni par Utopya |
+
+Les questions à poser figurent dans chaque fiche de l'annuaire et dans l'e-mail de demande d'accès (FR).
+
+### 3.5 Variables d'environnement
+
+Aucune nouvelle variable. Utilisées : `TOKEN_ENCRYPTION_KEY` (déjà en place, chiffrement des identifiants de flux) et `SOURCING_USER_AGENT` (facultative, valeur par défaut). Les identifiants fournisseurs se saisissent dans l'application ; ils ne sont ni dans le code, ni dans Git, ni dans les journaux.
+
+### 3.6 Restant, soumis à autorisation
+
+1. Appliquer la migration `20261013000100` sur le projet MON-STOCK (`ccywsegdowikeirbsfae`).
+2. Redéployer l'Edge Function `api` (bundle de cette branche).
+3. Construire et envoyer un build TestFlight.
+4. Optionnel : passer les 3 sources publiques existantes en fréquence quotidienne.
+
+Tant que 1 et 2 ne sont pas faits, l'application continue de fonctionner : l'import reste accessible et l'écran « Mes sources » affiche une erreur de chargement sans bloquer l'import.
+
+### 3.7 Limites
+
+- Informations fournisseurs tirées d'extraits de recherche, non vérifiées avec un compte.
+- PDF et XLS (BIFF) non pris en charge.
+- Régime de TVA et pays d'expédition : seulement s'ils figurent dans le fichier ; jamais déduits.
+- Fiabilité de la source plafonnée tant qu'aucune commande n'a été reçue de ce fournisseur.
+- Comparaison d'offres limitée aux offres rattachées au même article ; aucun rattachement sur la seule ressemblance du nom.

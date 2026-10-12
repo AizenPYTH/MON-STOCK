@@ -2204,6 +2204,9 @@ function normalizeBrand(raw) {
 function titleCase(s) {
   return s.split(" ").map((w2) => w2 ? w2[0].toUpperCase() + w2.slice(1) : w2).join(" ");
 }
+function isIdentifyingProduct(p) {
+  return Boolean(p.brand && p.model && p.storage);
+}
 function buildNormalizedKey(p) {
   return [p.brand ?? UNKNOWN, p.model ?? UNKNOWN, p.storage?.toLowerCase() ?? UNKNOWN, p.color ?? UNKNOWN, p.condition, p.grade?.toLowerCase() ?? UNKNOWN].join("|");
 }
@@ -2799,7 +2802,13 @@ var init_types2 = __esm({
       "color",
       "grade",
       "condition",
-      "supplier_sku"
+      "supplier_sku",
+      "order_multiple",
+      "vat_regime",
+      "ship_from_country",
+      "warranty_months",
+      "available_from",
+      "supplier_updated_at"
     ];
   }
 });
@@ -2951,6 +2960,51 @@ function toDeliveryRange(v2) {
   const n = toInt(s.replace(/[^\d.,]/g, ""));
   return { min: n, max: n };
 }
+function toVatRegime(v2) {
+  const s = String(v2 ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  if (!s) return null;
+  if (/marg|differenz|§ ?25a|art\.? ?297|regime particulier/.test(s)) return "margin";
+  if (/reverse|autoliquid|intracom|ic supply|0 ?%|zero[\s-]?rated|steuerfrei innergem/.test(s)) return "reverse_charge";
+  if (/exon|exempt|franchise|293 ?b/.test(s)) return "exempt";
+  if (/normal|standard|incl|ttc|20 ?%|21 ?%|19 ?%|regular|regelbesteuer/.test(s)) return "normal";
+  return "unknown";
+}
+function toDateOnly(v2) {
+  if (v2 === null || v2 === void 0 || v2 === "") return null;
+  const iso = (y, m2, d) => {
+    const dt = new Date(Date.UTC(y, m2 - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m2 - 1 && dt.getUTCDate() === d ? dt.toISOString().slice(0, 10) : null;
+  };
+  const s = String(v2).trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return iso(Number(m[1]), Number(m[2]), Number(m[3]));
+  m = /^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/.exec(s);
+  if (m) return iso(Number(m[3]), Number(m[2]), Number(m[1]));
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = Math.floor(Number(s));
+    if (serial >= 36526 && serial <= 73050) return new Date(Date.UTC(1899, 11, 30) + serial * 864e5).toISOString().slice(0, 10);
+  }
+  return null;
+}
+function toTimestamp(v2) {
+  if (v2 === null || v2 === void 0 || v2 === "") return null;
+  const s = String(v2).trim();
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+    const t = Date.parse(s.replace(" ", "T"));
+    return Number.isNaN(t) ? null : new Date(t).toISOString();
+  }
+  const d = toDateOnly(s);
+  return d ? `${d}T00:00:00.000Z` : null;
+}
+function toWarrantyMonths(v2) {
+  if (v2 === null || v2 === void 0 || v2 === "") return null;
+  const s = String(v2).toLowerCase();
+  const n = toNumber(s.replace(/[^\d.,]/g, " ").trim().split(/\s+/)[0] ?? "");
+  if (n === null || n < 0) return null;
+  const months = /(an|year|jahr)/.test(s) ? n * 12 : /(jour|day|tag)/.test(s) ? n / 30 : /(semaine|week|woche)/.test(s) ? n * 7 / 30 : n;
+  const r = Math.round(months);
+  return r >= 0 && r <= 120 ? r : null;
+}
 function str2(v2) {
   if (v2 === null || v2 === void 0) return null;
   const s = String(v2).trim();
@@ -2977,6 +3031,13 @@ function mapRow(row2, mapping, defaults = {}) {
   if (price === null) errors.push("Prix manquant.");
   if (!currency) errors.push("Devise manquante (colonne ou devise par d\xE9faut de la source).");
   if (errors.length > 0 || !externalOfferId || !title) return { offer: null, errors };
+  const warnings = [];
+  const eanDigits = str2(read("ean"))?.replace(/\D/g, "") || null;
+  let ean = null;
+  if (eanDigits) {
+    if ([8, 12, 13, 14].includes(eanDigits.length) && isValidGtin(eanDigits)) ean = eanDigits;
+    else warnings.push(`EAN \xAB ${eanDigits.slice(0, 20)} \xBB invalide (cl\xE9 de contr\xF4le ou longueur) : ignor\xE9 pour le rapprochement.`);
+  }
   const deliveryBoth = toDeliveryRange(read("delivery_days"));
   const dMin = toInt(read("delivery_min_days")) ?? deliveryBoth.min;
   const dMax = toInt(read("delivery_max_days")) ?? deliveryBoth.max;
@@ -3001,7 +3062,7 @@ function mapRow(row2, mapping, defaults = {}) {
     deliveryMaxDays: dMax,
     country: str2(read("country"))?.toUpperCase().slice(0, 2) ?? defaults.country ?? null,
     url: str2(read("url")),
-    ean: str2(read("ean"))?.replace(/\D/g, "") || null,
+    ean,
     mpn: str2(read("mpn")),
     brand: str2(read("brand")),
     model: str2(read("model")),
@@ -3010,9 +3071,21 @@ function mapRow(row2, mapping, defaults = {}) {
     grade: str2(read("grade")),
     condition: read("condition") !== void 0 ? normalizeCondition(str2(read("condition"))) : null,
     supplierSku: str2(read("supplier_sku")),
+    orderMultiple: (() => {
+      const n = toInt(read("order_multiple"));
+      return n !== null && n > 0 ? n : null;
+    })(),
+    vatRegime: toVatRegime(read("vat_regime")),
+    shipFromCountry: (() => {
+      const c = str2(read("ship_from_country"))?.toUpperCase() ?? null;
+      return c && /^[A-Z]{2}$/.test(c) ? c : null;
+    })(),
+    warrantyMonths: toWarrantyMonths(read("warranty_months")),
+    availableFrom: toDateOnly(read("available_from")),
+    supplierUpdatedAt: toTimestamp(read("supplier_updated_at")),
     raw: row2
   };
-  return { offer, errors };
+  return { offer, errors, warnings };
 }
 function previewFeed(content, format, mapping, options = {}, defaults = {}, limit = 20) {
   const parsed = parseFeedContent(content, format, options);
@@ -3025,39 +3098,15 @@ function previewFeed(content, format, mapping, options = {}, defaults = {}, limi
   }
   return { columns: parsed.columns, total: parsed.rows.length, warnings: parsed.warnings, sample, validCount, invalidCount };
 }
-function suggestMapping(columns) {
-  const candidates = {
-    external_offer_id: /^(id|offer[_\s-]?id|ref(erence)?|article|item[_\s-]?id|product[_\s-]?id)$/i,
-    supplier_sku: /^(sku|supplier[_\s-]?sku|ref(erence)?[_\s-]?fournisseur|code|g:id)$/i,
-    title: /^(title|titre|name|nom|designation|désignation|libelle|libellé|description|g:title)$/i,
-    price: /^(price|prix|prix[_\s-]?ht|price[_\s-]?ht|unit[_\s-]?price|prix[_\s-]?unitaire|g:price|tarif)$/i,
-    currency: /^(currency|devise|monnaie)$/i,
-    tax_type: /^(tax[_\s-]?type|tva|vat|taxe?s?)$/i,
-    moq: /^(moq|min[_\s-]?qty|minimum|qte[_\s-]?min|quantite[_\s-]?minimale)$/i,
-    minimum_order_value: /^(min[_\s-]?order[_\s-]?value|minimum[_\s-]?commande|mov)$/i,
-    available_quantity: /^(stock|qty|quantity|quantite|quantité|available|dispo|disponible|g:quantity)$/i,
-    stock_status: /^(availability|disponibilite|disponibilité|stock[_\s-]?status|g:availability)$/i,
-    shipping_cost: /^(shipping|port|frais[_\s-]?de[_\s-]?port|livraison[_\s-]?cout|g:shipping)$/i,
-    delivery_days: /^(delivery|delai|délai|lead[_\s-]?time|delivery[_\s-]?days)$/i,
-    delivery_min_days: /^(delivery[_\s-]?min|delai[_\s-]?min)$/i,
-    delivery_max_days: /^(delivery[_\s-]?max|delai[_\s-]?max)$/i,
-    country: /^(country|pays|origin|origine)$/i,
-    url: /^(url|link|lien|product[_\s-]?url|g:link)$/i,
-    ean: /^(ean|ean13|gtin|gtin13|barcode|code[_\s-]?barre|upc|g:gtin)$/i,
-    mpn: /^(mpn|part[_\s-]?number|ref[_\s-]?fabricant|g:mpn)$/i,
-    brand: /^(brand|marque|manufacturer|fabricant|g:brand)$/i,
-    model: /^(model|modele|modèle)$/i,
-    storage: /^(storage|stockage|capacite|capacité|memory|memoire|mémoire)$/i,
-    color: /^(color|colour|couleur|g:color)$/i,
-    grade: /^(grade|classe)$/i,
-    condition: /^(condition|etat|état|g:condition)$/i
-  };
+function suggestMappingDetailed(columns, strict = STRICT_HEADER_PATTERNS) {
   const out = {};
+  const confidence = {};
   const used = /* @__PURE__ */ new Set();
   for (const field2 of RAW_OFFER_FIELDS) {
-    const col = columns.find((c) => candidates[field2].test(c.trim()));
+    const col = columns.find((c) => !used.has(c) && strict[field2].test(c.trim()));
     if (col) {
       out[field2] = col;
+      confidence[field2] = "high";
       used.add(col);
     }
   }
@@ -3066,15 +3115,16 @@ function suggestMapping(columns) {
     const col = columns.find((c) => !used.has(c) && patterns.some((re) => re.test(looseHeader(c))));
     if (col) {
       out[field2] = col;
+      confidence[field2] = "medium";
       used.add(col);
     }
   }
-  return out;
+  return { mapping: out, confidence };
 }
 function looseHeader(h) {
   return ` ${h.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[€$£%()[\]{}.,:;/\\_\-#°*'"’]/g, " ").replace(/\s+/g, " ").trim()} `;
 }
-var feedOptionsSchema, fieldMappingSchema, MAX_FEED_ROWS, LOOSE_HEADER_PATTERNS;
+var feedOptionsSchema, fieldMappingSchema, MAX_FEED_ROWS, STRICT_HEADER_PATTERNS, LOOSE_HEADER_PATTERNS;
 var init_feed_parsers = __esm({
   "src/services/sourcing/feed-parsers.ts"() {
     "use strict";
@@ -3092,25 +3142,63 @@ var init_feed_parsers = __esm({
       z13.union([z13.string().min(1).max(200), z13.object({ const: z13.string().max(200) })])
     );
     MAX_FEED_ROWS = 5e4;
+    STRICT_HEADER_PATTERNS = {
+      external_offer_id: /^(id|offer[_\s-]?id|ref(erence)?|article|item[_\s-]?id|product[_\s-]?id)$/i,
+      supplier_sku: /^(sku|supplier[_\s-]?sku|ref(erence)?[_\s-]?fournisseur|code|g:id)$/i,
+      title: /^(title|titre|name|nom|designation|désignation|libelle|libellé|description|g:title)$/i,
+      price: /^(price|prix|prix[_\s-]?ht|price[_\s-]?ht|unit[_\s-]?price|prix[_\s-]?unitaire|g:price|tarif)$/i,
+      currency: /^(currency|devise|monnaie)$/i,
+      tax_type: /^(tax[_\s-]?type|tva|vat|taxe?s?)$/i,
+      moq: /^(moq|min[_\s-]?qty|minimum|qte[_\s-]?min|quantite[_\s-]?minimale)$/i,
+      minimum_order_value: /^(min[_\s-]?order[_\s-]?value|minimum[_\s-]?commande|mov)$/i,
+      available_quantity: /^(stock|qty|quantity|quantite|quantité|available|dispo|disponible|g:quantity)$/i,
+      stock_status: /^(availability|disponibilite|disponibilité|stock[_\s-]?status|g:availability)$/i,
+      shipping_cost: /^(shipping|port|frais[_\s-]?de[_\s-]?port|livraison[_\s-]?cout|g:shipping)$/i,
+      delivery_days: /^(delivery|delai|délai|lead[_\s-]?time|delivery[_\s-]?days)$/i,
+      delivery_min_days: /^(delivery[_\s-]?min|delai[_\s-]?min)$/i,
+      delivery_max_days: /^(delivery[_\s-]?max|delai[_\s-]?max)$/i,
+      country: /^(country|pays|origin|origine)$/i,
+      url: /^(url|link|lien|product[_\s-]?url|g:link)$/i,
+      ean: /^(ean|ean13|gtin|gtin13|barcode|code[_\s-]?barre|upc|g:gtin)$/i,
+      mpn: /^(mpn|part[_\s-]?number|ref[_\s-]?fabricant|g:mpn)$/i,
+      brand: /^(brand|marque|manufacturer|fabricant|g:brand)$/i,
+      model: /^(model|modele|modèle)$/i,
+      storage: /^(storage|stockage|capacite|capacité|memory|memoire|mémoire)$/i,
+      color: /^(color|colour|couleur|g:color)$/i,
+      grade: /^(grade|classe)$/i,
+      condition: /^(condition|etat|état|g:condition|zustand)$/i,
+      order_multiple: /^(order[_\s-]?multiple|multiple|pack[_\s-]?size|colisage|conditionnement|vpe)$/i,
+      vat_regime: /^(vat[_\s-]?regime|vat[_\s-]?scheme|regime[_\s-]?tva|régime[_\s-]?tva|tax[_\s-]?scheme|besteuerung)$/i,
+      ship_from_country: /^(ship[_\s-]?from|ships[_\s-]?from|warehouse|entrepot|entrepôt|lager|location|stock[_\s-]?location)$/i,
+      warranty_months: /^(warranty|garantie|gewährleistung|gewahrleistung)$/i,
+      available_from: /^(available[_\s-]?from|eta|arrival|arrivage|date[_\s-]?dispo|lieferdatum)$/i,
+      supplier_updated_at: /^(updated|updated[_\s-]?at|last[_\s-]?update|date[_\s-]?maj|mise[_\s-]?a[_\s-]?jour|stand)$/i
+    };
     LOOSE_HEADER_PATTERNS = [
-      ["ean", [/ (ean|gtin|ean13|upc|code barre|barcode) /]],
+      ["ean", [/ (ean|gtin|ean13|upc|code barre|barcode|strichcode) /]],
       ["mpn", [/ (mpn|part number|ref fabricant|reference fabricant) /]],
-      ["supplier_sku", [/ (ref|reference|sku|code article|code produit|article no|art nr|item no|part no|ref fournisseur|ref fourn) /]],
-      ["title", [/ (designation|libelle|description|product name|nom produit|nom article|article|produit|titre|title|name) /]],
-      ["price", [/ (prix|price|tarif|cost|cout|pu|unit price|net price|prix net|prix achat|prix revendeur|prix pro) /]],
-      ["currency", [/ (devise|currency|monnaie) /]],
+      ["supplier_sku", [/ (ref|reference|sku|code article|code produit|article no|art nr|item no|item code|part no|ref fournisseur|ref fourn|artikelnummer|artikel nr|art nr) /]],
+      ["title", [/ (designation|libelle|description|product name|product|nom produit|nom article|article|produit|titre|title|name|bezeichnung|artikelbezeichnung|beschreibung) /]],
+      ["price", [/ (prix|price|tarif|cost|cout|pu|unit price|net price|wholesale price|wholesale|dealer price|prix net|prix achat|prix revendeur|prix pro|preis|einzelpreis|nettopreis|ek preis|haendlerpreis) /]],
+      ["currency", [/ (devise|currency|monnaie|wahrung|cur) /]],
       ["tax_type", [/ (ht|ttc|tva|vat) incl /, / (type de prix|tax) /]],
-      ["available_quantity", [/ (qte|qty|quantite|quantity|stock|dispo|disponible|available|en stock) /]],
-      ["moq", [/ (moq|minimum|min qty|qte min|quantite minimum) /]],
-      ["brand", [/ (marque|brand|fabricant|manufacturer|constructeur) /]],
-      ["model", [/ (modele|model) /]],
-      ["storage", [/ (capacite|stockage|storage|memoire|memory|rom) /]],
-      ["color", [/ (couleur|color|colour|coloris) /]],
-      ["grade", [/ (grade|classe|qualite esthetique) /]],
-      ["condition", [/ (etat|condition|state) /]],
+      ["moq", [/ (moq|minimum order|min order|minimum|min qty|qte min|quantite minimum|mindestmenge|mindestbestellmenge) /]],
+      ["available_quantity", [/ (qte|qty|quantite|quantity|stock|dispo|disponible|available|en stock|menge|bestand|verfugbar|lagerbestand) /]],
+      ["brand", [/ (marque|brand|fabricant|manufacturer|constructeur|marke|hersteller) /]],
+      ["model", [/ (modele|model|modell) /]],
+      ["storage", [/ (capacite|stockage|storage|memoire|memory|rom|gb|go|speicher|kapazitat) /]],
+      ["color", [/ (couleur|color|colour|coloris|farbe) /]],
+      ["grade", [/ (grade|classe|qualite esthetique|quality|qualitat|klasse) /]],
+      ["condition", [/ (etat|condition|state|zustand) /]],
+      ["order_multiple", [/ (multiple|pack size|colisage|conditionnement|vpe|verpackungseinheit) /]],
+      ["vat_regime", [/ (regime tva|vat scheme|vat regime|tax scheme|margin scheme|besteuerung|differenzbesteuerung) /]],
+      ["ship_from_country", [/ (ship from|ships from|warehouse|entrepot|expedie depuis|lagerort|lager|stock location) /]],
+      ["warranty_months", [/ (garantie|warranty|gewahrleistung) /]],
+      ["available_from", [/ (eta|available from|arrival|arrivage|date dispo|disponible le|lieferdatum|verfugbar ab) /]],
+      ["supplier_updated_at", [/ (last update|updated|date maj|mise a jour|stand|aktualisiert) /]],
       ["url", [/ (url|lien|link) /]],
-      ["shipping_cost", [/ (port|livraison|shipping|transport) /]],
-      ["delivery_days", [/ (delai|lead time|delivery) /]]
+      ["shipping_cost", [/ (port|frais de livraison|shipping|shipping cost|delivery cost|transport|versandkosten|versand) /]],
+      ["delivery_days", [/ (delai|lead time|delivery time|delivery days|lieferzeit) /]]
     ];
   }
 });
@@ -5076,7 +5164,7 @@ function evaluateRobots(rules, userAgent, path) {
   consider(group.allow, true);
   return { allowed, crawlDelay: group.crawlDelay, matchedAgent: group.agents[0] ?? null, rule };
 }
-async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e4) {
+async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e4, resolver) {
   const empty = { groups: [], sitemaps: [] };
   let origin;
   try {
@@ -5084,22 +5172,17 @@ async function fetchRobots(baseUrl, userAgent, fetchImpl = fetch, timeoutMs = 1e
   } catch {
     return { status: "error", rules: empty, httpStatus: null, error: "URL de base invalide." };
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(`${origin}/robots.txt`, { headers: { "User-Agent": userAgent, Accept: "text/plain" }, redirect: "follow", signal: controller.signal });
+    const res = await fetchText(`${origin}/robots.txt`, { userAgent, accept: "text/plain", fetchImpl, timeoutMs, maxBytes: 512 * 1024, resolver });
     if (res.status === 404 || res.status === 410) return { status: "missing", rules: empty, httpStatus: res.status, error: null };
     if (!res.ok) return { status: "error", rules: empty, httpStatus: res.status, error: `robots.txt inaccessible (HTTP ${res.status}).` };
-    const text3 = await res.text();
-    return { status: "ok", rules: parseRobotsTxt(text3.slice(0, 512 * 1024)), httpStatus: res.status, error: null };
+    return { status: "ok", rules: parseRobotsTxt(res.text), httpStatus: res.status, error: null };
   } catch (e) {
     return { status: "error", rules: empty, httpStatus: null, error: e instanceof Error ? e.message : "Erreur r\xE9seau." };
-  } finally {
-    clearTimeout(timer);
   }
 }
-async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch) {
-  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl);
+async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch, resolver) {
+  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl, 1e4, resolver);
   if (fetched.status === "error") {
     return { allowed: false, robotsStatus: "error", crawlDelay: null, disallowedUrls: urls, details: fetched.error ?? "robots.txt inaccessible." };
   }
@@ -5134,6 +5217,7 @@ async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch) {
 var init_robots = __esm({
   "src/services/sourcing/crawler/robots.ts"() {
     "use strict";
+    init_http2();
   }
 });
 
@@ -5860,7 +5944,7 @@ async function storeOffer(ctx, raw) {
   const nowIso = now.toISOString();
   const currency = (raw.currency ?? ctx.defaultCurrency ?? "").toUpperCase() || null;
   const normalized = normalizeProduct(raw.title, { brand: raw.brand, model: raw.model, storage: raw.storage, color: raw.color, grade: raw.grade, condition: typeof raw.condition === "string" ? raw.condition : null, ean: raw.ean, mpn: raw.mpn });
-  const { data: existing } = await supabase.from("sourcing_offers").select("id, original_price, original_currency, sku_id, normalized_product_id, status").eq("organization_id", organizationId).eq("source_id", ctx.sourceId).eq("external_offer_id", raw.externalOfferId).maybeSingle();
+  const { data: existing } = await supabase.from("sourcing_offers").select("id, original_price, original_currency, sku_id, normalized_product_id, status, available_quantity, stock_status, moq").eq("organization_id", organizationId).eq("source_id", ctx.sourceId).eq("external_offer_id", raw.externalOfferId).maybeSingle();
   let prices30d = [];
   if (existing && currency && existing.original_currency === currency) {
     const since2 = new Date(now.getTime() - 30 * 864e5).toISOString();
@@ -5876,7 +5960,7 @@ async function storeOffer(ctx, raw) {
     if (existing) {
       await supabase.from("sourcing_offers").update({ status: "suspicious", anomalies: validation.anomalyCodes, last_seen_at: nowIso }).eq("id", existing.id);
     }
-    return { outcome: "rejected", offerId: existing?.id ?? null, created: false, validation, normalized, fxUnavailable: false, matchedSkuId: null };
+    return { outcome: "rejected", offerId: existing?.id ?? null, created: false, changed: false, unrecognized: !normalized.brand || !normalized.model, validation, normalized, fxUnavailable: false, matchedSkuId: null };
   }
   const fx = await getFxRate(currency, ctx.organizationCurrency);
   const fxUnavailable = fx === null;
@@ -5905,7 +5989,8 @@ async function storeOffer(ctx, raw) {
     external_offer_id: raw.externalOfferId,
     title_original: raw.title.slice(0, 500),
     normalized_product_id: product.id,
-    sku_id: existing?.sku_id ?? product.skuId ?? null,
+    // Correspondance héritée du produit normalisé seulement si sa clé identifie un produit précis.
+    sku_id: existing?.sku_id ?? (isIdentifyingProduct(normalized) ? product.skuId : null) ?? null,
     brand: normalized.brand,
     model: normalized.model,
     storage: normalized.storage,
@@ -5937,7 +6022,14 @@ async function storeOffer(ctx, raw) {
     status: validation.status,
     last_seen_at: nowIso,
     expired_at: null,
-    raw: raw.raw ?? null
+    raw: raw.raw ?? null,
+    order_multiple: raw.orderMultiple ?? null,
+    vat_regime: raw.vatRegime ?? null,
+    ship_from_country: raw.shipFromCountry ?? null,
+    warranty_months: raw.warrantyMonths ?? null,
+    available_from: raw.availableFrom ?? null,
+    supplier_updated_at: raw.supplierUpdatedAt ?? null,
+    ...ctx.importJobId ? { last_import_job_id: ctx.importJobId } : {}
   };
   if (!existing) {
     row2.first_seen_at = nowIso;
@@ -5958,7 +6050,8 @@ async function storeOffer(ctx, raw) {
       log7.warn("match suggestion failed", { offerId: saved.id, error: e instanceof Error ? e.message : String(e) });
     }
   }
-  return { outcome: "stored", offerId: saved.id, created: !existing, validation, normalized, fxUnavailable, matchedSkuId };
+  const changed = !existing || Number(existing.original_price) !== validation.effectivePrice || existing.original_currency !== currency || (existing.available_quantity ?? null) !== (quantity ?? null) || existing.stock_status !== stockStatus || (existing.moq ?? null) !== (validation.effectiveMoq ?? null) || existing.status !== validation.status;
+  return { outcome: "stored", offerId: saved.id, created: !existing, changed, unrecognized: !normalized.brand || !normalized.model, validation, normalized, fxUnavailable, matchedSkuId };
 }
 async function expireUnseenOffers(ctx, since2) {
   const { data, error } = await ctx.supabase.from("sourcing_offers").update({ status: "expired", expired_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", ctx.organizationId).eq("source_id", ctx.sourceId).in("status", ["active", "suspicious"]).lt("last_seen_at", since2.toISOString()).select("id");
@@ -6022,12 +6115,6 @@ async function recordSyncErrors(admin, run, errors) {
   }));
   const { error } = await admin.from("sync_errors").insert(rows);
   if (error) log8.warn("sync errors not recorded", { runId: run.id, error: error.message });
-}
-function isDue(frequency, lastSyncAt, now) {
-  const interval = FREQUENCY_MS[frequency];
-  if (interval === null) return false;
-  if (!lastSyncAt) return true;
-  return now.getTime() - new Date(lastSyncAt).getTime() >= interval;
 }
 async function recordCompletedSyncRun(admin, input) {
   const { data, error } = await admin.from("sync_runs").insert({
@@ -6135,7 +6222,7 @@ var init_context = __esm({
 });
 
 // src/services/channels/connection-store.ts
-async function loadConnection(connectionId) {
+async function loadConnection2(connectionId) {
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin.from("channel_connections").select("*").eq("id", connectionId).maybeSingle();
   if (error) throw fromPostgrestError(error);
@@ -6255,7 +6342,7 @@ function expired(connectionId, message, details = {}) {
 }
 async function loadTokenState(connectionId) {
   const admin = createAdminSupabaseClient();
-  const connection = await loadConnection(connectionId);
+  const connection = await loadConnection2(connectionId);
   if (!connection) throw new AppError("NOT_FOUND", "Connexion introuvable.");
   const { data: secrets, error } = await admin.from("channel_connection_secrets").select("access_token_enc, refresh_token_enc").eq("connection_id", connectionId).maybeSingle();
   if (error) throw fromPostgrestError(error);
@@ -6392,6 +6479,38 @@ var init_connection_store = __esm({
   }
 });
 
+// src/services/sourcing/feed-secrets.ts
+import { z as z26 } from "npm:zod@4.6.5";
+function authHeaders2(auth) {
+  if (auth.kind === "header") {
+    if (FORBIDDEN_HEADERS.has(auth.name.toLowerCase())) throw new AppError("VALIDATION", `En-t\xEAte \xAB ${auth.name} \xBB non autoris\xE9.`);
+    return { [auth.name]: auth.value };
+  }
+  if (auth.kind === "basic") return { Authorization: `Basic ${btoa(`${auth.username}:${auth.password}`)}` };
+  return {};
+}
+async function loadFeedAuthHeaders(admin, feedId) {
+  const { data } = await admin.from("supplier_feed_secrets").select("credentials_enc").eq("feed_id", feedId).maybeSingle();
+  if (!data?.credentials_enc) return {};
+  const parsed = feedAuthSchema.safeParse(JSON.parse(decryptSecret(data.credentials_enc)));
+  return parsed.success ? authHeaders2(parsed.data) : {};
+}
+var feedAuthSchema, FORBIDDEN_HEADERS;
+var init_feed_secrets = __esm({
+  "src/services/sourcing/feed-secrets.ts"() {
+    "use strict";
+    init_empty();
+    init_crypto();
+    init_errors();
+    feedAuthSchema = z26.discriminatedUnion("kind", [
+      z26.object({ kind: z26.literal("none") }),
+      z26.object({ kind: z26.literal("header"), name: z26.string().trim().regex(/^[A-Za-z0-9-]{1,64}$/, "Nom d'en-t\xEAte invalide (lettres, chiffres, tirets)."), value: z26.string().min(1).max(2e3) }),
+      z26.object({ kind: z26.literal("basic"), username: z26.string().min(1).max(200), password: z26.string().min(1).max(500) })
+    ]);
+    FORBIDDEN_HEADERS = /* @__PURE__ */ new Set(["host", "cookie", "content-length", "transfer-encoding", "connection", "user-agent"]);
+  }
+});
+
 // src/domain/sourcing/import-quality.ts
 function assessImportQuality(i, t = QUALITY_THRESHOLDS) {
   const issues = [];
@@ -6441,13 +6560,19 @@ var init_import_quality = __esm({
 });
 
 // src/services/sourcing/feed-ingestion.ts
+function rowExcerpt(row2) {
+  if (!row2) return null;
+  const out = {};
+  for (const [k, v2] of Object.entries(row2).slice(0, 12)) out[k.slice(0, 60)] = v2 === null || v2 === void 0 ? null : String(v2).slice(0, 120);
+  return out;
+}
 function parseFeedConfig(feed) {
   const mapping = fieldMappingSchema.safeParse(feed.field_mapping ?? {});
   const options = feedOptionsSchema.safeParse(feed.options ?? {});
   return { mapping: mapping.success ? mapping.data : {}, options: options.success ? options.data : {} };
 }
-async function fetchFeedContent(url, format, encoding, fetchImpl) {
-  const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], encoding, fetchImpl });
+async function fetchFeedContent(url, format, encoding, fetchImpl, headers, resolver) {
+  const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], encoding, fetchImpl, headers, resolver });
   if (!res.ok) throw new Error(`Le flux a r\xE9pondu HTTP ${res.status}.`);
   return res.text;
 }
@@ -6467,6 +6592,7 @@ async function knownPriceRatios(admin, sourceId, offers) {
   return ratios;
 }
 async function ingestFeed(feedId, options = { trigger: "manual" }) {
+  const mode = options.mode ?? "snapshot";
   const admin = options.admin ?? createAdminSupabaseClient();
   const { data: feed, error: feedErr } = await admin.from("supplier_feeds").select("*, source:supplier_sources(id, source_type, default_currency, default_tax_type, country, status), organization:organizations(default_currency)").eq("id", feedId).maybeSingle();
   if (feedErr || !feed) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Flux introuvable." };
@@ -6483,11 +6609,19 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
   let invalidRows = 0;
   let fxUnavailable = 0;
   let expired2 = 0;
+  let created = 0;
+  let updated = 0;
+  let unchanged = 0;
+  let unrecognized = 0;
+  const issues = [];
+  const issue = (i) => {
+    if (issues.length < MAX_IMPORT_ISSUES) issues.push(i);
+  };
   try {
     let content = options.content ?? null;
     if (!content) {
       if (!feed.url) throw new Error("Ce flux n'a pas d'URL : importez un fichier manuellement.");
-      content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl);
+      content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl, await loadFeedAuthHeaders(admin, feed.id), options.resolver);
     }
     const parsed = parseFeedContent(content, feed.format, feedOptions);
     for (const w2 of parsed.warnings) log18.info("feed warning", { feedId, warning: w2 });
@@ -6503,7 +6637,8 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
       defaultTaxType: source.default_tax_type,
       defaultCountry: source.country,
       createdBy: options.createdBy ?? null,
-      now: run.startedAt
+      now: run.startedAt,
+      importJobId: options.importJobId ?? null
     };
     const truncated = parsed.rows.length > MAX_ROWS_PER_RUN;
     if (truncated) {
@@ -6532,41 +6667,57 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
       await recordSyncErrors(admin, run, quality.issues.map((q) => ({ code: `IMPORT_${q.code.toUpperCase()}`, message: q.message, entityType: "feed", entityRef: feed.id })));
       await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: quality.issues.length, stats: { quarantined: true, totalRows: mappedRows.length, valid: validOffers.length, duplicates: duplicateIdx.size }, errorSummary: message2 });
       await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message2 }).eq("id", feed.id);
-      return { feedId, runId: run.id, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: mappedRows.filter((m) => !m.offer).length, expired: 0, fxUnavailable: 0, message: message2, duplicates: duplicateIdx.size, quarantined: true, quality };
+      return { feedId, runId: run.id, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: mappedRows.filter((m) => !m.offer).length, expired: 0, fxUnavailable: 0, message: message2, duplicates: duplicateIdx.size, quarantined: true, quality, created: 0, updated: 0, unchanged: 0, unrecognized: 0, totalRows: parsed.rows.length, truncated, mode, issues: quality.issues.map((q) => ({ line: null, kind: "warning", reference: null, message: q.message, excerpt: null })) };
     }
+    const lineOf = (index) => feed.format === "csv" ? index + 2 : index + 1;
     for (const [index, mapped] of mappedRows.entries()) {
       processed++;
+      const sourceRow = parsed.rows[index];
       if (duplicateIdx.has(index)) {
         errors.push({ code: "ROW_DUPLICATE", message: "R\xE9f\xE9rence d\xE9j\xE0 pr\xE9sente plus haut dans le fichier : ligne ignor\xE9e.", entityType: "feed_row", entityRef: String(index + 1) });
+        issue({ line: lineOf(index), kind: "duplicate", reference: mapped.offer?.externalOfferId ?? null, message: "R\xE9f\xE9rence d\xE9j\xE0 pr\xE9sente plus haut dans le fichier : ligne ignor\xE9e.", excerpt: rowExcerpt(sourceRow) });
         continue;
       }
       if (!mapped.offer) {
         invalidRows++;
         errors.push({ code: "ROW_INVALID", message: mapped.errors.join(" "), entityType: "feed_row", entityRef: String(index + 1) });
+        issue({ line: lineOf(index), kind: "invalid", reference: null, message: mapped.errors.join(" ").slice(0, 1e3), excerpt: rowExcerpt(sourceRow) });
         continue;
       }
+      for (const w2 of mapped.warnings ?? []) issue({ line: lineOf(index), kind: "warning", reference: mapped.offer.externalOfferId, message: w2, excerpt: null });
       try {
         const result = await storeOffer(ctx, mapped.offer);
         if (result.outcome === "stored") {
           stored++;
+          if (result.created) created++;
+          else if (result.changed) updated++;
+          else unchanged++;
           if (result.fxUnavailable) fxUnavailable++;
+          if (result.unrecognized) {
+            unrecognized++;
+            issue({ line: lineOf(index), kind: "unrecognized", reference: mapped.offer.externalOfferId, message: "Marque ou mod\xE8le non reconnus : offre enregistr\xE9e, rapprochement avec votre stock \xE0 faire manuellement.", excerpt: null });
+          }
         } else {
           rejected++;
-          errors.push({ code: "OFFER_REJECTED", message: result.validation.anomalies.map((a) => a.message).join(" ; "), entityType: "offer", entityRef: mapped.offer.externalOfferId });
+          const why = result.validation.anomalies.map((a) => a.message).join(" ; ");
+          errors.push({ code: "OFFER_REJECTED", message: why, entityType: "offer", entityRef: mapped.offer.externalOfferId });
+          issue({ line: lineOf(index), kind: "rejected", reference: mapped.offer.externalOfferId, message: why.slice(0, 1e3) || "Offre rejet\xE9e par la validation.", excerpt: rowExcerpt(sourceRow) });
         }
       } catch (e) {
         rejected++;
-        errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: mapped.offer.externalOfferId });
+        const why = e instanceof Error ? e.message : String(e);
+        errors.push({ code: "OFFER_STORE_FAILED", message: why, entityType: "offer", entityRef: mapped.offer.externalOfferId });
+        issue({ line: lineOf(index), kind: "rejected", reference: mapped.offer.externalOfferId, message: why.slice(0, 1e3), excerpt: null });
       }
     }
-    if (stored > 0 && !truncated) expired2 = await expireUnseenOffers(ctx, run.startedAt);
+    if (mode === "snapshot" && stored > 0 && !truncated) expired2 = await expireUnseenOffers(ctx, run.startedAt);
     const status = stored === 0 && processed > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
-    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${stored} offre(s) enregistr\xE9e(s), ${invalidRows} ligne(s) illisible(s), ${rejected} offre(s) rejet\xE9e(s), ${expired2} offre(s) expir\xE9e(s)${duplicateIdx.size ? `, ${duplicateIdx.size} doublon(s) ignor\xE9(s)` : ""}.`;
+    const message = processed === 0 ? "Le flux ne contient aucune ligne." : `${created} nouvelle(s) offre(s), ${updated} mise(s) \xE0 jour, ${unchanged} inchang\xE9e(s), ${invalidRows} ligne(s) illisible(s), ${rejected} rejet\xE9e(s)${duplicateIdx.size ? `, ${duplicateIdx.size} doublon(s) ignor\xE9(s)` : ""}${mode === "snapshot" ? `, ${expired2} expir\xE9e(s) (absentes du catalogue complet)` : ""}.`;
     await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, rejected, invalidRows, expired: expired2, fxUnavailable, truncated, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) }, errorSummary: status === "failed" ? message : null });
+    await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, created, updated, unchanged, unrecognized, rejected, invalidRows, expired: expired2, fxUnavailable, truncated, mode, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) }, errorSummary: status === "failed" ? message : null });
     await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : feed.last_successful_sync_at, last_record_count: status !== "failed" ? processed : feed.last_record_count, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" }).eq("id", feed.id);
     if (status !== "failed") await admin.from("supplier_sources").update({ status: "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: (/* @__PURE__ */ new Date()).toISOString(), last_error: null }).eq("id", source.id);
-    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, duplicates: duplicateIdx.size, quarantined: false, quality };
+    return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, duplicates: duplicateIdx.size, quarantined: false, quality, created, updated, unchanged, unrecognized, totalRows: parsed.rows.length, truncated, mode, issues };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
     log18.error("feed ingestion failed", { feedId, error: message });
@@ -6574,17 +6725,10 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: processed, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message, status: "error" }).eq("id", feed.id);
     await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
-    return { feedId, runId: run.id, status: "failed", processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message };
+    return { feedId, runId: run.id, status: "failed", processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, created, updated, unchanged, unrecognized, mode, issues };
   }
 }
-async function runDueFeeds(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient()) {
-  const { data: feeds } = await admin.from("supplier_feeds").select("id, sync_frequency, last_sync_at, status, url").not("url", "is", null).neq("sync_frequency", "manual").neq("status", "paused").limit(500);
-  const due = (feeds ?? []).filter((f) => isDue(f.sync_frequency, f.last_sync_at, now));
-  const results = [];
-  for (const f of due) results.push(await ingestFeed(f.id, { trigger: "scheduled", admin }));
-  return results;
-}
-var MAX_ROWS_PER_RUN, log18, FEED_ACCEPT;
+var MAX_ROWS_PER_RUN, log18, FEED_ACCEPT, MAX_IMPORT_ISSUES;
 var init_feed_ingestion = __esm({
   "src/services/sourcing/feed-ingestion.ts"() {
     "use strict";
@@ -6593,6 +6737,7 @@ var init_feed_ingestion = __esm({
     init_env();
     init_logger();
     init_http2();
+    init_feed_secrets();
     init_feed_parsers();
     init_offer_storage();
     init_sync_runs();
@@ -6604,6 +6749,543 @@ var init_feed_ingestion = __esm({
       xml: "application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.5",
       json: "application/json,text/json;q=0.9,*/*;q=0.5"
     };
+    MAX_IMPORT_ISSUES = 500;
+  }
+});
+
+// src/services/sourcing/xlsx.ts
+import { unzipSync, strFromU8 } from "npm:fflate@0.8.2";
+import { XMLParser as XMLParser5 } from "npm:fast-xml-parser@5.11.2";
+function asArray(v2) {
+  if (v2 === void 0 || v2 === null) return [];
+  return Array.isArray(v2) ? v2 : [v2];
+}
+function textOf2(node2) {
+  if (node2 === null || node2 === void 0) return "";
+  if (typeof node2 === "string" || typeof node2 === "number" || typeof node2 === "boolean") return String(node2);
+  if (Array.isArray(node2)) return node2.map(textOf2).join("");
+  if (typeof node2 === "object") {
+    const o = node2;
+    if ("#text" in o) return textOf2(o["#text"]);
+    if ("t" in o) return textOf2(o.t);
+    if ("r" in o) return asArray(o.r).map(textOf2).join("");
+  }
+  return "";
+}
+function columnIndex(ref) {
+  const letters = /^[A-Z]+/i.exec(ref)?.[0]?.toUpperCase() ?? "A";
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+function readZip(bytes) {
+  if (bytes.byteLength > MAX_XLSX_BYTES) throw new XlsxError("Fichier Excel trop volumineux (15 Mo maximum).");
+  if (bytes[0] !== 80 || bytes[1] !== 75) throw new XlsxError("Ce fichier n'est pas un classeur Excel .xlsx (les anciens fichiers .xls ne sont pas pris en charge : enregistrez-le en .xlsx ou .csv).");
+  let total = 0;
+  try {
+    return unzipSync(bytes, {
+      filter: (f) => {
+        total += f.originalSize;
+        if (total > MAX_UNZIPPED_BYTES) throw new XlsxError("Classeur trop volumineux une fois d\xE9compress\xE9.");
+        return f.name.startsWith("xl/") && (f.name.endsWith(".xml") || f.name.endsWith(".rels"));
+      }
+    });
+  } catch (e) {
+    if (e instanceof XlsxError) throw e;
+    throw new XlsxError("Classeur Excel illisible (archive corrompue ou prot\xE9g\xE9e par mot de passe).");
+  }
+}
+function readXlsx(bytes, sheetName) {
+  const files = readZip(bytes);
+  const workbook = files["xl/workbook.xml"];
+  if (!workbook) throw new XlsxError("Classeur Excel invalide (xl/workbook.xml absent).");
+  const wb = parser2.parse(strFromU8(workbook));
+  const sheets = asArray(wb.workbook?.sheets?.sheet);
+  if (sheets.length === 0) throw new XlsxError("Le classeur ne contient aucune feuille.");
+  const sheet = (sheetName ? sheets.find((s) => s["@_name"] === sheetName) : void 0) ?? sheets[0];
+  const relId = sheet["@_id"];
+  let target = "worksheets/sheet1.xml";
+  const relsFile = files["xl/_rels/workbook.xml.rels"];
+  if (relsFile && relId) {
+    const rels = parser2.parse(strFromU8(relsFile));
+    const rel = asArray(rels.Relationships?.Relationship).find((r) => r["@_Id"] === relId);
+    if (rel?.["@_Target"]) target = rel["@_Target"].replace(/^\/?xl\//, "").replace(/^\//, "");
+  }
+  const sheetFile = files[`xl/${target}`];
+  if (!sheetFile) throw new XlsxError(`Feuille \xAB ${sheet["@_name"] ?? "1"} \xBB introuvable dans le classeur.`);
+  const shared = [];
+  const sst = files["xl/sharedStrings.xml"];
+  if (sst) {
+    const doc2 = parser2.parse(strFromU8(sst));
+    for (const si of asArray(doc2.sst?.si)) shared.push(textOf2(si));
+  }
+  const doc = parser2.parse(strFromU8(sheetFile));
+  const rows = [];
+  for (const row2 of asArray(doc.worksheet?.sheetData?.row)) {
+    const out = [];
+    for (const c of asArray(row2.c)) {
+      const ref = String(c["@_r"] ?? "");
+      const idx = ref ? columnIndex(ref) : out.length;
+      const type = String(c["@_t"] ?? "n");
+      let value = "";
+      if (type === "s") value = shared[Number(textOf2(c.v))] ?? "";
+      else if (type === "inlineStr") value = textOf2(c.is);
+      else if (type === "b") value = textOf2(c.v) === "1" ? "true" : "false";
+      else if (type === "e") value = "";
+      else value = textOf2(c.v);
+      while (out.length < idx) out.push("");
+      out[idx] = value.trim();
+    }
+    if (out.some((v2) => v2 !== "")) rows.push(out);
+  }
+  return { name: sheet["@_name"] ?? "Feuille 1", rows };
+}
+function csvCell(v2) {
+  return /[;"\n\r]/.test(v2) ? `"${v2.replace(/"/g, '""')}"` : v2;
+}
+function sheetToCsv(sheet) {
+  const width = Math.max(0, ...sheet.rows.map((r) => r.length));
+  return sheet.rows.map((r) => Array.from({ length: width }, (_, i) => csvCell(r[i] ?? "")).join(";")).join("\n");
+}
+var MAX_XLSX_BYTES, MAX_UNZIPPED_BYTES, parser2, XlsxError;
+var init_xlsx = __esm({
+  "src/services/sourcing/xlsx.ts"() {
+    "use strict";
+    MAX_XLSX_BYTES = 15 * 1024 * 1024;
+    MAX_UNZIPPED_BYTES = 120 * 1024 * 1024;
+    parser2 = new XMLParser5({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: false, textNodeName: "#text" });
+    XlsxError = class extends Error {
+    };
+  }
+});
+
+// src/services/sourcing/catalog-import.ts
+var catalog_import_exports = {};
+__export(catalog_import_exports, {
+  CATALOG_IMPORT_KIND: () => CATALOG_IMPORT_KIND,
+  MAX_CATALOG_BYTES: () => MAX_CATALOG_BYTES,
+  catalogDefaultsSchema: () => catalogDefaultsSchema,
+  catalogFileSchema: () => catalogFileSchema,
+  catalogImportSchema: () => catalogImportSchema,
+  catalogPreviewSchema: () => catalogPreviewSchema,
+  decodeText: () => decodeText,
+  decodeWindows1252: () => decodeWindows1252,
+  detectCatalogFormat: () => detectCatalogFormat,
+  getImportJob: () => getImportJob,
+  headerSignature: () => headerSignature,
+  importCatalogFile: () => importCatalogFile,
+  importModeSchema: () => importModeSchema,
+  listImportJobs: () => listImportJobs,
+  loadCatalogFile: () => loadCatalogFile,
+  previewCatalogFile: () => previewCatalogFile,
+  previewCatalogFileForOrg: () => previewCatalogFileForOrg,
+  suggestCatalogMapping: () => suggestCatalogMapping,
+  suggestCatalogMappingDetailed: () => suggestCatalogMappingDetailed
+});
+import { createHash as createHash7 } from "node:crypto";
+import { z as z28 } from "npm:zod@4.6.5";
+function decodeBase64(b64) {
+  const clean = b64.replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) throw new AppError("VALIDATION", "Fichier illisible (encodage invalide).");
+  const bin = atob(clean);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  if (out.byteLength > MAX_CATALOG_BYTES) throw new AppError("VALIDATION", "Fichier trop volumineux (15 Mo maximum).");
+  if (out.byteLength === 0) throw new AppError("VALIDATION", "Le fichier est vide.");
+  return out;
+}
+function detectCatalogFormat(fileName, bytes) {
+  const ext = /\.([a-z0-9]+)$/i.exec(fileName)?.[1]?.toLowerCase();
+  if (ext === "xlsx" || ext === "xlsm") return "xlsx";
+  if (ext === "xls") throw new AppError("VALIDATION", "Les anciens fichiers Excel .xls ne sont pas pris en charge : enregistrez-le en .xlsx ou .csv.");
+  if (ext === "csv" || ext === "txt" || ext === "tsv") return "csv";
+  if (ext === "xml") return "xml";
+  if (ext === "json") return "json";
+  if (bytes[0] === 80 && bytes[1] === 75) return "xlsx";
+  const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 200)).replace(/^﻿/, "").trimStart();
+  if (head.startsWith("<")) return "xml";
+  if (head.startsWith("{") || head.startsWith("[")) return "json";
+  return "csv";
+}
+function decodeText(bytes) {
+  try {
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^﻿/, ""), encoding: "utf-8" };
+  } catch {
+    return { text: decodeWindows1252(bytes), encoding: "windows-1252" };
+  }
+}
+function decodeWindows1252(bytes) {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 8192) {
+    const chunk3 = bytes.subarray(i, i + 8192);
+    out += String.fromCharCode(...Array.from(chunk3, (b) => b >= 128 && b <= 159 ? CP1252_HIGH[b - 128] : b));
+  }
+  return out.replace(/^\uFEFF/, "");
+}
+function loadCatalogFile(file) {
+  const bytes = decodeBase64(file.contentBase64);
+  const sha256 = createHash7("sha256").update(bytes).digest("hex");
+  const size = bytes.byteLength;
+  const format = file.format ?? detectCatalogFormat(file.fileName, bytes);
+  const notes = [];
+  if (format === "xlsx") {
+    try {
+      const sheet = readXlsx(bytes, file.sheet);
+      notes.push(`Feuille lue : \xAB ${sheet.name} \xBB (${sheet.rows.length} lignes, en-t\xEAtes en premi\xE8re ligne).`);
+      return { sha256, size, format, feedFormat: "csv", content: sheetToCsv(sheet), options: { delimiter: ";" }, notes };
+    } catch (e) {
+      if (e instanceof XlsxError) throw new AppError("VALIDATION", e.message);
+      throw e;
+    }
+  }
+  const { text: text3, encoding } = decodeText(bytes);
+  if (encoding !== "utf-8") notes.push("Fichier encod\xE9 en Windows-1252 (export Excel) : converti en UTF-8.");
+  return { sha256, size, format, feedFormat: format, content: text3, options: {}, notes };
+}
+function headerSignature(columns) {
+  const norm = [...new Set(columns.map((c) => looseHeader(c).trim()).filter(Boolean))].sort();
+  return createHash7("sha256").update(norm.join("|"), "utf8").digest("hex");
+}
+function suggestCatalogMapping(columns) {
+  return suggestCatalogMappingDetailed(columns).mapping;
+}
+function suggestCatalogMappingDetailed(columns) {
+  const { mapping, confidence } = suggestMappingDetailed(columns);
+  const priceCol = typeof mapping.price === "string" ? looseHeader(mapping.price) : "";
+  if (!mapping.tax_type && priceCol) {
+    if (/ (ht|hors taxes?|excl|ex vat|net) /.test(priceCol)) mapping.tax_type = { const: "ht" };
+    else if (/ (ttc|toutes taxes|incl|inc vat) /.test(priceCol)) mapping.tax_type = { const: "ttc" };
+  }
+  return { mapping, confidence };
+}
+function previewCatalogFile(input, organizationCurrency, saved) {
+  const loaded = loadCatalogFile(input.file);
+  const first = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1);
+  const detailed = suggestCatalogMappingDetailed(first.columns);
+  const suggested = detailed.mapping;
+  const userMapping = input.mapping && Object.keys(input.mapping).length > 0 ? input.mapping : null;
+  const savedUsable = saved && Object.values(saved.mapping).every((v2) => typeof v2 !== "string" || first.columns.includes(v2)) ? saved.mapping : null;
+  const mapping = userMapping ?? savedUsable ?? suggested;
+  const defaults = { currency: input.defaults?.currency ?? organizationCurrency, taxType: input.defaults?.taxType ?? "unknown", country: input.defaults?.country ?? null };
+  const preview = previewFeed(loaded.content, loaded.feedFormat, mapping, loaded.options, defaults, 20);
+  const seen = /* @__PURE__ */ new Set();
+  let duplicates = 0;
+  for (const s of fullMapped(loaded, mapping, defaults)) {
+    if (!s) continue;
+    if (seen.has(s)) duplicates++;
+    else seen.add(s);
+  }
+  return {
+    fileSha256: loaded.sha256,
+    fileSize: loaded.size,
+    headerSignature: headerSignature(first.columns),
+    mappingSource: userMapping ? "user" : savedUsable ? "saved" : "suggested",
+    mappingConfidence: detailed.confidence,
+    duplicates,
+    alreadyImported: null,
+    format: loaded.format,
+    columns: preview.columns,
+    suggestedMapping: suggested,
+    mapping,
+    total: preview.total,
+    validCount: preview.validCount,
+    invalidCount: preview.invalidCount,
+    warnings: [...loaded.notes, ...preview.warnings],
+    sample: preview.sample.map((s) => ({
+      line: s.index + 2,
+      title: s.offer?.title ?? null,
+      reference: s.offer?.supplierSku ?? s.offer?.externalOfferId ?? null,
+      price: s.offer?.price ?? null,
+      currency: s.offer?.currency ?? null,
+      taxType: s.offer?.taxType ?? null,
+      quantity: s.offer?.availableQuantity ?? null,
+      ean: s.offer?.ean ?? null,
+      brand: s.offer?.brand ?? null,
+      condition: s.offer?.condition ?? null,
+      grade: s.offer?.grade ?? null,
+      moq: s.offer?.moq ?? null,
+      errors: s.errors,
+      warnings: s.warnings ?? []
+    })),
+    fields: RAW_OFFER_FIELDS
+  };
+}
+function fullMapped(loaded, mapping, defaults) {
+  const parsed = parseFeedContent(loaded.content, loaded.feedFormat, loaded.options);
+  return parsed.rows.map((row2) => {
+    const m = mapRow(row2, mapping, defaults);
+    return m.offer ? rowIdentity(m.offer) : null;
+  });
+}
+async function previewCatalogFileForOrg(ctx, input, admin = createAdminSupabaseClient()) {
+  const orgId = ctx.organization.id;
+  let saved = null;
+  const loaded = loadCatalogFile(input.file);
+  const columns = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1).columns;
+  if (input.supplierId) {
+    const { data } = await ctx.supabase.from("sourcing_mapping_profiles").select("mapping").eq("organization_id", orgId).eq("supplier_id", input.supplierId).eq("header_signature", headerSignature(columns)).maybeSingle();
+    const parsed = data ? fieldMappingSchema.safeParse(data.mapping) : null;
+    if (parsed?.success) saved = { mapping: parsed.data };
+  }
+  const dto = previewCatalogFile(input, ctx.organization.default_currency, saved);
+  if (input.supplierId) {
+    const { data: prior } = await admin.from("sourcing_import_jobs").select("id, started_at, file_name").eq("organization_id", orgId).eq("supplier_id", input.supplierId).eq("file_sha256", loaded.sha256).in("status", ["completed", "partial"]).order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (prior) dto.alreadyImported = { jobId: prior.id, at: prior.started_at, fileName: prior.file_name };
+  }
+  return dto;
+}
+async function importCatalogFile(ctx, input) {
+  const orgId = ctx.organization.id;
+  const loaded = loadCatalogFile(input.file);
+  let supplierId = input.supplierId ?? null;
+  let supplierName = input.supplierName ?? "";
+  if (supplierId) {
+    const { data, error } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("id", supplierId).maybeSingle();
+    if (error) throw fromPostgrestError(error);
+    if (!data) throw new AppError("NOT_FOUND", "Fournisseur introuvable dans cette organisation.");
+    supplierName = data.name;
+  } else {
+    const { data: existing } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).ilike("name", supplierName).limit(1).maybeSingle();
+    if (existing) supplierId = existing.id;
+    else {
+      const { data, error } = await ctx.supabase.from("suppliers").insert({ organization_id: orgId, name: supplierName, currency: input.defaults.currency, country: input.defaults.country ?? null }).select("id").single();
+      if (error || !data) throw fromPostgrestError(error ?? { message: "Fournisseur non cr\xE9\xE9" });
+      supplierId = data.id;
+    }
+  }
+  const sourceType = loaded.feedFormat.toUpperCase();
+  const { data: sources, error: srcErr } = await ctx.supabase.from("supplier_sources").select("id, config").eq("organization_id", orgId).eq("supplier_id", supplierId).eq("source_type", sourceType).limit(20);
+  if (srcErr) throw fromPostgrestError(srcErr);
+  let sourceId = (sources ?? []).find((s) => s.config?.kind === CATALOG_IMPORT_KIND)?.id ?? null;
+  if (!sourceId) {
+    const { data, error } = await ctx.supabase.from("supplier_sources").insert({
+      organization_id: orgId,
+      supplier_id: supplierId,
+      name: `Import de catalogue \u2014 ${supplierName}`,
+      source_type: sourceType,
+      default_currency: input.defaults.currency,
+      default_tax_type: input.defaults.taxType,
+      country: input.defaults.country ?? null,
+      automated_access_confirmed: true,
+      access_conditions: "Fichier transmis par le fournisseur et import\xE9 manuellement par l'utilisateur.",
+      sync_frequency: "manual",
+      status: "not_connected",
+      config: { kind: CATALOG_IMPORT_KIND }
+    }).select("id").single();
+    if (error || !data) throw fromPostgrestError(error ?? { message: "Source non cr\xE9\xE9e" });
+    sourceId = data.id;
+  } else {
+    await ctx.supabase.from("supplier_sources").update({ default_currency: input.defaults.currency, default_tax_type: input.defaults.taxType }).eq("id", sourceId).eq("organization_id", orgId);
+  }
+  const { data: feeds, error: feedErr } = await ctx.supabase.from("supplier_feeds").select("id").eq("organization_id", orgId).eq("source_id", sourceId).is("url", null).limit(1);
+  if (feedErr) throw fromPostgrestError(feedErr);
+  let feedId = feeds?.[0]?.id ?? null;
+  const feedPatch = { format: loaded.feedFormat, field_mapping: input.mapping, options: loaded.options, sync_frequency: "manual" };
+  if (!feedId) {
+    const { data, error } = await ctx.supabase.from("supplier_feeds").insert({ organization_id: orgId, supplier_id: supplierId, source_id: sourceId, type: "catalog", url: null, status: "not_connected", ...feedPatch }).select("id").single();
+    if (error || !data) throw fromPostgrestError(error ?? { message: "Flux non cr\xE9\xE9" });
+    feedId = data.id;
+  } else {
+    const { error } = await ctx.supabase.from("supplier_feeds").update(feedPatch).eq("id", feedId).eq("organization_id", orgId);
+    if (error) throw fromPostgrestError(error);
+  }
+  const admin = createAdminSupabaseClient();
+  if (!input.allowSameFile) {
+    const { data: prior } = await admin.from("sourcing_import_jobs").select("id, started_at").eq("organization_id", orgId).eq("source_id", sourceId).eq("file_sha256", loaded.sha256).in("status", ["completed", "partial"]).order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (prior) {
+      const message = "Ce fichier (contenu identique) a d\xE9j\xE0 \xE9t\xE9 import\xE9 pour ce fournisseur : rien n'a \xE9t\xE9 modifi\xE9. Confirmez pour le r\xE9importer quand m\xEAme.";
+      const job = await createImportJob(admin, ctx, { supplierId, sourceId, feedId, loaded, input, status: "skipped_duplicate", message });
+      return { supplierId, sourceId, feedId, importJobId: job, alreadyImported: { jobId: prior.id, at: prior.started_at }, result: { runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message } };
+    }
+  }
+  const jobId = await createImportJob(admin, ctx, { supplierId, sourceId, feedId, loaded, input, status: "running", message: null });
+  let result;
+  try {
+    result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content, force: input.force === true, mode: input.mode, importJobId: jobId, admin });
+  } catch (e) {
+    await admin.from("sourcing_import_jobs").update({ status: "failed", message: (e instanceof Error ? e.message : String(e)).slice(0, 2e3), finished_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", jobId);
+    throw e;
+  }
+  await finishImportJob(admin, orgId, jobId, result);
+  if (result.status !== "failed" && !result.quarantined) await rememberMapping(admin, ctx, supplierId, loaded, input);
+  const { feedId: _ignored, issues: _issues, ...rest } = result;
+  return { supplierId, sourceId, feedId, importJobId: jobId, alreadyImported: null, result: rest };
+}
+async function createImportJob(admin, ctx, j) {
+  const { data, error } = await admin.from("sourcing_import_jobs").insert({
+    organization_id: ctx.organization.id,
+    supplier_id: j.supplierId,
+    source_id: j.sourceId,
+    feed_id: j.feedId,
+    origin: "file",
+    file_name: j.input.file.fileName.slice(0, 200),
+    file_sha256: j.loaded.sha256,
+    file_size: j.loaded.size,
+    format: j.loaded.format,
+    sheet: j.input.file.sheet ?? null,
+    mode: j.input.mode,
+    mapping: j.input.mapping,
+    defaults: j.input.defaults,
+    status: j.status,
+    message: j.message,
+    created_by: ctx.user.id,
+    finished_at: j.status === "running" ? null : (/* @__PURE__ */ new Date()).toISOString()
+  }).select("id").single();
+  if (error || !data) throw fromPostgrestError(error ?? { message: "Import non journalis\xE9" });
+  return data.id;
+}
+async function finishImportJob(admin, organizationId, jobId, r) {
+  const status = r.quarantined ? "quarantined" : r.status === "success" ? "completed" : r.status;
+  await admin.from("sourcing_import_jobs").update({
+    sync_run_id: r.runId,
+    status,
+    rows_read: r.totalRows ?? r.processed,
+    rows_valid: Math.max(0, r.processed - r.invalidRows - (r.duplicates ?? 0)),
+    offers_created: r.created ?? 0,
+    offers_updated: r.updated ?? 0,
+    offers_unchanged: r.unchanged ?? 0,
+    duplicates: r.duplicates ?? 0,
+    rows_invalid: r.invalidRows,
+    offers_rejected: r.rejected,
+    products_unrecognized: r.unrecognized ?? 0,
+    offers_expired: r.expired,
+    truncated: r.truncated ?? false,
+    message: r.message.slice(0, 2e3),
+    finished_at: (/* @__PURE__ */ new Date()).toISOString()
+  }).eq("id", jobId);
+  const issues = (r.issues ?? []).map((i) => ({ organization_id: organizationId, job_id: jobId, line: i.line, kind: i.kind, reference: i.reference?.slice(0, 200) ?? null, message: i.message.slice(0, 1e3), excerpt: i.excerpt ?? null }));
+  for (let k = 0; k < issues.length; k += 200) await admin.from("sourcing_import_issues").insert(issues.slice(k, k + 200));
+}
+async function rememberMapping(admin, ctx, supplierId, loaded, input) {
+  const columns = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1).columns;
+  const signature = headerSignature(columns);
+  const { data: existing } = await admin.from("sourcing_mapping_profiles").select("id, use_count").eq("organization_id", ctx.organization.id).eq("supplier_id", supplierId).eq("header_signature", signature).maybeSingle();
+  const patch = { mapping: input.mapping, defaults: input.defaults, columns: columns.slice(0, 200), updated_by: ctx.user.id };
+  if (existing) await admin.from("sourcing_mapping_profiles").update({ ...patch, use_count: existing.use_count + 1 }).eq("id", existing.id);
+  else await admin.from("sourcing_mapping_profiles").insert({ organization_id: ctx.organization.id, supplier_id: supplierId, header_signature: signature, ...patch });
+}
+function toJobDTO(r) {
+  return {
+    id: r.id,
+    supplierId: r.supplier_id,
+    supplierName: r.supplier?.name ?? null,
+    sourceId: r.source_id,
+    origin: r.origin,
+    fileName: r.file_name,
+    fileSize: r.file_size,
+    format: r.format,
+    mode: r.mode,
+    status: r.status,
+    counts: { read: r.rows_read, valid: r.rows_valid, created: r.offers_created, updated: r.offers_updated, unchanged: r.offers_unchanged, duplicates: r.duplicates, invalid: r.rows_invalid, rejected: r.offers_rejected, unrecognized: r.products_unrecognized, expired: r.offers_expired },
+    truncated: r.truncated,
+    message: r.message,
+    createdBy: r.created_by,
+    startedAt: r.started_at,
+    finishedAt: r.finished_at
+  };
+}
+async function listImportJobs(ctx, opts = {}) {
+  let q = ctx.supabase.from("sourcing_import_jobs").select(JOB_COLUMNS).eq("organization_id", ctx.organization.id).order("started_at", { ascending: false }).limit(Math.min(Math.max(opts.limit ?? 50, 1), 200));
+  if (opts.supplierId) q = q.eq("supplier_id", opts.supplierId);
+  const { data, error } = await q;
+  if (error) throw fromPostgrestError(error);
+  return (data ?? []).map(toJobDTO);
+}
+async function getImportJob(ctx, jobId) {
+  const { data, error } = await ctx.supabase.from("sourcing_import_jobs").select(JOB_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", jobId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!data) throw new AppError("NOT_FOUND", "Import introuvable dans cette organisation.");
+  const { data: issues, error: iErr } = await ctx.supabase.from("sourcing_import_issues").select("line, kind, reference, message, excerpt").eq("job_id", jobId).order("line", { ascending: true, nullsFirst: true }).limit(500);
+  if (iErr) throw fromPostgrestError(iErr);
+  return { ...toJobDTO(data), issues: (issues ?? []).map((i) => ({ line: i.line, kind: i.kind, reference: i.reference, message: i.message, excerpt: i.excerpt ?? null })) };
+}
+var MAX_CATALOG_BYTES, CATALOG_IMPORT_KIND, catalogFileSchema, catalogDefaultsSchema, catalogPreviewSchema, importModeSchema, catalogImportSchema, CP1252_HIGH, JOB_COLUMNS;
+var init_catalog_import = __esm({
+  "src/services/sourcing/catalog-import.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_types2();
+    init_feed_parsers();
+    init_feed_ingestion();
+    init_import_quality();
+    init_admin();
+    init_xlsx();
+    MAX_CATALOG_BYTES = 15 * 1024 * 1024;
+    CATALOG_IMPORT_KIND = "catalog_file_import";
+    catalogFileSchema = z28.object({
+      fileName: z28.string().trim().min(1).max(200),
+      /** contenu du fichier encodé en base64 */
+      contentBase64: z28.string().min(4).max(Math.ceil(MAX_CATALOG_BYTES * 4 / 3) + 8, "Fichier trop volumineux (15 Mo maximum)."),
+      format: z28.enum(["csv", "xlsx", "xml", "json"]).optional(),
+      sheet: z28.string().max(100).optional()
+    });
+    catalogDefaultsSchema = z28.object({
+      currency: z28.string().trim().regex(/^[A-Za-z]{3}$/, "Devise sur 3 lettres (EUR, USD\u2026).").transform((s) => s.toUpperCase()),
+      taxType: z28.enum(["ht", "ttc", "unknown"]).default("unknown"),
+      country: z28.string().trim().regex(/^[A-Za-z]{2}$/).transform((s) => s.toUpperCase()).nullish()
+    });
+    catalogPreviewSchema = z28.object({
+      file: catalogFileSchema,
+      mapping: fieldMappingSchema.optional(),
+      defaults: catalogDefaultsSchema.partial({ currency: true }).optional(),
+      /** fournisseur choisi : retrouve son mapping mémorisé et signale un fichier déjà importé */
+      supplierId: z28.string().uuid().optional()
+    });
+    importModeSchema = z28.enum(["partial", "snapshot"]);
+    catalogImportSchema = z28.object({
+      file: catalogFileSchema,
+      mapping: fieldMappingSchema,
+      defaults: catalogDefaultsSchema,
+      supplierId: z28.string().uuid().optional(),
+      supplierName: z28.string().trim().min(2).max(160).optional(),
+      /** confirmation explicite après un import suspendu par le contrôle de qualité */
+      force: z28.boolean().optional(),
+      /**
+       * partial (défaut) : seules les lignes du fichier sont créées / mises à jour ;
+       * snapshot : catalogue COMPLET, les offres absentes du fichier sont marquées « expirées ».
+       */
+      mode: importModeSchema.default("partial"),
+      /** confirmation explicite pour réimporter un fichier identique à un import déjà réussi */
+      allowSameFile: z28.boolean().optional()
+    }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), {
+      message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix."
+    });
+    CP1252_HIGH = [
+      8364,
+      65533,
+      8218,
+      402,
+      8222,
+      8230,
+      8224,
+      8225,
+      710,
+      8240,
+      352,
+      8249,
+      338,
+      65533,
+      381,
+      65533,
+      65533,
+      8216,
+      8217,
+      8220,
+      8221,
+      8226,
+      8211,
+      8212,
+      732,
+      8482,
+      353,
+      8250,
+      339,
+      65533,
+      382,
+      376
+    ];
+    JOB_COLUMNS = "id, supplier_id, source_id, origin, file_name, file_size, format, mode, status, rows_read, rows_valid, offers_created, offers_updated, offers_unchanged, duplicates, rows_invalid, offers_rejected, products_unrecognized, offers_expired, truncated, message, created_by, started_at, finished_at, supplier:suppliers(name)";
   }
 });
 
@@ -6625,7 +7307,7 @@ async function checkLibrarySource(s, runtime = {}) {
   const userAgent = serverEnv().SOURCING_USER_AGENT;
   if (adapter.urlsForQuery) {
     const urls = adapter.urlsForQuery(config, parsed, s.probeQuery);
-    const robots = await checkRobotsForUrls(s.baseUrl, urls, userAgent, runtime.fetchImpl ?? fetch).catch((e) => ({ allowed: false, details: e instanceof Error ? e.message : String(e), crawlDelay: null }));
+    const robots = await checkRobotsForUrls(s.baseUrl, urls, userAgent, runtime.fetchImpl ?? fetch, runtime.resolver).catch((e) => ({ allowed: false, details: e instanceof Error ? e.message : String(e), crawlDelay: null }));
     base.robotsAllowed = robots.allowed;
     if (!robots.allowed) return { ...base, status: "robots_disallowed", message: robots.details, durationMs: Date.now() - t0 };
   }
@@ -6659,6 +7341,7 @@ async function runLibraryChecks(keys) {
   const out = [];
   for (const s of SOURCE_LIBRARY) {
     if (keys && !keys.includes(s.key)) continue;
+    if (s.blocked) continue;
     let r;
     try {
       r = await checkLibrarySourceDetect(s);
@@ -6678,7 +7361,7 @@ async function runLibraryChecks(keys) {
       message: r.message,
       duration_ms: r.durationMs
     });
-    if (error) log22.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
+    if (error) log24.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
   }
   return out;
 }
@@ -6709,8 +7392,9 @@ async function sourceLibrary(ctx) {
         termsUrl: s.termsUrl,
         notes: s.notes,
         check: c ? { status: c.status, checkedAt: c.checked_at, productCount: c.product_count, message: c.message, sample: c.sample } : null,
-        activatable: c?.status === "ok",
-        sourceId: activated.get(s.key) ?? null
+        activatable: !s.blocked && c?.status === "ok",
+        sourceId: activated.get(s.key) ?? null,
+        blocked: s.blocked ?? null
       };
     })
   };
@@ -6718,6 +7402,7 @@ async function sourceLibrary(ctx) {
 async function activateLibrarySource(ctx, key2) {
   const s = getLibrarySource(key2);
   if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
+  if (s.blocked) throw new AppError("FORBIDDEN", s.blocked);
   const { data: check } = await ctx.supabase.from("sourcing_library_checks").select("status, checked_at, adapter").eq("key", key2).maybeSingle();
   if (check?.status !== "ok") throw new AppError("VALIDATION", "Cette source n'a pas pass\xE9 la v\xE9rification en direct (robots.txt + produits avec prix) : elle ne peut pas \xEAtre activ\xE9e.");
   const { data: existing } = await ctx.supabase.from("supplier_sources").select("id, supplier_id, config").eq("organization_id", ctx.organization.id);
@@ -6749,10 +7434,10 @@ async function activateLibrarySource(ctx, key2) {
     await ctx.supabase.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", ctx.organization.id);
     throw srcErr ?? new AppError("INTERNAL", "Source non cr\xE9\xE9e.");
   }
-  log22.info("source de biblioth\xE8que activ\xE9e", { orgId: ctx.organization.id, key: key2 });
+  log24.info("source de biblioth\xE8que activ\xE9e", { orgId: ctx.organization.id, key: key2 });
   return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
 }
-var log22, shopifyTerms, SOURCE_LIBRARY;
+var log24, shopifyTerms, SOURCE_LIBRARY;
 var init_source_library = __esm({
   "src/services/sourcing/source-library.ts"() {
     "use strict";
@@ -6765,7 +7450,7 @@ var init_source_library = __esm({
     init_registry2();
     init_robots();
     init_env();
-    log22 = createLogger("SOURCE_LIBRARY");
+    log24 = createLogger("SOURCE_LIBRARY");
     shopifyTerms = (base) => `${base}/policies/terms-of-service`;
     SOURCE_LIBRARY = [
       {
@@ -6958,366 +7643,12 @@ var init_source_library = __esm({
         country: "FR",
         currency: "EUR",
         taxType: "ht",
-        termsUrl: "https://www.utopya.fr",
+        termsUrl: "https://www.utopya.fr/c-g-v",
         access: "public_json",
-        notes: "Distributeur B2B de pi\xE8ces et accessoires (Paris). Prix pros potentiellement r\xE9serv\xE9s aux comptes : v\xE9rification requise.",
-        probeQuery: "iphone 13"
+        notes: "Distributeur B2B de pi\xE8ces et accessoires (Paris). Sa FAQ indique ne proposer ni export Excel ni API ; ses CGV (art. 14) interdisent tout acc\xE8s automatis\xE9 (robots, scrapers, scripts), sauf API officielle sous contrat \xE9crit.",
+        probeQuery: "iphone 13",
+        blocked: "Acc\xE8s automatis\xE9 interdit par les CGV d'Utopya (article 14, clause p\xE9nale). Utilisez la saisie manuelle ou un fichier explicitement fourni par Utopya ; seule une API sous contrat \xE9crit permettrait une synchronisation."
       }
-    ];
-  }
-});
-
-// src/services/sourcing/xlsx.ts
-import { unzipSync, strFromU8 } from "npm:fflate@0.8.2";
-import { XMLParser as XMLParser5 } from "npm:fast-xml-parser@5.11.2";
-function asArray(v2) {
-  if (v2 === void 0 || v2 === null) return [];
-  return Array.isArray(v2) ? v2 : [v2];
-}
-function textOf2(node2) {
-  if (node2 === null || node2 === void 0) return "";
-  if (typeof node2 === "string" || typeof node2 === "number" || typeof node2 === "boolean") return String(node2);
-  if (Array.isArray(node2)) return node2.map(textOf2).join("");
-  if (typeof node2 === "object") {
-    const o = node2;
-    if ("#text" in o) return textOf2(o["#text"]);
-    if ("t" in o) return textOf2(o.t);
-    if ("r" in o) return asArray(o.r).map(textOf2).join("");
-  }
-  return "";
-}
-function columnIndex(ref) {
-  const letters = /^[A-Z]+/i.exec(ref)?.[0]?.toUpperCase() ?? "A";
-  let n = 0;
-  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
-  return n - 1;
-}
-function readZip(bytes) {
-  if (bytes.byteLength > MAX_XLSX_BYTES) throw new XlsxError("Fichier Excel trop volumineux (15 Mo maximum).");
-  if (bytes[0] !== 80 || bytes[1] !== 75) throw new XlsxError("Ce fichier n'est pas un classeur Excel .xlsx (les anciens fichiers .xls ne sont pas pris en charge : enregistrez-le en .xlsx ou .csv).");
-  let total = 0;
-  try {
-    return unzipSync(bytes, {
-      filter: (f) => {
-        total += f.originalSize;
-        if (total > MAX_UNZIPPED_BYTES) throw new XlsxError("Classeur trop volumineux une fois d\xE9compress\xE9.");
-        return f.name.startsWith("xl/") && (f.name.endsWith(".xml") || f.name.endsWith(".rels"));
-      }
-    });
-  } catch (e) {
-    if (e instanceof XlsxError) throw e;
-    throw new XlsxError("Classeur Excel illisible (archive corrompue ou prot\xE9g\xE9e par mot de passe).");
-  }
-}
-function readXlsx(bytes, sheetName) {
-  const files = readZip(bytes);
-  const workbook = files["xl/workbook.xml"];
-  if (!workbook) throw new XlsxError("Classeur Excel invalide (xl/workbook.xml absent).");
-  const wb = parser2.parse(strFromU8(workbook));
-  const sheets = asArray(wb.workbook?.sheets?.sheet);
-  if (sheets.length === 0) throw new XlsxError("Le classeur ne contient aucune feuille.");
-  const sheet = (sheetName ? sheets.find((s) => s["@_name"] === sheetName) : void 0) ?? sheets[0];
-  const relId = sheet["@_id"];
-  let target = "worksheets/sheet1.xml";
-  const relsFile = files["xl/_rels/workbook.xml.rels"];
-  if (relsFile && relId) {
-    const rels = parser2.parse(strFromU8(relsFile));
-    const rel = asArray(rels.Relationships?.Relationship).find((r) => r["@_Id"] === relId);
-    if (rel?.["@_Target"]) target = rel["@_Target"].replace(/^\/?xl\//, "").replace(/^\//, "");
-  }
-  const sheetFile = files[`xl/${target}`];
-  if (!sheetFile) throw new XlsxError(`Feuille \xAB ${sheet["@_name"] ?? "1"} \xBB introuvable dans le classeur.`);
-  const shared = [];
-  const sst = files["xl/sharedStrings.xml"];
-  if (sst) {
-    const doc2 = parser2.parse(strFromU8(sst));
-    for (const si of asArray(doc2.sst?.si)) shared.push(textOf2(si));
-  }
-  const doc = parser2.parse(strFromU8(sheetFile));
-  const rows = [];
-  for (const row2 of asArray(doc.worksheet?.sheetData?.row)) {
-    const out = [];
-    for (const c of asArray(row2.c)) {
-      const ref = String(c["@_r"] ?? "");
-      const idx = ref ? columnIndex(ref) : out.length;
-      const type = String(c["@_t"] ?? "n");
-      let value = "";
-      if (type === "s") value = shared[Number(textOf2(c.v))] ?? "";
-      else if (type === "inlineStr") value = textOf2(c.is);
-      else if (type === "b") value = textOf2(c.v) === "1" ? "true" : "false";
-      else if (type === "e") value = "";
-      else value = textOf2(c.v);
-      while (out.length < idx) out.push("");
-      out[idx] = value.trim();
-    }
-    if (out.some((v2) => v2 !== "")) rows.push(out);
-  }
-  return { name: sheet["@_name"] ?? "Feuille 1", rows };
-}
-function csvCell(v2) {
-  return /[;"\n\r]/.test(v2) ? `"${v2.replace(/"/g, '""')}"` : v2;
-}
-function sheetToCsv(sheet) {
-  const width = Math.max(0, ...sheet.rows.map((r) => r.length));
-  return sheet.rows.map((r) => Array.from({ length: width }, (_, i) => csvCell(r[i] ?? "")).join(";")).join("\n");
-}
-var MAX_XLSX_BYTES, MAX_UNZIPPED_BYTES, parser2, XlsxError;
-var init_xlsx = __esm({
-  "src/services/sourcing/xlsx.ts"() {
-    "use strict";
-    MAX_XLSX_BYTES = 15 * 1024 * 1024;
-    MAX_UNZIPPED_BYTES = 120 * 1024 * 1024;
-    parser2 = new XMLParser5({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: false, textNodeName: "#text" });
-    XlsxError = class extends Error {
-    };
-  }
-});
-
-// src/services/sourcing/catalog-import.ts
-var catalog_import_exports = {};
-__export(catalog_import_exports, {
-  CATALOG_IMPORT_KIND: () => CATALOG_IMPORT_KIND,
-  MAX_CATALOG_BYTES: () => MAX_CATALOG_BYTES,
-  catalogDefaultsSchema: () => catalogDefaultsSchema,
-  catalogFileSchema: () => catalogFileSchema,
-  catalogImportSchema: () => catalogImportSchema,
-  catalogPreviewSchema: () => catalogPreviewSchema,
-  decodeText: () => decodeText,
-  decodeWindows1252: () => decodeWindows1252,
-  detectCatalogFormat: () => detectCatalogFormat,
-  importCatalogFile: () => importCatalogFile,
-  loadCatalogFile: () => loadCatalogFile,
-  previewCatalogFile: () => previewCatalogFile,
-  suggestCatalogMapping: () => suggestCatalogMapping
-});
-import { z as z28 } from "npm:zod@4.6.5";
-function decodeBase64(b64) {
-  const clean = b64.replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) throw new AppError("VALIDATION", "Fichier illisible (encodage invalide).");
-  const bin = atob(clean);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  if (out.byteLength > MAX_CATALOG_BYTES) throw new AppError("VALIDATION", "Fichier trop volumineux (15 Mo maximum).");
-  if (out.byteLength === 0) throw new AppError("VALIDATION", "Le fichier est vide.");
-  return out;
-}
-function detectCatalogFormat(fileName, bytes) {
-  const ext = /\.([a-z0-9]+)$/i.exec(fileName)?.[1]?.toLowerCase();
-  if (ext === "xlsx" || ext === "xlsm") return "xlsx";
-  if (ext === "xls") throw new AppError("VALIDATION", "Les anciens fichiers Excel .xls ne sont pas pris en charge : enregistrez-le en .xlsx ou .csv.");
-  if (ext === "csv" || ext === "txt" || ext === "tsv") return "csv";
-  if (ext === "xml") return "xml";
-  if (ext === "json") return "json";
-  if (bytes[0] === 80 && bytes[1] === 75) return "xlsx";
-  const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 200)).replace(/^﻿/, "").trimStart();
-  if (head.startsWith("<")) return "xml";
-  if (head.startsWith("{") || head.startsWith("[")) return "json";
-  return "csv";
-}
-function decodeText(bytes) {
-  try {
-    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^﻿/, ""), encoding: "utf-8" };
-  } catch {
-    return { text: decodeWindows1252(bytes), encoding: "windows-1252" };
-  }
-}
-function decodeWindows1252(bytes) {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 8192) {
-    const chunk3 = bytes.subarray(i, i + 8192);
-    out += String.fromCharCode(...Array.from(chunk3, (b) => b >= 128 && b <= 159 ? CP1252_HIGH[b - 128] : b));
-  }
-  return out.replace(/^\uFEFF/, "");
-}
-function loadCatalogFile(file) {
-  const bytes = decodeBase64(file.contentBase64);
-  const format = file.format ?? detectCatalogFormat(file.fileName, bytes);
-  const notes = [];
-  if (format === "xlsx") {
-    try {
-      const sheet = readXlsx(bytes, file.sheet);
-      notes.push(`Feuille lue : \xAB ${sheet.name} \xBB (${sheet.rows.length} lignes, en-t\xEAtes en premi\xE8re ligne).`);
-      return { format, feedFormat: "csv", content: sheetToCsv(sheet), options: { delimiter: ";" }, notes };
-    } catch (e) {
-      if (e instanceof XlsxError) throw new AppError("VALIDATION", e.message);
-      throw e;
-    }
-  }
-  const { text: text3, encoding } = decodeText(bytes);
-  if (encoding !== "utf-8") notes.push("Fichier encod\xE9 en Windows-1252 (export Excel) : converti en UTF-8.");
-  return { format, feedFormat: format, content: text3, options: {}, notes };
-}
-function suggestCatalogMapping(columns) {
-  const mapping = suggestMapping(columns);
-  const priceCol = typeof mapping.price === "string" ? looseHeader(mapping.price) : "";
-  if (!mapping.tax_type && priceCol) {
-    if (/ (ht|hors taxes?|excl|ex vat|net) /.test(priceCol)) mapping.tax_type = { const: "ht" };
-    else if (/ (ttc|toutes taxes|incl|inc vat) /.test(priceCol)) mapping.tax_type = { const: "ttc" };
-  }
-  return mapping;
-}
-function previewCatalogFile(input, organizationCurrency) {
-  const loaded = loadCatalogFile(input.file);
-  const first = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1);
-  const suggested = suggestCatalogMapping(first.columns);
-  const mapping = input.mapping && Object.keys(input.mapping).length > 0 ? input.mapping : suggested;
-  const defaults = { currency: input.defaults?.currency ?? organizationCurrency, taxType: input.defaults?.taxType ?? "unknown", country: input.defaults?.country ?? null };
-  const preview = previewFeed(loaded.content, loaded.feedFormat, mapping, loaded.options, defaults, 10);
-  return {
-    format: loaded.format,
-    columns: preview.columns,
-    suggestedMapping: suggested,
-    mapping,
-    total: preview.total,
-    validCount: preview.validCount,
-    invalidCount: preview.invalidCount,
-    warnings: [...loaded.notes, ...preview.warnings],
-    sample: preview.sample.map((s) => ({
-      line: s.index + 2,
-      title: s.offer?.title ?? null,
-      reference: s.offer?.supplierSku ?? s.offer?.externalOfferId ?? null,
-      price: s.offer?.price ?? null,
-      currency: s.offer?.currency ?? null,
-      taxType: s.offer?.taxType ?? null,
-      quantity: s.offer?.availableQuantity ?? null,
-      ean: s.offer?.ean ?? null,
-      errors: s.errors
-    })),
-    fields: RAW_OFFER_FIELDS
-  };
-}
-async function importCatalogFile(ctx, input) {
-  const orgId = ctx.organization.id;
-  const loaded = loadCatalogFile(input.file);
-  let supplierId = input.supplierId ?? null;
-  let supplierName = input.supplierName ?? "";
-  if (supplierId) {
-    const { data, error } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("id", supplierId).maybeSingle();
-    if (error) throw fromPostgrestError(error);
-    if (!data) throw new AppError("NOT_FOUND", "Fournisseur introuvable dans cette organisation.");
-    supplierName = data.name;
-  } else {
-    const { data: existing } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).ilike("name", supplierName).limit(1).maybeSingle();
-    if (existing) supplierId = existing.id;
-    else {
-      const { data, error } = await ctx.supabase.from("suppliers").insert({ organization_id: orgId, name: supplierName, currency: input.defaults.currency, country: input.defaults.country ?? null }).select("id").single();
-      if (error || !data) throw fromPostgrestError(error ?? { message: "Fournisseur non cr\xE9\xE9" });
-      supplierId = data.id;
-    }
-  }
-  const sourceType = loaded.feedFormat.toUpperCase();
-  const { data: sources, error: srcErr } = await ctx.supabase.from("supplier_sources").select("id, config").eq("organization_id", orgId).eq("supplier_id", supplierId).eq("source_type", sourceType).limit(20);
-  if (srcErr) throw fromPostgrestError(srcErr);
-  let sourceId = (sources ?? []).find((s) => s.config?.kind === CATALOG_IMPORT_KIND)?.id ?? null;
-  if (!sourceId) {
-    const { data, error } = await ctx.supabase.from("supplier_sources").insert({
-      organization_id: orgId,
-      supplier_id: supplierId,
-      name: `Import de catalogue \u2014 ${supplierName}`,
-      source_type: sourceType,
-      default_currency: input.defaults.currency,
-      default_tax_type: input.defaults.taxType,
-      country: input.defaults.country ?? null,
-      automated_access_confirmed: true,
-      access_conditions: "Fichier transmis par le fournisseur et import\xE9 manuellement par l'utilisateur.",
-      sync_frequency: "manual",
-      status: "not_connected",
-      config: { kind: CATALOG_IMPORT_KIND }
-    }).select("id").single();
-    if (error || !data) throw fromPostgrestError(error ?? { message: "Source non cr\xE9\xE9e" });
-    sourceId = data.id;
-  } else {
-    await ctx.supabase.from("supplier_sources").update({ default_currency: input.defaults.currency, default_tax_type: input.defaults.taxType }).eq("id", sourceId).eq("organization_id", orgId);
-  }
-  const { data: feeds, error: feedErr } = await ctx.supabase.from("supplier_feeds").select("id").eq("organization_id", orgId).eq("source_id", sourceId).is("url", null).limit(1);
-  if (feedErr) throw fromPostgrestError(feedErr);
-  let feedId = feeds?.[0]?.id ?? null;
-  const feedPatch = { format: loaded.feedFormat, field_mapping: input.mapping, options: loaded.options, sync_frequency: "manual" };
-  if (!feedId) {
-    const { data, error } = await ctx.supabase.from("supplier_feeds").insert({ organization_id: orgId, supplier_id: supplierId, source_id: sourceId, type: "catalog", url: null, status: "not_connected", ...feedPatch }).select("id").single();
-    if (error || !data) throw fromPostgrestError(error ?? { message: "Flux non cr\xE9\xE9" });
-    feedId = data.id;
-  } else {
-    const { error } = await ctx.supabase.from("supplier_feeds").update(feedPatch).eq("id", feedId).eq("organization_id", orgId);
-    if (error) throw fromPostgrestError(error);
-  }
-  const result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content, force: input.force === true });
-  const { feedId: _ignored, ...rest } = result;
-  return { supplierId, sourceId, feedId, result: rest };
-}
-var MAX_CATALOG_BYTES, CATALOG_IMPORT_KIND, catalogFileSchema, catalogDefaultsSchema, catalogPreviewSchema, catalogImportSchema, CP1252_HIGH;
-var init_catalog_import = __esm({
-  "src/services/sourcing/catalog-import.ts"() {
-    "use strict";
-    init_empty();
-    init_errors();
-    init_types2();
-    init_feed_parsers();
-    init_feed_ingestion();
-    init_xlsx();
-    MAX_CATALOG_BYTES = 15 * 1024 * 1024;
-    CATALOG_IMPORT_KIND = "catalog_file_import";
-    catalogFileSchema = z28.object({
-      fileName: z28.string().trim().min(1).max(200),
-      /** contenu du fichier encodé en base64 */
-      contentBase64: z28.string().min(4).max(Math.ceil(MAX_CATALOG_BYTES * 4 / 3) + 8, "Fichier trop volumineux (15 Mo maximum)."),
-      format: z28.enum(["csv", "xlsx", "xml", "json"]).optional(),
-      sheet: z28.string().max(100).optional()
-    });
-    catalogDefaultsSchema = z28.object({
-      currency: z28.string().trim().regex(/^[A-Za-z]{3}$/, "Devise sur 3 lettres (EUR, USD\u2026).").transform((s) => s.toUpperCase()),
-      taxType: z28.enum(["ht", "ttc", "unknown"]).default("unknown"),
-      country: z28.string().trim().regex(/^[A-Za-z]{2}$/).transform((s) => s.toUpperCase()).nullish()
-    });
-    catalogPreviewSchema = z28.object({
-      file: catalogFileSchema,
-      mapping: fieldMappingSchema.optional(),
-      defaults: catalogDefaultsSchema.partial({ currency: true }).optional()
-    });
-    catalogImportSchema = z28.object({
-      file: catalogFileSchema,
-      mapping: fieldMappingSchema,
-      defaults: catalogDefaultsSchema,
-      supplierId: z28.string().uuid().optional(),
-      supplierName: z28.string().trim().min(2).max(160).optional(),
-      /** confirmation explicite après un import suspendu par le contrôle de qualité */
-      force: z28.boolean().optional()
-    }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), {
-      message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix."
-    });
-    CP1252_HIGH = [
-      8364,
-      65533,
-      8218,
-      402,
-      8222,
-      8230,
-      8224,
-      8225,
-      710,
-      8240,
-      352,
-      8249,
-      338,
-      65533,
-      381,
-      65533,
-      65533,
-      8216,
-      8217,
-      8220,
-      8221,
-      8226,
-      8211,
-      8212,
-      732,
-      8482,
-      353,
-      8250,
-      339,
-      65533,
-      382,
-      376
     ];
   }
 });
@@ -7548,8 +7879,190 @@ var init_radar = __esm({
   }
 });
 
+// src/domain/sourcing/assessment.ts
+function stockConfirmed(i) {
+  return i.availableQuantity !== null && i.availableQuantity > 0 || i.stockStatus === "in_stock" || i.stockStatus === "low";
+}
+function assessCompetitiveness(i) {
+  const reasons = [];
+  if (i.landedUnitCost === null) return { score: null, label: "insufficient_data", reasons: ["Co\xFBt rendu non calculable (prix, devise ou type de prix manquant)."] };
+  const parts = [];
+  const peers = i.peerLandedCosts.filter((c) => Number.isFinite(c) && c > 0);
+  if (peers.length > 0) {
+    const best = Math.min(...peers, i.landedUnitCost);
+    const priceScore = best / i.landedUnitCost * 100;
+    parts.push({ w: 0.6, v: priceScore });
+    if (i.landedUnitCost <= best) reasons.push(`Co\xFBt rendu le plus bas parmi ${peers.length + 1} offres.`);
+    else reasons.push(`Co\xFBt rendu ${Math.round((i.landedUnitCost - best) / best * 100)} % au-dessus de la meilleure offre.`);
+  } else reasons.push("Aucune autre offre active pour ce produit : pas de comparaison de prix.");
+  if (i.marginPercent !== null && i.estimatedProfit !== null) {
+    parts.push({ w: 0.4, v: i.estimatedProfit <= 0 ? 0 : Math.min(30, i.marginPercent) / 30 * 100 });
+    reasons.push(i.estimatedProfit > 0 ? `Marge estim\xE9e ${i.marginPercent} %.` : "Marge nulle ou n\xE9gative.");
+  } else reasons.push("Marge non calculable (prix de vente ou co\xFBts inconnus).");
+  if (parts.length === 0) return { score: null, label: "insufficient_data", reasons };
+  const totalW = parts.reduce((a, p) => a + p.w, 0);
+  let score = clamp(parts.reduce((a, p) => a + p.w * p.v, 0) / totalW);
+  if (i.stockStatus === "out_of_stock" || i.availableQuantity === 0) {
+    score = Math.min(score, 20);
+    reasons.push("Rupture chez le fournisseur : note plafonn\xE9e \xE0 20.");
+  } else if (!stockConfirmed(i)) {
+    score = Math.min(score, 70);
+    reasons.push("Stock non confirm\xE9 : note plafonn\xE9e \xE0 70.");
+  } else if (i.moq !== null && i.availableQuantity !== null && i.availableQuantity < i.moq) {
+    score = Math.min(score, 50);
+    reasons.push(`Stock (${i.availableQuantity}) inf\xE9rieur au minimum de commande (${i.moq}).`);
+  }
+  return { score, label: labelOf(score), reasons };
+}
+function assessSourceReliability(i) {
+  const reasons = [];
+  const s = i.source;
+  const hasHistory = s !== null && (s.runs >= 3 || s.receivedPurchaseOrders >= 3);
+  if (i.priceOrigin === "unknown" && !hasHistory) return { score: null, label: "insufficient_data", reasons: ["Source inconnue et sans historique : donn\xE9es insuffisantes pour juger sa fiabilit\xE9."] };
+  let score = ORIGIN_RELIABILITY[i.priceOrigin];
+  reasons.push(
+    {
+      verified_live: "Prix lu en direct via l'API du fournisseur.",
+      supplier_communicated: "Prix communiqu\xE9 par le fournisseur (flux ou fichier).",
+      catalog_import: "Prix import\xE9 d'un fichier fournisseur.",
+      observed_public: "Prix relev\xE9 sur une page publique.",
+      manual_entry: "Prix saisi manuellement.",
+      unknown: "Origine du prix inconnue."
+    }[i.priceOrigin]
+  );
+  if (s && s.runs >= 3) {
+    const rate = s.successfulRuns / s.runs;
+    score += (rate - 0.8) * 50;
+    reasons.push(`${Math.round(rate * 100)} % de synchronisations r\xE9ussies (${s.runs}).`);
+  } else reasons.push("Moins de 3 synchronisations : historique insuffisant.");
+  if (s && s.consecutiveFailures > 0) {
+    score -= Math.min(30, s.consecutiveFailures * 10);
+    reasons.push(`${s.consecutiveFailures} \xE9chec(s) cons\xE9cutif(s) de synchronisation.`);
+  }
+  if (s && s.supplierScore !== null) {
+    score = score * 0.6 + s.supplierScore * 0.4;
+    reasons.push(`Score fournisseur ${s.supplierScore}/100 (commandes re\xE7ues).`);
+  } else if (s && s.receivedPurchaseOrders > 0) reasons.push(`${s.receivedPurchaseOrders} commande(s) re\xE7ue(s) : score fournisseur \xE0 partir de 3.`);
+  else reasons.push("Aucune commande re\xE7ue de ce fournisseur.");
+  if (!s || s.supplierScore === null && s.receivedPurchaseOrders < 3) score = Math.min(score, 70);
+  const final = clamp(score);
+  return { score: final, label: labelOf(final), reasons };
+}
+function assessDataConfidence(i) {
+  const checks = [
+    [i.landedUnitCost !== null, "prix exploitable"],
+    [i.availableQuantity !== null || i.stockStatus !== "unknown", "disponibilit\xE9"],
+    [i.moq !== null, "quantit\xE9 minimale"],
+    [i.taxType !== "unknown", "HT / TTC"],
+    [i.shippingKnown, "frais de port"],
+    [i.gradeOrCondition, "\xE9tat / grade"],
+    [i.deliveryKnown, "d\xE9lai de livraison"],
+    [i.vatRegime !== null && i.vatRegime !== "unknown", "r\xE9gime de TVA"],
+    [i.warrantyKnown, "garantie"]
+  ];
+  const missing = checks.filter(([ok]) => !ok).map(([, l]) => l);
+  const completeness = (checks.length - missing.length) / checks.length;
+  const reasons = [`${checks.length - missing.length}/${checks.length} informations connues.`];
+  let score = completeness * 100;
+  if (i.ageDays === null) {
+    score -= 25;
+    reasons.push("Date de v\xE9rification inconnue.");
+  } else if (i.ageDays > 30) {
+    score -= 50;
+    reasons.push(`Donn\xE9es vieilles de ${i.ageDays} jours : tr\xE8s probablement obsol\xE8tes.`);
+  } else if (i.ageDays > 7) {
+    score -= 25;
+    reasons.push(`Donn\xE9es vieilles de ${i.ageDays} jours : \xE0 rev\xE9rifier.`);
+  } else reasons.push(i.ageDays <= 2 ? "Donn\xE9es r\xE9centes (moins de 48 h)." : `Donn\xE9es de ${i.ageDays} jours.`);
+  if (i.landedUnitCost === null) return { score: null, label: "insufficient_data", reasons, missing, ageDays: i.ageDays };
+  const final = clamp(score);
+  return { score: final, label: labelOf(final), reasons, missing, ageDays: i.ageDays };
+}
+function assessOffer(i) {
+  const competitiveness = assessCompetitiveness(i);
+  const sourceReliability = assessSourceReliability(i);
+  const dataConfidence = assessDataConfidence(i);
+  const why = [];
+  let verdict;
+  if (competitiveness.score === null || dataConfidence.score === null) {
+    verdict = "insufficient_data";
+    why.push("Co\xFBt rendu ou marge non calculable : compl\xE9tez les donn\xE9es avant de d\xE9cider.");
+  } else if (i.estimatedProfit !== null && i.estimatedProfit <= 0 || i.stockStatus === "out_of_stock" || i.availableQuantity === 0 || i.ageDays !== null && i.ageDays > 30) {
+    verdict = "risky";
+    if (i.estimatedProfit !== null && i.estimatedProfit <= 0) why.push("Aucun b\xE9n\xE9fice avec les co\xFBts connus.");
+    if (i.stockStatus === "out_of_stock" || i.availableQuantity === 0) why.push("Rupture chez le fournisseur.");
+    if (i.ageDays !== null && i.ageDays > 30) why.push("Prix trop ancien pour \xEAtre fiable.");
+  } else if (i.estimatedProfit !== null && i.estimatedProfit > 0 && stockConfirmed(i) && i.ageDays !== null && i.ageDays <= 7 && competitiveness.score >= 60 && dataConfidence.score >= 50 && (i.marginPercent ?? 0) >= 10) {
+    verdict = "opportunity";
+    why.push("B\xE9n\xE9fice positif, stock confirm\xE9, prix de moins de 7 jours et co\xFBt rendu comp\xE9titif.");
+  } else {
+    verdict = "to_verify";
+    if (!stockConfirmed(i)) why.push("Stock non confirm\xE9 par le fournisseur.");
+    if (i.ageDays === null || i.ageDays > 7) why.push("Prix \xE0 rev\xE9rifier (plus de 7 jours ou date inconnue).");
+    if ((i.marginPercent ?? 0) < 10) why.push("Marge faible (moins de 10 %).");
+    if (competitiveness.score < 60) why.push("D'autres offres sont plus comp\xE9titives.");
+    if (dataConfidence.score < 50) why.push(`Informations manquantes : ${dataConfidence.missing.join(", ")}.`);
+  }
+  return { competitiveness, sourceReliability, dataConfidence, verdict, verdictReasons: why };
+}
+function orderableQuantity(q, moq, multiple) {
+  let n = Math.max(1, Math.ceil(q), moq ?? 1);
+  if (multiple && multiple > 1) n = Math.ceil(n / multiple) * multiple;
+  return n;
+}
+function quantityScenarios(i, settings, extra = []) {
+  const base = orderableQuantity(i.moq ?? 1, i.moq, i.orderMultiple);
+  const wanted = [
+    { q: base, label: i.moq ? "Quantit\xE9 minimale" : "\xC0 l'unit\xE9" },
+    { q: orderableQuantity(base * 2, i.moq, i.orderMultiple), label: "Deux fois le minimum" }
+  ];
+  if (i.availableQuantity !== null && i.availableQuantity > base * 2) wanted.push({ q: i.availableQuantity, label: "Tout le stock annonc\xE9" });
+  for (const e of extra) if (e > 0) wanted.push({ q: orderableQuantity(e, i.moq, i.orderMultiple), label: `${e} unit\xE9s demand\xE9es` });
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const w2 of wanted) {
+    if (seen.has(w2.q)) continue;
+    seen.add(w2.q);
+    const eco = computeUnitEconomics(
+      { salePrice: i.salePrice, saleLabel: i.saleLabel, purchasePrice: i.purchasePrice, purchaseTaxType: i.purchaseTaxType, supplierShipping: i.supplierShipping, moq: w2.q, supplierOrigin: i.supplierOrigin, originLabel: i.originLabel },
+      settings
+    );
+    const unitLanded = eco.landedCost;
+    const unitProfit = eco.estimatedProfit;
+    out.push({
+      quantity: w2.q,
+      label: w2.label,
+      unitLandedCost: unitLanded,
+      unitProfit,
+      capital: unitLanded === null ? null : Math.round(unitLanded * w2.q * 100) / 100,
+      totalProfit: unitProfit === null ? null : Math.round(unitProfit * w2.q * 100) / 100,
+      exceedsStock: i.availableQuantity !== null && w2.q > i.availableQuantity,
+      missing: eco.missing,
+      assumption: i.supplierShipping !== null ? `Transport annonc\xE9 (${i.supplierShipping}) r\xE9parti sur ${w2.q} unit\xE9s : forfait par commande suppos\xE9.` : null
+    });
+  }
+  return out;
+}
+var ORIGIN_RELIABILITY, labelOf, clamp;
+var init_assessment = __esm({
+  "src/domain/sourcing/assessment.ts"() {
+    "use strict";
+    init_radar();
+    ORIGIN_RELIABILITY = {
+      verified_live: 80,
+      supplier_communicated: 65,
+      catalog_import: 60,
+      observed_public: 50,
+      manual_entry: 45,
+      unknown: 30
+    };
+    labelOf = (score) => score === null ? "insufficient_data" : score >= 80 ? "excellent" : score >= 60 ? "good" : score >= 40 ? "fair" : "weak";
+    clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
+  }
+});
+
 // src/domain/sourcing/radar-settings.ts
-import { z as z29 } from "npm:zod@4.6.5";
+import { z as z31 } from "npm:zod@4.6.5";
 function readCostSettings(orgSettings, channel) {
   const raw = orgSettings?.radar ?? {};
   const s = { ...EMPTY_COST_SETTINGS };
@@ -7581,11 +8094,11 @@ var init_radar_settings = __esm({
   "src/domain/sourcing/radar-settings.ts"() {
     "use strict";
     init_radar();
-    nullableNumber2 = (min, max) => z29.number().finite().min(min).max(max).nullable();
-    radarSettingsSchema = z29.object({
-      vatRegime: z29.enum(["normal", "margin", "franchise"]).nullable(),
+    nullableNumber2 = (min, max) => z31.number().finite().min(min).max(max).nullable();
+    radarSettingsSchema = z31.object({
+      vatRegime: z31.enum(["normal", "margin", "franchise"]).nullable(),
       vatRate: nullableNumber2(0, 30),
-      vatRecoverable: z29.boolean().nullable(),
+      vatRecoverable: z31.boolean().nullable(),
       marketplaceFeePercent: nullableNumber2(0, 50),
       paymentFeePercent: nullableNumber2(0, 20),
       paymentFeeFixed: nullableNumber2(0, 50),
@@ -7601,10 +8114,12 @@ var init_radar_settings = __esm({
 var radar_exports = {};
 __export(radar_exports, {
   buildRadar: () => buildRadar,
+  buildRadarOffer: () => buildRadarOffer,
   priceOriginOf: () => priceOriginOf,
   radarSettingsSchema: () => radarSettingsSchema,
   readCostSettings: () => readCostSettings,
-  saveCostSettings: () => saveCostSettings
+  saveCostSettings: () => saveCostSettings,
+  shippingInOrgCurrency: () => shippingInOrgCurrency
 });
 function priceOriginOf(sourceType, sourceConfig) {
   const kind = sourceConfig?.kind;
@@ -7614,6 +8129,13 @@ function priceOriginOf(sourceType, sourceConfig) {
   if (kind === "catalog_file_import") return "catalog_import";
   if (["CSV", "XML", "JSON", "PARTNER_FEED", "SUPPLIER_ACCOUNT"].includes(sourceType)) return "supplier_communicated";
   return "unknown";
+}
+function shippingInOrgCurrency(o) {
+  if (o.shipping_cost === null || o.shipping_cost === void 0) return null;
+  const cur = (o.shipping_currency ?? o.original_currency ?? "").toUpperCase();
+  if (o.normalized_currency && cur === o.normalized_currency.toUpperCase()) return o.shipping_cost;
+  if (o.original_currency && cur === o.original_currency.toUpperCase() && o.fx_rate) return Math.round(o.shipping_cost * o.fx_rate * 100) / 100;
+  return null;
 }
 function one2(v2) {
   if (v2 === null || v2 === void 0) return null;
@@ -7665,6 +8187,7 @@ async function buildRadar(ctx, options = {}) {
   }
   const perSku = /* @__PURE__ */ new Map();
   for (const o of offers) if (o.normalized_price !== null) perSku.set(o.sku_id, [...perSku.get(o.sku_id) ?? [], o.normalized_price]);
+  const meta = /* @__PURE__ */ new Map();
   const items = offers.map((o) => {
     const sku = skus.get(o.sku_id);
     const supplier = one2(o.supplier);
@@ -7672,13 +8195,14 @@ async function buildRadar(ctx, options = {}) {
     const input = {
       offerId: o.id,
       supplierName: supplier?.name ?? "Fournisseur",
-      supplierCountry: supplier?.country ?? o.country ?? null,
+      // pays d'expédition déclaré d'abord (droits de douane hors UE), sinon pays du fournisseur
+      supplierCountry: o.ship_from_country ?? supplier?.country ?? o.country ?? null,
       title: o.title_original,
       sourceUrl: o.source_url,
       price: o.normalized_price,
       currency: o.normalized_currency,
       taxType: o.tax_type,
-      shippingCost: o.shipping_cost,
+      shippingCost: shippingInOrgCurrency(o),
       moq: o.moq,
       availableQuantity: o.available_quantity,
       stockStatus: o.stock_status,
@@ -7695,8 +8219,35 @@ async function buildRadar(ctx, options = {}) {
       if (o.normalized_price === min && max > min) evaluation.reasons.unshift(`Meilleur prix parmi ${competing.length} offres (\xE9cart ${(max - min).toFixed(2)}).`);
     }
     const s = saved.get(o.id);
-    return { supplierId: o.supplier_id, sku: { id: sku.skuId, code: sku.code, name: sku.name, currency: sku.currency, units30d: sku.units30d, quantityAvailable: sku.quantityAvailable }, offer: input, savedAt: s?.created_at ?? null, priceAtSave: s?.price_at_save ?? null, evaluation, offersForSku: competing.length };
+    const details = { shipFromCountry: o.ship_from_country ?? null, warrantyMonths: o.warranty_months ?? null, vatRegime: o.vat_regime ?? null, orderMultiple: o.order_multiple ?? null, condition: o.condition ?? null, grade: o.grade ?? null, deliveryMaxDays: o.delivery_max_days ?? null };
+    meta.set(o.id, { sourceId: o.source_id, supplierScore: supplier?.internal_score ?? null, failures: source?.consecutive_failures ?? 0 });
+    return { supplierId: o.supplier_id, sku: { id: sku.skuId, code: sku.code, name: sku.name, currency: sku.currency, units30d: sku.units30d, quantityAvailable: sku.quantityAvailable }, offer: input, savedAt: s?.created_at ?? null, priceAtSave: s?.price_at_save ?? null, evaluation, offersForSku: competing.length, details, assessment: void 0 };
   });
+  const history = await loadSourceHistory(ctx, [...new Set(offers.map((o) => o.source_id))], [...new Set(offers.map((o) => o.supplier_id))]);
+  for (const raw of items) {
+    const peers = items.filter((x) => x.sku.id === raw.sku.id && x.offer.offerId !== raw.offer.offerId).map((x) => x.evaluation.landedCost).filter((c) => c !== null);
+    const m = meta.get(raw.offer.offerId);
+    const h = history.get(m.sourceId);
+    const source = { runs: h?.runs ?? 0, successfulRuns: h?.success ?? 0, consecutiveFailures: m.failures, receivedPurchaseOrders: history.get(`po:${raw.supplierId}`)?.runs ?? 0, supplierScore: m.supplierScore };
+    raw.assessment = assessOffer({
+      landedUnitCost: raw.evaluation.landedCost,
+      peerLandedCosts: peers,
+      estimatedProfit: raw.evaluation.estimatedProfit,
+      marginPercent: raw.evaluation.marginPercent,
+      availableQuantity: raw.offer.availableQuantity,
+      stockStatus: raw.offer.stockStatus,
+      moq: raw.offer.moq,
+      ageDays: raw.evaluation.ageDays,
+      priceOrigin: raw.offer.priceOrigin,
+      taxType: raw.offer.taxType,
+      vatRegime: raw.details.vatRegime,
+      shippingKnown: raw.offer.shippingCost !== null,
+      deliveryKnown: raw.details.deliveryMaxDays !== null,
+      gradeOrCondition: Boolean(raw.details.grade) || raw.details.condition !== null && raw.details.condition !== "unknown",
+      warrantyKnown: raw.details.warrantyMonths !== null,
+      source
+    });
+  }
   items.sort(compareRadar(options.sort ?? "score"));
   const restock = [];
   for (const sku of skus.values()) {
@@ -7726,6 +8277,61 @@ async function buildRadar(ctx, options = {}) {
     computedAt: now.toISOString()
   };
 }
+async function loadSourceHistory(ctx, sourceIds, supplierIds) {
+  const out = /* @__PURE__ */ new Map();
+  if (sourceIds.length === 0) return out;
+  const orgId = ctx.organization.id;
+  const since2 = new Date(Date.now() - 60 * 864e5).toISOString();
+  const { data: feeds } = await ctx.supabase.from("supplier_feeds").select("id, source_id").eq("organization_id", orgId).in("source_id", sourceIds.slice(0, 200));
+  const refToSource = new Map(sourceIds.map((id) => [id, id]));
+  for (const f of feeds ?? []) refToSource.set(f.id, f.source_id);
+  const { data: runs } = await ctx.supabase.from("sync_runs").select("source_ref, status").eq("organization_id", orgId).in("source_ref", [...refToSource.keys()].slice(0, 400)).in("status", ["success", "partial", "failed"]).gte("started_at", since2).limit(5e3);
+  for (const r of runs ?? []) {
+    const src = r.source_ref ? refToSource.get(r.source_ref) : null;
+    if (!src) continue;
+    const e = out.get(src) ?? { runs: 0, success: 0 };
+    e.runs++;
+    if (r.status !== "failed") e.success++;
+    out.set(src, e);
+  }
+  if (supplierIds.length) {
+    const { data: pos } = await ctx.supabase.from("purchase_orders").select("supplier_id").eq("organization_id", orgId).eq("status", "received").in("supplier_id", supplierIds.slice(0, 200)).limit(5e3);
+    for (const po of pos ?? []) {
+      const k = `po:${po.supplier_id}`;
+      const e = out.get(k) ?? { runs: 0, success: 0 };
+      e.runs++;
+      out.set(k, e);
+    }
+  }
+  return out;
+}
+async function buildRadarOffer(ctx, offerId, extraQuantities = [], now = /* @__PURE__ */ new Date()) {
+  const radar = await buildRadar(ctx, { now });
+  const item = radar.items.find((i) => i.offer.offerId === offerId);
+  if (!item) throw new AppError("NOT_FOUND", "Offre absente du radar (non rapproch\xE9e d'un SKU, expir\xE9e ou d'une autre organisation).");
+  const { data: sku } = await ctx.supabase.from("v_stock_overview").select("avg_sale_price_30d, sale_price").eq("organization_id", ctx.organization.id).eq("sku_id", item.sku.id).maybeSingle();
+  const sale = sku?.avg_sale_price_30d ?? sku?.sale_price ?? null;
+  const country = item.offer.supplierCountry?.toUpperCase() ?? null;
+  const EU2 = /* @__PURE__ */ new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
+  const scenarios = quantityScenarios(
+    {
+      salePrice: sale,
+      saleLabel: sku?.avg_sale_price_30d !== null && sku?.avg_sale_price_30d !== void 0 ? "Prix de vente moyen constat\xE9 (30 j)" : "Prix de vente du SKU",
+      purchasePrice: item.offer.price,
+      purchaseTaxType: item.offer.taxType,
+      supplierShipping: item.offer.shippingCost,
+      moq: item.offer.moq,
+      orderMultiple: item.details.orderMultiple,
+      availableQuantity: item.offer.availableQuantity,
+      supplierOrigin: country ? EU2.has(country) ? "eu" : "non_eu" : "unknown",
+      originLabel: country
+    },
+    radar.settings,
+    extraQuantities
+  );
+  const peers = radar.items.filter((i) => i.sku.id === item.sku.id && i.offer.offerId !== offerId).map((i) => ({ offerId: i.offer.offerId, supplierName: i.offer.supplierName, price: i.offer.price, landedCost: i.evaluation.landedCost, availableQuantity: i.offer.availableQuantity, stockStatus: i.offer.stockStatus, ageDays: i.evaluation.ageDays, verdict: i.assessment.verdict })).sort((a, b) => (a.landedCost ?? Infinity) - (b.landedCost ?? Infinity));
+  return { item, scenarios, peers, settings: radar.settings };
+}
 async function saveCostSettings(ctx, input) {
   const parsed = radarSettingsSchema.parse(input);
   const { data: org, error } = await ctx.supabase.from("organizations").select("settings").eq("id", ctx.organization.id).single();
@@ -7743,10 +8349,11 @@ var init_radar2 = __esm({
   "src/services/radar/radar.ts"() {
     "use strict";
     init_empty();
+    init_assessment();
     init_errors();
     init_radar();
     init_radar_settings();
-    OFFER_SELECT3 = "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, tax_type, shipping_cost, moq, available_quantity, stock_status, last_seen_at, country, supplier:suppliers(name, country), source:supplier_sources(source_type, config)";
+    OFFER_SELECT3 = "id, sku_id, supplier_id, title_original, source_url, normalized_price, normalized_currency, original_currency, fx_rate, tax_type, shipping_cost, shipping_currency, moq, available_quantity, stock_status, last_seen_at, country, ship_from_country, vat_regime, warranty_months, order_multiple, source_id, grade, condition, delivery_max_days, supplier:suppliers(name, country, internal_score), source:supplier_sources(source_type, config, consecutive_failures)";
   }
 });
 
@@ -7775,7 +8382,7 @@ var init_conditions = __esm({
 });
 
 // src/integrations/ebay/listing.ts
-import { z as z30 } from "npm:zod@4.6.5";
+import { z as z32 } from "npm:zod@4.6.5";
 function checkListingDraft(input) {
   const parsed = listingDraftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "annonce"} : ${i.message}`), warnings: [], draft: null };
@@ -7909,24 +8516,24 @@ var init_listing = __esm({
     init_conditions();
     init_conditions();
     SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
-    listingDraftSchema = z30.object({
-      sku: z30.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
-      marketplaceId: z30.literal("EBAY_FR").default("EBAY_FR"),
-      title: z30.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
-      description: z30.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
-      categoryId: z30.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
-      condition: z30.enum(EBAY_CONDITIONS),
-      conditionDescription: z30.string().trim().max(1e3).optional(),
-      price: z30.number().finite().positive("Prix positif requis.").max(1e6),
-      currency: z30.literal("EUR").default("EUR"),
-      quantity: z30.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
-      imageUrls: z30.array(z30.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
-      aspects: z30.record(z30.string().min(1).max(65), z30.array(z30.string().min(1).max(65)).min(1)).default({}),
-      brand: z30.string().trim().max(65).optional(),
-      mpn: z30.string().trim().max(65).optional(),
-      ean: z30.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
-      policies: z30.object({ fulfillmentPolicyId: z30.string().min(1), paymentPolicyId: z30.string().min(1), returnPolicyId: z30.string().min(1) }).optional(),
-      merchantLocationKey: z30.string().trim().min(1).max(36).optional()
+    listingDraftSchema = z32.object({
+      sku: z32.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
+      marketplaceId: z32.literal("EBAY_FR").default("EBAY_FR"),
+      title: z32.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
+      description: z32.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
+      categoryId: z32.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
+      condition: z32.enum(EBAY_CONDITIONS),
+      conditionDescription: z32.string().trim().max(1e3).optional(),
+      price: z32.number().finite().positive("Prix positif requis.").max(1e6),
+      currency: z32.literal("EUR").default("EUR"),
+      quantity: z32.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
+      imageUrls: z32.array(z32.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
+      aspects: z32.record(z32.string().min(1).max(65), z32.array(z32.string().min(1).max(65)).min(1)).default({}),
+      brand: z32.string().trim().max(65).optional(),
+      mpn: z32.string().trim().max(65).optional(),
+      ean: z32.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
+      policies: z32.object({ fulfillmentPolicyId: z32.string().min(1), paymentPolicyId: z32.string().min(1), returnPolicyId: z32.string().min(1) }).optional(),
+      merchantLocationKey: z32.string().trim().min(1).max(36).optional()
     });
   }
 });
@@ -7942,7 +8549,7 @@ __export(ebay_listing_service_exports, {
   prefillListing: () => prefillListing,
   publishListingForOrg: () => publishListingForOrg
 });
-import { z as z31 } from "npm:zod@4.6.5";
+import { z as z33 } from "npm:zod@4.6.5";
 async function connectedEbay(ctx) {
   const { data, error } = await ctx.supabase.from("channel_connections").select("id, status").eq("organization_id", ctx.organization.id).eq("provider", "ebay").eq("status", "connected").limit(1).maybeSingle();
   if (error) throw fromPostgrestError(error);
@@ -8052,8 +8659,8 @@ var init_ebay_listing_service = __esm({
     init_rest();
     init_listing();
     init_connection_store();
-    listingRequestSchema = z31.object({ draft: z31.unknown(), confirm: z31.boolean().default(false) });
-    disconnectSchema = z31.object({ connectionId: z31.string().uuid() });
+    listingRequestSchema = z33.object({ draft: z33.unknown(), confirm: z33.boolean().default(false) });
+    disconnectSchema = z33.object({ connectionId: z33.string().uuid() });
   }
 });
 
@@ -8065,7 +8672,7 @@ __export(offer_linking_exports, {
   listMatchSuggestions: () => listMatchSuggestions,
   matchDecisionSchema: () => matchDecisionSchema2
 });
-import { z as z32 } from "npm:zod@4.6.5";
+import { z as z34 } from "npm:zod@4.6.5";
 async function confirmOfferLink(orgId, supabase, userId, offerId, skuId, sourcingProductId) {
   const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", orgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -8115,7 +8722,7 @@ var init_offer_linking = __esm({
     init_empty();
     init_errors();
     init_matching_service();
-    matchDecisionSchema2 = z32.object({ matchId: z32.string().uuid(), decision: z32.enum(["confirm", "reject"]) });
+    matchDecisionSchema2 = z34.object({ matchId: z34.string().uuid(), decision: z34.enum(["confirm", "reject"]) });
   }
 });
 
@@ -13997,8 +14604,275 @@ var init_supplier_directory = __esm({
           "https://www.portatilmovil.com/it/content/73-vendita-allingrosso-portatili-ricondizionati"
         ],
         checkedAt: "2026-10-10"
+      },
+      {
+        key: "thephonehub",
+        name: "ThePhoneHub",
+        segment: "D_distributor",
+        country: "BE",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://www.thephonehub.eu/",
+        catalogUrl: "https://www.thephonehub.eu/",
+        categories: [
+          "smartphones",
+          "consoles",
+          "accessoires"
+        ],
+        brands: [
+          "Apple",
+          "Samsung",
+          "Google",
+          "Xiaomi"
+        ],
+        productTypes: [
+          "new",
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Acc\xE8s sur demande \xE0 l'\xE9quipe commerciale (hello@thephonehub.eu) : prix de gros, flux CSV \xAB live \xBB et cl\xE9s API fournis aux partenaires.",
+        accessModes: [
+          "feed_csv",
+          "api"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "MOQ indiqu\xE9s dans le flux (selon la page d'accueil)",
+        shipping: "DHL / UPS dans l'UE (selon le site)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Annonce un flux CSV permanent (stock temps r\xE9el, prix unitaire, MOQ) et une API REST (stock, commandes, webhooks) : le candidat le plus simple \xE0 brancher d\xE8s l'acc\xE8s obtenu.",
+        howToGetCatalog: "\xC9crire \xE0 hello@thephonehub.eu en demandant le lien CSV partenaire et/ou des cl\xE9s API ; puis Sourcing \u2192 Sources \u2192 \xAB Ajouter un flux autoris\xE9 \xBB avec le lien re\xE7u.",
+        verified: "Extraits index\xE9s de la page d'accueil et de la page contact (12/10/2026) ; pages non ouvertes directement depuis le serveur ; aucun acc\xE8s test\xE9.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://www.thephonehub.eu/",
+          "https://www.thephonehub.eu/contact"
+        ],
+        checkedAt: "2026-10-12"
+      },
+      {
+        key: "distrihub",
+        name: "DistriHUB (Varle)",
+        segment: "D_distributor",
+        country: "LT",
+        deliveryZones: [
+          "EU",
+          "UK"
+        ],
+        website: "https://distrihub.eu/",
+        catalogUrl: "https://distrihub.eu/fr/wholesale/smartphones",
+        categories: [
+          "smartphones",
+          "informatique",
+          "\xE9lectronique grand public"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "new"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Compte d'entreprise v\xE9rifi\xE9 (achat pour revente) ; onboarding annonc\xE9 de 1 \xE0 2 semaines ; prix de gros et disponibilit\xE9 visibles dans le flux apr\xE8s configuration.",
+        accessModes: [
+          "feed_xml",
+          "feed_csv",
+          "feed_json",
+          "api",
+          "edi"
+        ],
+        apiDocsUrl: null,
+        pricesTax: "HT",
+        currency: "EUR",
+        moq: "300 \u20AC par commande ; frais de 39 \u20AC sous 1 500 \u20AC (FAQ, \xE0 reconfirmer)",
+        shipping: "CIP dans l'UE, DAP Royaume-Uni (FAQ)",
+        warranty: null,
+        partQuality: null,
+        whyUseful: "Agr\xE8ge plus de 400 distributeurs europ\xE9ens dans un seul catalogue et un seul flux ; l'EAN fait r\xE9f\xE9rence pour le rapprochement. Surtout du neuf.",
+        howToGetCatalog: "Cr\xE9er un compte acheteur, demander le flux (CSV ou XML de pr\xE9f\xE9rence) limit\xE9 aux smartphones ; puis \xAB Ajouter un flux autoris\xE9 \xBB.",
+        verified: "Extraits index\xE9s de la page d'accueil, de la FAQ et des pages marques (12/10/2026) ; page smartphones non index\xE9e ; aucun acc\xE8s test\xE9.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://distrihub.eu/",
+          "https://distrihub.eu/brands"
+        ],
+        checkedAt: "2026-10-12"
+      },
+      {
+        key: "smartchoice",
+        name: "SmartChoice",
+        segment: "A_refurb",
+        country: "EE",
+        deliveryZones: [
+          "EU"
+        ],
+        website: "https://shop.smartchoice.ee/",
+        catalogUrl: "https://shop.smartchoice.ee/stock",
+        categories: [
+          "iPhone d'occasion grad\xE9s",
+          "Samsung d'occasion grad\xE9s"
+        ],
+        brands: [
+          "Apple",
+          "Samsung"
+        ],
+        productTypes: [
+          "used",
+          "refurbished"
+        ],
+        sales: "B2B",
+        proAccountRequired: true,
+        accessConditions: "Inscription gratuite pour voir le stock et les prix de gros ; pas de minimum de commande annonc\xE9 ; TVA sur marge ou autoliquidation.",
+        accessModes: [
+          "pro_portal"
+        ],
+        apiDocsUrl: null,
+        pricesTax: null,
+        currency: "EUR",
+        moq: "Aucun minimum annonc\xE9",
+        shipping: "DHL / DPD, exp\xE9dition le jour ouvr\xE9 suivant (site)",
+        warranty: "30 jours (site)",
+        partQuality: null,
+        whyUseful: "Appareils grad\xE9s A+ \xE0 C, IMEI contr\xF4l\xE9s, sans minimum de commande.",
+        howToGetCatalog: "Cr\xE9er un compte, puis demander un export (CSV / XLSX) ou un lien de flux de la page stock ; \xE0 d\xE9faut, saisie manuelle.",
+        verified: "Extraits index\xE9s du site (12/10/2026) ; aucun export ni API trouv\xE9s ; aucun acc\xE8s test\xE9.",
+        verificationLevel: "search_snippets",
+        knownInApp: false,
+        sourcesChecked: [
+          "https://shop.smartchoice.ee/"
+        ],
+        checkedAt: "2026-10-12"
       }
     ];
+  }
+});
+
+// src/services/sourcing/data/b2b-profiles.ts
+var B2B_PROFILES, B2B_METHOD_LABEL, AUTOMATION_LABEL;
+var init_b2b_profiles = __esm({
+  "src/services/sourcing/data/b2b-profiles.ts"() {
+    "use strict";
+    B2B_PROFILES = {
+      thephonehub: {
+        method: "remote_feed",
+        fallback: "file_import",
+        automation: "on_agreement",
+        activation: "Lien CSV partenaire (ou cl\xE9s API) envoy\xE9 par l'\xE9quipe commerciale ; \xE0 ajouter dans Sources \u2192 \xAB Ajouter un flux autoris\xE9 \xBB.",
+        questions: [
+          "Le lien feed.thephonehub.eu/stocklist.csv est-il public, ou faut-il un lien ou un jeton propre \xE0 chaque partenaire ?",
+          "Colonnes exactes du CSV : SKU, EAN, mod\xE8le, capacit\xE9, couleur, \xE9tat (neuf / reconditionn\xE9), grade, quantit\xE9, prix unitaire, devise, MOQ, entrep\xF4t, r\xE9gime de TVA ?",
+          "S\xE9parateur, encodage et fr\xE9quence de mise \xE0 jour du CSV.",
+          "Documentation de l'API (/v1/stock) : URL de base, authentification, limites de d\xE9bit, pagination, environnement de test.",
+          "L'usage automatis\xE9 du flux dans notre outil interne est-il autoris\xE9 par vos conditions ?"
+        ],
+        evidence: "search_snippets",
+        checkedAt: "2026-10-12"
+      },
+      distrihub: {
+        method: "remote_feed",
+        fallback: "file_import",
+        automation: "on_agreement",
+        activation: "Compte acheteur valid\xE9, puis URL du flux (CSV ou XML) limit\xE9 aux smartphones.",
+        questions: [
+          "Sch\xE9ma du flux acheteur (CSV / XML / JSON) : EAN, SKU fournisseur, \xE9tat, grade, quantit\xE9, prix, devise, MOQ fournisseur, pays d'exp\xE9dition, d\xE9lai ?",
+          "Le flux indique-t-il le distributeur ou l'entrep\xF4t d'origine ? Peut-on filtrer par pays d'exp\xE9dition et par \xE9tat ?",
+          "Proposez-vous du reconditionn\xE9 ou de l'occasion grad\xE9e en smartphones ?",
+          "Fr\xE9quence de rafra\xEEchissement, authentification et limites de l'API.",
+          "Conditions en vigueur : minimum de 300 \u20AC par commande, frais de 39 \u20AC sous 1 500 \u20AC, livraison vers la France."
+        ],
+        evidence: "search_snippets",
+        checkedAt: "2026-10-12"
+      },
+      foxway: {
+        method: "file_import",
+        fallback: "portal_only",
+        automation: "unknown",
+        activation: "Compte revendeur, puis export Excel de la stocklist (ou des lots) import\xE9 dans MON STOCK. Le mapping est m\xE9moris\xE9 apr\xE8s le premier import.",
+        questions: [
+          "Existe-t-il un export de la stocklist compl\xE8te (CSV, XLSX, XML) ou un flux / une API revendeur via l'account manager ?",
+          "Colonnes de l'export : identifiant d'offre ou de lot unique, SKU, mod\xE8le, capacit\xE9, couleur, grade, quantit\xE9, prix, devise, entrep\xF4t.",
+          "Les identifiants restent-ils stables d'un export \xE0 l'autre ? Fr\xE9quence de mise \xE0 jour ?",
+          "Livraison en France : d\xE9lais, co\xFBt, incoterm, TVA (marge ou autoliquidation).",
+          "Le minimum de 2 000 \u20AC s'applique-t-il par commande ou par ligne ?"
+        ],
+        evidence: "search_snippets",
+        checkedAt: "2026-10-12"
+      },
+      "mobile-depot-europe": {
+        method: "file_import",
+        fallback: "portal_only",
+        automation: "unknown",
+        activation: "Liste de stock re\xE7ue par e-mail ou t\xE9l\xE9charg\xE9e (XLSX / CSV de pr\xE9f\xE9rence) import\xE9e dans MON STOCK. Le PDF n'est pas pris en charge : demandez un format tableur.",
+        questions: [
+          "Format exact des listes (XLSX, CSV, PDF) et liste des colonnes.",
+          "Existe-t-il une URL stable (CSV / XML) pour r\xE9cup\xE9rer la liste quotidienne automatiquement ?",
+          "La mise \xE0 jour est-elle quotidienne ou hebdomadaire ?",
+          "MOQ par cat\xE9gorie et frais de livraison vers la France."
+        ],
+        evidence: "search_snippets",
+        checkedAt: "2026-10-12"
+      },
+      smartchoice: {
+        method: "portal_only",
+        fallback: "file_import",
+        automation: "unknown",
+        activation: "Demander un export (CSV / XLSX) ou un lien de flux de la page stock ; \xE0 d\xE9faut, saisie manuelle.",
+        questions: [
+          "Pouvez-vous fournir un export (CSV ou XLSX) ou une URL de flux de votre page stock avec les prix revendeur ?",
+          "Champs disponibles : mod\xE8le, capacit\xE9, couleur, grade, sant\xE9 de la batterie, quantit\xE9, prix, r\xE9gime de TVA.",
+          "Les identifiants d'offre sont-ils stables ? Fr\xE9quence de mise \xE0 jour ?",
+          "L'acc\xE8s automatis\xE9 \xE0 votre page stock avec nos identifiants est-il autoris\xE9 ?"
+        ],
+        evidence: "search_snippets",
+        checkedAt: "2026-10-12"
+      },
+      "refreshed-apples": {
+        method: "remote_feed",
+        fallback: "file_import",
+        automation: "on_agreement",
+        activation: "Avec l'accord \xE9crit du fournisseur : lien d'export CSV du Google Sheet de prix, ajout\xE9 comme flux autoris\xE9. La source publique existante reste disponible.",
+        questions: [
+          "Pouvez-vous partager le Google Sheet de prix en lecture et nous autoriser par \xE9crit \xE0 le lire automatiquement (export CSV programm\xE9) ?",
+          "Colonnes du Sheet : mod\xE8le, capacit\xE9, couleur, grade, batterie, quantit\xE9, prix, devise, version UE ?",
+          "Fr\xE9quence de mise \xE0 jour du Sheet par rapport \xE0 deals.refreshedapples.com.",
+          "Conditions de la commande d'essai et livraison en France (TVA sur marge)."
+        ],
+        evidence: "search_snippets",
+        checkedAt: "2026-10-12"
+      },
+      utopya: {
+        method: "manual_only",
+        fallback: null,
+        automation: "forbidden",
+        activation: "Aucune synchronisation : les CGV (article 14) interdisent tout acc\xE8s automatis\xE9, sauf API officielle sous contrat \xE9crit. Saisie manuelle des offres ou fichier explicitement fourni par Utopya.",
+        questions: [
+          "Proposez-vous un contrat d'API officiel (exception pr\xE9vue \xE0 l'article 14 de vos CGV) pour un revendeur client ? \xC0 quelles conditions ?",
+          "\xC0 d\xE9faut, envoyez-vous une liste de prix professionnelle p\xE9riodique ?",
+          "Un outil d'aide \xE0 l'achat interne, non destin\xE9 \xE0 des tiers, entre-t-il dans les activit\xE9s exclues de vos CGV ?"
+        ],
+        evidence: "search_snippets",
+        checkedAt: "2026-10-12"
+      }
+    };
+    B2B_METHOD_LABEL = {
+      remote_feed: "Flux distant autoris\xE9 (lien CSV / XML / JSON)",
+      file_import: "Import de fichier (Excel / CSV)",
+      portal_only: "Portail web uniquement",
+      manual_only: "Manuel uniquement"
+    };
+    AUTOMATION_LABEL = {
+      on_agreement: "Automatisation possible avec l'accord du fournisseur",
+      forbidden: "Acc\xE8s automatis\xE9 interdit par les conditions du fournisseur",
+      unknown: "Conditions d'automatisation \xE0 demander"
+    };
   }
 });
 
@@ -14079,6 +14953,7 @@ function directoryKeyForSupplierName(name) {
 }
 function accessRequestEmail(entry, lang, org) {
   const cats = entry.categories.join(", ") || (lang === "fr" ? "vos produits" : "your products");
+  const specific = lang === "fr" && entry.key ? B2B_PROFILES[entry.key]?.questions ?? [] : [];
   if (lang === "fr") {
     return {
       subject: `Demande d'ouverture de compte professionnel et d'acc\xE8s catalogue \u2014 ${org.name}`,
@@ -14093,6 +14968,7 @@ function accessRequestEmail(entry, lang, org) {
         "3. La disponibilit\xE9 du stock et les d\xE9lais / frais de livraison vers la France.",
         "4. Les conditions de garantie, de retour et, pour les appareils reconditionn\xE9s, la d\xE9finition de vos grades.",
         "5. S'il existe un fichier catalogue ou un flux automatis\xE9 (CSV, Excel, XML, JSON ou API) comprenant r\xE9f\xE9rences, EAN, prix, stock et MOQ, ainsi que sa fr\xE9quence de mise \xE0 jour et ses conditions d'utilisation.",
+        ...specific.map((q, i) => `${i + 6}. ${q}`),
         "",
         "Nous int\xE9grons les tarifs de nos fournisseurs dans notre logiciel de gestion de stock ; un fichier ou un flux r\xE9gulier nous permettrait de vous consulter en priorit\xE9.",
         "",
@@ -14139,7 +15015,7 @@ async function checkDirectoryWebsite(entry, fetchImpl, resolver) {
   if (!entry.website) return { ...base, reachable: false, http_status: null, message: "Aucun site officiel identifi\xE9 par la recherche.", duration_ms: 0 };
   const userAgent = serverEnv().SOURCING_USER_AGENT;
   try {
-    const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8e3);
+    const robots = await fetchRobots(entry.website, userAgent, fetchImpl, 8e3, resolver);
     const robotsFound = robots.status === "ok";
     const disallowAll = robotsFound ? !evaluateRobots(robots.rules, userAgent, "/").allowed : null;
     const home = await fetchText(entry.website, { userAgent, timeoutMs: 12e3, maxBytes: 6e6, accept: "text/html,*/*;q=0.5", fetchImpl, resolver });
@@ -14253,6 +15129,7 @@ async function directoryForOrg(ctx) {
       stages,
       primaryStage: primaryStage(stages),
       check: check ? { checkedAt: check.checked_at, reachable: check.reachable, httpStatus: check.http_status, robotsFound: check.robots_found, robotsDisallowAll: check.robots_disallow_all, sitemapFound: check.sitemap_found, platform: check.platform, message: check.message } : null,
+      b2b: B2B_PROFILES[e.key] ? { ...B2B_PROFILES[e.key], methodLabel: B2B_METHOD_LABEL[B2B_PROFILES[e.key].method], automationLabel: AUTOMATION_LABEL[B2B_PROFILES[e.key].automation] } : null,
       email: { fr: accessRequestEmail(e, "fr", { name: ctx.organization.name, country: ctx.organization.country }), en: accessRequestEmail(e, "en", { name: ctx.organization.name, country: ctx.organization.country }) }
     };
   });
@@ -14268,6 +15145,7 @@ var init_supplier_directory2 = __esm({
     init_env();
     init_http2();
     init_robots();
+    init_b2b_profiles();
     init_source_library();
     SUPPLIER_DIRECTORY = supplier_directory_default;
     DIRECTORY_RESEARCH_DATE = "2026-10-10";
@@ -14286,7 +15164,7 @@ init_logger();
 init_crypto();
 init_admin();
 init_env();
-import { z as z44 } from "npm:zod@4.6.5";
+import { z as z47 } from "npm:zod@4.6.5";
 
 // src/lib/cron-auth.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
@@ -16725,16 +17603,130 @@ function toDescriptor(adapter) {
   };
 }
 var SUPPLIER_CONNECTORS = listAccountAdapters().map(toDescriptor);
+var NO_CONNECTOR_MESSAGE = "Aucun connecteur fournisseur disponible pour l'instant.";
+function getConnectorDescriptor(key2) {
+  return SUPPLIER_CONNECTORS.find((c) => c.key === key2) ?? null;
+}
 
 // src/services/sourcing/supplier-connectors.ts
 init_offer_storage();
 init_sync_runs();
 var log9 = createLogger("SUPPLIER_CONNECTORS");
+var MAX_CONNECTION_CATALOG_PAGES = 20;
+var CONNECTION_MIN_DELAY_MS = 500;
 async function loadConnectionCredentials(connectionId) {
   const admin = createAdminSupabaseClient();
   const { data } = await admin.from("supplier_connection_secrets").select("credentials_enc").eq("connection_id", connectionId).maybeSingle();
   if (!data?.credentials_enc) return null;
   return JSON.parse(decryptSecret(data.credentials_enc));
+}
+async function loadConnection(admin, connectionId) {
+  const { data } = await admin.from("supplier_connections").select("id, organization_id, supplier_id, source_id, connector_key, config, supplier:suppliers(name, currency)").eq("id", connectionId).maybeSingle();
+  return data ?? null;
+}
+async function ensureConnectionSource(admin, connection, descriptor) {
+  if (connection.source_id) {
+    const { data: data2 } = await admin.from("supplier_sources").select("*").eq("id", connection.source_id).maybeSingle();
+    if (data2) return data2;
+  }
+  const connConfig = connection.config && typeof connection.config === "object" && !Array.isArray(connection.config) ? connection.config : {};
+  const { data, error } = await admin.from("supplier_sources").insert({
+    organization_id: connection.organization_id,
+    supplier_id: connection.supplier_id,
+    name: descriptor.label,
+    source_type: "SUPPLIER_ACCOUNT",
+    automated_access_confirmed: true,
+    access_conditions: descriptor.accessConditions,
+    status: "active",
+    sync_frequency: "manual",
+    default_currency: typeof connConfig.default_currency === "string" ? connConfig.default_currency : connection.supplier?.currency ?? null,
+    config: { adapter: descriptor.key, ...connConfig }
+  }).select("*").single();
+  if (error || !data) throw new AppError("INTERNAL", `Source du compte fournisseur non cr\xE9\xE9e : ${error?.message ?? "inconnu"}`);
+  await admin.from("supplier_connections").update({ source_id: data.id }).eq("id", connection.id);
+  return data;
+}
+function runContext(credentials, options) {
+  const scheduler = new HostScheduler(CONNECTION_MIN_DELAY_MS, options.sleep);
+  return { userAgent: serverEnv().SOURCING_USER_AGENT, credentials, fetchImpl: scheduler.wrapFetch(options.fetchImpl), sleep: options.sleep, resolver: options.resolver, minDelayMs: CONNECTION_MIN_DELAY_MS, timeoutMs: options.timeoutMs };
+}
+async function syncSupplierConnection(connectionId, options = {}) {
+  const admin = options.admin ?? createAdminSupabaseClient();
+  const base = { connectionId, sourceId: null, runId: null, pages: 0, found: 0, stored: 0, rejected: 0, expired: 0 };
+  const connection = await loadConnection(admin, connectionId);
+  if (!connection) return { ...base, status: "failed", message: "Connexion introuvable." };
+  const descriptor = getConnectorDescriptor(connection.connector_key);
+  if (!descriptor) return { ...base, status: "refused", message: `Connecteur \xAB ${connection.connector_key} \xBB indisponible : ${NO_CONNECTOR_MESSAGE}` };
+  if (!descriptor.adapter.fetchCatalog) return { ...base, status: "refused", message: `Le connecteur \xAB ${descriptor.label} \xBB ne propose pas de parcours de catalogue.` };
+  const credentials = await loadConnectionCredentials(connection.id);
+  if (!credentials) return { ...base, status: "refused", message: "Identifiants introuvables : reconnectez le compte fournisseur." };
+  const source = await ensureConnectionSource(admin, connection, descriptor);
+  const { data: org } = await admin.from("organizations").select("default_currency").eq("id", connection.organization_id).maybeSingle();
+  const run = await startSyncRun(admin, { organizationId: connection.organization_id, sourceKind: "supplier_connection", sourceRef: connection.id, provider: descriptor.key, trigger: options.trigger ?? "manual", createdBy: options.createdBy ?? null });
+  const errors = [];
+  const config = adapterConfigFromSource(source);
+  const ctx = runContext(credentials, { fetchImpl: options.fetchImpl, sleep: options.sleep, resolver: options.resolver });
+  const storage = { supabase: admin, organizationId: connection.organization_id, organizationCurrency: org?.default_currency ?? "EUR", supplierId: connection.supplier_id, sourceId: source.id, sourceType: source.source_type, defaultCurrency: source.default_currency, defaultTaxType: source.default_tax_type, defaultCountry: source.country, createdBy: options.createdBy ?? null, now: run.startedAt };
+  const maxPages = Math.min(options.maxPages ?? MAX_CONNECTION_CATALOG_PAGES, 200);
+  let pages = 0;
+  let found = 0;
+  let stored = 0;
+  let rejected = 0;
+  let expired2 = 0;
+  const requests = [];
+  try {
+    let cursor = null;
+    let truncated = false;
+    for (; ; ) {
+      if (pages >= maxPages) {
+        truncated = true;
+        errors.push({ code: "CATALOG_TRUNCATED", message: `Limite de ${maxPages} page(s) atteinte : le reste du catalogue sera lu \xE0 la prochaine synchronisation.`, entityType: "connection", entityRef: connection.id });
+        break;
+      }
+      const page2 = await descriptor.adapter.fetchCatalog(config, cursor, ctx);
+      pages++;
+      for (const q of page2.requests) {
+        requests.push({ url: q.url, status: q.status, durationMs: q.durationMs, offers: q.offers, error: q.error });
+        if (q.error) errors.push({ code: "PAGE_FAILED", message: q.error, entityType: "page", entityRef: q.url });
+      }
+      found += page2.offers.length;
+      const retrievedAt = (/* @__PURE__ */ new Date()).toISOString();
+      const requestUrl = page2.requests.find((q) => q.offers > 0)?.url ?? page2.requests[0]?.url ?? null;
+      for (const offer of page2.offers) {
+        const traced = withProvenance(offer, { adapterKey: descriptor.key, method: page2.method, retrievedAt, requestUrl, sourceUrl: offer.url ?? null });
+        try {
+          const r = await storeOffer(storage, traced);
+          if (r.outcome === "stored") stored++;
+          else {
+            rejected++;
+            errors.push({ code: "OFFER_REJECTED", message: r.validation.anomalies.map((a) => a.message).join(" ; "), entityType: "offer", entityRef: offer.externalOfferId });
+          }
+        } catch (e) {
+          rejected++;
+          errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: offer.externalOfferId });
+        }
+      }
+      if (!page2.nextCursor) break;
+      cursor = page2.nextCursor;
+    }
+    if (stored > 0 && !truncated) expired2 = await expireUnseenOffers(storage, run.startedAt);
+    const pageErrors = errors.filter((e) => e.code === "PAGE_FAILED").length;
+    const status = found === 0 && pageErrors > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
+    const message = found === 0 && pageErrors === 0 ? "Le catalogue ne contient aucune offre lisible." : `${pages} page(s) lue(s), ${found} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s), ${expired2} expir\xE9e(s).`;
+    await recordSyncErrors(admin, run, errors);
+    await finishSyncRun(admin, run, { status, recordsProcessed: found, errorCount: errors.length, stats: { pages, found, stored, rejected, expired: expired2, truncated, requests: requests.slice(0, 100), adapter: descriptor.key }, errorSummary: status === "failed" ? message : null });
+    await admin.from("supplier_connections").update({ status: status === "failed" ? "error" : "connected", last_sync_at: run.startedAt.toISOString(), last_error: status === "failed" ? message : null, connected_at: status === "failed" ? null : (/* @__PURE__ */ new Date()).toISOString() }).eq("id", connection.id);
+    await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source.id);
+    return { connectionId, sourceId: source.id, runId: run.id, status, pages, found, stored, rejected, expired: expired2, message };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Erreur inconnue.";
+    log9.error("connection sync failed", { connectionId, error: message });
+    await recordSyncErrors(admin, run, [...errors, { code: "SYNC_FAILED", message }]);
+    await finishSyncRun(admin, run, { status: "failed", recordsProcessed: found, errorCount: errors.length + 1, errorSummary: message });
+    await admin.from("supplier_connections").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", connection.id);
+    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
+    return { connectionId, sourceId: source.id, runId: run.id, status: "failed", pages, found, stored, rejected, expired: expired2, message };
+  }
 }
 
 // src/services/sourcing/live-search.ts
@@ -16983,7 +17975,7 @@ function resolveContext(ctx) {
   if ("organization" in ctx) return { organizationId: ctx.organization.id, admin: createAdminSupabaseClient(), userId: ctx.user.id };
   return { organizationId: ctx.organizationId, admin: ctx.admin, userId: ctx.userId ?? null };
 }
-async function ensureConnectionSource(admin, organizationId, connection, adapterLabel) {
+async function ensureConnectionSource2(admin, organizationId, connection, adapterLabel) {
   if (connection.source_id) return connection.source_id;
   const { data, error } = await admin.from("supplier_sources").insert({ organization_id: organizationId, supplier_id: connection.supplier_id, name: adapterLabel, source_type: "SUPPLIER_ACCOUNT", automated_access_confirmed: true, access_conditions: "Compte fournisseur connect\xE9 par le vendeur (API officielle, identifiants chiffr\xE9s).", status: "active", sync_frequency: "manual", config: { adapter: connection.connector_key } }).select("id").single();
   if (error || !data) {
@@ -17008,7 +18000,7 @@ async function loadCandidates(admin, organizationId) {
     if (!adapter || adapter.access !== "account") continue;
     let sourceId = conn.source_id && bySource.has(conn.source_id) ? conn.source_id : null;
     if (!sourceId) {
-      sourceId = await ensureConnectionSource(admin, organizationId, { ...conn, source_id: conn.source_id && bySource.has(conn.source_id) ? conn.source_id : null }, adapter.label);
+      sourceId = await ensureConnectionSource2(admin, organizationId, { ...conn, source_id: conn.source_id && bySource.has(conn.source_id) ? conn.source_id : null }, adapter.label);
       if (!sourceId) continue;
       if (!bySource.has(sourceId)) {
         const { data: created } = await admin.from("supplier_sources").select("*, supplier:suppliers(id, name, is_archived)").eq("id", sourceId).maybeSingle();
@@ -19563,7 +20555,7 @@ function emptyListingsResult() {
   return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
 }
 async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log32 } = ctx;
+  const { admin, log: log34 } = ctx;
   const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   const seen = /* @__PURE__ */ new Set();
   let truncated = false;
@@ -19571,7 +20563,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     result.fetched += page2.listings.length;
     result.invalid += page2.invalid.length;
     for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log32.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+    for (const w2 of page2.warnings) log34.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
@@ -19584,7 +20576,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
   result.complete = !truncated;
   if (truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log32.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log34.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
   const active = result.complete ? await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
@@ -20648,6 +21640,66 @@ async function handleAccountDeletion(admin, account, connections) {
 init_empty();
 init_logger();
 init_fx_rates();
+
+// src/services/sourcing/source-sync.ts
+init_empty();
+init_admin();
+init_errors();
+init_logger();
+import { z as z29 } from "npm:zod@4.6.5";
+
+// src/domain/sourcing/schedule.ts
+var FREQUENCY_MS2 = {
+  manual: null,
+  hourly: 36e5,
+  every_6_hours: 6 * 36e5,
+  daily: 24 * 36e5
+};
+var FREQUENCY_LABEL = {
+  manual: "Manuelle",
+  hourly: "Toutes les heures",
+  every_6_hours: "Toutes les 6 heures",
+  daily: "Une fois par jour"
+};
+var BACKOFF_BASE_MS = 15 * 6e4;
+var BACKOFF_MAX_MS = 24 * 36e5;
+var FAILURE_ALERT_THRESHOLD = 3;
+function backoffMs(failures, frequency) {
+  const n = Math.max(1, failures);
+  const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (n - 1));
+  const interval = FREQUENCY_MS2[frequency];
+  return interval === null ? delay : Math.min(delay, interval);
+}
+function nextRunAt(frequency, now, outcome) {
+  const interval = FREQUENCY_MS2[frequency];
+  if (interval === null) return null;
+  return new Date(now.getTime() + (outcome.ok ? interval : backoffMs(outcome.consecutiveFailures, frequency)));
+}
+function isScheduleDue(s, now) {
+  const interval = FREQUENCY_MS2[s.sync_frequency];
+  if (interval === null || s.status === "paused") return false;
+  if (s.next_run_at) return now.getTime() >= new Date(s.next_run_at).getTime();
+  if (!s.last_sync_at) return true;
+  return now.getTime() - new Date(s.last_sync_at).getTime() >= interval;
+}
+var SOURCE_STATUS_LABEL = {
+  connected: "Connect\xE9",
+  to_configure: "\xC0 configurer",
+  manual_import: "Import manuel",
+  running: "Synchronisation en cours",
+  error: "Erreur",
+  disabled: "Source d\xE9sactiv\xE9e"
+};
+function sourceDisplayStatus(s) {
+  if (s.status === "paused") return "disabled";
+  if (s.running) return "running";
+  if (s.kind === "file_import" || s.kind === "manual") return s.consecutiveFailures > 0 || s.status === "error" ? "error" : "manual_import";
+  if (!s.attested) return "to_configure";
+  if (s.status === "error" || s.consecutiveFailures >= FAILURE_ALERT_THRESHOLD) return "error";
+  return s.lastSuccessfulSyncAt ? "connected" : "to_configure";
+}
+
+// src/services/sourcing/source-sync.ts
 init_feed_ingestion();
 
 // src/services/sourcing/crawler/crawler-manager.ts
@@ -20674,12 +21726,12 @@ function getParser(key2) {
 
 // src/services/sourcing/crawler/source-crawler.ts
 init_http2();
-import { z as z26 } from "npm:zod@4.6.5";
-var crawlConfigSchema = z26.object({
-  urls: z26.array(z26.string().url()).max(50).default([]),
-  parser: z26.string().max(60).optional(),
-  max_pages: z26.number().int().min(1).max(50).optional(),
-  delay_seconds: z26.number().min(0).max(120).optional()
+import { z as z27 } from "npm:zod@4.6.5";
+var crawlConfigSchema = z27.object({
+  urls: z27.array(z27.string().url()).max(50).default([]),
+  parser: z27.string().max(60).optional(),
+  max_pages: z27.number().int().min(1).max(50).optional(),
+  delay_seconds: z27.number().min(0).max(120).optional()
 });
 var MIN_DELAY_SECONDS = 2;
 var DEFAULT_MAX_PAGES2 = 20;
@@ -20854,24 +21906,208 @@ async function crawlWithAdapter(adapter, config, params) {
   }
   return { offers, pages, skippedUrls: [], delaySeconds };
 }
-async function runDueCrawls(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient()) {
-  const { data: sources } = await admin.from("supplier_sources").select("id, base_url, config, sync_frequency, last_sync_at, status").eq("source_type", "PUBLIC_WEB").eq("automated_access_confirmed", true).neq("sync_frequency", "manual").neq("status", "paused").limit(200);
-  const due = (sources ?? []).filter((s) => isDue(s.sync_frequency, s.last_sync_at, now));
-  const byHost = /* @__PURE__ */ new Map();
-  for (const s of due) {
-    const cfg = parseCrawlConfig(s.config);
-    let host = "unknown";
-    try {
-      host = new URL(s.base_url ?? cfg.urls[0] ?? "").host;
-    } catch {
+
+// src/services/sourcing/source-health.ts
+init_empty();
+init_logger();
+init_alerts();
+var log20 = createLogger("SOURCE_HEALTH");
+var syncFailedAlertKey = (sourceId) => `sourcing_sync_failed:${sourceId}`;
+async function recordSourceOutcome(admin, input) {
+  const now = input.now ?? /* @__PURE__ */ new Date();
+  const failures = input.ok ? 0 : input.previousFailures + 1;
+  const next = nextRunAt(input.frequency, now, { ok: input.ok, consecutiveFailures: failures });
+  const patch = input.ok ? { consecutive_failures: 0, next_run_at: next?.toISOString() ?? null } : { consecutive_failures: failures, last_failure_at: now.toISOString(), next_run_at: next?.toISOString() ?? null, ...failures >= FAILURE_ALERT_THRESHOLD ? { status: "error" } : {} };
+  const { error } = await admin.from("supplier_sources").update(patch).eq("id", input.sourceId);
+  if (error) log20.warn("\xE9tat de la source non enregistr\xE9", { sourceId: input.sourceId, error: error.message });
+  if (input.ok) await resolveAlerts(admin, input.organizationId, [syncFailedAlertKey(input.sourceId)]);
+  else if (failures >= FAILURE_ALERT_THRESHOLD) {
+    await upsertAlert(admin, {
+      organizationId: input.organizationId,
+      type: "sync_failed",
+      severity: failures >= FAILURE_ALERT_THRESHOLD * 2 ? "critical" : "warning",
+      title: `Synchronisation en \xE9chec : ${input.sourceName}`,
+      message: `${failures} \xE9checs cons\xE9cutifs${input.error ? ` (dernier : ${input.error.slice(0, 300)})` : ""}. Les offres d\xE9j\xE0 connues sont conserv\xE9es, avec leur date de v\xE9rification. Prochain essai : ${next ? next.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "manuel"}.`,
+      dedupeKey: syncFailedAlertKey(input.sourceId),
+      entityType: "supplier_source",
+      entityId: input.sourceId,
+      actionHref: "/sourcing-sources"
+    });
+  }
+  return { consecutiveFailures: failures, nextRunAt: next?.toISOString() ?? null };
+}
+
+// src/services/sourcing/source-sync.ts
+init_catalog_import();
+var log21 = createLogger("SOURCE_SYNC");
+var MANUAL_SYNC_COOLDOWN_MS = 2 * 6e4;
+var SOURCE_COLUMNS = "id, organization_id, supplier_id, name, source_type, base_url, country, config, automated_access_confirmed, sync_frequency, status, last_sync_at, last_successful_sync_at, last_error, next_run_at, consecutive_failures";
+function kindOf(s, hasUrlFeed, hasConnection) {
+  const kind = s.config?.kind;
+  if (kind === CATALOG_IMPORT_KIND) return "file_import";
+  if (s.source_type === "PUBLIC_WEB") return "public_web";
+  if (hasConnection) return "connection";
+  if (hasUrlFeed) return "remote_feed";
+  if (s.source_type === "MANUAL") return "manual";
+  return "file_import";
+}
+var METHOD_LABEL = {
+  file_import: "Import de fichier",
+  public_web: "Page publique (robots.txt v\xE9rifi\xE9)",
+  remote_feed: "Flux distant autoris\xE9",
+  connection: "API fournisseur (compte)",
+  manual: "Saisie manuelle"
+};
+async function runSourceOnce(admin, source, kind, trigger, createdBy) {
+  if (kind === "public_web") {
+    const r = await runSourceCrawl(source.id, { trigger, createdBy, admin });
+    return { ok: r.status === "success" || r.status === "partial", status: r.status, message: r.message, runIds: r.runId ? [r.runId] : [] };
+  }
+  if (kind === "remote_feed") {
+    const { data: feeds } = await admin.from("supplier_feeds").select("id, options, field_mapping").eq("source_id", source.id).not("url", "is", null).neq("status", "paused").limit(10);
+    if (!feeds?.length) return { ok: false, status: "failed", message: "Aucun flux distant actif pour cette source.", runIds: [] };
+    const results = [];
+    for (const f of feeds) {
+      const mode = parseFeedConfig(f).options.mode ?? "snapshot";
+      results.push(await ingestFeed(f.id, { trigger, createdBy, admin, mode }));
     }
-    byHost.set(host, [...byHost.get(host) ?? [], s.id]);
+    const failed = results.filter((r) => r.status === "failed");
+    return { ok: failed.length === 0, status: failed.length === 0 ? results.some((r) => r.status === "partial") ? "partial" : "success" : failed.length === results.length ? "failed" : "partial", message: results.map((r) => r.message).join(" "), runIds: results.flatMap((r) => r.runId ? [r.runId] : []) };
   }
-  const results = [];
-  for (const ids of byHost.values()) {
-    for (const id of ids) results.push(await runSourceCrawl(id, { trigger: "scheduled", admin }));
+  if (kind === "connection") {
+    const { data: conns } = await admin.from("supplier_connections").select("id").eq("source_id", source.id).limit(5);
+    if (!conns?.length) return { ok: false, status: "failed", message: "Aucune connexion fournisseur pour cette source.", runIds: [] };
+    const r = await syncSupplierConnection(conns[0].id, { trigger, createdBy, admin });
+    return { ok: r.status === "success" || r.status === "partial", status: r.status, message: r.message, runIds: r.runId ? [r.runId] : [] };
   }
-  return results;
+  return { ok: false, status: "refused", message: kind === "file_import" ? "Source aliment\xE9e par fichier : importez la nouvelle liste du fournisseur (Sourcing \u2192 Importer)." : "Source manuelle : aucune synchronisation automatique.", runIds: [] };
+}
+async function sourceContext(admin, ids) {
+  if (ids.length === 0) return { urlFeeds: /* @__PURE__ */ new Set(), connections: /* @__PURE__ */ new Set() };
+  const [{ data: feeds }, { data: conns }] = await Promise.all([admin.from("supplier_feeds").select("source_id").in("source_id", ids).not("url", "is", null), admin.from("supplier_connections").select("source_id").in("source_id", ids)]);
+  return { urlFeeds: new Set((feeds ?? []).map((f) => f.source_id)), connections: new Set((conns ?? []).flatMap((c) => c.source_id ? [c.source_id] : [])) };
+}
+async function syncSourceNow(ctx, sourceId, admin = createAdminSupabaseClient(), now = /* @__PURE__ */ new Date()) {
+  const { data, error } = await ctx.supabase.from("supplier_sources").select(SOURCE_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", sourceId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!data) throw new AppError("NOT_FOUND", "Source introuvable dans cette organisation.");
+  const source = data;
+  if (source.status === "paused") throw new AppError("VALIDATION", "Source d\xE9sactiv\xE9e : r\xE9activez-la avant de la synchroniser.");
+  if (source.last_sync_at && now.getTime() - new Date(source.last_sync_at).getTime() < MANUAL_SYNC_COOLDOWN_MS) throw new AppError("RATE_LIMITED", "Synchronisation lanc\xE9e il y a moins de 2 minutes : patientez un peu.");
+  const { urlFeeds, connections } = await sourceContext(admin, [source.id]);
+  const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+  if (kind === "file_import" || kind === "manual") throw new AppError("VALIDATION", kind === "file_import" ? "Cette source est aliment\xE9e par fichier : importez la nouvelle liste du fournisseur." : "Source manuelle : rien \xE0 synchroniser.");
+  let outcome;
+  try {
+    outcome = await runSourceOnce(admin, source, kind, "manual", ctx.user.id);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (/déjà en cours/.test(message)) throw new AppError("CONFLICT", message);
+    outcome = { ok: false, status: "failed", message, runIds: [] };
+  }
+  const health = await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
+  return { status: outcome.status, message: outcome.message, ...health };
+}
+async function runScheduledSources(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient(), limit = 40) {
+  const { data } = await admin.from("supplier_sources").select(SOURCE_COLUMNS).neq("sync_frequency", "manual").neq("status", "paused").limit(500);
+  const sources = (data ?? []).filter((s) => isScheduleDue(s, now));
+  const { urlFeeds, connections } = await sourceContext(admin, sources.map((s) => s.id));
+  const out = [];
+  sources.sort((a, b) => (a.next_run_at ?? a.last_sync_at ?? "").localeCompare(b.next_run_at ?? b.last_sync_at ?? ""));
+  for (const source of sources.slice(0, limit)) {
+    const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+    if (kind === "file_import" || kind === "manual") continue;
+    if (kind === "public_web" && !source.automated_access_confirmed) continue;
+    let outcome;
+    try {
+      outcome = await runSourceOnce(admin, source, kind, "scheduled", null);
+    } catch (e) {
+      outcome = { ok: false, status: "failed", message: e instanceof Error ? e.message : String(e), runIds: [] };
+    }
+    if (!outcome.ok && /déjà en cours/.test(outcome.message)) continue;
+    await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
+    out.push({ sourceId: source.id, status: outcome.status, message: outcome.message });
+  }
+  log21.info("scheduled sources", { due: sources.length, ran: out.length });
+  return out;
+}
+var sourceScheduleSchema = z29.object({
+  sourceId: z29.string().uuid(),
+  frequency: z29.enum(["manual", "hourly", "every_6_hours", "daily"]).optional(),
+  /** désactiver (pause) / réactiver la source */
+  enabled: z29.boolean().optional()
+});
+async function setSourceSchedule(ctx, input, admin = createAdminSupabaseClient(), now = /* @__PURE__ */ new Date()) {
+  const { data, error } = await ctx.supabase.from("supplier_sources").select(SOURCE_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", input.sourceId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!data) throw new AppError("NOT_FOUND", "Source introuvable dans cette organisation.");
+  const source = data;
+  const { urlFeeds, connections } = await sourceContext(admin, [source.id]);
+  const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+  const patch = {};
+  if (input.frequency) {
+    if (input.frequency !== "manual" && (kind === "file_import" || kind === "manual")) throw new AppError("VALIDATION", "Une source aliment\xE9e par fichier ne se synchronise pas automatiquement : demandez au fournisseur un flux (URL CSV / XML) ou une API.");
+    if (input.frequency !== "manual" && kind === "public_web" && !source.automated_access_confirmed) throw new AppError("VALIDATION", "Acc\xE8s automatis\xE9 non attest\xE9 pour cette page publique.");
+    patch.sync_frequency = input.frequency;
+    patch.next_run_at = input.frequency === "manual" ? null : now.toISOString();
+  }
+  if (input.enabled !== void 0) patch.status = input.enabled ? source.last_successful_sync_at ? "active" : "not_connected" : "paused";
+  if (Object.keys(patch).length) {
+    const { error: upErr } = await admin.from("supplier_sources").update(patch).eq("id", source.id).eq("organization_id", ctx.organization.id);
+    if (upErr) throw fromPostgrestError(upErr);
+  }
+  const list = await listSourcesForOrg(ctx, admin);
+  const updated = list.find((s) => s.id === source.id);
+  if (!updated) throw new AppError("NOT_FOUND", "Source introuvable apr\xE8s mise \xE0 jour.");
+  return updated;
+}
+async function listSourcesForOrg(ctx, admin = createAdminSupabaseClient()) {
+  const orgId = ctx.organization.id;
+  const { data, error } = await ctx.supabase.from("supplier_sources").select(`${SOURCE_COLUMNS}, supplier:suppliers(name, country)`).eq("organization_id", orgId).order("name").limit(300);
+  if (error) throw fromPostgrestError(error);
+  const sources = data ?? [];
+  const ids = sources.map((s) => s.id);
+  const { urlFeeds, connections } = await sourceContext(admin, ids);
+  const counts = /* @__PURE__ */ new Map();
+  if (ids.length) {
+    const { data: offers } = await ctx.supabase.from("sourcing_offers").select("source_id").eq("organization_id", orgId).eq("status", "active").in("source_id", ids).limit(5e4);
+    for (const o of offers ?? []) counts.set(o.source_id, (counts.get(o.source_id) ?? 0) + 1);
+  }
+  const running = /* @__PURE__ */ new Set();
+  if (ids.length) {
+    const { data: feeds } = await ctx.supabase.from("supplier_feeds").select("id, source_id").eq("organization_id", orgId).in("source_id", ids);
+    const refToSource = new Map(ids.map((id) => [id, id]));
+    for (const f of feeds ?? []) refToSource.set(f.id, f.source_id);
+    const { data: runs } = await ctx.supabase.from("sync_runs").select("source_ref").eq("organization_id", orgId).eq("status", "running").in("source_ref", [...refToSource.keys()]);
+    for (const r of runs ?? []) if (r.source_ref && refToSource.has(r.source_ref)) running.add(refToSource.get(r.source_ref));
+  }
+  return sources.map((s) => {
+    const kind = kindOf(s, urlFeeds.has(s.id), connections.has(s.id));
+    const display = sourceDisplayStatus({ status: s.status, kind, running: running.has(s.id), lastSuccessfulSyncAt: s.last_successful_sync_at, consecutiveFailures: s.consecutive_failures, attested: s.automated_access_confirmed || kind === "connection" || kind === "remote_feed" });
+    const schedulable = kind === "public_web" || kind === "remote_feed" || kind === "connection";
+    return {
+      id: s.id,
+      name: s.name,
+      supplierId: s.supplier_id,
+      supplierName: s.supplier?.name ?? null,
+      country: s.country ?? s.supplier?.country ?? null,
+      kind,
+      methodLabel: METHOD_LABEL[kind],
+      status: display,
+      statusLabel: SOURCE_STATUS_LABEL[display],
+      activeOffers: counts.get(s.id) ?? 0,
+      lastSyncAt: s.last_sync_at,
+      lastSuccessfulSyncAt: s.last_successful_sync_at,
+      nextRunAt: s.next_run_at,
+      lastError: s.last_error,
+      consecutiveFailures: s.consecutive_failures,
+      frequency: s.sync_frequency,
+      frequencyLabel: FREQUENCY_LABEL[s.sync_frequency],
+      schedulable,
+      canSyncNow: schedulable && s.status !== "paused",
+      primaryAction: s.status === "paused" ? "enable" : kind === "file_import" || kind === "manual" ? "import_file" : schedulable ? "sync_now" : "configure"
+    };
+  });
 }
 
 // src/services/sourcing/alerts.ts
@@ -20879,7 +22115,7 @@ init_empty();
 init_admin();
 init_logger();
 init_query_parser();
-import { z as z27 } from "npm:zod@4.6.5";
+import { z as z30 } from "npm:zod@4.6.5";
 
 // src/domain/sourcing/opportunities.ts
 init_validation();
@@ -20937,16 +22173,16 @@ function detectOpportunities(offer, priceHistory, stockHistory, now = /* @__PURE
 // src/services/sourcing/alerts.ts
 init_offer_query();
 init_sync_runs();
-var log20 = createLogger("SOURCING_ALERTS");
-var alertCriteriaSchema = z27.object({
-  max_price: z27.number().positive().optional(),
-  min_quantity: z27.number().int().min(0).optional(),
-  countries: z27.array(z27.string().length(2)).optional(),
-  max_moq: z27.number().int().min(1).optional(),
-  grades: z27.array(z27.string().max(5)).optional(),
-  condition: z27.enum(["new", "refurbished", "used"]).optional(),
-  max_delivery_days: z27.number().int().min(0).optional(),
-  supplier_id: z27.string().uuid().optional()
+var log22 = createLogger("SOURCING_ALERTS");
+var alertCriteriaSchema = z30.object({
+  max_price: z30.number().positive().optional(),
+  min_quantity: z30.number().int().min(0).optional(),
+  countries: z30.array(z30.string().length(2)).optional(),
+  max_moq: z30.number().int().min(1).optional(),
+  grades: z30.array(z30.string().max(5)).optional(),
+  condition: z30.enum(["new", "refurbished", "used"]).optional(),
+  max_delivery_days: z30.number().int().min(0).optional(),
+  supplier_id: z30.string().uuid().optional()
 });
 function criteriaToFilters(c) {
   return { maxPrice: c.max_price, minQuantity: c.min_quantity, countries: c.countries, maxMoq: c.max_moq, grades: c.grades, condition: c.condition, maxDeliveryDays: c.max_delivery_days, supplierId: c.supplier_id };
@@ -21033,7 +22269,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
         totalAlerts++;
       } catch (e) {
         errors++;
-        log20.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
+        log22.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
       }
     }
     totalEvents += events;
@@ -21043,7 +22279,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
 }
 
 // src/services/sourcing/sync.ts
-var log21 = createLogger("SOURCING_SYNC");
+var log23 = createLogger("SOURCING_SYNC");
 async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
   const startedAt = now.toISOString();
   let fx = { ok: false, date: null, count: 0, error: null };
@@ -21052,29 +22288,23 @@ async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
     fx = { ok: true, date: r.date, count: r.count, error: null };
   } catch (e) {
     fx = { ok: false, date: null, count: 0, error: e instanceof Error ? e.message : String(e) };
-    log21.warn("fx refresh failed", { error: fx.error });
+    log23.warn("fx refresh failed", { error: fx.error });
   }
-  let feeds = [];
+  let sources = [];
   try {
-    feeds = await runDueFeeds(now);
+    sources = await runScheduledSources(now);
   } catch (e) {
-    log21.error("due feeds failed", { error: e instanceof Error ? e.message : String(e) });
-  }
-  let crawls = [];
-  try {
-    crawls = await runDueCrawls(now);
-  } catch (e) {
-    log21.error("due crawls failed", { error: e instanceof Error ? e.message : String(e) });
+    log23.error("scheduled sources failed", { error: e instanceof Error ? e.message : String(e) });
   }
   let alerts;
   try {
     alerts = await evaluateSourcingAlerts(now);
   } catch (e) {
     alerts = { error: e instanceof Error ? e.message : String(e) };
-    log21.error("alerts evaluation failed", { error: alerts.error });
+    log23.error("alerts evaluation failed", { error: alerts.error });
   }
-  const summary = { startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), fx, feeds, crawls, alerts };
-  log21.info("sourcing sync finished", { fx: fx.ok, feeds: feeds.length, crawls: crawls.length });
+  const summary = { startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), fx, sources, alerts };
+  log23.info("sourcing sync finished", { fx: fx.ok, sources: sources.length });
   return summary;
 }
 
@@ -21247,14 +22477,14 @@ async function runImportSelfTest() {
     const { previewCatalogFile: previewCatalogFile2, importCatalogFile: importCatalogFile2 } = await Promise.resolve().then(() => (init_catalog_import(), catalog_import_exports));
     const file = toFile([...base, ["TEST-IMPORT-7", "Article sans prix (test serveur)", "", "0"]], "controle.csv");
     const preview = previewCatalogFile2({ file }, "EUR");
-    const first = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)" });
+    const first = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)", mode: "snapshot", allowSameFile: true });
     const priceOf = async () => (await admin.from("sourcing_offers").select("original_price").eq("organization_id", org.id).eq("external_offer_id", "TEST-IMPORT-4").maybeSingle()).data?.original_price ?? null;
     const priceAfterFirst = await priceOf();
     const shifted = toFile(base.map((r) => [r[0], r[1], String(Math.round(Number(r[2].replace(/\s/g, "").replace(",", ".")) * 100)), r[3]]), "controle-defectueux.csv");
-    const bad = await importCatalogFile2(ctx, { file: shifted, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const bad = await importCatalogFile2(ctx, { file: shifted, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId, mode: "snapshot", allowSameFile: true });
     const priceAfterBad = await priceOf();
     const update = toFile([...base.map((r) => r[0] === "TEST-IMPORT-4" ? [r[0], r[1], "74,90", r[3]] : r), base[0]], "controle-maj.csv");
-    const third = await importCatalogFile2(ctx, { file: update, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId });
+    const third = await importCatalogFile2(ctx, { file: update, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierId: first.supplierId, mode: "snapshot", allowSameFile: true });
     const priceAfterUpdate = await priceOf();
     const { count } = await admin.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
     const { data: run } = await admin.from("sync_runs").select("status").eq("organization_id", org.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
@@ -21288,7 +22518,7 @@ async function runChainSelfTest() {
     const { data: created, error: skuErr } = await admin.rpc("create_sku", {
       p_organization_id: org.id,
       p_variant: { name: "128 Go / Noir / Grade A", condition: "refurbished", grade: "A", attributes: { storage: "128 Go", color: "Noir", grade: "A" } },
-      p_sku: { code: "TEST-CHAINE-IP13", cost_price: 330, sale_price: 600, currency: "EUR", barcode: "0194252707323" },
+      p_sku: { code: "TEST-CHAINE-IP13", cost_price: 330, sale_price: 600, currency: "EUR", barcode: "0194252707326" },
       p_product_id: null,
       p_product: { name: "Article de contr\xF4le (test serveur)", brand: "Apple", category: "Smartphone", attributes: { model: "iPhone 13" } },
       p_initial_quantity: 1
@@ -21296,13 +22526,13 @@ async function runChainSelfTest() {
     if (skuErr) throw new Error(`SKU : ${skuErr.message}`);
     const skuId = created?.sku_id ?? null;
     steps.sku = Boolean(skuId);
-    if (skuId) await admin.from("skus").update({ barcode: "0194252707323" }).eq("id", skuId);
+    if (skuId) await admin.from("skus").update({ barcode: "0194252707326" }).eq("id", skuId);
     const ctx = { supabase: admin, user: { id: anyMember?.user_id ?? "00000000-0000-0000-0000-000000000000" }, profile: null, organization: org, role: "owner", memberships: [] };
-    const csv = ["R\xE9f.;D\xE9signation article;EAN;Prix HT (\u20AC);Qt\xE9 dispo", "CTRL-1;iPhone 13 128 Go Noir Grade A (test serveur);0194252707323;300,00;5"].join("\r\n");
+    const csv = ["R\xE9f.;D\xE9signation article;EAN;Prix HT (\u20AC);Qt\xE9 dispo", "CTRL-1;iPhone 13 128 Go Noir Grade A (test serveur);0194252707326;300,00;5"].join("\r\n");
     const { importCatalogFile: importCatalogFile2, previewCatalogFile: previewCatalogFile2 } = await Promise.resolve().then(() => (init_catalog_import(), catalog_import_exports));
     const file = { fileName: "controle.csv", contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
     const preview = previewCatalogFile2({ file }, "EUR");
-    const imported = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)" });
+    const imported = await importCatalogFile2(ctx, { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Fournisseur de contr\xF4le (test serveur)", mode: "partial", allowSameFile: true });
     steps.import = { stored: imported.result.stored, status: imported.result.status };
     const { data: offer } = await admin.from("sourcing_offers").select("sku_id").eq("organization_id", org.id).maybeSingle();
     steps.autoMatched = offer?.sku_id === skuId;
@@ -21330,12 +22560,150 @@ init_radar2();
 init_supplier_directory2();
 init_catalog_import();
 
+// src/services/sourcing/remote-feeds.ts
+init_empty();
+init_admin();
+init_crypto();
+init_feed_secrets();
+init_env();
+init_errors();
+init_types2();
+init_http2();
+init_feed_parsers();
+init_feed_ingestion();
+init_catalog_import();
+import { z as z35 } from "npm:zod@4.6.5";
+var urlSchema = z35.string().trim().max(2e3).refine((u) => {
+  try {
+    const parsed = assertPublicHttpUrl(u);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "Adresse HTTPS publique requise (aucune adresse locale, interne ni identifiant dans l'URL).");
+var remoteFeedPreviewSchema = z35.object({
+  url: urlSchema,
+  format: z35.enum(["csv", "xml", "json"]),
+  auth: feedAuthSchema.default({ kind: "none" }),
+  mapping: fieldMappingSchema.optional(),
+  defaults: catalogDefaultsSchema.partial({ currency: true }).optional(),
+  rootPath: z35.string().max(200).optional()
+});
+var remoteFeedCreateSchema = remoteFeedPreviewSchema.extend({
+  mapping: fieldMappingSchema,
+  defaults: catalogDefaultsSchema,
+  supplierId: z35.string().uuid().optional(),
+  supplierName: z35.string().trim().min(2).max(160).optional(),
+  mode: z35.enum(["partial", "snapshot"]).default("snapshot"),
+  frequency: z35.enum(["manual", "hourly", "every_6_hours", "daily"]).default("daily"),
+  /** l'utilisateur atteste disposer de l'accord du fournisseur pour la lecture automatisée */
+  attest: z35.literal(true, { message: "Confirmez disposer de l'accord du fournisseur pour lire ce flux automatiquement." })
+}).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), { message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix." });
+async function fetchRemoteFeed(url, format, headers, fetchImpl, resolver) {
+  const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], headers, fetchImpl, resolver, timeoutMs: 3e4 });
+  if (res.status === 401 || res.status === 403) throw new AppError("VALIDATION", `Le fournisseur refuse l'acc\xE8s (HTTP ${res.status}) : v\xE9rifiez le lien ou les identifiants fournis.`);
+  if (!res.ok) throw new AppError("VALIDATION", `Le flux a r\xE9pondu HTTP ${res.status}.`);
+  if (/text\/html/i.test(res.contentType ?? "") && format !== "xml") throw new AppError("VALIDATION", "Le lien renvoie une page web, pas un fichier de donn\xE9es : demandez au fournisseur le lien direct du CSV / XML / JSON.");
+  return res.text;
+}
+async function previewRemoteFeed(ctx, input, runtime = {}) {
+  const content = await fetchRemoteFeed(input.url, input.format, authHeaders2(input.auth), runtime.fetchImpl, runtime.resolver);
+  const options = input.rootPath ? { root_path: input.rootPath } : {};
+  const first = previewFeed(content, input.format, {}, options, {}, 1);
+  const detailed = suggestCatalogMappingDetailed(first.columns);
+  const userMapping = input.mapping && Object.keys(input.mapping).length > 0 ? input.mapping : null;
+  const mapping = userMapping ?? detailed.mapping;
+  const defaults = { currency: input.defaults?.currency ?? ctx.organization.default_currency, taxType: input.defaults?.taxType ?? "unknown", country: input.defaults?.country ?? null };
+  const preview = previewFeed(content, input.format, mapping, options, defaults, 20);
+  return {
+    fileSha256: "",
+    fileSize: content.length,
+    headerSignature: headerSignature(first.columns),
+    mappingSource: userMapping ? "user" : "suggested",
+    mappingConfidence: detailed.confidence,
+    duplicates: 0,
+    alreadyImported: null,
+    format: input.format,
+    columns: preview.columns,
+    suggestedMapping: detailed.mapping,
+    mapping,
+    total: preview.total,
+    validCount: preview.validCount,
+    invalidCount: preview.invalidCount,
+    warnings: preview.warnings,
+    sample: preview.sample.map((s) => ({
+      line: s.index + (input.format === "csv" ? 2 : 1),
+      title: s.offer?.title ?? null,
+      reference: s.offer?.supplierSku ?? s.offer?.externalOfferId ?? null,
+      price: s.offer?.price ?? null,
+      currency: s.offer?.currency ?? null,
+      taxType: s.offer?.taxType ?? null,
+      quantity: s.offer?.availableQuantity ?? null,
+      ean: s.offer?.ean ?? null,
+      brand: s.offer?.brand ?? null,
+      condition: s.offer?.condition ?? null,
+      grade: s.offer?.grade ?? null,
+      moq: s.offer?.moq ?? null,
+      errors: s.errors,
+      warnings: s.warnings ?? []
+    })),
+    fields: RAW_OFFER_FIELDS
+  };
+}
+async function createRemoteFeed(ctx, input, admin = createAdminSupabaseClient(), now = /* @__PURE__ */ new Date()) {
+  const orgId = ctx.organization.id;
+  authHeaders2(input.auth);
+  let supplierId = input.supplierId ?? null;
+  let supplierName = input.supplierName ?? "";
+  if (supplierId) {
+    const { data, error } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("id", supplierId).maybeSingle();
+    if (error) throw fromPostgrestError(error);
+    if (!data) throw new AppError("NOT_FOUND", "Fournisseur introuvable dans cette organisation.");
+    supplierName = data.name;
+  } else {
+    const { data: existing } = await ctx.supabase.from("suppliers").select("id").eq("organization_id", orgId).ilike("name", supplierName).limit(1).maybeSingle();
+    if (existing) supplierId = existing.id;
+    else {
+      const { data, error } = await ctx.supabase.from("suppliers").insert({ organization_id: orgId, name: supplierName, currency: input.defaults.currency, country: input.defaults.country ?? null }).select("id").single();
+      if (error || !data) throw fromPostgrestError(error ?? { message: "Fournisseur non cr\xE9\xE9" });
+      supplierId = data.id;
+    }
+  }
+  const host = new URL(input.url).host;
+  const attestation = `Accord du fournisseur attest\xE9 par l'utilisateur ${ctx.user.id} le ${now.toISOString()} pour la lecture automatis\xE9e du flux ${host}.`;
+  const { data: source, error: srcErr } = await ctx.supabase.from("supplier_sources").insert({
+    organization_id: orgId,
+    supplier_id: supplierId,
+    name: `Flux ${input.format.toUpperCase()} \u2014 ${supplierName}`.slice(0, 200),
+    source_type: input.format.toUpperCase(),
+    base_url: `https://${host}`,
+    default_currency: input.defaults.currency,
+    default_tax_type: input.defaults.taxType,
+    country: input.defaults.country ?? null,
+    automated_access_confirmed: true,
+    access_conditions: attestation,
+    sync_frequency: input.frequency,
+    status: "not_connected",
+    next_run_at: input.frequency === "manual" ? null : now.toISOString(),
+    config: { kind: "remote_feed", mode: input.mode }
+  }).select("id").single();
+  if (srcErr || !source) throw fromPostgrestError(srcErr ?? { message: "Source non cr\xE9\xE9e" });
+  const options = { mode: input.mode, ...input.rootPath ? { root_path: input.rootPath } : {} };
+  const { data: feed, error: feedErr } = await ctx.supabase.from("supplier_feeds").insert({ organization_id: orgId, supplier_id: supplierId, source_id: source.id, type: "catalog", url: input.url, format: input.format, field_mapping: input.mapping, options, sync_frequency: input.frequency, status: "not_connected" }).select("id").single();
+  if (feedErr || !feed) throw fromPostgrestError(feedErr ?? { message: "Flux non cr\xE9\xE9" });
+  if (input.auth.kind !== "none") {
+    const { error } = await admin.from("supplier_feed_secrets").upsert({ feed_id: feed.id, organization_id: orgId, credentials_enc: encryptSecret(JSON.stringify(input.auth)), key_version: 1, updated_at: now.toISOString() });
+    if (error) throw new AppError("INTERNAL", "Identifiants du flux non enregistr\xE9s.");
+  }
+  return { supplierId, sourceId: source.id, feedId: feed.id };
+}
+
 // src/services/ai/llm.ts
 init_empty();
 init_errors();
 init_logger();
 import OpenAI from "npm:openai@7.23.0";
-var log23 = createLogger("AI_LLM");
+var log25 = createLogger("AI_LLM");
 var DEFAULT_AI_MODEL = "gpt-5.4-mini";
 function aiModel(env = process.env) {
   const m = env.OPENAI_MODEL?.trim();
@@ -21406,7 +22774,7 @@ function rejectedParam(e) {
   return null;
 }
 function logApiError(e, model, withTools) {
-  if (e instanceof OpenAI.APIError) log23.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
+  if (e instanceof OpenAI.APIError) log25.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
 }
 function openAILlm(sdk2, model) {
   return {
@@ -21492,7 +22860,7 @@ function speakableText(raw, max = MAX_SPOKEN_CHARS) {
 // src/services/ai/speech.ts
 init_errors();
 init_logger();
-var log24 = createLogger("AI_SPEECH");
+var log26 = createLogger("AI_SPEECH");
 var TTS_DEFAULT_MODEL = "gpt-4o-mini-tts";
 var TTS_CHOICES = ["marin", "cedar"];
 var TTS_DEFAULT_VOICE = "marin";
@@ -21535,8 +22903,8 @@ async function synthesize(input, voice, deps, what) {
     return await res.arrayBuffer();
   } catch (e) {
     logApiError(e, model, false);
-    if (e instanceof AppError) log24.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
-    else log24.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+    if (e instanceof AppError) log26.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
+    else log26.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
     throw aiError(e);
   }
 }
@@ -21574,43 +22942,43 @@ async function enforceAiQuota(ctx, kind, now = /* @__PURE__ */ new Date(), admin
 
 // src/services/ai/product-draft.ts
 init_empty();
-import { z as z34 } from "npm:zod@4.6.5";
+import { z as z37 } from "npm:zod@4.6.5";
 
 // src/features/stock/product-form.ts
-import { z as z33 } from "npm:zod@4.6.5";
+import { z as z36 } from "npm:zod@4.6.5";
 var MAX_VARIANTS = 50;
 var PRODUCT_GRADES = ["A", "B", "C"];
 var PRODUCT_CATEGORIES = ["Smartphone", "Tablette", "Ordinateur", "Montre connect\xE9e", "Console", "Audio", "Accessoire", "Pi\xE8ce d\xE9tach\xE9e"];
 var CONDITION_LABEL = { new: "Neuf", refurbished: "Reconditionn\xE9", used: "Occasion", unknown: "Non pr\xE9cis\xE9" };
 var productFields = {
-  name: z33.string().trim().max(300).optional().or(z33.literal("")),
-  brand: z33.string().trim().max(120).optional().or(z33.literal("")),
-  model: z33.string().trim().max(160).optional().or(z33.literal("")),
-  category: z33.string().trim().max(120).optional().or(z33.literal("")),
-  description: z33.string().trim().max(5e3).optional().or(z33.literal(""))
+  name: z36.string().trim().max(300).optional().or(z36.literal("")),
+  brand: z36.string().trim().max(120).optional().or(z36.literal("")),
+  model: z36.string().trim().max(160).optional().or(z36.literal("")),
+  category: z36.string().trim().max(120).optional().or(z36.literal("")),
+  description: z36.string().trim().max(5e3).optional().or(z36.literal(""))
 };
 function blankToUndefined(v2) {
   if (typeof v2 !== "string") return v2;
   const t = v2.trim().replace(/\s/g, "").replace(",", ".");
   return t === "" ? void 0 : t;
 }
-var moneyInput = z33.preprocess(
+var moneyInput = z36.preprocess(
   blankToUndefined,
-  z33.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
+  z36.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
 );
-var quantityInput = z33.preprocess(
+var quantityInput = z36.preprocess(
   blankToUndefined,
-  z33.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
+  z36.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
 );
-var variantInputSchema = z33.object({
+var variantInputSchema = z36.object({
   ...variantFields,
-  grade: z33.union([z33.enum(PRODUCT_GRADES), z33.literal("")], { error: "Grade A, B ou C." }).optional(),
+  grade: z36.union([z36.enum(PRODUCT_GRADES), z36.literal("")], { error: "Grade A, B ou C." }).optional(),
   ...skuFields,
   cost_price: moneyInput,
   sale_price: moneyInput,
   initial_quantity: quantityInput
 });
-var variantsArraySchema = z33.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
+var variantsArraySchema = z36.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
   for (const [i, message] of duplicateCodes(variants)) ctx.addIssue({ code: "custom", path: [i, "code"], message });
 });
 function duplicateCodes(variants) {
@@ -21625,10 +22993,10 @@ function duplicateCodes(variants) {
   });
   return out;
 }
-var productWithVariantsSchema = z33.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
+var productWithVariantsSchema = z36.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
   if (!productDisplayName(d)) ctx.addIssue({ code: "custom", path: ["name"], message: "Indiquez le nom du produit, ou au moins la marque et le mod\xE8le." });
 });
-var addVariantsSchema = z33.object({ product_id: z33.string().uuid(), variants: variantsArraySchema });
+var addVariantsSchema = z36.object({ product_id: z36.string().uuid(), variants: variantsArraySchema });
 function productDisplayName(d) {
   const name = d.name?.trim();
   if (name) return name;
@@ -21672,25 +23040,25 @@ var PRODUCT_DRAFT_JSON_SCHEMA = {
     notes: { type: "array", items: { type: "string" } }
   }
 };
-var money4 = z34.number().finite().min(0).max(1e6).nullable();
-var draftSchema = z34.object({
-  understood: z34.boolean(),
-  brand: z34.string().max(120).nullable(),
-  model: z34.string().max(160).nullable(),
-  name: z34.string().max(300).nullable(),
-  category: z34.string().max(120).nullable(),
-  variants: z34.array(
-    z34.object({
-      storage: z34.string().max(60).nullable(),
-      color: z34.string().max(60).nullable(),
-      grade: z34.enum(PRODUCT_GRADES).nullable(),
-      condition: z34.enum(CONDITIONS),
+var money4 = z37.number().finite().min(0).max(1e6).nullable();
+var draftSchema = z37.object({
+  understood: z37.boolean(),
+  brand: z37.string().max(120).nullable(),
+  model: z37.string().max(160).nullable(),
+  name: z37.string().max(300).nullable(),
+  category: z37.string().max(120).nullable(),
+  variants: z37.array(
+    z37.object({
+      storage: z37.string().max(60).nullable(),
+      color: z37.string().max(60).nullable(),
+      grade: z37.enum(PRODUCT_GRADES).nullable(),
+      condition: z37.enum(CONDITIONS),
       cost_price: money4,
       sale_price: money4,
-      initial_quantity: z34.number().int().min(0).max(1e6).nullable()
+      initial_quantity: z37.number().int().min(0).max(1e6).nullable()
     })
   ).max(MAX_VARIANTS),
-  notes: z34.array(z34.string().max(300)).max(10)
+  notes: z37.array(z37.string().max(300)).max(10)
 });
 function productDraftSystemPrompt(currency) {
   return [
@@ -21773,18 +23141,18 @@ function parseProductDraft(raw, transcript) {
 init_empty();
 init_errors();
 init_logger();
-import { z as z36 } from "npm:zod@4.6.5";
+import { z as z39 } from "npm:zod@4.6.5";
 
 // src/services/ai/assistant-tools.ts
 init_empty();
-import { z as z35 } from "npm:zod@4.6.5";
+import { z as z38 } from "npm:zod@4.6.5";
 var DAY = 864e5;
 var PAGE = 1e3;
 var MAX_ROWS = 5e3;
 var EXCLUDED_STATUSES = "(cancelled,refunded)";
-var daysSchema = z35.coerce.number().int().min(1).max(730).default(30);
-var limitSchema = (max, def) => z35.coerce.number().int().min(1).max(max).default(def);
-var textQuery = z35.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
+var daysSchema = z38.coerce.number().int().min(1).max(730).default(30);
+var limitSchema = (max, def) => z38.coerce.number().int().min(1).max(max).default(def);
+var textQuery = z38.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
 function since(ctx, days) {
   return new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime() - days * DAY).toISOString();
 }
@@ -21806,11 +23174,11 @@ async function fetchAll(page2) {
   }
   return { rows, truncated: true };
 }
-var salesRankingInput = z35.object({
+var salesRankingInput = z38.object({
   days: daysSchema,
-  by: z35.enum(["units", "revenue"]).default("units"),
+  by: z38.enum(["units", "revenue"]).default("units"),
   limit: limitSchema(25, 10),
-  channel: z35.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
+  channel: z38.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
   query: textQuery
 });
 async function salesRanking(ctx, raw) {
@@ -21866,7 +23234,7 @@ async function salesRanking(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues. revenue = montant des lignes de commande (hors frais de port), par devise."
   };
 }
-var salesSummaryInput = z35.object({ days: daysSchema });
+var salesSummaryInput = z38.object({ days: daysSchema });
 async function salesSummary(ctx, raw) {
   const input = salesSummaryInput.parse(raw);
   const from = since(ctx, input.days * 2).slice(0, 10);
@@ -21896,9 +23264,9 @@ async function salesSummary(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues ; jours sans vente non compt\xE9s dans activeDays."
   };
 }
-var stockInput = z35.object({
+var stockInput = z38.object({
   query: textQuery,
-  filter: z35.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
+  filter: z38.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
   limit: limitSchema(40, 15)
 });
 async function stockSearch(ctx, raw) {
@@ -21939,7 +23307,7 @@ async function stockSearch(ctx, raw) {
     note: "stock_value = quantit\xE9 en stock \xD7 prix d'achat (null si prix d'achat inconnu). unit_margin = prix de vente \u2212 prix d'achat."
   };
 }
-var ordersInput = z35.object({ days: daysSchema, limit: limitSchema(30, 10), status: z35.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
+var ordersInput = z38.object({ days: daysSchema, limit: limitSchema(30, 10), status: z38.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
 async function recentOrders(ctx, raw) {
   const input = ordersInput.parse(raw);
   let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
@@ -21972,11 +23340,11 @@ async function ebayAccount(ctx) {
     recentSyncErrors: errors.data ?? []
   };
 }
-var listingsInput = z35.object({
+var listingsInput = z38.object({
   query: textQuery,
-  status: z35.enum(["active", "ended", "unsold", "unknown"]).optional(),
-  onlyNotLinkedToStock: z35.boolean().default(false),
-  sort: z35.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
+  status: z38.enum(["active", "ended", "unsold", "unknown"]).optional(),
+  onlyNotLinkedToStock: z38.boolean().default(false),
+  sort: z38.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
   limit: limitSchema(30, 10)
 });
 async function listingsSearch(ctx, raw) {
@@ -22077,15 +23445,15 @@ async function runAssistantTool(ctx, name, input) {
     const json2 = JSON.stringify(result);
     return { content: json2.length > MAX_RESULT_CHARS ? `${json2.slice(0, MAX_RESULT_CHARS)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false };
   } catch (e) {
-    if (e instanceof z35.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
+    if (e instanceof z38.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true };
   }
 }
 
 // src/services/ai/assistant.ts
-var log25 = createLogger("AI_ASSISTANT");
-var assistantRequestSchema = z36.object({
-  messages: z36.array(z36.object({ role: z36.enum(["user", "assistant"]), content: z36.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
+var log27 = createLogger("AI_ASSISTANT");
+var assistantRequestSchema = z39.object({
+  messages: z39.array(z39.object({ role: z39.enum(["user", "assistant"]), content: z39.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
 var MAX_STEPS = 8;
 var ASSISTANT_DEADLINE_MS = 11e4;
@@ -22138,7 +23506,7 @@ async function askAssistant(ctx, request, deps = {}) {
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
-          if (r.isError) log25.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log27.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -22157,7 +23525,7 @@ init_logger();
 
 // src/services/ai/advisor-tools.ts
 init_empty();
-import { z as z40 } from "npm:zod@4.6.5";
+import { z as z43 } from "npm:zod@4.6.5";
 
 // src/domain/tools/decimal.ts
 var abs = (x) => x < 0n ? -x : x;
@@ -22475,22 +23843,22 @@ async function boxtalQuotes(req, env = process.env, now = /* @__PURE__ */ new Da
 init_empty();
 init_errors2();
 init_http();
-import { z as z37 } from "npm:zod@4.6.5";
+import { z as z40 } from "npm:zod@4.6.5";
 var PACKLINK_BASE_URL = "https://api.packlink.com/v1/";
-var money5 = z37.union([z37.number(), z37.string()]).nullable().optional();
-var serviceSchema = z37.object({
-  id: z37.union([z37.number(), z37.string()]),
-  carrier_name: z37.string().nullable().optional(),
-  name: z37.string().nullable().optional(),
-  currency: z37.string().nullable().optional(),
-  price: z37.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
-  transit_time: z37.string().nullable().optional(),
-  transit_hours: z37.union([z37.number(), z37.string()]).nullable().optional(),
-  dropoff: z37.boolean().nullable().optional(),
-  delivery_to_parcelshop: z37.boolean().nullable().optional(),
-  category: z37.string().nullable().optional(),
-  first_estimated_delivery_date: z37.string().nullable().optional(),
-  customs_required: z37.boolean().nullable().optional()
+var money5 = z40.union([z40.number(), z40.string()]).nullable().optional();
+var serviceSchema = z40.object({
+  id: z40.union([z40.number(), z40.string()]),
+  carrier_name: z40.string().nullable().optional(),
+  name: z40.string().nullable().optional(),
+  currency: z40.string().nullable().optional(),
+  price: z40.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
+  transit_time: z40.string().nullable().optional(),
+  transit_hours: z40.union([z40.number(), z40.string()]).nullable().optional(),
+  dropoff: z40.boolean().nullable().optional(),
+  delivery_to_parcelshop: z40.boolean().nullable().optional(),
+  category: z40.string().nullable().optional(),
+  first_estimated_delivery_date: z40.string().nullable().optional(),
+  customs_required: z40.boolean().nullable().optional()
 }).passthrough();
 function packlinkConfigured(env = process.env) {
   return Boolean(env.PACKLINK_API_KEY && env.PACKLINK_API_KEY.trim().length >= 10);
@@ -22575,27 +23943,27 @@ async function packlinkQuotes(req, env = process.env, now = /* @__PURE__ */ new 
 
 // src/integrations/shipping/sendcloud.ts
 init_empty();
-import { z as z38 } from "npm:zod@4.6.5";
+import { z as z41 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var SENDCLOUD_SHIPPING_OPTIONS_URL = "https://panel.sendcloud.sc/api/v3/shipping-options";
-var money6 = z38.object({ value: z38.union([z38.string(), z38.number()]).nullable().optional(), currency: z38.string().nullable().optional() }).passthrough();
-var optionSchema = z38.object({
-  code: z38.string().min(1),
-  name: z38.string().nullable().optional(),
-  carrier: z38.object({ code: z38.string().nullable().optional(), name: z38.string().nullable().optional() }).passthrough().nullable().optional(),
-  functionalities: z38.object({ tracked: z38.boolean().nullable().optional(), first_mile: z38.string().nullable().optional(), last_mile: z38.string().nullable().optional() }).passthrough().nullable().optional(),
-  requirements: z38.object({ fields: z38.array(z38.string()).nullable().optional(), is_service_point_required: z38.boolean().nullable().optional() }).passthrough().nullable().optional(),
-  quotes: z38.array(
-    z38.object({
-      price: z38.object({
+var money6 = z41.object({ value: z41.union([z41.string(), z41.number()]).nullable().optional(), currency: z41.string().nullable().optional() }).passthrough();
+var optionSchema = z41.object({
+  code: z41.string().min(1),
+  name: z41.string().nullable().optional(),
+  carrier: z41.object({ code: z41.string().nullable().optional(), name: z41.string().nullable().optional() }).passthrough().nullable().optional(),
+  functionalities: z41.object({ tracked: z41.boolean().nullable().optional(), first_mile: z41.string().nullable().optional(), last_mile: z41.string().nullable().optional() }).passthrough().nullable().optional(),
+  requirements: z41.object({ fields: z41.array(z41.string()).nullable().optional(), is_service_point_required: z41.boolean().nullable().optional() }).passthrough().nullable().optional(),
+  quotes: z41.array(
+    z41.object({
+      price: z41.object({
         total: money6.nullable().optional(),
-        breakdown: z38.array(z38.object({ type: z38.string().nullable().optional(), label: z38.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
+        breakdown: z41.array(z41.object({ type: z41.string().nullable().optional(), label: z41.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
       }).passthrough().nullable().optional(),
-      lead_time: z38.number().nullable().optional()
+      lead_time: z41.number().nullable().optional()
     }).passthrough()
   ).nullable().optional(),
-  quote_error: z38.unknown().optional()
+  quote_error: z41.unknown().optional()
 }).passthrough();
 var PICKUP_LAST_MILE = /* @__PURE__ */ new Set(["service_point", "locker", "locker_or_service_point"]);
 var REQUIREMENT_LABEL = {
@@ -22726,7 +24094,7 @@ async function sendcloudQuotes(req, env = process.env, now = /* @__PURE__ */ new
 
 // src/services/shipping/quotes.ts
 init_logger();
-var log26 = createLogger("SHIPPING");
+var log28 = createLogger("SHIPPING");
 var PROVIDERS = [
   { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: async (req, env, now) => ({ quotes: await packlinkQuotes(req, env, now), excluded: 0 }) },
   { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: async (req, env, now) => ({ quotes: await boxtalQuotes(req, env, now), excluded: 0 }) },
@@ -22757,7 +24125,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
         return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message, count: quotes.length }, quotes };
       } catch (e) {
         const message = isConnectorError(e) ? e.message : "Erreur inattendue.";
-        log26.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
+        log28.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
         return { status: { id: p.id, label: p.label, state: "error", message, count: 0 }, quotes: [] };
       }
     })
@@ -22767,7 +24135,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
 
 // src/services/ai/advisor-actions.ts
 init_empty();
-import { z as z39 } from "npm:zod@4.6.5";
+import { z as z42 } from "npm:zod@4.6.5";
 
 // src/features/stock/movement-service.ts
 init_empty();
@@ -22820,7 +24188,7 @@ function stockErrorMessage(e) {
 }
 
 // src/features/stock/movement-service.ts
-var log27 = createLogger("STOCK");
+var log29 = createLogger("STOCK");
 async function applyManualMovement(ctx, d) {
   const signed = signedMovementQuantity(d);
   const { data, error } = await ctx.supabase.rpc("apply_inventory_movement", {
@@ -22835,7 +24203,7 @@ async function applyManualMovement(ctx, d) {
   });
   if (error) throw new AppError("VALIDATION", stockErrorMessage(error));
   const { data: sku } = await ctx.supabase.from("skus").select("code").eq("id", d.sku_id).eq("organization_id", ctx.organization.id).maybeSingle();
-  log27.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
+  log29.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
   return { quantityAfter: data?.quantity_after ?? null, skuCode: sku?.code ?? null };
 }
 
@@ -22843,7 +24211,7 @@ async function applyManualMovement(ctx, d) {
 init_errors();
 init_logger();
 init_admin();
-var log28 = createLogger("AI_ADVISOR_ACTIONS");
+var log30 = createLogger("AI_ADVISOR_ACTIONS");
 var ACTION_TTL_MS = 10 * 6e4;
 var ACTION_COLUMNS = "id, organization_id, user_id, conversation_id, kind, sku_id, payload, summary, amount, currency, status, expires_at, result, error";
 function actionToDTO(r) {
@@ -22867,8 +24235,8 @@ async function prepareAdvisorAction(ctx, input) {
   if (error || !data) throw new Error(error?.message ?? "pr\xE9paration impossible");
   return actionToDTO(data);
 }
-var adjustPayload = z39.object({ change: z39.number().int(), reason: z39.enum(["receipt", "adjustment", "return", "correction"]), note: z39.string().nullable(), expectedAvailable: z39.number().int(), code: z39.string() });
-var pricePayload = z39.object({ newPrice: z39.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z39.number().nullable(), code: z39.string() });
+var adjustPayload = z42.object({ change: z42.number().int(), reason: z42.enum(["receipt", "adjustment", "return", "correction"]), note: z42.string().nullable(), expectedAvailable: z42.number().int(), code: z42.string() });
+var pricePayload = z42.object({ newPrice: z42.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z42.number().nullable(), code: z42.string() });
 async function finish(admin, id, status, patch, now) {
   const { data, error } = await admin.from("advisor_actions").update({ status, decided_at: now.toISOString(), result: patch.result ?? null, error: patch.error?.slice(0, 400) ?? null }).eq("id", id).select(ACTION_COLUMNS).single();
   if (error || !data) throw new AppError("INTERNAL", "R\xE9sultat de l'action non enregistr\xE9 : v\xE9rifiez l'\xE9tat dans l'application.");
@@ -22924,13 +24292,13 @@ async function decideAdvisorAction(ctx, actionId, decision, deps = {}) {
   try {
     const done = await execute(ctx, claimed);
     const final = await finish(admin, row2.id, "executed", { result: { message: done.message, ...done.result } }, now);
-    log28.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
+    log30.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e et ex\xE9cut\xE9e : ${done.message}`);
     return { action: actionToDTO(final), message: done.message };
   } catch (e) {
     const message = e instanceof AppError ? e.message : "Ex\xE9cution impossible : rien n'a \xE9t\xE9 modifi\xE9.";
     const final = await finish(admin, row2.id, "failed", { error: message }, now);
-    log28.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
+    log30.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e mais non ex\xE9cut\xE9e : ${message}`);
     return { action: actionToDTO(final), message };
   }
@@ -23155,8 +24523,8 @@ function periodRange(period, now) {
 // src/services/ai/advisor-tools.ts
 var obj2 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
 var periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "P\xE9riode (calendrier de Paris). \xAB this_week \xBB = depuis lundi, \xAB this_month \xBB = depuis le 1er. D\xE9faut : 30d." };
-var periodSchema = z40.enum(ADVISOR_PERIODS).default("30d");
-var skuRef = z40.string().trim().min(1).max(64);
+var periodSchema = z43.enum(ADVISOR_PERIODS).default("30d");
+var skuRef = z43.string().trim().min(1).max(64);
 function card(kind, title, rows, extra = {}) {
   return { kind, title, subtitle: null, rows: rows.slice(0, 12), warnings: [], action: null, text: null, ...extra };
 }
@@ -23206,7 +24574,7 @@ async function cancelledInPeriod(ctx, from, to) {
   }
   return out;
 }
-var reportInput = z40.object({ period: periodSchema });
+var reportInput = z43.object({ period: periodSchema });
 async function businessReport(ctx, raw) {
   const { period } = reportInput.parse(raw);
   const range = periodRange(period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -23233,7 +24601,7 @@ async function businessReport(ctx, raw) {
   if (cancels.cancelled || cancels.refunded) rows.push(row("Annul\xE9es / rembours\xE9es", `${cancels.cancelled} / ${cancels.refunded}`, `rembours\xE9 : ${money7(cancels.refundedCents, c)}`, "warning"));
   return { result, cards: [card("kpis", "Bilan des ventes", rows, { subtitle: range.label, warnings: p.missing.slice(0, 4) })] };
 }
-var profitInput = z40.object({ period: periodSchema, sort: z40.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z40.coerce.number().int().min(1).max(20).default(8) });
+var profitInput = z43.object({ period: periodSchema, sort: z43.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z43.coerce.number().int().min(1).max(20).default(8) });
 async function productProfitability(ctx, raw) {
   const input = profitInput.parse(raw);
   const range = periodRange(input.period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -23256,7 +24624,7 @@ async function productProfitability(ctx, raw) {
   );
   return { result, cards: [card("list", "Rentabilit\xE9 par produit", rows, { subtitle: range.label, warnings: unknown ? [`${unknown} produit(s) sans b\xE9n\xE9fice calculable (co\xFBt d'achat ou frais manquants).`] : [] })] };
 }
-var stockRiskInput = z40.object({ kind: z40.enum(["rupture", "dormant", "all"]).default("all"), limit: z40.coerce.number().int().min(1).max(20).default(8) });
+var stockRiskInput = z43.object({ kind: z43.enum(["rupture", "dormant", "all"]).default("all"), limit: z43.coerce.number().int().min(1).max(20).default(8) });
 async function stockRisks(ctx, raw) {
   const input = stockRiskInput.parse(raw);
   const bundle = await loadStockViews(ctx.org);
@@ -23283,7 +24651,7 @@ async function stockRisks(ctx, raw) {
   return { result, cards };
 }
 async function restockPlan(ctx, raw) {
-  const { limit } = z40.object({ limit: z40.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
+  const { limit } = z43.object({ limit: z43.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
   const drafts = (await computeRecommendations(ctx.org)).filter((d) => d.result.needed).slice(0, limit);
   const result = {
     proposals: drafts.map((d) => ({ product: d.label, sku: d.code, currentStock: d.currentStock, onOrder: d.onOrder, recommendedQuantity: d.result.recommendedQuantity, explanation: d.result.explanation, supplier: d.supplier?.name ?? null, unitPrice: d.unitPrice, currency: d.currency, warnings: d.result.warnings })),
@@ -23295,7 +24663,7 @@ async function restockPlan(ctx, raw) {
   };
 }
 async function orderLookup(ctx, raw) {
-  const { orderNumber } = z40.object({ orderNumber: z40.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
+  const { orderNumber } = z43.object({ orderNumber: z43.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
   const { data, error } = await ctx.supabase.from("orders").select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).or(`order_number.eq.${orderNumber},external_order_id.eq.${orderNumber}`).limit(2);
   if (error) throw new Error(error.message);
   const order = data?.[0];
@@ -23313,7 +24681,7 @@ async function orderLookup(ctx, raw) {
   return { result, cards: [card("list", `Commande ${order.order_number ?? orderNumber}`, rows, { subtitle: `${order.provider} \u2014 ${order.placed_at.slice(0, 10).split("-").reverse().join("/")}` })] };
 }
 async function parcelsOverview(ctx, raw) {
-  const { filter } = z40.object({ filter: z40.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
+  const { filter } = z43.object({ filter: z43.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
   let q = ctx.supabase.from("tracked_parcels").select("tracking_number, label, carrier_code, status, estimated_delivery, delivered_at, last_checked_at, last_error").eq("organization_id", ctx.organizationId).is("archived_at", null);
   if (filter === "problems") q = q.in("status", ["exception", "failed_attempt", "returned", "expired", "not_found"]);
   if (filter === "in_progress") q = q.not("status", "in", "(delivered,returned,expired)");
@@ -23325,15 +24693,15 @@ async function parcelsOverview(ctx, raw) {
     cards: [card("list", "Colis suivis", list.slice(0, 10).map((p) => row(p.label || p.tracking_number, p.status, p.estimated_delivery ? `estim\xE9e : ${p.estimated_delivery}` : p.last_checked_at ? null : "jamais v\xE9rifi\xE9", ["exception", "failed_attempt", "returned", "not_found"].includes(p.status) ? "danger" : p.status === "delivered" ? "success" : "neutral")), { subtitle: `${list.length} colis` })]
   };
 }
-var shippingInput = z40.object({
-  weightKg: z40.coerce.number().positive().max(70),
-  lengthCm: z40.coerce.number().positive().max(300),
-  widthCm: z40.coerce.number().positive().max(300),
-  heightCm: z40.coerce.number().positive().max(300),
-  fromPostcode: z40.string().trim().min(2).max(12),
-  toPostcode: z40.string().trim().min(2).max(12),
-  fromCountry: z40.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
-  toCountry: z40.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
+var shippingInput = z43.object({
+  weightKg: z43.coerce.number().positive().max(70),
+  lengthCm: z43.coerce.number().positive().max(300),
+  widthCm: z43.coerce.number().positive().max(300),
+  heightCm: z43.coerce.number().positive().max(300),
+  fromPostcode: z43.string().trim().min(2).max(12),
+  toPostcode: z43.string().trim().min(2).max(12),
+  fromCountry: z43.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
+  toCountry: z43.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
 });
 async function shippingQuotesTool(ctx, raw) {
   const input = shippingInput.parse(raw);
@@ -23400,11 +24768,11 @@ async function findSku(ctx, ref) {
 function requireWriter(ctx) {
   return ctx.org.role === "viewer" ? "Votre r\xF4le (lecture seule) ne permet pas de pr\xE9parer une modification. Demandez \xE0 un administrateur." : null;
 }
-var adjustInput = z40.object({
+var adjustInput = z43.object({
   sku: skuRef,
-  change: z40.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
-  reason: z40.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
-  note: z40.string().trim().max(200).optional()
+  change: z43.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
+  reason: z43.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
+  note: z43.string().trim().max(200).optional()
 });
 async function prepareStockAdjustment(ctx, raw) {
   const denied = requireWriter(ctx);
@@ -23419,7 +24787,7 @@ async function prepareStockAdjustment(ctx, raw) {
   const action = await prepareAdvisorAction(ctx, { kind: "adjust_stock", skuId: sku.sku_id, summary, amount: null, currency: null, payload: { change: input.change, reason: input.reason, note: input.note ?? null, expectedAvailable: before, code: sku.code } });
   return actionOutput(action, "Ajustement de stock \xE0 confirmer");
 }
-var priceInput = z40.object({ sku: skuRef, newPrice: z40.union([z40.string(), z40.number()]).transform((v2) => String(v2)) });
+var priceInput = z43.object({ sku: skuRef, newPrice: z43.union([z43.string(), z43.number()]).transform((v2) => String(v2)) });
 async function preparePriceChange(ctx, raw) {
   const denied = requireWriter(ctx);
   if (denied) return { result: { prepared: false, reason: denied }, cards: [] };
@@ -23444,7 +24812,7 @@ function actionOutput(action, title) {
     cards: [card("action", title, [], { action, subtitle: "Rien n'est modifi\xE9 sans votre confirmation." })]
   };
 }
-var draftInput = z40.object({ orderNumber: z40.string().trim().max(64).optional(), subject: z40.string().trim().min(1).max(120), text: z40.string().trim().min(1).max(1500) });
+var draftInput = z43.object({ orderNumber: z43.string().trim().max(64).optional(), subject: z43.string().trim().min(1).max(120), text: z43.string().trim().min(1).max(1500) });
 async function draftBuyerMessage(ctx, raw) {
   const input = draftInput.parse(raw);
   return {
@@ -23593,13 +24961,13 @@ async function runAdvisorTool(ctx, name, input) {
     const json2 = JSON.stringify(out.result);
     return { content: json2.length > MAX_RESULT_CHARS2 ? `${json2.slice(0, MAX_RESULT_CHARS2)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false, cards: out.cards };
   } catch (e) {
-    if (e instanceof z40.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
+    if (e instanceof z43.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true, cards: [] };
   }
 }
 
 // src/services/ai/advisor.ts
-var log29 = createLogger("AI_ADVISOR");
+var log31 = createLogger("AI_ADVISOR");
 var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 6, maxTokens: 2500, deadlineMs: 1e5 };
 var ADVISOR_SYSTEM_STABLE = [
   "Tu es le conseiller e-commerce personnel de l'utilisateur dans MON STOCK (gestion de stock et de ventes d'un revendeur d'appareils \xE9lectroniques, principalement sur eBay). Tu es son employ\xE9 : tu analyses SES donn\xE9es, tu recommandes, tu pr\xE9pares des actions.",
@@ -23650,7 +25018,7 @@ function supabaseAdvisorStore(ctx) {
     async addMessage(conversationId, m) {
       const { data, error } = await ctx.supabase.from("advisor_messages").insert({ organization_id: org, conversation_id: conversationId, user_id: ctx.user.id, role: m.role, content: m.content.slice(0, 12e3), cards: (m.cards ?? []).slice(0, 12), sources: (m.sources ?? []).slice(0, 20), interrupted: m.interrupted ?? false }).select("id").single();
       if (error) {
-        log29.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
+        log31.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
         return null;
       }
       await ctx.supabase.from("advisor_conversations").update({ last_message_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", conversationId);
@@ -23744,7 +25112,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
               emit2({ type: "card", card: c });
             }
           }
-          if (r.isError) log29.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log31.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -24078,21 +25446,21 @@ init_errors2();
 
 // src/integrations/tracking/laposte.ts
 init_empty();
-import { z as z41 } from "npm:zod@4.6.5";
+import { z as z44 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var LAPOSTE_SUIVI_URL = "https://api.laposte.fr/suivi/v2/idships/";
-var responseSchema = z41.object({
-  returnCode: z41.number().optional(),
-  returnMessage: z41.string().optional(),
-  shipment: z41.object({
-    idShip: z41.string().optional(),
-    product: z41.string().nullable().optional(),
-    isFinal: z41.boolean().optional(),
-    estimDate: z41.string().nullable().optional(),
-    deliveryDate: z41.string().nullable().optional(),
-    url: z41.string().nullable().optional(),
-    event: z41.array(z41.object({ code: z41.string().nullable().optional(), label: z41.string().nullable().optional(), date: z41.string().nullable().optional(), order: z41.number().nullable().optional() }).passthrough()).optional()
+var responseSchema = z44.object({
+  returnCode: z44.number().optional(),
+  returnMessage: z44.string().optional(),
+  shipment: z44.object({
+    idShip: z44.string().optional(),
+    product: z44.string().nullable().optional(),
+    isFinal: z44.boolean().optional(),
+    estimDate: z44.string().nullable().optional(),
+    deliveryDate: z44.string().nullable().optional(),
+    url: z44.string().nullable().optional(),
+    event: z44.array(z44.object({ code: z44.string().nullable().optional(), label: z44.string().nullable().optional(), date: z44.string().nullable().optional(), order: z44.number().nullable().optional() }).passthrough()).optional()
   }).passthrough().optional()
 }).passthrough();
 function laPosteConfigured(env = process.env) {
@@ -24136,29 +25504,29 @@ async function laPosteTrack(trackingNumber, env = process.env) {
 
 // src/integrations/tracking/ship24.ts
 init_empty();
-import { z as z42 } from "npm:zod@4.6.5";
+import { z as z45 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var SHIP24_TRACK_URL = "https://api.ship24.com/public/v1/trackers/track";
-var eventSchema = z42.object({
-  status: z42.string().nullable().optional(),
-  occurrenceDatetime: z42.string().nullable().optional(),
-  datetime: z42.string().nullable().optional(),
-  location: z42.string().nullable().optional(),
-  courierCode: z42.string().nullable().optional(),
-  statusMilestone: z42.string().nullable().optional(),
-  statusCode: z42.string().nullable().optional()
+var eventSchema = z45.object({
+  status: z45.string().nullable().optional(),
+  occurrenceDatetime: z45.string().nullable().optional(),
+  datetime: z45.string().nullable().optional(),
+  location: z45.string().nullable().optional(),
+  courierCode: z45.string().nullable().optional(),
+  statusMilestone: z45.string().nullable().optional(),
+  statusCode: z45.string().nullable().optional()
 }).passthrough();
-var trackingSchema = z42.object({
-  shipment: z42.object({
-    statusMilestone: z42.string().nullable().optional(),
-    statusCode: z42.string().nullable().optional(),
-    delivery: z42.object({ estimatedDeliveryDate: z42.string().nullable().optional(), courierEstimatedDeliveryDate: z42.object({ from: z42.string().nullable().optional(), to: z42.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
+var trackingSchema = z45.object({
+  shipment: z45.object({
+    statusMilestone: z45.string().nullable().optional(),
+    statusCode: z45.string().nullable().optional(),
+    delivery: z45.object({ estimatedDeliveryDate: z45.string().nullable().optional(), courierEstimatedDeliveryDate: z45.object({ from: z45.string().nullable().optional(), to: z45.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
   }).passthrough().nullable().optional(),
-  events: z42.array(eventSchema).optional(),
-  statistics: z42.object({ timestamps: z42.object({ deliveredDatetime: z42.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
+  events: z45.array(eventSchema).optional(),
+  statistics: z45.object({ timestamps: z45.object({ deliveredDatetime: z45.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
 }).passthrough();
-var responseSchema2 = z42.object({ data: z42.object({ trackings: z42.array(trackingSchema) }).passthrough() }).passthrough();
+var responseSchema2 = z45.object({ data: z45.object({ trackings: z45.array(trackingSchema) }).passthrough() }).passthrough();
 function ship24Configured(env = process.env) {
   return Boolean(env.SHIP24_API_KEY && env.SHIP24_API_KEY.trim().length >= 10);
 }
@@ -24199,20 +25567,20 @@ async function ship24Track(trackingNumber, opts = {}, env = process.env) {
 
 // src/integrations/tracking/dhl.ts
 init_empty();
-import { z as z43 } from "npm:zod@4.6.5";
+import { z as z46 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var DHL_TRACK_URL = "https://api-eu.dhl.com/track/shipments";
-var place = z43.object({ address: z43.object({ addressLocality: z43.string().nullable().optional(), countryCode: z43.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
-var event = z43.object({ timestamp: z43.string().nullable().optional(), statusCode: z43.string().nullable().optional(), status: z43.string().nullable().optional(), description: z43.string().nullable().optional(), location: place }).passthrough();
-var responseSchema3 = z43.object({
-  shipments: z43.array(
-    z43.object({
-      id: z43.string().optional(),
-      service: z43.string().nullable().optional(),
+var place = z46.object({ address: z46.object({ addressLocality: z46.string().nullable().optional(), countryCode: z46.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
+var event = z46.object({ timestamp: z46.string().nullable().optional(), statusCode: z46.string().nullable().optional(), status: z46.string().nullable().optional(), description: z46.string().nullable().optional(), location: place }).passthrough();
+var responseSchema3 = z46.object({
+  shipments: z46.array(
+    z46.object({
+      id: z46.string().optional(),
+      service: z46.string().nullable().optional(),
       status: event.nullable().optional(),
-      estimatedTimeOfDelivery: z43.string().nullable().optional(),
-      events: z43.array(event).optional()
+      estimatedTimeOfDelivery: z46.string().nullable().optional(),
+      events: z46.array(event).optional()
     }).passthrough()
   ).optional()
 }).passthrough();
@@ -24278,7 +25646,7 @@ init_errors();
 init_logger();
 init_admin();
 init_alerts();
-var log30 = createLogger("TRACKING");
+var log32 = createLogger("TRACKING");
 function trackingProviders(env = process.env) {
   return { laposte: laPosteConfigured(env), ship24: ship24Configured(env), dhl: dhlConfigured(env) };
 }
@@ -24296,7 +25664,7 @@ async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), en
     snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : provider === "dhl" ? await track.dhl(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
   } catch (e) {
     const message = isConnectorError(e) ? e.message : "Erreur inattendue lors du suivi.";
-    log30.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
+    log32.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
     const retry = new Date(now.getTime() + 6 * 36e5).toISOString();
     await admin.from("tracked_parcels").update({ last_error: message.slice(0, 500), last_checked_at: now.toISOString(), next_check_at: retry, check_count: parcel.check_count + 1 }).eq("id", parcel.id);
     return { parcelId: parcel.id, status: parcel.status, provider, checked: false, message };
@@ -24346,7 +25714,7 @@ async function runDueTracking(now = /* @__PURE__ */ new Date(), admin = createAd
       else failed++;
     } catch (e) {
       failed++;
-      log30.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
+      log32.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
     }
   }
   return { checked, failed, skipped };
@@ -24382,18 +25750,18 @@ async function probeToolConnectors(fetchImpl = fetch) {
 }
 
 // server/edge/api.ts
-var log31 = createLogger("EDGE_API");
+var log33 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z44.object({ code: z44.string().min(1).max(2048), state: z44.string().min(16).max(200) });
-var syncSchema = z44.object({ connectionId: uuidParam, scope: z44.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z44.object({ hosts: z44.array(z44.string().min(3).max(120)).min(1).max(25), query: z44.string().min(2).max(80).optional() });
+var ebayFinalizeSchema = z47.object({ code: z47.string().min(1).max(2048), state: z47.string().min(16).max(200) });
+var syncSchema = z47.object({ connectionId: uuidParam, scope: z47.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z47.object({ hosts: z47.array(z47.string().min(3).max(120)).min(1).max(25), query: z47.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z44.object({ text: z44.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z44.object({ key: z44.string().min(1).max(80), attest: z44.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z47.object({ text: z47.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z47.object({ key: z47.string().min(1).max(80), attest: z47.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -24423,7 +25791,7 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log31.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
+  log33.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
   return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
 }
 async function finalizeEbayConnect(request) {
@@ -24434,7 +25802,7 @@ async function finalizeEbayConnect(request) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row2) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row2.created_by !== ctx.user.id || row2.organization_id !== ctx.organization.id) {
-    log31.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log33.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row2.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -24445,11 +25813,11 @@ async function finalizeEbayConnect(request) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
-    log31.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log33.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log31.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log33.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
@@ -24532,13 +25900,13 @@ async function route(request) {
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z44.object({ query: z44.string().min(2).max(120), source: z44.string().min(1).max(80) }));
+          const body = await parseBody(request, z47.object({ query: z47.string().min(2).max(120), source: z47.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request, z44.object({ keys: z44.array(z44.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request, z47.object({ keys: z47.array(z47.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
@@ -24547,11 +25915,11 @@ async function route(request) {
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z44.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z47.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z44.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request, z47.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
@@ -24575,7 +25943,7 @@ async function route(request) {
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery(request, z44.object({ sort: z44.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const q = parseQuery(request, z47.object({ sort: z47.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
       });
     }
@@ -24597,6 +25965,13 @@ async function route(request) {
         return refreshParcelForOrg(ctx, (await parseBody(request, trackingRefreshSchema)).parcelId);
       });
     }
+    if (m === "GET" && path === "/radar/offer") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const q = parseQuery(request, z47.object({ id: uuidParam, quantity: z47.coerce.number().int().min(1).max(1e5).optional() }));
+        return buildRadarOffer(ctx, q.id, q.quantity ? [q.quantity] : []);
+      });
+    }
     if (m === "POST" && path === "/radar/settings") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { admin: true });
@@ -24615,7 +25990,45 @@ async function route(request) {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, catalogPreviewSchema, CATALOG_BODY_LIMIT);
-        return previewCatalogFile(body, ctx.organization.default_currency);
+        return previewCatalogFileForOrg(ctx, body);
+      });
+    }
+    if (m === "GET" && path === "/sourcing/sources") return handle(async () => listSourcesForOrg(await requireMobileOrgContext(request)));
+    if (m === "POST" && path === "/sourcing/sources/sync") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return syncSourceNow(ctx, (await parseBody(request, z47.object({ sourceId: uuidParam }))).sourceId);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/sources/schedule") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { admin: true });
+        return setSourceSchedule(ctx, await parseBody(request, sourceScheduleSchema));
+      });
+    }
+    if (m === "POST" && path === "/sourcing/feeds/preview") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return previewRemoteFeed(ctx, await parseBody(request, remoteFeedPreviewSchema));
+      });
+    }
+    if (m === "POST" && path === "/sourcing/feeds") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return createRemoteFeed(ctx, await parseBody(request, remoteFeedCreateSchema));
+      });
+    }
+    if (m === "GET" && path === "/sourcing/imports") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        const q = parseQuery(request, z47.object({ supplierId: uuidParam.optional(), limit: z47.coerce.number().int().min(1).max(200).optional() }));
+        return listImportJobs(ctx, { supplierId: q.supplierId ?? null, limit: q.limit ?? 50 });
+      });
+    }
+    if (m === "GET" && path === "/sourcing/imports/detail") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        return getImportJob(ctx, parseQuery(request, z47.object({ id: uuidParam })).id);
       });
     }
     if (m === "POST" && path === "/sourcing/import") {
@@ -24705,7 +26118,7 @@ async function route(request) {
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return prefillListing(ctx, parseQuery(request, z44.object({ skuId: uuidParam })).skuId);
+        return prefillListing(ctx, parseQuery(request, z47.object({ skuId: uuidParam })).skuId);
       });
     }
     if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));
@@ -24737,7 +26150,7 @@ async function route(request) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log31.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log33.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;

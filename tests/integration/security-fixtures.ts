@@ -7,7 +7,7 @@ import type { Client } from "pg";
 import { asService, asSuperuser, asUser, createOrgAs, createUser } from "./helpers";
 
 /** Tables accessibles au seul service_role (aucune policy, aucun privilège client). */
-export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states"] as const;
+export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states", "supplier_feed_secrets"] as const;
 
 /** Tables globales (sans organisation), lisibles par tout utilisateur authentifié. */
 export const GLOBAL_READ_TABLES = ["fx_rates"] as const;
@@ -160,6 +160,15 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
      values ($1, $2, $3, $4, 'MANUAL', $5, 'iPhone 13 128 Go', 180, 'EUR', 180, 'EUR', 10, 'in_stock', $6, $7) returning id`,
     [orgId, supplier, source, feed, `OFFER-${tag}`, sprod, sku],
   );
+  const job = await one(
+    "sourcing_import_jobs",
+    "insert into public.sourcing_import_jobs (organization_id, supplier_id, source_id, feed_id, sync_run_id, format, status, created_by) values ($1, $2, $3, $4, $5, 'csv', 'completed', $6) returning id",
+    [orgId, supplier, source, feed, run, ownerId],
+  );
+  await c.query("update public.sourcing_offers set last_import_job_id = $1 where id = $2", [job, offer]);
+  await one("sourcing_import_issues", "insert into public.sourcing_import_issues (organization_id, job_id, line, kind, message) values ($1, $2, 3, 'invalid', 'Prix manquant') returning id", [orgId, job]);
+  await one("sourcing_mapping_profiles", "insert into public.sourcing_mapping_profiles (organization_id, supplier_id, header_signature, mapping, updated_by) values ($1, $2, $3, '{\"price\":\"Prix\"}'::jsonb, $4) returning id", [orgId, supplier, "c".repeat(64), ownerId]);
+  await one("supplier_feed_secrets", "insert into public.supplier_feed_secrets (feed_id, organization_id, credentials_enc) values ($1, $2, 'enc') returning feed_id as id", [feed, orgId]);
   await one("supplier_price_history", "select id from public.supplier_price_history where offer_id = $1 limit 1", [offer]);
   await one("supplier_stock_history", "select id from public.supplier_stock_history where offer_id = $1 limit 1", [offer]);
   await one(

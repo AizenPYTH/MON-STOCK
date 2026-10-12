@@ -6,10 +6,10 @@ import { FileSpreadsheet } from "lucide-react-native";
 import type { CatalogImportDTO, CatalogMapping, CatalogPreviewDTO } from "@/features/mobile-api/contract";
 import { useActiveOrg } from "~/org/org-provider";
 import { useActiveSuppliers, useImportPreview, useRunImport } from "~/data/hooks";
-import { MAPPABLE_FIELDS, mappingIssues, pickCatalogFile, taxTypeOf, withTaxType, type PickedFile } from "~/data/suppliers-pro";
+import { ESSENTIAL_FIELDS, IMPORT_MODE_HELP, IMPORT_MODE_LABEL, MAPPABLE_FIELDS, mappingIssues, pickCatalogFile, taxTypeOf, withTaxType, type ImportMode, type PickedFile } from "~/data/suppliers-pro";
 import { userMessage } from "~/lib/errors";
-import { formatMoney, formatNumber } from "~/lib/format";
-import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, FilterChip, Screen, SectionHeader, StatusChip, StickyActions, TextField, Txt, useToast } from "~/components/ui";
+import { formatDateTime, formatMoney, formatNumber } from "~/lib/format";
+import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, FilterChip, Screen, SectionHeader, Segmented, StatusChip, StickyActions, TextField, Txt, useToast } from "~/components/ui";
 import { color, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -26,14 +26,16 @@ const TAX_OPTIONS = [
 ];
 
 export default function SourcingImportScreen() {
-  const params = useLocalSearchParams<{ supplierName?: string }>();
+  const params = useLocalSearchParams<{ supplierName?: string; supplierId?: string }>();
   const { active, permissions } = useActiveOrg();
   const suppliers = useActiveSuppliers();
   const preview = useImportPreview();
   const run = useRunImport();
   const toast = useToast();
 
-  const [supplierId, setSupplierId] = useState<string | null>(null);
+  const [supplierId, setSupplierId] = useState<string | null>(params.supplierId ?? null);
+  const [mode, setMode] = useState<ImportMode>("partial");
+  const [allFields, setAllFields] = useState(false);
   const [supplierName, setSupplierName] = useState(params.supplierName ?? "");
   const [file, setFile] = useState<PickedFile | null>(null);
   const [mapping, setMapping] = useState<CatalogMapping>({});
@@ -66,9 +68,9 @@ export default function SourcingImportScreen() {
     }
   }
 
-  function refresh(f: PickedFile, m: CatalogMapping | undefined) {
+  function refresh(f: PickedFile, m: CatalogMapping | undefined, forSupplier: string | null = supplierId) {
     preview.mutate(
-      { file: f, mapping: m, currency, taxType },
+      { file: f, mapping: m, currency, taxType, supplierId: forSupplier ?? undefined },
       {
         onSuccess: (p) => {
           setData(p);
@@ -91,11 +93,17 @@ export default function SourcingImportScreen() {
     setDirty(true);
   }
 
-  function submit(force = false) {
+  function chooseSupplier(id: string | null) {
+    setSupplierId(id);
+    // mapping mémorisé de ce fournisseur : nouvel aperçu tant que l'utilisateur n'a rien modifié
+    if (file && data && !dirty && data.mappingSource !== "user") refresh(file, undefined, id);
+  }
+
+  function submit(force = false, allowSameFile = false) {
     if (!file) return;
     setConfirming(false);
     run.mutate(
-      { file, mapping: withTaxType(mapping, taxType), currency, taxType, supplierId: supplierId ?? result?.supplierId ?? undefined, supplierName: supplierId || result?.supplierId ? undefined : supplierName, force },
+      { file, mapping: withTaxType(mapping, taxType), currency, taxType, supplierId: supplierId ?? result?.supplierId ?? undefined, supplierName: supplierId || result?.supplierId ? undefined : supplierName, force, mode, allowSameFile },
       {
         onSuccess: (r) => {
           setResult(r);
@@ -140,7 +148,7 @@ export default function SourcingImportScreen() {
           {(suppliers.data ?? []).length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }} keyboardShouldPersistTaps="handled">
               {(suppliers.data ?? []).slice(0, 30).map((s) => (
-                <FilterChip key={s.id} label={s.name} selected={supplierId === s.id} onPress={() => setSupplierId(supplierId === s.id ? null : s.id)} />
+                <FilterChip key={s.id} label={s.name} selected={supplierId === s.id} onPress={() => chooseSupplier(supplierId === s.id ? null : s.id)} />
               ))}
             </ScrollView>
           ) : null}
@@ -164,17 +172,23 @@ export default function SourcingImportScreen() {
             <Card padded style={{ gap: space[3] }}>
               <Txt variant="label">
                 {formatNumber(data.total)} lignes · {formatNumber(data.validCount)} exploitables · {formatNumber(data.invalidCount)} incomplètes (non importées)
+                {data.duplicates ? ` · ${formatNumber(data.duplicates)} doublon${data.duplicates > 1 ? "s" : ""} (première ligne gardée)` : ""}
               </Txt>
+              {data.mappingSource === "saved" ? <StatusChip label="Colonnes reprises du dernier import de ce fournisseur" tone="success" /> : null}
+              {data.alreadyImported ? (
+                <AlertBanner text={`Ce fichier (contenu identique) a déjà été importé le ${formatDateTime(data.alreadyImported.at)} : il ne sera pas réimporté sans votre confirmation.`} tone="dark" />
+              ) : null}
               {data.warnings.map((w) => (
                 <Txt key={w} variant="label" color={color.ink2}>
                   {w}
                 </Txt>
               ))}
-              {MAPPABLE_FIELDS.map((f) => (
+              {MAPPABLE_FIELDS.filter((f) => allFields || ESSENTIAL_FIELDS.has(f.field) || mapping[f.field]).map((f) => (
                 <View key={f.field} style={{ gap: 6 }}>
                   <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
                     {f.label}
                     {f.required ? " *" : ""}
+                    {mapping[f.field] && data.mappingSource === "suggested" && data.mappingConfidence?.[f.field] === "medium" ? " · proposé, à vérifier" : ""}
                   </Txt>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }} keyboardShouldPersistTaps="handled">
                     <FilterChip label="—" selected={!mapping[f.field]} onPress={() => setField(f.field, null)} />
@@ -184,6 +198,7 @@ export default function SourcingImportScreen() {
                   </ScrollView>
                 </View>
               ))}
+              <Button label={allFields ? "Moins de champs" : `Plus de champs (${MAPPABLE_FIELDS.length - ESSENTIAL_FIELDS.size})`} variant="ghost" compact onPress={() => setAllFields((v) => !v)} testID="import-more-fields" />
               <View style={{ gap: 6 }}>
                 <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
                   Type de prix
@@ -219,6 +234,21 @@ export default function SourcingImportScreen() {
               ))}
             </Card>
 
+            <SectionHeader title="4. Mode d'import" />
+            <Card padded style={{ gap: space[2] }}>
+              <Segmented
+                value={mode}
+                onChange={setMode}
+                options={[
+                  { value: "partial", label: IMPORT_MODE_LABEL.partial },
+                  { value: "snapshot", label: IMPORT_MODE_LABEL.snapshot },
+                ]}
+              />
+              <Txt variant="label" testID="import-mode-help">
+                {IMPORT_MODE_HELP[mode]}
+              </Txt>
+            </Card>
+
             <SectionHeader title={`Aperçu (${data.sample.length} premières lignes)`} />
             {data.sample.map((s) => (
               <Card key={s.line} padded style={{ gap: 4 }}>
@@ -238,8 +268,15 @@ export default function SourcingImportScreen() {
                     {s.quantity !== null ? <StatusChip label={`stock ${formatNumber(s.quantity)}`} tone="neutral" /> : <StatusChip label="stock non indiqué" tone="neutral" />}
                     {s.reference ? <StatusChip label={s.reference} tone="neutral" /> : null}
                     {s.ean ? <StatusChip label={`EAN ${s.ean}`} tone="neutral" /> : null}
+                    {s.grade ? <StatusChip label={`grade ${s.grade}`} tone="neutral" /> : null}
+                    {s.moq !== null ? <StatusChip label={`MOQ ${formatNumber(s.moq)}`} tone="neutral" /> : null}
                   </View>
                 )}
+                {s.warnings?.length ? (
+                  <Txt variant="label" color={color.accentInkOnSoft}>
+                    {s.warnings!.join(" ")}
+                  </Txt>
+                ) : null}
               </Card>
             ))}
           </>
@@ -249,6 +286,10 @@ export default function SourcingImportScreen() {
           <Card padded style={{ gap: space[2] }}>
             <StatusChip label={result.result.quarantined ? "Import suspendu" : result.result.status === "success" ? "Import réussi" : result.result.status === "partial" ? "Import partiel" : "Import en échec"} tone={result.result.status === "failed" ? "danger" : "success"} />
             <Txt variant="body">{result.result.message}</Txt>
+            {result.alreadyImported ? (
+              <Button label="Réimporter quand même" variant="secondary" loading={run.isPending} onPress={() => submit(false, true)} testID="import-same-file" />
+            ) : null}
+            {result.importJobId && !result.alreadyImported ? <Button label="Voir le détail de l'import" variant="ghost" compact onPress={() => router.push({ pathname: "/sourcing-imports/[id]", params: { id: result.importJobId! } })} testID="import-detail" /> : null}
             {(result.result.quality?.warnings ?? []).map((w) => (
               <Txt key={w} variant="label">
                 {w}
@@ -260,7 +301,10 @@ export default function SourcingImportScreen() {
                 <Button label="Importer quand même" variant="secondary" loading={run.isPending} onPress={() => submit(true)} testID="import-force" />
               </>
             ) : null}
-            <Txt variant="label">Les offres apparaissent dans Sourcing → Catalogue et dans le radar d'opportunités. Réimportez le fichier mis à jour pour actualiser les prix (les offres absentes du nouveau fichier expirent).</Txt>
+            <Txt variant="label">
+              Les offres apparaissent dans Sourcing et dans le radar d'opportunités, datées de cet import.{" "}
+              {mode === "snapshot" ? "Catalogue complet : les offres absentes de ce fichier ont été marquées « expirées »." : "Mise à jour partielle : les offres absentes de ce fichier n'ont pas été modifiées."}
+            </Txt>
             <Button label="Voir les offres" onPress={() => router.replace("/sourcing")} />
           </Card>
         ) : null}
@@ -269,7 +313,7 @@ export default function SourcingImportScreen() {
         visible={confirming}
         onClose={() => setConfirming(false)}
         title="Importer ce catalogue ?"
-        description={`${data ? formatNumber(data.validCount) : 0} offres de ${supplierId ? (suppliers.data ?? []).find((s) => s.id === supplierId)?.name ?? "ce fournisseur" : supplierName.trim()} seront enregistrées (${taxType === "ht" ? "prix HT" : taxType === "ttc" ? "prix TTC" : "type de prix non précisé"}, ${currency}). Les lignes incomplètes sont ignorées.`}
+        description={`${data ? formatNumber(data.validCount) : 0} offres de ${supplierId ? (suppliers.data ?? []).find((s) => s.id === supplierId)?.name ?? "ce fournisseur" : supplierName.trim()} seront enregistrées (${taxType === "ht" ? "prix HT" : taxType === "ttc" ? "prix TTC" : "type de prix non précisé"}, ${currency}). ${IMPORT_MODE_LABEL[mode]} : ${IMPORT_MODE_HELP[mode]} Les lignes incomplètes sont ignorées.`}
       >
         <Button label="Confirmer l'import" loading={run.isPending} onPress={() => submit()} />
         <Button label="Annuler" variant="ghost" onPress={() => setConfirming(false)} />

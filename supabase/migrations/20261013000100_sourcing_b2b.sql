@@ -52,7 +52,7 @@ create index if not exists sourcing_import_jobs_org_started_idx on public.sourci
 create index if not exists sourcing_import_jobs_source_hash_idx on public.sourcing_import_jobs (source_id, file_sha256) where file_sha256 is not null;
 
 create table if not exists public.sourcing_import_issues (
-  id bigint generated always as identity primary key,
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations (id) on delete cascade,
   job_id uuid not null references public.sourcing_import_jobs (id) on delete cascade,
   line integer,

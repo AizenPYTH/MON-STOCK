@@ -66,7 +66,7 @@ export default function SourcingScreen() {
       <View style={{ flexDirection: "row", gap: space[2] }}>
         <Button label="Radar" compact onPress={() => router.push("/radar")} style={{ flex: 1 }} testID="open-radar" />
         <Button label="Fournisseurs" compact variant="secondary" onPress={() => router.push("/supplier-directory")} style={{ flex: 1 }} testID="open-directory" />
-        <Button label="Importer" compact variant="secondary" onPress={() => router.push("/sourcing-import")} style={{ flex: 1 }} testID="open-import" />
+        <Button label="Mes sources" compact variant="secondary" onPress={() => router.push("/sourcing-connections")} style={{ flex: 1 }} testID="open-connections" />
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 48, backgroundColor: color.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: color.line, paddingHorizontal: space[3] }}>
         <Search size={18} color={color.ink3} />

@@ -307,7 +307,8 @@ d("Matrice d'isolation multi-tenant (générée)", () => {
           problems.push(`${tbl}.${fk.col}: aucune fixture pour ${ref}`);
           continue;
         }
-        const keyCol = tbl === "inventory" ? "sku_id" : "id";
+        // clé primaire de la ligne de A (tables sans colonne id : clé = référence parente)
+        const keyCol = tbl === "inventory" ? "sku_id" : tbl === "supplier_feed_secrets" ? "feed_id" : "id";
         const rowId = tbl === "inventory" ? a.ids["skus"] : a.ids[tbl];
         if (!rowId) {
           problems.push(`${tbl}: aucune fixture`);

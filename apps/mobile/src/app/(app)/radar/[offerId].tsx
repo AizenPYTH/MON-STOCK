@@ -4,8 +4,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import { useActiveOrg } from "~/org/org-provider";
-import { useDraftPurchaseOrder, useRadar, useSavedOffer } from "~/data/hooks";
-import { FRESHNESS_LABEL, PRICE_ORIGIN_LABEL, STATUS_LABEL, STATUS_TONE } from "~/data/radar";
+import { useDraftPurchaseOrder, useRadar, useRadarOffer, useSavedOffer } from "~/data/hooks";
+import { appraisalText, FRESHNESS_LABEL, PRICE_ORIGIN_LABEL, STATUS_LABEL, STATUS_TONE, VERDICT_LABEL, VERDICT_TONE } from "~/data/radar";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatMoney, formatNumber } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
@@ -16,6 +16,8 @@ import { color, space } from "~/theme/tokens";
 export default function RadarOfferScreen() {
   const { offerId } = useLocalSearchParams<{ offerId: string }>();
   const radar = useRadar("score");
+  // détail enrichi (scénarios, offres concurrentes) : facultatif, l'écran reste utilisable sans
+  const detail = useRadarOffer(offerId ?? "");
   const save = useSavedOffer();
   const po = useDraftPurchaseOrder();
   const { permissions } = useActiveOrg();
@@ -45,6 +47,21 @@ export default function RadarOfferScreen() {
   const minQty = Math.max(1, o.moq ?? 1);
   const quantity = qty ?? minQty;
   const link = safeExternalUrl(o.sourceUrl);
+  const assessment = detail.data?.item.assessment ?? item.assessment ?? null;
+  const details = detail.data?.item.details ?? item.details ?? null;
+  const scenarios = detail.data?.scenarios ?? [];
+  const peers = detail.data?.peers ?? [];
+  const extras = details
+    ? [
+        details.condition ? `état ${details.condition}` : null,
+        details.grade ? `grade ${details.grade}` : null,
+        details.warrantyMonths !== null ? `garantie ${details.warrantyMonths} mois` : null,
+        details.shipFromCountry ? `expédié depuis ${details.shipFromCountry}` : null,
+        details.vatRegime ? `TVA : ${details.vatRegime}` : null,
+        details.orderMultiple ? `par multiple de ${details.orderMultiple}` : null,
+        details.deliveryMaxDays !== null ? `livraison ≤ ${details.deliveryMaxDays} j` : null,
+      ].filter((x): x is string => Boolean(x))
+    : [];
 
   function toggleSave() {
     save.mutate(
@@ -99,7 +116,98 @@ export default function RadarOfferScreen() {
         <Txt variant="label">
           {PRICE_ORIGIN_LABEL[o.priceOrigin]} · {o.lastSeenAt ? `relevé le ${formatDateTime(o.lastSeenAt)}` : "date de relevé inconnue"}
         </Txt>
+        {extras.length ? <Txt variant="label">Annoncé par le fournisseur : {extras.join(" · ")}</Txt> : null}
       </Card>
+
+      {assessment ? (
+        <>
+          <SectionHeader title="Appréciation" />
+          <Card padded style={{ gap: space[2] }} accessibilityLabel={`Verdict : ${VERDICT_LABEL[assessment.verdict]}`}>
+            <StatusChip label={VERDICT_LABEL[assessment.verdict]} tone={VERDICT_TONE[assessment.verdict]} />
+            {assessment.verdictReasons.map((r) => (
+              <Txt key={r} variant="body">
+                – {r}
+              </Txt>
+            ))}
+            {(
+              [
+                ["Compétitivité de l'offre", assessment.competitiveness],
+                ["Fiabilité de la source", assessment.sourceReliability],
+                ["Confiance des données", assessment.dataConfidence],
+              ] as const
+            ).map(([label, a]) => (
+              <View key={label} style={{ gap: 2, paddingTop: space[1] }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
+                  <Txt variant="body" style={{ flex: 1 }}>
+                    {label}
+                  </Txt>
+                  <Txt variant="body" num>
+                    {appraisalText(a)}
+                  </Txt>
+                </View>
+                {a.reasons.slice(0, 3).map((r) => (
+                  <Txt key={r} variant="label">
+                    {r}
+                  </Txt>
+                ))}
+              </View>
+            ))}
+            <Txt variant="label">Trois notes séparées : un bon prix ne compense jamais une donnée ancienne ou un stock non confirmé. Aucune recommandation ne déclenche d'achat.</Txt>
+          </Card>
+        </>
+      ) : null}
+
+      {scenarios.length ? (
+        <>
+          <SectionHeader title="Scénarios de quantité" />
+          {scenarios.map((sc) => (
+            <Card key={`${sc.quantity}-${sc.label}`} padded style={{ gap: 4 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
+                <Txt variant="headline" style={{ flex: 1 }}>
+                  {formatNumber(sc.quantity)} unité{sc.quantity > 1 ? "s" : ""} · {sc.label}
+                </Txt>
+                {sc.exceedsStock ? <StatusChip label="dépasse le stock annoncé" tone="danger" /> : null}
+              </View>
+              <Txt variant="label" color={color.ink}>
+                Capital {sc.capital === null ? "—" : formatMoney(sc.capital, cur)} · bénéfice total {sc.totalProfit === null ? "—" : formatMoney(sc.totalProfit, cur)} · coût rendu {sc.unitLandedCost === null ? "—" : formatMoney(sc.unitLandedCost, cur)} / u
+              </Txt>
+              {sc.assumption ? <Txt variant="label">Hypothèse : {sc.assumption}</Txt> : null}
+              {sc.missing.length ? (
+                <Txt variant="label" color={color.accentInkOnSoft}>
+                  Manque : {sc.missing.join(", ")}
+                </Txt>
+              ) : null}
+            </Card>
+          ))}
+        </>
+      ) : null}
+
+      {peers.length ? (
+        <>
+          <SectionHeader title={`Autres offres du même produit (${peers.length})`} />
+          <Card padded style={{ gap: space[2] }}>
+            {peers.map((p) => (
+              <View key={p.offerId} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[2] }}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Txt variant="body" numberOfLines={1}>
+                    {p.supplierName}
+                  </Txt>
+                  <Txt variant="label" numberOfLines={1}>
+                    {p.availableQuantity !== null ? `${formatNumber(p.availableQuantity)} dispo.` : p.stockStatus === "out_of_stock" ? "en rupture" : "stock non confirmé"} · {p.ageDays === null ? "date inconnue" : `vu il y a ${p.ageDays} j`}
+                  </Txt>
+                </View>
+                <View style={{ alignItems: "flex-end", gap: 2 }}>
+                  <Txt variant="body" num>
+                    {p.landedCost === null ? "—" : formatMoney(p.landedCost, cur)}
+                  </Txt>
+                  <StatusChip label={VERDICT_LABEL[p.verdict]} tone={VERDICT_TONE[p.verdict]} />
+                </View>
+              </View>
+            ))}
+            <Txt variant="label">Coût rendu par unité, du moins cher au plus cher. Seules les offres rattachées au même article de votre stock sont comparées (rattachement confirmé ou fiche identifiée par marque, modèle et capacité), jamais sur la seule ressemblance du nom.</Txt>
+          </Card>
+        </>
+      ) : null}
 
       {e.reasons.length ? (
         <>

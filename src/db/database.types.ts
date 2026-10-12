@@ -878,9 +878,9 @@ isOneToOne: false
   Update: { created_by?: string | null; defaults?: Json; duplicates?: number; feed_id?: string | null; file_name?: string | null; file_sha256?: string | null; file_size?: number | null; finished_at?: string | null; format?: string; id?: string; mapping?: Json; message?: string | null; mode?: string; offers_created?: number; offers_expired?: number; offers_rejected?: number; offers_unchanged?: number; offers_updated?: number; organization_id?: string; origin?: string; products_unrecognized?: number; rows_invalid?: number; rows_read?: number; rows_valid?: number; sheet?: string | null; source_id?: string | null; started_at?: string; status?: string; supplier_id?: string | null; sync_run_id?: string | null; truncated?: boolean };
   Relationships: [];
 },"sourcing_import_issues": {
-  Row: { excerpt: Json | null; id: number; job_id: string; kind: string; line: number | null; message: string; organization_id: string; reference: string | null };
-  Insert: { excerpt?: Json | null; id?: never; job_id: string; kind: string; line?: number | null; message: string; organization_id: string; reference?: string | null };
-  Update: { excerpt?: Json | null; id?: never; job_id?: string; kind?: string; line?: number | null; message?: string; organization_id?: string; reference?: string | null };
+  Row: { excerpt: Json | null; id: string; job_id: string; kind: string; line: number | null; message: string; organization_id: string; reference: string | null };
+  Insert: { excerpt?: Json | null; id?: string; job_id: string; kind: string; line?: number | null; message: string; organization_id: string; reference?: string | null };
+  Update: { excerpt?: Json | null; id?: string; job_id?: string; kind?: string; line?: number | null; message?: string; organization_id?: string; reference?: string | null };
   Relationships: [];
 },"sourcing_mapping_profiles": {
   Row: { columns: string[]; created_at: string; defaults: Json; header_signature: string; id: string; mapping: Json; organization_id: string; supplier_id: string; updated_at: string; updated_by: string | null; use_count: number };

@@ -124,9 +124,14 @@ function SourceCard({ entry: e, action }: { entry: LibraryEntry; action?: { labe
             {LIBRARY_SEGMENT_LABEL[e.segment]} · {e.country} · {LIBRARY_ACCESS_LABEL[e.access]}
           </Txt>
         </View>
-        {e.sourceId ? <StatusChip label="Activée" tone="success" /> : null}
+        {e.sourceId ? <StatusChip label="Activée" tone="success" /> : e.blocked ? <StatusChip label="Accès automatisé interdit" tone="danger" /> : null}
       </View>
       <Txt variant="label">{e.notes}</Txt>
+      {e.blocked ? (
+        <Txt variant="label" color={color.dangerInk} testID={`source-blocked-${e.key}`}>
+          {e.blocked}
+        </Txt>
+      ) : null}
       <Txt variant="label" color={ok ? color.success : color.ink2}>
         {status ? `${CHECK_STATUS_LABEL[status] ?? status}${e.check?.checkedAt ? ` · ${formatDateTime(e.check.checkedAt)}` : ""}` : "Pas encore vérifiée"}
         {!ok && e.check?.message ? ` — ${e.check.message.slice(0, 160)}` : ""}

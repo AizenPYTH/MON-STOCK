@@ -10,7 +10,7 @@ import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } 
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
-import { decideMatch, fetchMatchSuggestions, fetchRadar, saveOffer, saveRadarSettings, unsaveOffer, type RadarCostSettings, type RadarSort } from "~/data/radar";
+import { decideMatch, fetchMatchSuggestions, fetchRadar, fetchRadarOffer, saveOffer, saveRadarSettings, unsaveOffer, type RadarCostSettings, type RadarSort } from "~/data/radar";
 import { fetchDirectory, previewImport, runImport, type PickedFile } from "~/data/suppliers-pro";
 import { fetchCostDefaults, fetchFxRates } from "~/data/tools";
 import { deleteRateCard, fetchRateCards, fetchToolsStatus, requestShippingQuotes, saveRateCard, type RateCardInput } from "~/data/shipping";
@@ -30,6 +30,7 @@ import {
   type ProductEditInput,
   type SkuEditInput,
 } from "~/data/products";
+import { createRemoteFeed, fetchImportJob, fetchImportJobs, fetchSources, previewRemoteFeed, scheduleSource, syncSource } from "~/data/sourcing-b2b";
 
 /** Toutes les clés commencent par l'organisation : changer d'organisation ne mélange jamais les données. */
 function useOrgId() {
@@ -309,7 +310,60 @@ export function useSupplierDirectory() {
 
 export function useImportPreview() {
   const orgId = useOrgId();
-  return useMutation({ mutationFn: (v: { file: PickedFile; mapping?: CatalogMapping; currency?: string; taxType?: "ht" | "ttc" | "unknown" }) => previewImport(orgId, v.file, v) });
+  return useMutation({ mutationFn: (v: { file: PickedFile; mapping?: CatalogMapping; currency?: string; taxType?: "ht" | "ttc" | "unknown"; supplierId?: string }) => previewImport(orgId, v.file, v) });
+}
+
+/* ───────── Sourcing B2B : sources, flux distants, historique des imports ───────── */
+
+export function useSources() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "sourcing", "sources"], queryFn: () => fetchSources(orgId), staleTime: 30_000 });
+}
+
+export function useSyncSource() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sourceId: string) => syncSource(orgId, sourceId),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "sources"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "offer-groups"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "radar"] }),
+      ]),
+  });
+}
+
+export function useScheduleSource() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (v: Parameters<typeof scheduleSource>[1]) => scheduleSource(orgId, v), onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "sources"] }) });
+}
+
+export function useImportJobs(supplierId?: string) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "sourcing", "imports", supplierId ?? "all"], queryFn: () => fetchImportJobs(orgId, supplierId) });
+}
+
+export function useImportJob(id: string) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "sourcing", "import", id], queryFn: () => fetchImportJob(orgId, id), enabled: Boolean(id) });
+}
+
+export function useRemoteFeedPreview() {
+  const orgId = useOrgId();
+  return useMutation({ mutationFn: (v: Parameters<typeof previewRemoteFeed>[1]) => previewRemoteFeed(orgId, v) });
+}
+
+export function useCreateRemoteFeed() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (v: Parameters<typeof createRemoteFeed>[1]) => createRemoteFeed(orgId, v), onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "sources"] }) });
+}
+
+export function useRadarOffer(offerId: string, quantity?: number) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "radar", "offer", offerId, quantity ?? null], queryFn: () => fetchRadarOffer(orgId, offerId, quantity), enabled: Boolean(offerId), staleTime: 60_000 });
 }
 
 export function useRunImport() {
@@ -319,6 +373,8 @@ export function useRunImport() {
     mutationFn: (v: Parameters<typeof runImport>[1]) => runImport(orgId, v),
     onSettled: () =>
       Promise.all([
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "imports"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "sources"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "offer-groups"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "sourcing-overview"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "suppliers"] }),

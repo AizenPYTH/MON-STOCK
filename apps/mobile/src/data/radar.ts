@@ -1,4 +1,4 @@
-import type { MatchSuggestionDTO, RadarCostSettings, RadarDTO, RadarItemDTO, RadarSort } from "@/features/mobile-api/contract";
+import type { MatchSuggestionDTO, RadarCostSettings, RadarDTO, RadarOfferDetailDTO, RadarItemDTO, RadarSort } from "@/features/mobile-api/contract";
 import { PRICE_ORIGIN_LABEL } from "@/domain/sourcing/radar";
 import type { MobileSupabase } from "~/lib/supabase";
 import { callApi } from "~/lib/api";
@@ -32,6 +32,35 @@ export const FRESHNESS_LABEL: Record<RadarItemDTO["evaluation"]["freshness"], st
   unknown: "Date du prix inconnue",
 };
 
+export type OfferVerdict = RadarItemDTO["assessment"]["verdict"];
+
+export const VERDICT_LABEL: Record<OfferVerdict, string> = {
+  opportunity: "Opportunité",
+  to_verify: "À vérifier",
+  risky: "Risquée",
+  insufficient_data: "Données insuffisantes",
+};
+
+export const VERDICT_TONE: Record<OfferVerdict, "success" | "accent" | "danger" | "neutral"> = {
+  opportunity: "success",
+  to_verify: "accent",
+  risky: "danger",
+  insufficient_data: "neutral",
+};
+
+export const APPRAISAL_LABEL: Record<RadarItemDTO["assessment"]["competitiveness"]["label"], string> = {
+  excellent: "Excellente",
+  good: "Bonne",
+  fair: "Moyenne",
+  weak: "Faible",
+  insufficient_data: "Données insuffisantes",
+};
+
+/** « 72 / 100 · Bonne » ou « Données insuffisantes » (jamais 0 par défaut). */
+export function appraisalText(a: { score: number | null; label: RadarItemDTO["assessment"]["competitiveness"]["label"] }): string {
+  return a.score === null ? APPRAISAL_LABEL.insufficient_data : `${Math.round(a.score)} / 100 · ${APPRAISAL_LABEL[a.label]}`;
+}
+
 export const SORT_OPTIONS: { value: RadarSort; label: string }[] = [
   { value: "score", label: "Pertinence" },
   { value: "profit", label: "Bénéfice" },
@@ -39,6 +68,11 @@ export const SORT_OPTIONS: { value: RadarSort; label: string }[] = [
   { value: "availability", label: "Dispo" },
   { value: "freshness", label: "Fraîcheur" },
 ];
+
+/** Détail d'une offre du radar : trois notes, verdict, scénarios de quantité, offres concurrentes. */
+export function fetchRadarOffer(organizationId: string, offerId: string, quantity?: number): Promise<RadarOfferDetailDTO> {
+  return callApi<RadarOfferDetailDTO>("/radar/offer", { organizationId, query: { id: offerId, ...(quantity ? { quantity: String(quantity) } : {}) } });
+}
 
 export function fetchRadar(organizationId: string, sort: RadarSort): Promise<RadarDTO> {
   return callApi<RadarDTO>("/radar", { organizationId, query: { sort } });
