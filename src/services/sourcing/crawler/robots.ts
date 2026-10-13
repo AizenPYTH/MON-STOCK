@@ -61,13 +61,20 @@ export function parseRobotsTxt(text: string): RobotsRules {
   return { groups, sitemaps };
 }
 
+const regexCache = new Map<string, RegExp>();
+
 function patternToRegex(pattern: string): RegExp {
+  const hit = regexCache.get(pattern);
+  if (hit) return hit;
   const anchored = pattern.endsWith("$");
   const body = (anchored ? pattern.slice(0, -1) : pattern)
     .split("*")
     .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join(".*");
-  return new RegExp(`^${body}${anchored ? "$" : ""}`);
+  const re = new RegExp(`^${body}${anchored ? "$" : ""}`);
+  if (regexCache.size > 2_000) regexCache.clear();
+  regexCache.set(pattern, re);
+  return re;
 }
 
 /** Token produit de notre User-Agent : « MonStockBot/0.1 (+https://…) » → « monstockbot ». */

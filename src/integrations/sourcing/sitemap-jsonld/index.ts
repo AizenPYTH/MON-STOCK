@@ -122,7 +122,7 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
 }
 
 /** Pages qui ne sont manifestement pas des fiches produit (catégories, contenus, comptes). */
-const NON_PRODUCT_RE = /\/(blog|blogs|news|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
+const NON_PRODUCT_RE = /\/(blog|blogs|news|ratgeber|guides?|magazin|magazine|wiki|poradnik|conseils|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
 
 /** Pages de service courantes (paiement, livraison, CGV…) dans plusieurs langues. */
 const SERVICE_PAGE_RE = /^\/?([a-z]{2}\/)?(betaling|verzending|algemene-voorwaarden|privacy[\w-]*|cookies?[\w-]*|about[\w-]*|over-ons|chi-siamo|qui-sommes-nous|livraison|paiement|cgv|mentions-legales|impressum|datenschutz|agb|versand|zahlung|contact-us|kontakt|service|grading|process|stock-lists|[\w-]*application-form)(\/|$)/i;
@@ -237,13 +237,15 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
     const http = createAdapterHttp(ctx);
     const index = await loadIndex(base, ctx, http, config.settings);
     if (index.urls.length === 0) throw new Error("Plan du site (sitemap) introuvable ou vide : catalogue non lisible de cette façon.");
-    const urls = productLikeUrls(index.urls, base).filter((u) => allowedByRobots(index.robots, ctx.userAgent, u));
+    const urls = productLikeUrls(index.urls, base);
     const start = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);
     const size = settingInt(config.settings, "catalog_pages", SITEMAP_CATALOG_PAGES, 1, 30);
     const offers: RawOffer[] = [];
     let i = start;
     for (; i < urls.length && i < start + size && !http.exhausted(); i++) {
       const url = urls[i]!;
+      // robots.txt vérifié pour chaque fiche du lot seulement (un plan du site peut compter 40 000 URLs)
+      if (!allowedByRobots(index.robots, ctx.userAgent, url)) continue;
       try {
         const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4_000_000 });
         const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));

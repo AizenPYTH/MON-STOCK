@@ -5183,9 +5183,14 @@ function parseRobotsTxt(text3) {
   return { groups, sitemaps };
 }
 function patternToRegex(pattern) {
+  const hit = regexCache.get(pattern);
+  if (hit) return hit;
   const anchored = pattern.endsWith("$");
   const body = (anchored ? pattern.slice(0, -1) : pattern).split("*").map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
-  return new RegExp(`^${body}${anchored ? "$" : ""}`);
+  const re = new RegExp(`^${body}${anchored ? "$" : ""}`);
+  if (regexCache.size > 2e3) regexCache.clear();
+  regexCache.set(pattern, re);
+  return re;
 }
 function userAgentToken(userAgent) {
   return (userAgent.split(/[\s/]/)[0] ?? userAgent).toLowerCase();
@@ -5278,10 +5283,12 @@ async function checkRobotsForUrls(baseUrl, urls, userAgent, fetchImpl = fetch, r
     details: disallowed.length === 0 ? `robots.txt lu (groupe \xAB ${agent} \xBB) : toutes les URLs sont autoris\xE9es${crawlDelay !== null ? `, d\xE9lai demand\xE9 ${crawlDelay} s` : ""}.` : `robots.txt (groupe \xAB ${agent} \xBB) interdit ${disallowed.length} URL(s) : le crawl est refus\xE9.`
   };
 }
+var regexCache;
 var init_robots = __esm({
   "src/services/sourcing/crawler/robots.ts"() {
     "use strict";
     init_http2();
+    regexCache = /* @__PURE__ */ new Map();
   }
 });
 
@@ -5406,7 +5413,7 @@ var init_sitemap_jsonld = __esm({
     SITEMAP_CACHE_TTL_MS = 6 * 36e5;
     cache2 = /* @__PURE__ */ new Map();
     STOP = /* @__PURE__ */ new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
-    NON_PRODUCT_RE = /\/(blog|blogs|news|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
+    NON_PRODUCT_RE = /\/(blog|blogs|news|ratgeber|guides?|magazin|magazine|wiki|poradnik|conseils|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
     SERVICE_PAGE_RE = /^\/?([a-z]{2}\/)?(betaling|verzending|algemene-voorwaarden|privacy[\w-]*|cookies?[\w-]*|about[\w-]*|over-ons|chi-siamo|qui-sommes-nous|livraison|paiement|cgv|mentions-legales|impressum|datenschutz|agb|versand|zahlung|contact-us|kontakt|service|grading|process|stock-lists|[\w-]*application-form)(\/|$)/i;
     SITEMAP_CATALOG_PAGES = 8;
     sitemapJsonLdAdapter = {
@@ -5472,13 +5479,14 @@ var init_sitemap_jsonld = __esm({
         const http = createAdapterHttp(ctx);
         const index = await loadIndex(base, ctx, http, config.settings);
         if (index.urls.length === 0) throw new Error("Plan du site (sitemap) introuvable ou vide : catalogue non lisible de cette fa\xE7on.");
-        const urls = productLikeUrls(index.urls, base).filter((u) => allowedByRobots(index.robots, ctx.userAgent, u));
+        const urls = productLikeUrls(index.urls, base);
         const start = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);
         const size = settingInt(config.settings, "catalog_pages", SITEMAP_CATALOG_PAGES, 1, 30);
         const offers = [];
         let i = start;
         for (; i < urls.length && i < start + size && !http.exhausted(); i++) {
           const url = urls[i];
+          if (!allowedByRobots(index.robots, ctx.userAgent, url)) continue;
           try {
             const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
             const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
