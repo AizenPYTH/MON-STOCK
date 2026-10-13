@@ -22884,7 +22884,8 @@ async function probeOne(p) {
       nextCursor: Boolean(r.next),
       durationMs: Date.now() - t0,
       message: r.error,
-      requests: r.requests.slice(0, 6),
+      // début (robots, plans du site) et fin (dernières fiches lues) : de quoi diagnostiquer un échec
+      requests: r.requests.length > 10 ? [...r.requests.slice(0, 4), ...r.requests.slice(-6)] : r.requests,
       samples: priced.slice(0, 5).map((o) => ({ title: o.title.slice(0, 120), price: o.price, currency: o.currency ?? null, taxType: o.taxType ?? null, quantity: o.availableQuantity ?? null, stockStatus: o.stockStatus ?? null, url: o.url ?? null, ean: o.ean ?? null }))
     };
   } catch (e) {
