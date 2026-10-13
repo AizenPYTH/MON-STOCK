@@ -5350,10 +5350,19 @@ async function loadIndex(base, ctx, http, settings) {
   const urls = [];
   const read = [];
   const queue = [...roots];
-  while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
+  let totalBytes = 0;
+  while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && totalBytes < SITEMAP_TOTAL_MAX_BYTES && !http.exhausted()) {
     const sm = queue.shift();
     if (new URL(sm).host !== new URL(base).host) continue;
-    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 15e6 });
+    let res;
+    try {
+      res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: Math.min(SITEMAP_FILE_MAX_BYTES, SITEMAP_TOTAL_MAX_BYTES - totalBytes) });
+    } catch (e) {
+      if (read.length === 0 || urls.length === 0) throw e;
+      read.push(sm);
+      continue;
+    }
+    totalBytes += res.text.length;
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
     if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
@@ -5397,7 +5406,7 @@ function allowedByRobots(robots, userAgent, url) {
   const u = new URL(url);
   return evaluateRobots(robots, userAgent, u.pathname + u.search).allowed;
 }
-var SITEMAP_MAX_CHILDREN, SITEMAP_MAX_URLS, SITEMAP_DEFAULT_PAGES, SITEMAP_CACHE_TTL_MS, cache2, STOP, NON_PRODUCT_RE, SERVICE_PAGE_RE, SITEMAP_CATALOG_PAGES, sitemapJsonLdAdapter;
+var SITEMAP_MAX_CHILDREN, SITEMAP_MAX_URLS, SITEMAP_DEFAULT_PAGES, SITEMAP_CACHE_TTL_MS, SITEMAP_FILE_MAX_BYTES, SITEMAP_TOTAL_MAX_BYTES, cache2, STOP, NON_PRODUCT_RE, SERVICE_PAGE_RE, SITEMAP_CATALOG_PAGES, sitemapJsonLdAdapter;
 var init_sitemap_jsonld = __esm({
   "src/integrations/sourcing/sitemap-jsonld/index.ts"() {
     "use strict";
@@ -5411,6 +5420,8 @@ var init_sitemap_jsonld = __esm({
     SITEMAP_MAX_URLS = 4e4;
     SITEMAP_DEFAULT_PAGES = 3;
     SITEMAP_CACHE_TTL_MS = 6 * 36e5;
+    SITEMAP_FILE_MAX_BYTES = 1e7;
+    SITEMAP_TOTAL_MAX_BYTES = 25e6;
     cache2 = /* @__PURE__ */ new Map();
     STOP = /* @__PURE__ */ new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
     NON_PRODUCT_RE = /\/(blog|blogs|news|ratgeber|guides?|magazin|magazine|wiki|poradnik|conseils|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;

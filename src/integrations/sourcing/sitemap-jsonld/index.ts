@@ -24,6 +24,9 @@ export const SITEMAP_MAX_CHILDREN = 6;
 export const SITEMAP_MAX_URLS = 40_000;
 export const SITEMAP_DEFAULT_PAGES = 3;
 export const SITEMAP_CACHE_TTL_MS = 6 * 3600_000;
+/** Mémoire bornée (le serveur partage ~150 Mo entre requêtes) : par fichier et cumulé par index. */
+export const SITEMAP_FILE_MAX_BYTES = 10_000_000;
+export const SITEMAP_TOTAL_MAX_BYTES = 25_000_000;
 
 interface SiteIndex {
   at: number;
@@ -107,10 +110,20 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
   const urls: string[] = [];
   const read: string[] = [];
   const queue = [...roots];
-  while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
+  let totalBytes = 0;
+  while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && totalBytes < SITEMAP_TOTAL_MAX_BYTES && !http.exhausted()) {
     const sm = queue.shift()!;
     if (new URL(sm).host !== new URL(base).host) continue;
-    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 15_000_000 });
+    let res;
+    try {
+      res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: Math.min(SITEMAP_FILE_MAX_BYTES, SITEMAP_TOTAL_MAX_BYTES - totalBytes) });
+    } catch (e) {
+      // racine illisible : erreur ; sous-sitemap trop gros ou en erreur : on garde ce qui a déjà été lu
+      if (read.length === 0 || urls.length === 0) throw e;
+      read.push(sm);
+      continue;
+    }
+    totalBytes += res.text.length;
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
     if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
