@@ -14,10 +14,10 @@
 import type { RawOffer } from "@/domain/sourcing/types";
 import { parseQuery, type ParsedQuery } from "@/domain/sourcing/query-parser";
 import { normalizeText } from "@/domain/sourcing/normalizer";
-import type { AdapterRunContext, AdapterSearchResult, AdapterSourceConfig, SourceAdapter } from "@/integrations/sourcing/core";
+import type { AdapterCatalogPage, AdapterRunContext, AdapterSearchResult, AdapterSourceConfig, SourceAdapter } from "@/integrations/sourcing/core";
 import { createAdapterHttp, errorMessage, failedSearch, settingInt, settingString, trimSlash } from "@/integrations/sourcing/shared";
 import { evaluateRobots, parseRobotsTxt, type RobotsRules } from "@/services/sourcing/crawler/robots";
-import { parseJsonLdPage } from "@/integrations/sourcing/jsonld-public/parser";
+import { parseProductPage } from "@/integrations/sourcing/jsonld-public/parser";
 import { mapJsonLdOffer } from "@/integrations/sourcing/jsonld-public/mapper";
 
 export const SITEMAP_MAX_CHILDREN = 6;
@@ -110,7 +110,7 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
   while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
     const sm = queue.shift()!;
     if (new URL(sm).host !== new URL(base).host) continue;
-    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 6_000_000 });
+    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 15_000_000 });
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
     if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
@@ -120,6 +120,26 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
   if (urls.length > 0) cache.set(base, index);
   return index;
 }
+
+/** Pages qui ne sont manifestement pas des fiches produit (catégories, contenus, comptes). */
+const NON_PRODUCT_RE = /\/(blog|blogs|news|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
+
+export function productLikeUrls(urls: string[], base: string): string[] {
+  const host = new URL(base).host;
+  return urls.filter((u) => {
+    try {
+      const x = new URL(u);
+      if (x.host !== host) return false;
+      const path = x.pathname.replace(/\/+$/, "");
+      if (path === "" || NON_PRODUCT_RE.test(path)) return false;
+      return !/\.(jpe?g|png|webp|gif|pdf|xml)$/i.test(path);
+    } catch {
+      return false;
+    }
+  });
+}
+
+export const SITEMAP_CATALOG_PAGES = 8;
 
 function allowedByRobots(robots: RobotsRules | null, userAgent: string, url: string): boolean {
   if (!robots) return true;
@@ -134,7 +154,7 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
     "Trouve les fiches produit correspondant à la recherche dans le plan du site (sitemap publié pour les robots), puis lit leurs données structurées schema.org (prix, devise, disponibilité, état, marque, SKU/GTIN). Chaque URL est vérifiée contre robots.txt ; 3 fiches par recherche, une requête à la fois.",
   method: "public_html",
   access: "public",
-  capabilities: { search: true, catalog: false, stockQuantity: false },
+  capabilities: { search: true, catalog: true, stockQuantity: false },
   credentialFields: [],
   configFields: [
     { name: "sitemap_url", label: "URL du sitemap (facultatif)", required: false, help: "Par défaut : sitemaps déclarés dans robots.txt, sinon /sitemap.xml." },
@@ -164,7 +184,7 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
         try {
           const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4_000_000 });
           pages += 1;
-          const found = parseJsonLdPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
+          const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
           http.countOffers(found.length);
           offers.push(...found);
         } catch {
@@ -175,6 +195,38 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
     } catch (e) {
       return failedSearch("public_html", errorMessage(e), http.requests);
     }
+  },
+  urlsForCatalog(config: AdapterSourceConfig): string[] {
+    if (!config.baseUrl) return [];
+    return [settingString(config.settings, "sitemap_url") ?? `${trimSlash(config.baseUrl)}/sitemap.xml`];
+  },
+  /**
+   * Catalogue : fiches produit du plan du site lues par lots de SITEMAP_CATALOG_PAGES, dans
+   * l'ordre du sitemap. Le curseur est la position dans la liste : une collecte longue se fait
+   * en plusieurs passages, et reprend là où elle s'est arrêtée.
+   */
+  async fetchCatalog(config, cursor, ctx): Promise<AdapterCatalogPage> {
+    if (!config.baseUrl) return { offers: [], method: "public_html", requests: [], nextCursor: null };
+    const base = trimSlash(config.baseUrl);
+    const http = createAdapterHttp(ctx);
+    const index = await loadIndex(base, ctx, http, config.settings);
+    const urls = productLikeUrls(index.urls, base).filter((u) => allowedByRobots(index.robots, ctx.userAgent, u));
+    const start = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);
+    const size = settingInt(config.settings, "catalog_pages", SITEMAP_CATALOG_PAGES, 1, 30);
+    const offers: RawOffer[] = [];
+    let i = start;
+    for (; i < urls.length && i < start + size && !http.exhausted(); i++) {
+      const url = urls[i]!;
+      try {
+        const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4_000_000 });
+        const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
+        http.countOffers(found.length);
+        offers.push(...found);
+      } catch {
+        // la trace de la requête conserve l'erreur ; la page suivante est tentée
+      }
+    }
+    return { offers, method: "public_html", requests: http.requests, nextCursor: i < urls.length ? String(i) : null };
   },
   async testConnection(config, ctx) {
     const r = await sitemapJsonLdAdapter.search(config, parseQuery("iphone"), "iphone", ctx);

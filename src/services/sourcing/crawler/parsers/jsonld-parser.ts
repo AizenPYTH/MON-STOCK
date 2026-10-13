@@ -181,3 +181,63 @@ export const jsonLdParser: SourceParser = {
   description: "Lit les blocs JSON-LD Product/Offer déclarés par la page (nom, SKU, GTIN, MPN, marque, prix, devise, disponibilité, état, URL). Si la page n'en déclare pas, aucune offre n'est extraite.",
   parse: parseJsonLdProducts,
 };
+
+// ---------------------------------------------------------------------------------------------
+// Repli « fiche produit » : balises Open Graph produit et microdonnées schema.org
+// ---------------------------------------------------------------------------------------------
+
+function metaContent(html: string, names: string[]): string | null {
+  for (const n of names) {
+    const esc = n.replace(/[.*+?^${}()|[\]\\:]/g, "\\$&");
+    const a = new RegExp(`<meta[^>]+(?:property|name|itemprop)\\s*=\\s*["']${esc}["'][^>]*content\\s*=\\s*["']([^"']*)["']`, "i").exec(html);
+    if (a?.[1]) return a[1];
+    const b = new RegExp(`<meta[^>]+content\\s*=\\s*["']([^"']*)["'][^>]*(?:property|name|itemprop)\\s*=\\s*["']${esc}["']`, "i").exec(html);
+    if (b?.[1]) return b[1];
+  }
+  return null;
+}
+
+function decodeEntities(s: string): string {
+  return s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").trim();
+}
+
+/**
+ * Fiche produit sans JSON-LD : prix lu dans les balises standard publiées pour les moteurs
+ * (`product:price:amount` / `og:price:amount`, ou microdonnée `itemprop="price"`). Prudence :
+ * rien n'est renvoyé si la page contient plusieurs prix en microdonnées (page de liste) ou si
+ * le titre ou le prix manquent. Au plus une offre par page.
+ */
+export function parseProductMetaTags(html: string, pageUrl: string): RawOffer[] {
+  const head = html.slice(0, 600_000);
+  const ogPrice = metaContent(head, ["product:price:amount", "og:price:amount"]);
+  const itempropPrices = [...head.matchAll(/<[^>]*itemprop\s*=\s*["']price["'][^>]*>/gi)].map((m) => /content\s*=\s*["']([^"']+)["']/i.exec(m[0])?.[1]).filter((x): x is string => Boolean(x));
+  const distinctItemprop = [...new Set(itempropPrices)];
+  const rawPrice = ogPrice ?? (distinctItemprop.length === 1 ? distinctItemprop[0]! : null);
+  const price = toNumber(rawPrice);
+  if (price === null || price <= 0) return [];
+  const currency = (metaContent(head, ["product:price:currency", "og:price:currency"]) ?? /<[^>]*itemprop\s*=\s*["']priceCurrency["'][^>]*>/i.exec(head)?.[0].match(/content\s*=\s*["']([A-Za-z]{3})["']/i)?.[1] ?? null)?.toUpperCase() ?? null;
+  const titleRaw = metaContent(head, ["og:title"]) ?? /<title[^>]*>([^<]{3,300})<\/title>/i.exec(head)?.[1] ?? null;
+  if (!titleRaw) return [];
+  const availability = metaContent(head, ["product:availability", "og:availability"]) ?? /itemprop\s*=\s*["']availability["'][^>]*(?:href|content)\s*=\s*["']([^"']+)["']/i.exec(head)?.[1] ?? null;
+  const stockStatus: StockStatus = availability ? toStockStatus(availability.replace(/^https?:\/\/schema\.org\//i, "")) : "unknown";
+  const ean = (metaContent(head, ["product:ean", "product:gtin", "gtin13"]) ?? "").replace(/\D/g, "") || null;
+  const sku = metaContent(head, ["product:retailer_item_id", "sku"]);
+  const canonical = /<link[^>]+rel\s*=\s*["']canonical["'][^>]*href\s*=\s*["']([^"']+)["']/i.exec(head)?.[1];
+  const url = resolveUrl(canonical, pageUrl) ?? pageUrl;
+  return [
+    {
+      externalOfferId: sku ?? ean ?? url,
+      externalProductId: sku,
+      title: decodeEntities(titleRaw).slice(0, 500),
+      price,
+      currency,
+      taxType: "unknown",
+      availableQuantity: null,
+      stockStatus,
+      url,
+      ean: ean && ean.length >= 8 ? ean : null,
+      supplierSku: sku,
+      raw: { source: "meta_tags", price: rawPrice, currency, availability },
+    },
+  ];
+}

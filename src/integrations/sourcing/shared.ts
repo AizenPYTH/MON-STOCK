@@ -38,6 +38,9 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
  * Client HTTP d'un run d'adaptateur : au plus une requête à la fois, délai minimal entre
  * deux requêtes (`ctx.minDelayMs`), budget global (`ctx.timeoutMs`), chaque requête tracée.
  */
+/** pause avant l'unique nouvel essai après un HTTP 429 / 503 */
+export const RETRY_AFTER_MS = 10_000;
+
 export function createAdapterHttp(ctx: AdapterRunContext): AdapterHttp {
   const requests: AdapterRequestTrace[] = [];
   const startedAt = Date.now();
@@ -65,7 +68,7 @@ export function createAdapterHttp(ctx: AdapterRunContext): AdapterHttp {
       lastRequestAt = t0;
       let traced = false;
       try {
-        const res = await fetchText(url, {
+        let res = await fetchText(url, {
           userAgent: ctx.userAgent,
           fetchImpl: ctx.fetchImpl,
           resolver: ctx.resolver,
@@ -76,6 +79,13 @@ export function createAdapterHttp(ctx: AdapterRunContext): AdapterHttp {
           maxBytes: options.maxBytes,
           timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, Number.isFinite(remaining) ? remaining : DEFAULT_REQUEST_TIMEOUT_MS),
         });
+        // Trop de requêtes / indisponible : une seule nouvelle tentative, après une pause, si le budget le permet.
+        if ((res.status === 429 || res.status === 503) && remainingMs() > RETRY_AFTER_MS + 5_000) {
+          requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: `HTTP ${res.status} (nouvel essai dans ${RETRY_AFTER_MS / 1000} s)` });
+          await sleep(RETRY_AFTER_MS);
+          lastRequestAt = Date.now();
+          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs()) });
+        }
         requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: res.ok ? null : `HTTP ${res.status}` });
         traced = true;
         if (!res.ok) throw new Error(`HTTP ${res.status} (${url})`);

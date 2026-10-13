@@ -85,6 +85,7 @@ import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplie
 import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
 import { listSourcesForOrg, setSourceSchedule, sourceScheduleSchema, syncSourceNow } from "@/services/sourcing/source-sync";
 import { simpleSupplierSearch } from "@/services/sourcing/simple-search";
+import { adapterProbeSchema, runAdapterProbes } from "@/services/sourcing/adapter-probe";
 import { createRemoteFeed, previewRemoteFeed, remoteFeedCreateSchema, remoteFeedPreviewSchema } from "@/services/sourcing/remote-feeds";
 import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
 import { synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
@@ -302,6 +303,7 @@ export async function route(request: Request): Promise<Response> {
           return checkAssistantTools(body.organizationId);
         });
       }
+      if (m === "POST" && path === "/cron/adapter-probe") return handle(async () => runAdapterProbes(await parseBody(request, adapterProbeSchema)));
       if (m === "POST" && path === "/cron/scout") {
         return handle(async () => {
           const body = await parseBody(request, scoutSchema);

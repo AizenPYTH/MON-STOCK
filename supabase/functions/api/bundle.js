@@ -2597,7 +2597,7 @@ function createAdapterHttp(ctx) {
       lastRequestAt = t0;
       let traced = false;
       try {
-        const res = await fetchText(url, {
+        let res = await fetchText(url, {
           userAgent: ctx.userAgent,
           fetchImpl: ctx.fetchImpl,
           resolver: ctx.resolver,
@@ -2608,6 +2608,12 @@ function createAdapterHttp(ctx) {
           maxBytes: options.maxBytes,
           timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, Number.isFinite(remaining) ? remaining : DEFAULT_REQUEST_TIMEOUT_MS)
         });
+        if ((res.status === 429 || res.status === 503) && remainingMs() > RETRY_AFTER_MS + 5e3) {
+          requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: `HTTP ${res.status} (nouvel essai dans ${RETRY_AFTER_MS / 1e3} s)` });
+          await sleep3(RETRY_AFTER_MS);
+          lastRequestAt = Date.now();
+          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs()) });
+        }
         requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: res.ok ? null : `HTTP ${res.status}` });
         traced = true;
         if (!res.ok) throw new Error(`HTTP ${res.status} (${url})`);
@@ -2694,7 +2700,7 @@ function settingInt(settings, key2, fallback, min, max) {
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.round(n)));
 }
-var DEFAULT_REQUEST_TIMEOUT_MS, defaultSleep, TtlCache;
+var DEFAULT_REQUEST_TIMEOUT_MS, defaultSleep, RETRY_AFTER_MS, TtlCache;
 var init_shared = __esm({
   "src/integrations/sourcing/shared.ts"() {
     "use strict";
@@ -2702,6 +2708,7 @@ var init_shared = __esm({
     init_http2();
     DEFAULT_REQUEST_TIMEOUT_MS = 15e3;
     defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    RETRY_AFTER_MS = 1e4;
     TtlCache = class {
       constructor(ttlMs) {
         this.ttlMs = ttlMs;
@@ -3316,6 +3323,53 @@ function parseJsonLdProducts(html, pageUrl) {
   }
   return offers;
 }
+function metaContent(html, names) {
+  for (const n of names) {
+    const esc = n.replace(/[.*+?^${}()|[\]\\:]/g, "\\$&");
+    const a = new RegExp(`<meta[^>]+(?:property|name|itemprop)\\s*=\\s*["']${esc}["'][^>]*content\\s*=\\s*["']([^"']*)["']`, "i").exec(html);
+    if (a?.[1]) return a[1];
+    const b = new RegExp(`<meta[^>]+content\\s*=\\s*["']([^"']*)["'][^>]*(?:property|name|itemprop)\\s*=\\s*["']${esc}["']`, "i").exec(html);
+    if (b?.[1]) return b[1];
+  }
+  return null;
+}
+function decodeEntities(s) {
+  return s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").trim();
+}
+function parseProductMetaTags(html, pageUrl) {
+  const head = html.slice(0, 6e5);
+  const ogPrice = metaContent(head, ["product:price:amount", "og:price:amount"]);
+  const itempropPrices = [...head.matchAll(/<[^>]*itemprop\s*=\s*["']price["'][^>]*>/gi)].map((m) => /content\s*=\s*["']([^"']+)["']/i.exec(m[0])?.[1]).filter((x) => Boolean(x));
+  const distinctItemprop = [...new Set(itempropPrices)];
+  const rawPrice = ogPrice ?? (distinctItemprop.length === 1 ? distinctItemprop[0] : null);
+  const price = toNumber(rawPrice);
+  if (price === null || price <= 0) return [];
+  const currency = (metaContent(head, ["product:price:currency", "og:price:currency"]) ?? /<[^>]*itemprop\s*=\s*["']priceCurrency["'][^>]*>/i.exec(head)?.[0].match(/content\s*=\s*["']([A-Za-z]{3})["']/i)?.[1] ?? null)?.toUpperCase() ?? null;
+  const titleRaw = metaContent(head, ["og:title"]) ?? /<title[^>]*>([^<]{3,300})<\/title>/i.exec(head)?.[1] ?? null;
+  if (!titleRaw) return [];
+  const availability = metaContent(head, ["product:availability", "og:availability"]) ?? /itemprop\s*=\s*["']availability["'][^>]*(?:href|content)\s*=\s*["']([^"']+)["']/i.exec(head)?.[1] ?? null;
+  const stockStatus = availability ? toStockStatus(availability.replace(/^https?:\/\/schema\.org\//i, "")) : "unknown";
+  const ean = (metaContent(head, ["product:ean", "product:gtin", "gtin13"]) ?? "").replace(/\D/g, "") || null;
+  const sku = metaContent(head, ["product:retailer_item_id", "sku"]);
+  const canonical = /<link[^>]+rel\s*=\s*["']canonical["'][^>]*href\s*=\s*["']([^"']+)["']/i.exec(head)?.[1];
+  const url = resolveUrl(canonical, pageUrl) ?? pageUrl;
+  return [
+    {
+      externalOfferId: sku ?? ean ?? url,
+      externalProductId: sku,
+      title: decodeEntities(titleRaw).slice(0, 500),
+      price,
+      currency,
+      taxType: "unknown",
+      availableQuantity: null,
+      stockStatus,
+      url,
+      ean: ean && ean.length >= 8 ? ean : null,
+      supplierSku: sku,
+      raw: { source: "meta_tags", price: rawPrice, currency, availability }
+    }
+  ];
+}
 var SCRIPT_RE, offerSchema, productSchema, jsonLdParser;
 var init_jsonld_parser = __esm({
   "src/services/sourcing/crawler/parsers/jsonld-parser.ts"() {
@@ -3368,6 +3422,10 @@ var init_jsonld_parser = __esm({
 // src/integrations/sourcing/jsonld-public/parser.ts
 function parseJsonLdPage(html, pageUrl) {
   return parseJsonLdProducts(html, pageUrl);
+}
+function parseProductPage(html, pageUrl) {
+  const ld = parseJsonLdProducts(html, pageUrl);
+  return ld.length > 0 ? ld : parseProductMetaTags(html, pageUrl);
 }
 var init_parser = __esm({
   "src/integrations/sourcing/jsonld-public/parser.ts"() {
@@ -5282,7 +5340,7 @@ async function loadIndex(base, ctx, http, settings) {
   while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && !http.exhausted()) {
     const sm = queue.shift();
     if (new URL(sm).host !== new URL(base).host) continue;
-    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 6e6 });
+    const res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: 15e6 });
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
     if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
@@ -5292,12 +5350,26 @@ async function loadIndex(base, ctx, http, settings) {
   if (urls.length > 0) cache2.set(base, index);
   return index;
 }
+function productLikeUrls(urls, base) {
+  const host = new URL(base).host;
+  return urls.filter((u) => {
+    try {
+      const x = new URL(u);
+      if (x.host !== host) return false;
+      const path = x.pathname.replace(/\/+$/, "");
+      if (path === "" || NON_PRODUCT_RE.test(path)) return false;
+      return !/\.(jpe?g|png|webp|gif|pdf|xml)$/i.test(path);
+    } catch {
+      return false;
+    }
+  });
+}
 function allowedByRobots(robots, userAgent, url) {
   if (!robots) return true;
   const u = new URL(url);
   return evaluateRobots(robots, userAgent, u.pathname + u.search).allowed;
 }
-var SITEMAP_MAX_CHILDREN, SITEMAP_MAX_URLS, SITEMAP_DEFAULT_PAGES, SITEMAP_CACHE_TTL_MS, cache2, STOP, sitemapJsonLdAdapter;
+var SITEMAP_MAX_CHILDREN, SITEMAP_MAX_URLS, SITEMAP_DEFAULT_PAGES, SITEMAP_CACHE_TTL_MS, cache2, STOP, NON_PRODUCT_RE, SITEMAP_CATALOG_PAGES, sitemapJsonLdAdapter;
 var init_sitemap_jsonld = __esm({
   "src/integrations/sourcing/sitemap-jsonld/index.ts"() {
     "use strict";
@@ -5313,13 +5385,15 @@ var init_sitemap_jsonld = __esm({
     SITEMAP_CACHE_TTL_MS = 6 * 36e5;
     cache2 = /* @__PURE__ */ new Map();
     STOP = /* @__PURE__ */ new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
+    NON_PRODUCT_RE = /\/(blog|blogs|news|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
+    SITEMAP_CATALOG_PAGES = 8;
     sitemapJsonLdAdapter = {
       key: "sitemap-jsonld",
       label: "Boutique publique (sitemap + donn\xE9es structur\xE9es)",
       description: "Trouve les fiches produit correspondant \xE0 la recherche dans le plan du site (sitemap publi\xE9 pour les robots), puis lit leurs donn\xE9es structur\xE9es schema.org (prix, devise, disponibilit\xE9, \xE9tat, marque, SKU/GTIN). Chaque URL est v\xE9rifi\xE9e contre robots.txt ; 3 fiches par recherche, une requ\xEAte \xE0 la fois.",
       method: "public_html",
       access: "public",
-      capabilities: { search: true, catalog: false, stockQuantity: false },
+      capabilities: { search: true, catalog: true, stockQuantity: false },
       credentialFields: [],
       configFields: [
         { name: "sitemap_url", label: "URL du sitemap (facultatif)", required: false, help: "Par d\xE9faut : sitemaps d\xE9clar\xE9s dans robots.txt, sinon /sitemap.xml." },
@@ -5349,7 +5423,7 @@ var init_sitemap_jsonld = __esm({
             try {
               const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
               pages += 1;
-              const found = parseJsonLdPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
+              const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
               http.countOffers(found.length);
               offers.push(...found);
             } catch {
@@ -5360,6 +5434,37 @@ var init_sitemap_jsonld = __esm({
         } catch (e) {
           return failedSearch("public_html", errorMessage(e), http.requests);
         }
+      },
+      urlsForCatalog(config) {
+        if (!config.baseUrl) return [];
+        return [settingString(config.settings, "sitemap_url") ?? `${trimSlash(config.baseUrl)}/sitemap.xml`];
+      },
+      /**
+       * Catalogue : fiches produit du plan du site lues par lots de SITEMAP_CATALOG_PAGES, dans
+       * l'ordre du sitemap. Le curseur est la position dans la liste : une collecte longue se fait
+       * en plusieurs passages, et reprend là où elle s'est arrêtée.
+       */
+      async fetchCatalog(config, cursor, ctx) {
+        if (!config.baseUrl) return { offers: [], method: "public_html", requests: [], nextCursor: null };
+        const base = trimSlash(config.baseUrl);
+        const http = createAdapterHttp(ctx);
+        const index = await loadIndex(base, ctx, http, config.settings);
+        const urls = productLikeUrls(index.urls, base).filter((u) => allowedByRobots(index.robots, ctx.userAgent, u));
+        const start = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);
+        const size = settingInt(config.settings, "catalog_pages", SITEMAP_CATALOG_PAGES, 1, 30);
+        const offers = [];
+        let i = start;
+        for (; i < urls.length && i < start + size && !http.exhausted(); i++) {
+          const url = urls[i];
+          try {
+            const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
+            const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
+            http.countOffers(found.length);
+            offers.push(...found);
+          } catch {
+          }
+        }
+        return { offers, method: "public_html", requests: http.requests, nextCursor: i < urls.length ? String(i) : null };
       },
       async testConnection(config, ctx) {
         const r = await sitemapJsonLdAdapter.search(config, parseQuery2("iphone"), "iphone", ctx);
@@ -15164,7 +15269,7 @@ init_logger();
 init_crypto();
 init_admin();
 init_env();
-import { z as z47 } from "npm:zod@4.6.5";
+import { z as z48 } from "npm:zod@4.6.5";
 
 // src/lib/cron-auth.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
@@ -22666,6 +22771,69 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
   };
 }
 
+// src/services/sourcing/adapter-probe.ts
+init_empty();
+init_query_parser();
+init_registry2();
+init_robots();
+import { z as z35 } from "npm:zod@4.6.5";
+var adapterProbeSchema = z35.object({
+  probes: z35.array(
+    z35.object({
+      key: z35.string().min(1).max(80),
+      adapter: z35.string().min(1).max(40),
+      baseUrl: z35.string().url().max(300),
+      query: z35.string().min(2).max(80).default("iphone"),
+      mode: z35.enum(["search", "catalog"]).default("search"),
+      settings: z35.record(z35.string(), z35.unknown()).default({}),
+      currency: z35.string().length(3).optional()
+    })
+  ).min(1).max(8)
+});
+var PROBE_TIMEOUT_MS = 55e3;
+async function probeOne(p) {
+  const t0 = Date.now();
+  const base = { key: p.key, adapter: p.adapter, mode: p.mode, query: p.query, status: "error", offers: 0, priced: 0, withStockInfo: 0, withQuantity: 0, withEan: 0, currencies: [], nextCursor: false, durationMs: 0, message: null, requests: [], samples: [] };
+  const adapter = getSourceAdapter(p.adapter);
+  if (!adapter) return { ...base, message: `Adaptateur \xAB ${p.adapter} \xBB inconnu.` };
+  if (adapter.access !== "public") return { ...base, status: "refused", message: "Adaptateur \xE0 compte : essai r\xE9serv\xE9 aux comptes r\xE9els du revendeur." };
+  if (p.mode === "catalog" && !(adapter.capabilities.catalog && adapter.fetchCatalog)) return { ...base, status: "refused", message: "Cet adaptateur ne sait pas parcourir un catalogue." };
+  const config = { baseUrl: p.baseUrl.replace(/\/+$/, ""), settings: p.settings, defaultCurrency: p.currency ?? null, defaultTaxType: "unknown", defaultCountry: null };
+  const userAgent = process.env.SOURCING_USER_AGENT || "MonStockBot/0.1";
+  const parsed = parseQuery2(p.query);
+  const urls = (p.mode === "search" ? adapter.urlsForQuery?.(config, parsed, p.query) : adapter.urlsForCatalog?.(config)) ?? [];
+  try {
+    const robots = await checkRobotsForUrls(config.baseUrl, urls.length ? urls : [`${config.baseUrl}/`], userAgent);
+    if (!robots.allowed) return { ...base, status: "robots_disallowed", message: robots.details, durationMs: Date.now() - t0 };
+    const ctx = { userAgent, minDelayMs: Math.max(1500, (robots.crawlDelay ?? 0) * 1e3), timeoutMs: 45e3, disallowedUrls: robots.disallowedUrls };
+    const run = p.mode === "search" ? adapter.search(config, parsed, p.query, ctx).then((r3) => ({ offers: r3.offers, requests: r3.requests, error: r3.error, next: null })) : adapter.fetchCatalog(config, null, ctx).then((r3) => ({ offers: r3.offers, requests: r3.requests, error: null, next: r3.nextCursor }));
+    let timer;
+    const r = await Promise.race([run, new Promise((resolve) => timer = setTimeout(() => resolve("timeout"), PROBE_TIMEOUT_MS))]).finally(() => timer && clearTimeout(timer));
+    if (r === "timeout") return { ...base, status: "timeout", message: `Pas de r\xE9ponse compl\xE8te en ${PROBE_TIMEOUT_MS / 1e3} s.`, durationMs: Date.now() - t0 };
+    const priced = r.offers.filter((o) => o.price !== null && o.price > 0);
+    return {
+      ...base,
+      status: priced.length > 0 ? "ok" : r.error ? "error" : "no_offers",
+      offers: r.offers.length,
+      priced: priced.length,
+      withStockInfo: r.offers.filter((o) => o.stockStatus && o.stockStatus !== "unknown" || o.availableQuantity !== null && o.availableQuantity !== void 0).length,
+      withQuantity: r.offers.filter((o) => o.availableQuantity !== null && o.availableQuantity !== void 0).length,
+      withEan: r.offers.filter((o) => Boolean(o.ean)).length,
+      currencies: [...new Set(priced.map((o) => o.currency ?? "?"))],
+      nextCursor: Boolean(r.next),
+      durationMs: Date.now() - t0,
+      message: r.error,
+      requests: r.requests.slice(0, 6),
+      samples: priced.slice(0, 5).map((o) => ({ title: o.title.slice(0, 120), price: o.price, currency: o.currency ?? null, taxType: o.taxType ?? null, quantity: o.availableQuantity ?? null, stockStatus: o.stockStatus ?? null, url: o.url ?? null, ean: o.ean ?? null }))
+    };
+  } catch (e) {
+    return { ...base, message: e instanceof Error ? e.message.slice(0, 300) : String(e), durationMs: Date.now() - t0 };
+  }
+}
+async function runAdapterProbes(input) {
+  return Promise.all(input.probes.map((p) => probeOne(p)));
+}
+
 // src/services/sourcing/remote-feeds.ts
 init_empty();
 init_admin();
@@ -22678,8 +22846,8 @@ init_http2();
 init_feed_parsers();
 init_feed_ingestion();
 init_catalog_import();
-import { z as z35 } from "npm:zod@4.6.5";
-var urlSchema = z35.string().trim().max(2e3).refine((u) => {
+import { z as z36 } from "npm:zod@4.6.5";
+var urlSchema = z36.string().trim().max(2e3).refine((u) => {
   try {
     const parsed = assertPublicHttpUrl(u);
     return parsed.protocol === "https:";
@@ -22687,23 +22855,23 @@ var urlSchema = z35.string().trim().max(2e3).refine((u) => {
     return false;
   }
 }, "Adresse HTTPS publique requise (aucune adresse locale, interne ni identifiant dans l'URL).");
-var remoteFeedPreviewSchema = z35.object({
+var remoteFeedPreviewSchema = z36.object({
   url: urlSchema,
-  format: z35.enum(["csv", "xml", "json"]),
+  format: z36.enum(["csv", "xml", "json"]),
   auth: feedAuthSchema.default({ kind: "none" }),
   mapping: fieldMappingSchema.optional(),
   defaults: catalogDefaultsSchema.partial({ currency: true }).optional(),
-  rootPath: z35.string().max(200).optional()
+  rootPath: z36.string().max(200).optional()
 });
 var remoteFeedCreateSchema = remoteFeedPreviewSchema.extend({
   mapping: fieldMappingSchema,
   defaults: catalogDefaultsSchema,
-  supplierId: z35.string().uuid().optional(),
-  supplierName: z35.string().trim().min(2).max(160).optional(),
-  mode: z35.enum(["partial", "snapshot"]).default("snapshot"),
-  frequency: z35.enum(["manual", "hourly", "every_6_hours", "daily"]).default("daily"),
+  supplierId: z36.string().uuid().optional(),
+  supplierName: z36.string().trim().min(2).max(160).optional(),
+  mode: z36.enum(["partial", "snapshot"]).default("snapshot"),
+  frequency: z36.enum(["manual", "hourly", "every_6_hours", "daily"]).default("daily"),
   /** l'utilisateur atteste disposer de l'accord du fournisseur pour la lecture automatisée */
-  attest: z35.literal(true, { message: "Confirmez disposer de l'accord du fournisseur pour lire ce flux automatiquement." })
+  attest: z36.literal(true, { message: "Confirmez disposer de l'accord du fournisseur pour lire ce flux automatiquement." })
 }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), { message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix." });
 async function fetchRemoteFeed(url, format, headers, fetchImpl, resolver) {
   const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], headers, fetchImpl, resolver, timeoutMs: 3e4 });
@@ -23048,43 +23216,43 @@ async function enforceAiQuota(ctx, kind, now = /* @__PURE__ */ new Date(), admin
 
 // src/services/ai/product-draft.ts
 init_empty();
-import { z as z37 } from "npm:zod@4.6.5";
+import { z as z38 } from "npm:zod@4.6.5";
 
 // src/features/stock/product-form.ts
-import { z as z36 } from "npm:zod@4.6.5";
+import { z as z37 } from "npm:zod@4.6.5";
 var MAX_VARIANTS = 50;
 var PRODUCT_GRADES = ["A", "B", "C"];
 var PRODUCT_CATEGORIES = ["Smartphone", "Tablette", "Ordinateur", "Montre connect\xE9e", "Console", "Audio", "Accessoire", "Pi\xE8ce d\xE9tach\xE9e"];
 var CONDITION_LABEL = { new: "Neuf", refurbished: "Reconditionn\xE9", used: "Occasion", unknown: "Non pr\xE9cis\xE9" };
 var productFields = {
-  name: z36.string().trim().max(300).optional().or(z36.literal("")),
-  brand: z36.string().trim().max(120).optional().or(z36.literal("")),
-  model: z36.string().trim().max(160).optional().or(z36.literal("")),
-  category: z36.string().trim().max(120).optional().or(z36.literal("")),
-  description: z36.string().trim().max(5e3).optional().or(z36.literal(""))
+  name: z37.string().trim().max(300).optional().or(z37.literal("")),
+  brand: z37.string().trim().max(120).optional().or(z37.literal("")),
+  model: z37.string().trim().max(160).optional().or(z37.literal("")),
+  category: z37.string().trim().max(120).optional().or(z37.literal("")),
+  description: z37.string().trim().max(5e3).optional().or(z37.literal(""))
 };
 function blankToUndefined(v2) {
   if (typeof v2 !== "string") return v2;
   const t = v2.trim().replace(/\s/g, "").replace(",", ".");
   return t === "" ? void 0 : t;
 }
-var moneyInput = z36.preprocess(
+var moneyInput = z37.preprocess(
   blankToUndefined,
-  z36.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
+  z37.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
 );
-var quantityInput = z36.preprocess(
+var quantityInput = z37.preprocess(
   blankToUndefined,
-  z36.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
+  z37.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
 );
-var variantInputSchema = z36.object({
+var variantInputSchema = z37.object({
   ...variantFields,
-  grade: z36.union([z36.enum(PRODUCT_GRADES), z36.literal("")], { error: "Grade A, B ou C." }).optional(),
+  grade: z37.union([z37.enum(PRODUCT_GRADES), z37.literal("")], { error: "Grade A, B ou C." }).optional(),
   ...skuFields,
   cost_price: moneyInput,
   sale_price: moneyInput,
   initial_quantity: quantityInput
 });
-var variantsArraySchema = z36.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
+var variantsArraySchema = z37.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
   for (const [i, message] of duplicateCodes(variants)) ctx.addIssue({ code: "custom", path: [i, "code"], message });
 });
 function duplicateCodes(variants) {
@@ -23099,10 +23267,10 @@ function duplicateCodes(variants) {
   });
   return out;
 }
-var productWithVariantsSchema = z36.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
+var productWithVariantsSchema = z37.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
   if (!productDisplayName(d)) ctx.addIssue({ code: "custom", path: ["name"], message: "Indiquez le nom du produit, ou au moins la marque et le mod\xE8le." });
 });
-var addVariantsSchema = z36.object({ product_id: z36.string().uuid(), variants: variantsArraySchema });
+var addVariantsSchema = z37.object({ product_id: z37.string().uuid(), variants: variantsArraySchema });
 function productDisplayName(d) {
   const name = d.name?.trim();
   if (name) return name;
@@ -23146,25 +23314,25 @@ var PRODUCT_DRAFT_JSON_SCHEMA = {
     notes: { type: "array", items: { type: "string" } }
   }
 };
-var money4 = z37.number().finite().min(0).max(1e6).nullable();
-var draftSchema = z37.object({
-  understood: z37.boolean(),
-  brand: z37.string().max(120).nullable(),
-  model: z37.string().max(160).nullable(),
-  name: z37.string().max(300).nullable(),
-  category: z37.string().max(120).nullable(),
-  variants: z37.array(
-    z37.object({
-      storage: z37.string().max(60).nullable(),
-      color: z37.string().max(60).nullable(),
-      grade: z37.enum(PRODUCT_GRADES).nullable(),
-      condition: z37.enum(CONDITIONS),
+var money4 = z38.number().finite().min(0).max(1e6).nullable();
+var draftSchema = z38.object({
+  understood: z38.boolean(),
+  brand: z38.string().max(120).nullable(),
+  model: z38.string().max(160).nullable(),
+  name: z38.string().max(300).nullable(),
+  category: z38.string().max(120).nullable(),
+  variants: z38.array(
+    z38.object({
+      storage: z38.string().max(60).nullable(),
+      color: z38.string().max(60).nullable(),
+      grade: z38.enum(PRODUCT_GRADES).nullable(),
+      condition: z38.enum(CONDITIONS),
       cost_price: money4,
       sale_price: money4,
-      initial_quantity: z37.number().int().min(0).max(1e6).nullable()
+      initial_quantity: z38.number().int().min(0).max(1e6).nullable()
     })
   ).max(MAX_VARIANTS),
-  notes: z37.array(z37.string().max(300)).max(10)
+  notes: z38.array(z38.string().max(300)).max(10)
 });
 function productDraftSystemPrompt(currency) {
   return [
@@ -23247,18 +23415,18 @@ function parseProductDraft(raw, transcript) {
 init_empty();
 init_errors();
 init_logger();
-import { z as z39 } from "npm:zod@4.6.5";
+import { z as z40 } from "npm:zod@4.6.5";
 
 // src/services/ai/assistant-tools.ts
 init_empty();
-import { z as z38 } from "npm:zod@4.6.5";
+import { z as z39 } from "npm:zod@4.6.5";
 var DAY = 864e5;
 var PAGE = 1e3;
 var MAX_ROWS = 5e3;
 var EXCLUDED_STATUSES = "(cancelled,refunded)";
-var daysSchema = z38.coerce.number().int().min(1).max(730).default(30);
-var limitSchema = (max, def) => z38.coerce.number().int().min(1).max(max).default(def);
-var textQuery = z38.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
+var daysSchema = z39.coerce.number().int().min(1).max(730).default(30);
+var limitSchema = (max, def) => z39.coerce.number().int().min(1).max(max).default(def);
+var textQuery = z39.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
 function since(ctx, days) {
   return new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime() - days * DAY).toISOString();
 }
@@ -23280,11 +23448,11 @@ async function fetchAll(page2) {
   }
   return { rows, truncated: true };
 }
-var salesRankingInput = z38.object({
+var salesRankingInput = z39.object({
   days: daysSchema,
-  by: z38.enum(["units", "revenue"]).default("units"),
+  by: z39.enum(["units", "revenue"]).default("units"),
   limit: limitSchema(25, 10),
-  channel: z38.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
+  channel: z39.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
   query: textQuery
 });
 async function salesRanking(ctx, raw) {
@@ -23340,7 +23508,7 @@ async function salesRanking(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues. revenue = montant des lignes de commande (hors frais de port), par devise."
   };
 }
-var salesSummaryInput = z38.object({ days: daysSchema });
+var salesSummaryInput = z39.object({ days: daysSchema });
 async function salesSummary(ctx, raw) {
   const input = salesSummaryInput.parse(raw);
   const from = since(ctx, input.days * 2).slice(0, 10);
@@ -23370,9 +23538,9 @@ async function salesSummary(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues ; jours sans vente non compt\xE9s dans activeDays."
   };
 }
-var stockInput = z38.object({
+var stockInput = z39.object({
   query: textQuery,
-  filter: z38.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
+  filter: z39.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
   limit: limitSchema(40, 15)
 });
 async function stockSearch(ctx, raw) {
@@ -23413,7 +23581,7 @@ async function stockSearch(ctx, raw) {
     note: "stock_value = quantit\xE9 en stock \xD7 prix d'achat (null si prix d'achat inconnu). unit_margin = prix de vente \u2212 prix d'achat."
   };
 }
-var ordersInput = z38.object({ days: daysSchema, limit: limitSchema(30, 10), status: z38.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
+var ordersInput = z39.object({ days: daysSchema, limit: limitSchema(30, 10), status: z39.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
 async function recentOrders(ctx, raw) {
   const input = ordersInput.parse(raw);
   let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
@@ -23446,11 +23614,11 @@ async function ebayAccount(ctx) {
     recentSyncErrors: errors.data ?? []
   };
 }
-var listingsInput = z38.object({
+var listingsInput = z39.object({
   query: textQuery,
-  status: z38.enum(["active", "ended", "unsold", "unknown"]).optional(),
-  onlyNotLinkedToStock: z38.boolean().default(false),
-  sort: z38.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
+  status: z39.enum(["active", "ended", "unsold", "unknown"]).optional(),
+  onlyNotLinkedToStock: z39.boolean().default(false),
+  sort: z39.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
   limit: limitSchema(30, 10)
 });
 async function listingsSearch(ctx, raw) {
@@ -23551,15 +23719,15 @@ async function runAssistantTool(ctx, name, input) {
     const json2 = JSON.stringify(result);
     return { content: json2.length > MAX_RESULT_CHARS ? `${json2.slice(0, MAX_RESULT_CHARS)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false };
   } catch (e) {
-    if (e instanceof z38.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
+    if (e instanceof z39.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true };
   }
 }
 
 // src/services/ai/assistant.ts
 var log28 = createLogger("AI_ASSISTANT");
-var assistantRequestSchema = z39.object({
-  messages: z39.array(z39.object({ role: z39.enum(["user", "assistant"]), content: z39.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
+var assistantRequestSchema = z40.object({
+  messages: z40.array(z40.object({ role: z40.enum(["user", "assistant"]), content: z40.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
 var MAX_STEPS = 8;
 var ASSISTANT_DEADLINE_MS = 11e4;
@@ -23631,7 +23799,7 @@ init_logger();
 
 // src/services/ai/advisor-tools.ts
 init_empty();
-import { z as z43 } from "npm:zod@4.6.5";
+import { z as z44 } from "npm:zod@4.6.5";
 
 // src/domain/tools/decimal.ts
 var abs = (x) => x < 0n ? -x : x;
@@ -23949,22 +24117,22 @@ async function boxtalQuotes(req, env = process.env, now = /* @__PURE__ */ new Da
 init_empty();
 init_errors2();
 init_http();
-import { z as z40 } from "npm:zod@4.6.5";
+import { z as z41 } from "npm:zod@4.6.5";
 var PACKLINK_BASE_URL = "https://api.packlink.com/v1/";
-var money5 = z40.union([z40.number(), z40.string()]).nullable().optional();
-var serviceSchema = z40.object({
-  id: z40.union([z40.number(), z40.string()]),
-  carrier_name: z40.string().nullable().optional(),
-  name: z40.string().nullable().optional(),
-  currency: z40.string().nullable().optional(),
-  price: z40.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
-  transit_time: z40.string().nullable().optional(),
-  transit_hours: z40.union([z40.number(), z40.string()]).nullable().optional(),
-  dropoff: z40.boolean().nullable().optional(),
-  delivery_to_parcelshop: z40.boolean().nullable().optional(),
-  category: z40.string().nullable().optional(),
-  first_estimated_delivery_date: z40.string().nullable().optional(),
-  customs_required: z40.boolean().nullable().optional()
+var money5 = z41.union([z41.number(), z41.string()]).nullable().optional();
+var serviceSchema = z41.object({
+  id: z41.union([z41.number(), z41.string()]),
+  carrier_name: z41.string().nullable().optional(),
+  name: z41.string().nullable().optional(),
+  currency: z41.string().nullable().optional(),
+  price: z41.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
+  transit_time: z41.string().nullable().optional(),
+  transit_hours: z41.union([z41.number(), z41.string()]).nullable().optional(),
+  dropoff: z41.boolean().nullable().optional(),
+  delivery_to_parcelshop: z41.boolean().nullable().optional(),
+  category: z41.string().nullable().optional(),
+  first_estimated_delivery_date: z41.string().nullable().optional(),
+  customs_required: z41.boolean().nullable().optional()
 }).passthrough();
 function packlinkConfigured(env = process.env) {
   return Boolean(env.PACKLINK_API_KEY && env.PACKLINK_API_KEY.trim().length >= 10);
@@ -24049,27 +24217,27 @@ async function packlinkQuotes(req, env = process.env, now = /* @__PURE__ */ new 
 
 // src/integrations/shipping/sendcloud.ts
 init_empty();
-import { z as z41 } from "npm:zod@4.6.5";
+import { z as z42 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var SENDCLOUD_SHIPPING_OPTIONS_URL = "https://panel.sendcloud.sc/api/v3/shipping-options";
-var money6 = z41.object({ value: z41.union([z41.string(), z41.number()]).nullable().optional(), currency: z41.string().nullable().optional() }).passthrough();
-var optionSchema = z41.object({
-  code: z41.string().min(1),
-  name: z41.string().nullable().optional(),
-  carrier: z41.object({ code: z41.string().nullable().optional(), name: z41.string().nullable().optional() }).passthrough().nullable().optional(),
-  functionalities: z41.object({ tracked: z41.boolean().nullable().optional(), first_mile: z41.string().nullable().optional(), last_mile: z41.string().nullable().optional() }).passthrough().nullable().optional(),
-  requirements: z41.object({ fields: z41.array(z41.string()).nullable().optional(), is_service_point_required: z41.boolean().nullable().optional() }).passthrough().nullable().optional(),
-  quotes: z41.array(
-    z41.object({
-      price: z41.object({
+var money6 = z42.object({ value: z42.union([z42.string(), z42.number()]).nullable().optional(), currency: z42.string().nullable().optional() }).passthrough();
+var optionSchema = z42.object({
+  code: z42.string().min(1),
+  name: z42.string().nullable().optional(),
+  carrier: z42.object({ code: z42.string().nullable().optional(), name: z42.string().nullable().optional() }).passthrough().nullable().optional(),
+  functionalities: z42.object({ tracked: z42.boolean().nullable().optional(), first_mile: z42.string().nullable().optional(), last_mile: z42.string().nullable().optional() }).passthrough().nullable().optional(),
+  requirements: z42.object({ fields: z42.array(z42.string()).nullable().optional(), is_service_point_required: z42.boolean().nullable().optional() }).passthrough().nullable().optional(),
+  quotes: z42.array(
+    z42.object({
+      price: z42.object({
         total: money6.nullable().optional(),
-        breakdown: z41.array(z41.object({ type: z41.string().nullable().optional(), label: z41.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
+        breakdown: z42.array(z42.object({ type: z42.string().nullable().optional(), label: z42.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
       }).passthrough().nullable().optional(),
-      lead_time: z41.number().nullable().optional()
+      lead_time: z42.number().nullable().optional()
     }).passthrough()
   ).nullable().optional(),
-  quote_error: z41.unknown().optional()
+  quote_error: z42.unknown().optional()
 }).passthrough();
 var PICKUP_LAST_MILE = /* @__PURE__ */ new Set(["service_point", "locker", "locker_or_service_point"]);
 var REQUIREMENT_LABEL = {
@@ -24241,7 +24409,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
 
 // src/services/ai/advisor-actions.ts
 init_empty();
-import { z as z42 } from "npm:zod@4.6.5";
+import { z as z43 } from "npm:zod@4.6.5";
 
 // src/features/stock/movement-service.ts
 init_empty();
@@ -24341,8 +24509,8 @@ async function prepareAdvisorAction(ctx, input) {
   if (error || !data) throw new Error(error?.message ?? "pr\xE9paration impossible");
   return actionToDTO(data);
 }
-var adjustPayload = z42.object({ change: z42.number().int(), reason: z42.enum(["receipt", "adjustment", "return", "correction"]), note: z42.string().nullable(), expectedAvailable: z42.number().int(), code: z42.string() });
-var pricePayload = z42.object({ newPrice: z42.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z42.number().nullable(), code: z42.string() });
+var adjustPayload = z43.object({ change: z43.number().int(), reason: z43.enum(["receipt", "adjustment", "return", "correction"]), note: z43.string().nullable(), expectedAvailable: z43.number().int(), code: z43.string() });
+var pricePayload = z43.object({ newPrice: z43.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z43.number().nullable(), code: z43.string() });
 async function finish(admin, id, status, patch, now) {
   const { data, error } = await admin.from("advisor_actions").update({ status, decided_at: now.toISOString(), result: patch.result ?? null, error: patch.error?.slice(0, 400) ?? null }).eq("id", id).select(ACTION_COLUMNS).single();
   if (error || !data) throw new AppError("INTERNAL", "R\xE9sultat de l'action non enregistr\xE9 : v\xE9rifiez l'\xE9tat dans l'application.");
@@ -24629,8 +24797,8 @@ function periodRange(period, now) {
 // src/services/ai/advisor-tools.ts
 var obj2 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
 var periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "P\xE9riode (calendrier de Paris). \xAB this_week \xBB = depuis lundi, \xAB this_month \xBB = depuis le 1er. D\xE9faut : 30d." };
-var periodSchema = z43.enum(ADVISOR_PERIODS).default("30d");
-var skuRef = z43.string().trim().min(1).max(64);
+var periodSchema = z44.enum(ADVISOR_PERIODS).default("30d");
+var skuRef = z44.string().trim().min(1).max(64);
 function card(kind, title, rows, extra = {}) {
   return { kind, title, subtitle: null, rows: rows.slice(0, 12), warnings: [], action: null, text: null, ...extra };
 }
@@ -24680,7 +24848,7 @@ async function cancelledInPeriod(ctx, from, to) {
   }
   return out;
 }
-var reportInput = z43.object({ period: periodSchema });
+var reportInput = z44.object({ period: periodSchema });
 async function businessReport(ctx, raw) {
   const { period } = reportInput.parse(raw);
   const range = periodRange(period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -24707,7 +24875,7 @@ async function businessReport(ctx, raw) {
   if (cancels.cancelled || cancels.refunded) rows.push(row("Annul\xE9es / rembours\xE9es", `${cancels.cancelled} / ${cancels.refunded}`, `rembours\xE9 : ${money7(cancels.refundedCents, c)}`, "warning"));
   return { result, cards: [card("kpis", "Bilan des ventes", rows, { subtitle: range.label, warnings: p.missing.slice(0, 4) })] };
 }
-var profitInput = z43.object({ period: periodSchema, sort: z43.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z43.coerce.number().int().min(1).max(20).default(8) });
+var profitInput = z44.object({ period: periodSchema, sort: z44.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z44.coerce.number().int().min(1).max(20).default(8) });
 async function productProfitability(ctx, raw) {
   const input = profitInput.parse(raw);
   const range = periodRange(input.period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -24730,7 +24898,7 @@ async function productProfitability(ctx, raw) {
   );
   return { result, cards: [card("list", "Rentabilit\xE9 par produit", rows, { subtitle: range.label, warnings: unknown ? [`${unknown} produit(s) sans b\xE9n\xE9fice calculable (co\xFBt d'achat ou frais manquants).`] : [] })] };
 }
-var stockRiskInput = z43.object({ kind: z43.enum(["rupture", "dormant", "all"]).default("all"), limit: z43.coerce.number().int().min(1).max(20).default(8) });
+var stockRiskInput = z44.object({ kind: z44.enum(["rupture", "dormant", "all"]).default("all"), limit: z44.coerce.number().int().min(1).max(20).default(8) });
 async function stockRisks(ctx, raw) {
   const input = stockRiskInput.parse(raw);
   const bundle = await loadStockViews(ctx.org);
@@ -24757,7 +24925,7 @@ async function stockRisks(ctx, raw) {
   return { result, cards };
 }
 async function restockPlan(ctx, raw) {
-  const { limit } = z43.object({ limit: z43.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
+  const { limit } = z44.object({ limit: z44.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
   const drafts = (await computeRecommendations(ctx.org)).filter((d) => d.result.needed).slice(0, limit);
   const result = {
     proposals: drafts.map((d) => ({ product: d.label, sku: d.code, currentStock: d.currentStock, onOrder: d.onOrder, recommendedQuantity: d.result.recommendedQuantity, explanation: d.result.explanation, supplier: d.supplier?.name ?? null, unitPrice: d.unitPrice, currency: d.currency, warnings: d.result.warnings })),
@@ -24769,7 +24937,7 @@ async function restockPlan(ctx, raw) {
   };
 }
 async function orderLookup(ctx, raw) {
-  const { orderNumber } = z43.object({ orderNumber: z43.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
+  const { orderNumber } = z44.object({ orderNumber: z44.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
   const { data, error } = await ctx.supabase.from("orders").select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).or(`order_number.eq.${orderNumber},external_order_id.eq.${orderNumber}`).limit(2);
   if (error) throw new Error(error.message);
   const order = data?.[0];
@@ -24787,7 +24955,7 @@ async function orderLookup(ctx, raw) {
   return { result, cards: [card("list", `Commande ${order.order_number ?? orderNumber}`, rows, { subtitle: `${order.provider} \u2014 ${order.placed_at.slice(0, 10).split("-").reverse().join("/")}` })] };
 }
 async function parcelsOverview(ctx, raw) {
-  const { filter } = z43.object({ filter: z43.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
+  const { filter } = z44.object({ filter: z44.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
   let q = ctx.supabase.from("tracked_parcels").select("tracking_number, label, carrier_code, status, estimated_delivery, delivered_at, last_checked_at, last_error").eq("organization_id", ctx.organizationId).is("archived_at", null);
   if (filter === "problems") q = q.in("status", ["exception", "failed_attempt", "returned", "expired", "not_found"]);
   if (filter === "in_progress") q = q.not("status", "in", "(delivered,returned,expired)");
@@ -24799,15 +24967,15 @@ async function parcelsOverview(ctx, raw) {
     cards: [card("list", "Colis suivis", list.slice(0, 10).map((p) => row(p.label || p.tracking_number, p.status, p.estimated_delivery ? `estim\xE9e : ${p.estimated_delivery}` : p.last_checked_at ? null : "jamais v\xE9rifi\xE9", ["exception", "failed_attempt", "returned", "not_found"].includes(p.status) ? "danger" : p.status === "delivered" ? "success" : "neutral")), { subtitle: `${list.length} colis` })]
   };
 }
-var shippingInput = z43.object({
-  weightKg: z43.coerce.number().positive().max(70),
-  lengthCm: z43.coerce.number().positive().max(300),
-  widthCm: z43.coerce.number().positive().max(300),
-  heightCm: z43.coerce.number().positive().max(300),
-  fromPostcode: z43.string().trim().min(2).max(12),
-  toPostcode: z43.string().trim().min(2).max(12),
-  fromCountry: z43.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
-  toCountry: z43.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
+var shippingInput = z44.object({
+  weightKg: z44.coerce.number().positive().max(70),
+  lengthCm: z44.coerce.number().positive().max(300),
+  widthCm: z44.coerce.number().positive().max(300),
+  heightCm: z44.coerce.number().positive().max(300),
+  fromPostcode: z44.string().trim().min(2).max(12),
+  toPostcode: z44.string().trim().min(2).max(12),
+  fromCountry: z44.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
+  toCountry: z44.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
 });
 async function shippingQuotesTool(ctx, raw) {
   const input = shippingInput.parse(raw);
@@ -24874,11 +25042,11 @@ async function findSku(ctx, ref) {
 function requireWriter(ctx) {
   return ctx.org.role === "viewer" ? "Votre r\xF4le (lecture seule) ne permet pas de pr\xE9parer une modification. Demandez \xE0 un administrateur." : null;
 }
-var adjustInput = z43.object({
+var adjustInput = z44.object({
   sku: skuRef,
-  change: z43.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
-  reason: z43.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
-  note: z43.string().trim().max(200).optional()
+  change: z44.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
+  reason: z44.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
+  note: z44.string().trim().max(200).optional()
 });
 async function prepareStockAdjustment(ctx, raw) {
   const denied = requireWriter(ctx);
@@ -24893,7 +25061,7 @@ async function prepareStockAdjustment(ctx, raw) {
   const action = await prepareAdvisorAction(ctx, { kind: "adjust_stock", skuId: sku.sku_id, summary, amount: null, currency: null, payload: { change: input.change, reason: input.reason, note: input.note ?? null, expectedAvailable: before, code: sku.code } });
   return actionOutput(action, "Ajustement de stock \xE0 confirmer");
 }
-var priceInput = z43.object({ sku: skuRef, newPrice: z43.union([z43.string(), z43.number()]).transform((v2) => String(v2)) });
+var priceInput = z44.object({ sku: skuRef, newPrice: z44.union([z44.string(), z44.number()]).transform((v2) => String(v2)) });
 async function preparePriceChange(ctx, raw) {
   const denied = requireWriter(ctx);
   if (denied) return { result: { prepared: false, reason: denied }, cards: [] };
@@ -24918,7 +25086,7 @@ function actionOutput(action, title) {
     cards: [card("action", title, [], { action, subtitle: "Rien n'est modifi\xE9 sans votre confirmation." })]
   };
 }
-var draftInput = z43.object({ orderNumber: z43.string().trim().max(64).optional(), subject: z43.string().trim().min(1).max(120), text: z43.string().trim().min(1).max(1500) });
+var draftInput = z44.object({ orderNumber: z44.string().trim().max(64).optional(), subject: z44.string().trim().min(1).max(120), text: z44.string().trim().min(1).max(1500) });
 async function draftBuyerMessage(ctx, raw) {
   const input = draftInput.parse(raw);
   return {
@@ -25067,7 +25235,7 @@ async function runAdvisorTool(ctx, name, input) {
     const json2 = JSON.stringify(out.result);
     return { content: json2.length > MAX_RESULT_CHARS2 ? `${json2.slice(0, MAX_RESULT_CHARS2)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false, cards: out.cards };
   } catch (e) {
-    if (e instanceof z43.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
+    if (e instanceof z44.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true, cards: [] };
   }
 }
@@ -25552,21 +25720,21 @@ init_errors2();
 
 // src/integrations/tracking/laposte.ts
 init_empty();
-import { z as z44 } from "npm:zod@4.6.5";
+import { z as z45 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var LAPOSTE_SUIVI_URL = "https://api.laposte.fr/suivi/v2/idships/";
-var responseSchema = z44.object({
-  returnCode: z44.number().optional(),
-  returnMessage: z44.string().optional(),
-  shipment: z44.object({
-    idShip: z44.string().optional(),
-    product: z44.string().nullable().optional(),
-    isFinal: z44.boolean().optional(),
-    estimDate: z44.string().nullable().optional(),
-    deliveryDate: z44.string().nullable().optional(),
-    url: z44.string().nullable().optional(),
-    event: z44.array(z44.object({ code: z44.string().nullable().optional(), label: z44.string().nullable().optional(), date: z44.string().nullable().optional(), order: z44.number().nullable().optional() }).passthrough()).optional()
+var responseSchema = z45.object({
+  returnCode: z45.number().optional(),
+  returnMessage: z45.string().optional(),
+  shipment: z45.object({
+    idShip: z45.string().optional(),
+    product: z45.string().nullable().optional(),
+    isFinal: z45.boolean().optional(),
+    estimDate: z45.string().nullable().optional(),
+    deliveryDate: z45.string().nullable().optional(),
+    url: z45.string().nullable().optional(),
+    event: z45.array(z45.object({ code: z45.string().nullable().optional(), label: z45.string().nullable().optional(), date: z45.string().nullable().optional(), order: z45.number().nullable().optional() }).passthrough()).optional()
   }).passthrough().optional()
 }).passthrough();
 function laPosteConfigured(env = process.env) {
@@ -25610,29 +25778,29 @@ async function laPosteTrack(trackingNumber, env = process.env) {
 
 // src/integrations/tracking/ship24.ts
 init_empty();
-import { z as z45 } from "npm:zod@4.6.5";
+import { z as z46 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var SHIP24_TRACK_URL = "https://api.ship24.com/public/v1/trackers/track";
-var eventSchema = z45.object({
-  status: z45.string().nullable().optional(),
-  occurrenceDatetime: z45.string().nullable().optional(),
-  datetime: z45.string().nullable().optional(),
-  location: z45.string().nullable().optional(),
-  courierCode: z45.string().nullable().optional(),
-  statusMilestone: z45.string().nullable().optional(),
-  statusCode: z45.string().nullable().optional()
+var eventSchema = z46.object({
+  status: z46.string().nullable().optional(),
+  occurrenceDatetime: z46.string().nullable().optional(),
+  datetime: z46.string().nullable().optional(),
+  location: z46.string().nullable().optional(),
+  courierCode: z46.string().nullable().optional(),
+  statusMilestone: z46.string().nullable().optional(),
+  statusCode: z46.string().nullable().optional()
 }).passthrough();
-var trackingSchema = z45.object({
-  shipment: z45.object({
-    statusMilestone: z45.string().nullable().optional(),
-    statusCode: z45.string().nullable().optional(),
-    delivery: z45.object({ estimatedDeliveryDate: z45.string().nullable().optional(), courierEstimatedDeliveryDate: z45.object({ from: z45.string().nullable().optional(), to: z45.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
+var trackingSchema = z46.object({
+  shipment: z46.object({
+    statusMilestone: z46.string().nullable().optional(),
+    statusCode: z46.string().nullable().optional(),
+    delivery: z46.object({ estimatedDeliveryDate: z46.string().nullable().optional(), courierEstimatedDeliveryDate: z46.object({ from: z46.string().nullable().optional(), to: z46.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
   }).passthrough().nullable().optional(),
-  events: z45.array(eventSchema).optional(),
-  statistics: z45.object({ timestamps: z45.object({ deliveredDatetime: z45.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
+  events: z46.array(eventSchema).optional(),
+  statistics: z46.object({ timestamps: z46.object({ deliveredDatetime: z46.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
 }).passthrough();
-var responseSchema2 = z45.object({ data: z45.object({ trackings: z45.array(trackingSchema) }).passthrough() }).passthrough();
+var responseSchema2 = z46.object({ data: z46.object({ trackings: z46.array(trackingSchema) }).passthrough() }).passthrough();
 function ship24Configured(env = process.env) {
   return Boolean(env.SHIP24_API_KEY && env.SHIP24_API_KEY.trim().length >= 10);
 }
@@ -25673,20 +25841,20 @@ async function ship24Track(trackingNumber, opts = {}, env = process.env) {
 
 // src/integrations/tracking/dhl.ts
 init_empty();
-import { z as z46 } from "npm:zod@4.6.5";
+import { z as z47 } from "npm:zod@4.6.5";
 init_errors2();
 init_http();
 var DHL_TRACK_URL = "https://api-eu.dhl.com/track/shipments";
-var place = z46.object({ address: z46.object({ addressLocality: z46.string().nullable().optional(), countryCode: z46.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
-var event = z46.object({ timestamp: z46.string().nullable().optional(), statusCode: z46.string().nullable().optional(), status: z46.string().nullable().optional(), description: z46.string().nullable().optional(), location: place }).passthrough();
-var responseSchema3 = z46.object({
-  shipments: z46.array(
-    z46.object({
-      id: z46.string().optional(),
-      service: z46.string().nullable().optional(),
+var place = z47.object({ address: z47.object({ addressLocality: z47.string().nullable().optional(), countryCode: z47.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
+var event = z47.object({ timestamp: z47.string().nullable().optional(), statusCode: z47.string().nullable().optional(), status: z47.string().nullable().optional(), description: z47.string().nullable().optional(), location: place }).passthrough();
+var responseSchema3 = z47.object({
+  shipments: z47.array(
+    z47.object({
+      id: z47.string().optional(),
+      service: z47.string().nullable().optional(),
       status: event.nullable().optional(),
-      estimatedTimeOfDelivery: z46.string().nullable().optional(),
-      events: z46.array(event).optional()
+      estimatedTimeOfDelivery: z47.string().nullable().optional(),
+      events: z47.array(event).optional()
     }).passthrough()
   ).optional()
 }).passthrough();
@@ -25862,12 +26030,12 @@ var CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z47.object({ code: z47.string().min(1).max(2048), state: z47.string().min(16).max(200) });
-var syncSchema = z47.object({ connectionId: uuidParam, scope: z47.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z47.object({ hosts: z47.array(z47.string().min(3).max(120)).min(1).max(25), query: z47.string().min(2).max(80).optional() });
+var ebayFinalizeSchema = z48.object({ code: z48.string().min(1).max(2048), state: z48.string().min(16).max(200) });
+var syncSchema = z48.object({ connectionId: uuidParam, scope: z48.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z48.object({ hosts: z48.array(z48.string().min(3).max(120)).min(1).max(25), query: z48.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z47.object({ text: z47.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z47.object({ key: z47.string().min(1).max(80), attest: z47.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z48.object({ text: z48.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z48.object({ key: z48.string().min(1).max(80), attest: z48.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -26006,13 +26174,13 @@ async function route(request) {
       if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z47.object({ query: z47.string().min(2).max(120), source: z47.string().min(1).max(80) }));
+          const body = await parseBody(request, z48.object({ query: z48.string().min(2).max(120), source: z48.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request, z47.object({ keys: z47.array(z47.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request, z48.object({ keys: z48.array(z48.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
@@ -26021,14 +26189,15 @@ async function route(request) {
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z47.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z48.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z47.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request, z48.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
+      if (m === "POST" && path === "/cron/adapter-probe") return handle(async () => runAdapterProbes(await parseBody(request, adapterProbeSchema)));
       if (m === "POST" && path === "/cron/scout") {
         return handle(async () => {
           const body = await parseBody(request, scoutSchema);
@@ -26036,7 +26205,7 @@ async function route(request) {
         });
       }
     }
-    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request), parseQuery(request, z47.object({ q: z47.string().trim().min(1).max(120) })).q));
+    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request), parseQuery(request, z48.object({ q: z48.string().trim().min(1).max(120) })).q));
     if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request), parseQuery(request, sourcingSearchQuerySchema)));
     if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request)));
     if (m === "GET" && path === "/sourcing/library") return handle(async () => sourceLibrary(await requireMobileOrgContext(request)));
@@ -26050,7 +26219,7 @@ async function route(request) {
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery(request, z47.object({ sort: z47.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const q = parseQuery(request, z48.object({ sort: z48.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
       });
     }
@@ -26075,7 +26244,7 @@ async function route(request) {
     if (m === "GET" && path === "/radar/offer") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery(request, z47.object({ id: uuidParam, quantity: z47.coerce.number().int().min(1).max(1e5).optional() }));
+        const q = parseQuery(request, z48.object({ id: uuidParam, quantity: z48.coerce.number().int().min(1).max(1e5).optional() }));
         return buildRadarOffer(ctx, q.id, q.quantity ? [q.quantity] : []);
       });
     }
@@ -26104,7 +26273,7 @@ async function route(request) {
     if (m === "POST" && path === "/sourcing/sources/sync") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return syncSourceNow(ctx, (await parseBody(request, z47.object({ sourceId: uuidParam }))).sourceId);
+        return syncSourceNow(ctx, (await parseBody(request, z48.object({ sourceId: uuidParam }))).sourceId);
       });
     }
     if (m === "POST" && path === "/sourcing/sources/schedule") {
@@ -26128,14 +26297,14 @@ async function route(request) {
     if (m === "GET" && path === "/sourcing/imports") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery(request, z47.object({ supplierId: uuidParam.optional(), limit: z47.coerce.number().int().min(1).max(200).optional() }));
+        const q = parseQuery(request, z48.object({ supplierId: uuidParam.optional(), limit: z48.coerce.number().int().min(1).max(200).optional() }));
         return listImportJobs(ctx, { supplierId: q.supplierId ?? null, limit: q.limit ?? 50 });
       });
     }
     if (m === "GET" && path === "/sourcing/imports/detail") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        return getImportJob(ctx, parseQuery(request, z47.object({ id: uuidParam })).id);
+        return getImportJob(ctx, parseQuery(request, z48.object({ id: uuidParam })).id);
       });
     }
     if (m === "POST" && path === "/sourcing/import") {
@@ -26225,7 +26394,7 @@ async function route(request) {
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return prefillListing(ctx, parseQuery(request, z47.object({ skuId: uuidParam })).skuId);
+        return prefillListing(ctx, parseQuery(request, z48.object({ skuId: uuidParam })).skuId);
       });
     }
     if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));

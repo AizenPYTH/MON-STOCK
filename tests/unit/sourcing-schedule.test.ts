@@ -96,8 +96,14 @@ describe("santé des sources : échecs, alerte, rétablissement", () => {
 });
 
 describe("synchronisation d'une source", () => {
-  it("source interrogée en direct (sitemap-jsonld sans URL, cas réel de production) : jamais planifiée, jamais comptée en échec", async () => {
-    const live = source({ id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "Brico-phone — recherche en direct", config: { adapter: "sitemap-jsonld", library_key: "brico-phone" }, sync_frequency: "daily", next_run_at: "2026-10-13T09:00:00Z" });
+  it("plan du site + JSON-LD : catalogue parcourable, donc collecte planifiable (cas réel de production Brico-phone)", async () => {
+    db.tables.supplier_sources = [source({ config: { adapter: "sitemap-jsonld", library_key: "brico-phone" }, sync_frequency: "manual" })];
+    const [dto] = await listSourcesForOrg(ctx(), db.client);
+    expect(dto).toMatchObject({ kind: "public_web", schedulable: true });
+  });
+
+  it("source interrogée en direct (adaptateur sans catalogue, ex. eBay) : jamais planifiée, jamais comptée en échec", async () => {
+    const live = source({ id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "eBay — recherche en direct", config: { adapter: "ebay-browse", library_key: "ebay-fr" }, sync_frequency: "daily", next_run_at: "2026-10-13T09:00:00Z" });
     db.tables.supplier_sources = [live];
     expect(await runScheduledSources(NOW, db.client)).toEqual([]);
     expect(crawl).not.toHaveBeenCalled();
