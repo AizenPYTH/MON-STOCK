@@ -5062,7 +5062,7 @@ var init_sync_runs = __esm({
     init_logger();
     log5 = createLogger("SYNC_RUNS");
     MAX_SYNC_ERRORS_RECORDED = 200;
-    RUNNING_STALE_MINUTES = 30;
+    RUNNING_STALE_MINUTES = 5;
     FREQUENCY_MS = {
       manual: null,
       hourly: 36e5,
@@ -16035,7 +16035,7 @@ init_sync_runs();
 var WEEKLY_MAX_ATTEMPTS = 3;
 var WEEKLY_RETRY_AFTER_MS = 60 * 6e4;
 var WEEK_MS = 7 * 24 * 36e5;
-var EMPTY_CURSOR = { cursor: null, pages: 0, offers: 0, stored: 0, rejected: 0, requestErrors: 0, consecutiveFailures: 0, incomplete: null };
+var EMPTY_CURSOR = { cursor: null, pages: 0, offers: 0, stored: 0, rejected: 0, requestErrors: 0, consecutiveFailures: 0, incomplete: null, pageOffset: 0 };
 function parseCursor(raw) {
   const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const n = (v2) => typeof v2 === "number" && Number.isFinite(v2) && v2 >= 0 ? Math.floor(v2) : 0;
@@ -16047,7 +16047,8 @@ function parseCursor(raw) {
     rejected: n(o.rejected),
     requestErrors: n(o.requestErrors),
     consecutiveFailures: n(o.consecutiveFailures),
-    incomplete: typeof o.incomplete === "string" ? o.incomplete : null
+    incomplete: typeof o.incomplete === "string" ? o.incomplete : null,
+    pageOffset: n(o.pageOffset)
   };
 }
 function parseStats(raw) {
@@ -16095,10 +16096,12 @@ function endOfCatalogResult(c, previousSeen = null) {
 // src/services/sourcing/weekly-collection.ts
 var log9 = createLogger("WEEKLY_COLLECTION");
 var WEEKLY_PASS_BUDGET_MS = 1e5;
-var WEEKLY_MAX_SOURCES_PER_PASS = 3;
+var WEEKLY_MAX_SOURCES_PER_PASS = 5;
 var WEEKLY_MAX_SITEMAP_SOURCES_PER_PASS = 2;
 var PAGE_MARGIN_MS = 25e3;
 var ABORT_AFTER_FAILURES = 3;
+var STORE_CONCURRENCY = 4;
+var STORE_MARGIN_MS = 8e3;
 var weeklyRunSchema = z13.object({
   /** démarrer tout de suite, sans attendre le créneau (collecte demandée explicitement) */
   force: z13.boolean().optional(),
@@ -16217,32 +16220,56 @@ async function collectionPass(admin, source, decision, deadline, deps = {}) {
       }
       const retrievedAt = nowFn().toISOString();
       const requestUrl = page2.requests.find((q) => q.offers > 0)?.url ?? page2.requests[0]?.url ?? null;
+      const unique = [...new Map(page2.offers.map((o) => [o.externalOfferId, o])).values()];
+      const todo = unique.slice(cursor.pageOffset);
       let stored = 0;
       let rejected = 0;
-      for (const o of page2.offers) {
-        try {
-          const r = await storeOffer({ ...storageCtx, now: nowFn() }, withProvenance(o, { adapterKey: adapter.key, method: page2.method, retrievedAt, requestUrl, sourceUrl: o.url ?? null }));
-          if (r.outcome === "stored") stored++;
-          else rejected++;
-        } catch (e) {
-          rejected++;
-          errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: o.externalOfferId });
+      let done = 0;
+      let storeFailures = 0;
+      let outOfTime = false;
+      for (let i = 0; i < todo.length; i += STORE_CONCURRENCY) {
+        if (i > 0 && clock() > deadline - STORE_MARGIN_MS) {
+          outOfTime = true;
+          break;
         }
+        const batch = todo.slice(i, i + STORE_CONCURRENCY);
+        const results = await Promise.all(
+          batch.map(async (o) => {
+            try {
+              const r = await storeOffer({ ...storageCtx, now: nowFn() }, withProvenance(o, { adapterKey: adapter.key, method: page2.method, retrievedAt, requestUrl, sourceUrl: o.url ?? null }));
+              return r.outcome;
+            } catch (e) {
+              errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: o.externalOfferId });
+              return "failed";
+            }
+          })
+        );
+        for (const r of results) {
+          if (r === "stored") stored++;
+          else rejected++;
+          if (r === "failed") storeFailures++;
+        }
+        done += batch.length;
+      }
+      base.storedThisPass += stored;
+      if (outOfTime) {
+        cursor = { ...cursor, offers: cursor.offers + done, stored: cursor.stored + stored, rejected: cursor.rejected + rejected, requestErrors: cursor.requestErrors + storeFailures, pageOffset: cursor.pageOffset + done, consecutiveFailures: 0 };
+        break;
       }
       const failedRequests = page2.requests.filter((q) => q.error);
       for (const q of failedRequests.slice(0, 20)) errors.push({ code: "PAGE_FAILED", message: q.error ?? "erreur", entityType: "page", entityRef: q.url });
       cursor = {
         cursor: page2.nextCursor,
         pages: cursor.pages + 1,
-        offers: cursor.offers + page2.offers.length,
+        offers: cursor.offers + done,
         stored: cursor.stored + stored,
         rejected: cursor.rejected + rejected,
-        requestErrors: cursor.requestErrors + failedRequests.length,
+        requestErrors: cursor.requestErrors + failedRequests.length + storeFailures,
         consecutiveFailures: 0,
-        incomplete: cursor.incomplete ?? page2.incomplete ?? null
+        incomplete: cursor.incomplete ?? page2.incomplete ?? null,
+        pageOffset: 0
       };
       base.pagesThisPass++;
-      base.storedThisPass += stored;
       if (!page2.nextCursor) {
         finished = true;
         break;
@@ -23375,6 +23402,15 @@ function groupBySupplier(rows, perSupplier = SIMPLE_SEARCH_PER_SUPPLIER) {
   });
   return out.sort((a, b) => key2(a.offers[0]) - key2(b.offers[0]) || a.supplierName.localeCompare(b.supplierName));
 }
+function ilikePattern(token) {
+  return `%${token.replace(/[^a-z0-9+]/g, "").replace(/[aeiouyc]/g, "_")}%`;
+}
+var SIMPLE_SEARCH_MAX_OFFERS = 400;
+function byPrice(rows, max = SIMPLE_SEARCH_MAX_OFFERS) {
+  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
+  const key2 = (o) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
+  return all.sort((a, b) => key2(a) - key2(b) || a.title.localeCompare(b.title)).slice(0, max);
+}
 async function withBudget(p, ms) {
   let timer;
   try {
@@ -23400,14 +23436,18 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
     partial = true;
     log26.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
   }
-  const { data, error } = await ctx.supabase.from("sourcing_offers").select("id, title_original, original_price, original_currency, normalized_price, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, supplier:suppliers(name, country)").eq("organization_id", ctx.organization.id).eq("status", "active").order("last_seen_at", { ascending: false }).limit(SCAN_LIMIT);
+  let offersQuery = ctx.supabase.from("sourcing_offers").select("id, title_original, original_price, original_currency, normalized_price, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, supplier:suppliers(name, country)").eq("organization_id", ctx.organization.id).eq("status", "active");
+  for (const tok of tokens) offersQuery = offersQuery.ilike("title_original", ilikePattern(tok));
+  const { data, error } = await offersQuery.order("normalized_price", { ascending: true, nullsFirst: false }).limit(SCAN_LIMIT);
   if (error) throw fromPostgrestError(error);
   const rows = (data ?? []).filter((r) => r.title_original && matchesQuery2(r.title_original, tokens));
   const suppliers = groupBySupplier(rows);
+  const offers = byPrice(rows);
   return {
     query,
     currency: ctx.organization.default_currency,
     total: rows.length,
+    offers,
     suppliers,
     checked: (summary?.sources ?? []).map((s) => ({ supplierName: s.supplierName, ok: s.status === "ok" || s.status === "cached", found: s.found, message: s.status === "ok" || s.status === "cached" ? null : s.message })),
     partial,
@@ -24609,10 +24649,10 @@ function sortOptions(options, sort) {
   const speed = (o) => o.transitDaysMax ?? o.transitDaysMin ?? Number.POSITIVE_INFINITY;
   return [...options].sort((a, b) => {
     if (a.currency !== b.currency && sort === "price") return a.currency.localeCompare(b.currency);
-    const byPrice = cmp(a.price, b.price);
+    const byPrice2 = cmp(a.price, b.price);
     const bySpeed = speed(a) - speed(b);
-    if (sort === "price") return byPrice !== 0 ? byPrice : bySpeed;
-    return bySpeed !== 0 ? bySpeed : byPrice;
+    if (sort === "price") return byPrice2 !== 0 ? byPrice2 : bySpeed;
+    return bySpeed !== 0 ? bySpeed : byPrice2;
   });
 }
 function compareManualCards(cards, parcel, sort = "price") {

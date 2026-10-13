@@ -19,7 +19,7 @@ import type { SyncFrequency } from "@/domain/sourcing/schedule";
  * Collecte hebdomadaire des catalogues publics, PAR TRANCHES avec reprise.
  *
  * Le cron appelle `runWeeklyCollection` toutes les 15 min. Chaque passage :
- * - choisit au plus 3 sources dues (collecte en cours d'abord, puis créneaux atteints), dont au
+ * - choisit au plus 5 sources dues (collecte en cours d'abord, puis créneaux atteints), dont au
  *   plus 2 lues par plan du site (mémoire bornée du serveur) ;
  * - pour chacune, pose le verrou de synchronisation (index unique « un run en cours par source » :
  *   jamais deux passages simultanés sur la même source, même si deux crons se chevauchent) ;
@@ -36,7 +36,7 @@ import type { SyncFrequency } from "@/domain/sourcing/schedule";
 const log = createLogger("WEEKLY_COLLECTION");
 
 export const WEEKLY_PASS_BUDGET_MS = 100_000;
-export const WEEKLY_MAX_SOURCES_PER_PASS = 3;
+export const WEEKLY_MAX_SOURCES_PER_PASS = 5;
 export const WEEKLY_MAX_SITEMAP_SOURCES_PER_PASS = 2;
 /** marge gardée avant la fin du budget pour finir proprement (une page de catalogue ≈ 20 s au plus) */
 const PAGE_MARGIN_MS = 25_000;

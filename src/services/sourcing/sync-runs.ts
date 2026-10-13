@@ -26,7 +26,8 @@ export const MAX_SYNC_ERRORS_RECORDED = 200;
 
 /** Ouvre une ligne sync_runs (écriture serveur uniquement : la RLS bloque les clients utilisateurs). */
 /** Un run « running » plus ancien que ce délai est considéré interrompu (fonction tuée, timeout). */
-export const RUNNING_STALE_MINUTES = 30;
+// 5 min : une fonction serveur ne dure jamais plus de 150 s ; au-delà, le run a été coupé et ne doit plus bloquer la source.
+export const RUNNING_STALE_MINUTES = 5;
 
 async function failStaleRuns(admin: AdminSupabaseClient, sourceRef: string): Promise<void> {
   const threshold = new Date(Date.now() - RUNNING_STALE_MINUTES * 60_000).toISOString();
