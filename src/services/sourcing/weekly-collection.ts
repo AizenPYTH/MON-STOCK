@@ -41,6 +41,10 @@ export const WEEKLY_MAX_SITEMAP_SOURCES_PER_PASS = 2;
 /** marge gardée avant la fin du budget pour finir proprement (une page de catalogue ≈ 20 s au plus) */
 const PAGE_MARGIN_MS = 25_000;
 const ABORT_AFTER_FAILURES = 3;
+/** écritures d'offres en parallèle (base de données ; la politesse envers le site ne change pas) */
+const STORE_CONCURRENCY = 4;
+/** marge avant la fin du budget pendant les écritures */
+const STORE_MARGIN_MS = 8_000;
 
 export const weeklyRunSchema = z.object({
   /** démarrer tout de suite, sans attendre le créneau (collecte demandée explicitement) */
@@ -230,32 +234,59 @@ export async function collectionPass(admin: AdminSupabaseClient, source: SourceR
       }
       const retrievedAt = nowFn().toISOString();
       const requestUrl = page.requests.find((q) => q.offers > 0)?.url ?? page.requests[0]?.url ?? null;
+      // une même offre ne figure qu'une fois par page (écritures en parallèle sans conflit)
+      const unique = [...new Map(page.offers.map((o) => [o.externalOfferId, o])).values()];
+      const todo = unique.slice(cursor.pageOffset);
       let stored = 0;
       let rejected = 0;
-      for (const o of page.offers) {
-        try {
-          const r = await storeOffer({ ...storageCtx, now: nowFn() }, withProvenance(o, { adapterKey: adapter.key, method: page.method, retrievedAt, requestUrl, sourceUrl: o.url ?? null }));
-          if (r.outcome === "stored") stored++;
-          else rejected++;
-        } catch (e) {
-          rejected++;
-          errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: o.externalOfferId });
+      let done = 0;
+      let storeFailures = 0;
+      let outOfTime = false;
+      for (let i = 0; i < todo.length; i += STORE_CONCURRENCY) {
+        // budget épuisé au milieu d'une page : on s'arrête proprement, la suite de la page au prochain passage
+        if (i > 0 && clock() > deadline - STORE_MARGIN_MS) {
+          outOfTime = true;
+          break;
         }
+        const batch = todo.slice(i, i + STORE_CONCURRENCY);
+        const results = await Promise.all(
+          batch.map(async (o) => {
+            try {
+              const r = await storeOffer({ ...storageCtx, now: nowFn() }, withProvenance(o, { adapterKey: adapter.key, method: page.method, retrievedAt, requestUrl, sourceUrl: o.url ?? null }));
+              return r.outcome;
+            } catch (e) {
+              errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: o.externalOfferId });
+              return "failed" as const;
+            }
+          }),
+        );
+        for (const r of results) {
+          if (r === "stored") stored++;
+          else rejected++;
+          // une offre non enregistrée (erreur) n'a pas été « revue » : la collecte ne pourra pas être complète
+          if (r === "failed") storeFailures++;
+        }
+        done += batch.length;
+      }
+      base.storedThisPass += stored;
+      if (outOfTime) {
+        cursor = { ...cursor, offers: cursor.offers + done, stored: cursor.stored + stored, rejected: cursor.rejected + rejected, requestErrors: cursor.requestErrors + storeFailures, pageOffset: cursor.pageOffset + done, consecutiveFailures: 0 };
+        break; // même page au prochain passage, à partir de pageOffset (enregistrement idempotent)
       }
       const failedRequests = page.requests.filter((q) => q.error);
       for (const q of failedRequests.slice(0, 20)) errors.push({ code: "PAGE_FAILED", message: q.error ?? "erreur", entityType: "page", entityRef: q.url });
       cursor = {
         cursor: page.nextCursor,
         pages: cursor.pages + 1,
-        offers: cursor.offers + page.offers.length,
+        offers: cursor.offers + done,
         stored: cursor.stored + stored,
         rejected: cursor.rejected + rejected,
-        requestErrors: cursor.requestErrors + failedRequests.length,
+        requestErrors: cursor.requestErrors + failedRequests.length + storeFailures,
         consecutiveFailures: 0,
         incomplete: cursor.incomplete ?? page.incomplete ?? null,
+        pageOffset: 0,
       };
       base.pagesThisPass++;
-      base.storedThisPass += stored;
       if (!page.nextCursor) {
         finished = true;
         break;

@@ -26,8 +26,13 @@ let robotsAnswer = { allowed: true, details: "ok", crawlDelay: null as number | 
 
 // enregistrement idempotent simulé : clé (source, identifiant externe), comme la contrainte unique SQL
 const stored = new Map<string, { price: number | null; lastSeen: string; stock: string }>();
+let storeCost = 0;
+let storeCalls = 0;
 vi.mock("@/services/sourcing/offer-storage", () => ({
   storeOffer: async (ctx: { sourceId: string; now: Date }, o: RawOffer) => {
+    storeCalls++;
+    clock += storeCost;
+    if (o.externalOfferId === "boom") throw new Error("base indisponible");
     stored.set(`${ctx.sourceId}|${o.externalOfferId}`, { price: o.price, lastSeen: ctx.now.toISOString(), stock: o.stockStatus ?? "unknown" });
     return { outcome: "stored" };
   },
@@ -92,6 +97,8 @@ const row = () => db.tables.supplier_sources![0]!;
 
 beforeEach(() => {
   clock = 0;
+  storeCost = 0;
+  storeCalls = 0;
   pages = [];
   stored.clear();
   closeCalls = [];
@@ -199,6 +206,31 @@ describe("collecte par tranches", () => {
     expect(end.passes[0]).toMatchObject({ result: "incomplete" });
     expect(closeCalls).toEqual([]);
     expect(row().last_collection_stats).toMatchObject({ result: "incomplete" });
+  });
+
+  it("page volumineuse : budget épuisé au milieu des écritures → reprise à la bonne offre, sans doublon ni perte", async () => {
+    setup(source());
+    storeCost = 5_000; // 4 écritures en parallèle par lot : ~4 offres par passage
+    const ids = Array.from({ length: 10 }, (_, i) => `x${i}`);
+    pages = [page(ids, null)];
+    const p1 = await run();
+    expect(p1.passes[0]).toMatchObject({ result: "running" });
+    expect(row().collect_cursor).toMatchObject({ cursor: null, pageOffset: 4, stored: 4 });
+    await run();
+    expect(row().collect_cursor).toMatchObject({ pageOffset: 8, stored: 8 });
+    const end = await run();
+    expect(end.passes[0]).toMatchObject({ result: "complete" });
+    expect(storeCalls).toBe(10); // chaque offre écrite une seule fois
+    expect(stored.size).toBe(10);
+    expect(row().last_collection_stats).toMatchObject({ result: "complete", stored: 10 });
+  });
+
+  it("une offre non enregistrée (erreur de base) rend la collecte incomplète : aucune clôture", async () => {
+    setup(source());
+    pages = [page(["a", "boom", "c"], null)];
+    const r = await run();
+    expect(r.passes[0]).toMatchObject({ result: "incomplete" });
+    expect(closeCalls).toEqual([]);
   });
 
   it("catalogue signalé incomplet (plan du site tronqué) : terminée mais non complète", async () => {

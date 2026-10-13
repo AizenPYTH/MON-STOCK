@@ -52,9 +52,11 @@ export interface CollectCursor {
   consecutiveFailures: number;
   /** le catalogue ne peut pas être lu en entier (plan du site tronqué…) */
   incomplete: string | null;
+  /** offres de la page courante déjà enregistrées (budget épuisé au milieu d'une page) */
+  pageOffset: number;
 }
 
-export const EMPTY_CURSOR: CollectCursor = { cursor: null, pages: 0, offers: 0, stored: 0, rejected: 0, requestErrors: 0, consecutiveFailures: 0, incomplete: null };
+export const EMPTY_CURSOR: CollectCursor = { cursor: null, pages: 0, offers: 0, stored: 0, rejected: 0, requestErrors: 0, consecutiveFailures: 0, incomplete: null, pageOffset: 0 };
 
 export function parseCursor(raw: unknown): CollectCursor {
   const o = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
@@ -68,6 +70,7 @@ export function parseCursor(raw: unknown): CollectCursor {
     requestErrors: n(o.requestErrors),
     consecutiveFailures: n(o.consecutiveFailures),
     incomplete: typeof o.incomplete === "string" ? o.incomplete : null,
+    pageOffset: n(o.pageOffset),
   };
 }
 
