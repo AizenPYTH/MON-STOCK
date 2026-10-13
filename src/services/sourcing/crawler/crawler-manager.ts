@@ -5,6 +5,7 @@ import { createLogger } from "@/lib/logger";
 import type { Json } from "@/db/database.types";
 import type { SyncTrigger, TaxType } from "@/db/types";
 import type { AdapterRunContext, SourceAdapter } from "@/integrations/sourcing/core";
+import type { RawOffer } from "@/domain/sourcing/types";
 import { getSourceAdapter } from "@/integrations/sourcing/registry";
 import { adapterConfigFromSource, adapterKeyOf, HostScheduler, withProvenance } from "@/services/sourcing/adapter-runtime";
 import { checkRobotsForUrls } from "@/services/sourcing/crawler/robots";
@@ -32,7 +33,10 @@ export interface CrawlRunResult {
   message: string;
 }
 
-export async function runSourceCrawl(sourceId: string, options: { trigger: SyncTrigger; createdBy?: string | null; fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void>; admin?: AdminSupabaseClient } = { trigger: "manual" }): Promise<CrawlRunResult> {
+/** Temps maximal d'un parcours de catalogue (la fonction serveur est coupée au-delà de 150 s). */
+export const CRAWL_BUDGET_MS = 90_000;
+
+export async function runSourceCrawl(sourceId: string, options: { trigger: SyncTrigger; createdBy?: string | null; fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void>; admin?: AdminSupabaseClient; budgetMs?: number } = { trigger: "manual" }): Promise<CrawlRunResult> {
   const admin = options.admin ?? createAdminSupabaseClient();
   const userAgent = serverEnv().SOURCING_USER_AGENT;
   const { data: source } = await admin.from("supplier_sources").select("*, organization:organizations(default_currency)").eq("id", sourceId).maybeSingle();
@@ -66,9 +70,9 @@ export async function runSourceCrawl(sourceId: string, options: { trigger: SyncT
       return { sourceId, runId: run.id, status: "refused", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message };
     }
 
-    const crawl = useAdapterCatalog && adapter && adapterConfig
-      ? await crawlWithAdapter(adapter, adapterConfig, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls })
-      : await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser!, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls });
+    const crawl: { offers: RawOffer[]; pages: CrawlPageResult[]; skippedUrls: string[]; delaySeconds: number; complete: boolean } = useAdapterCatalog && adapter && adapterConfig
+      ? await crawlWithAdapter(adapter, adapterConfig, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls, budgetMs: options.budgetMs ?? CRAWL_BUDGET_MS })
+      : { ...(await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser!, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls })), complete: true };
     for (const p of crawl.pages) if (p.error) errors.push({ code: "PAGE_FAILED", message: p.error, entityType: "page", entityRef: p.url });
     for (const u of crawl.skippedUrls) errors.push({ code: "URL_SKIPPED", message: "URL ignorée (hôte différent, interdite ou au-delà de la limite de pages).", entityType: "page", entityRef: u });
 
@@ -100,12 +104,14 @@ export async function runSourceCrawl(sourceId: string, options: { trigger: SyncT
         errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: offer.externalOfferId });
       }
     }
-    const expired = stored > 0 ? await expireUnseenOffers(ctx, run.startedAt) : 0;
+    // Expiration des offres non revues UNIQUEMENT après un parcours complet et sans aucune erreur :
+    // une collecte partielle (limite de temps ou de pages) ou en erreur ne fait disparaître aucune offre.
+    const expired = crawl.complete && errors.length === 0 && stored > 0 ? await expireUnseenOffers(ctx, run.startedAt) : 0;
     const okPages = crawl.pages.filter((p) => !p.error).length;
     const status: CrawlRunResult["status"] = okPages === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
-    const message = `${okPages}/${crawl.pages.length} page(s) lue(s), ${crawl.offers.length} offre(s) trouvée(s), ${stored} enregistrée(s), ${rejected} rejetée(s), ${expired} expirée(s).`;
+    const message = `${okPages}/${crawl.pages.length} page(s) lue(s), ${crawl.offers.length} offre(s) trouvée(s), ${stored} enregistrée(s), ${rejected} rejetée(s), ${expired} expirée(s)${crawl.complete ? "" : " — collecte partielle (catalogue non parcouru en entier) : aucune offre expirée"}.`;
     await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired, delaySeconds: crawl.delaySeconds, parser: parser?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" } as unknown as NonNullable<Json>, errorSummary: status === "failed" ? message : null });
+    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired, complete: crawl.complete, delaySeconds: crawl.delaySeconds, parser: parser?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" } as unknown as NonNullable<Json>, errorSummary: status === "failed" ? message : null });
     await admin
       .from("supplier_sources")
       .update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? new Date().toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null })
@@ -129,6 +135,8 @@ interface AdapterCrawlParams {
   configDelay: number;
   maxPages: number;
   disallowedUrls: string[];
+  /** temps maximal du parcours ; au-delà, la collecte est partielle */
+  budgetMs: number;
 }
 
 /** Parcours du catalogue d'un adaptateur (pages bornées, délai ≥ max(2 s, Crawl-delay, config), provenance par offre). */
@@ -140,9 +148,13 @@ async function crawlWithAdapter(adapter: SourceAdapter, config: ReturnType<typeo
   const offers: ReturnType<typeof withProvenance>[] = [];
   const seen = new Set<string>();
   let cursor: string | null = null;
+  let complete = false;
+  const t0 = Date.now();
   const maxPages = Math.min(Math.max(1, params.maxPages), 50);
   for (let i = 0; i < maxPages; i++) {
-    const page = await adapter.fetchCatalog!(config, cursor, ctx);
+    // pas de nouvelle page si le temps restant ne suffit plus (une page de catalogue ≈ 20 s au plus)
+    if (i > 0 && Date.now() - t0 > params.budgetMs - 20_000) break;
+    const page = await adapter.fetchCatalog!(config, cursor, { ...ctx, timeoutMs: Math.max(5_000, params.budgetMs - (Date.now() - t0)) });
     const retrievedAt = new Date().toISOString();
     const requestUrl = page.requests.find((q) => q.offers > 0)?.url ?? page.requests[0]?.url ?? null;
     for (const q of page.requests) pages.push({ url: q.url, status: q.status, offers: q.offers, error: q.error });
@@ -151,10 +163,13 @@ async function crawlWithAdapter(adapter: SourceAdapter, config: ReturnType<typeo
       seen.add(o.externalOfferId);
       offers.push(withProvenance(o, { adapterKey: adapter.key, method: page.method, retrievedAt, requestUrl, sourceUrl: o.url ?? null }));
     }
-    if (!page.nextCursor) break;
+    if (!page.nextCursor) {
+      complete = !page.incomplete;
+      break;
+    }
     cursor = page.nextCursor;
   }
-  return { offers, pages, skippedUrls: [] as string[], delaySeconds };
+  return { offers, pages, skippedUrls: [] as string[], delaySeconds, complete };
 }
 
 /** Sources PUBLIC_WEB attestées dont la fréquence est échue, regroupées par hôte (1 à la fois par hôte). */

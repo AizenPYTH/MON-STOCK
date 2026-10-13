@@ -108,6 +108,11 @@ export interface AdapterCatalogPage {
   method: RetrievalMethod;
   requests: AdapterRequestTrace[];
   nextCursor: string | null;
+  /**
+   * Le catalogue ne peut pas être parcouru en entier (ex. plan du site tronqué ou plafonné) :
+   * même arrivée au bout, la collecte n'est PAS complète (aucune offre ne sera déclarée absente).
+   */
+  incomplete?: string | null;
 }
 
 export interface SourceAdapter {

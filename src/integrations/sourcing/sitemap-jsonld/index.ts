@@ -33,6 +33,8 @@ interface SiteIndex {
   urls: string[];
   robots: RobotsRules | null;
   sitemaps: string[];
+  /** plan du site lu en partie (taille, nombre de fichiers ou d'URLs plafonnés, sous-sitemap en erreur) */
+  partial: string | null;
 }
 
 const cache = new Map<string, SiteIndex>();
@@ -111,6 +113,7 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
   const read: string[] = [];
   const queue = [...roots];
   let totalBytes = 0;
+  let partial: string | null = null;
   while (queue.length > 0 && read.length < SITEMAP_MAX_CHILDREN && urls.length < SITEMAP_MAX_URLS && totalBytes < SITEMAP_TOTAL_MAX_BYTES && !http.exhausted()) {
     const sm = queue.shift()!;
     if (new URL(sm).host !== new URL(base).host) continue;
@@ -121,15 +124,23 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
       // racine illisible : erreur ; sous-sitemap trop gros ou en erreur : on garde ce qui a déjà été lu
       if (read.length === 0 || urls.length === 0) throw e;
       read.push(sm);
+      partial = `sous-plan du site illisible (${sm})`;
       continue;
     }
+    if (res.truncated) partial = `plan du site tronqué à ${Math.round(SITEMAP_FILE_MAX_BYTES / 1e6)} Mo (${sm})`;
     totalBytes += res.text.length;
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
-    if (parsed.kind === "index") queue.push(...rankChildSitemaps(parsed.locs).slice(0, SITEMAP_MAX_CHILDREN));
+    if (parsed.kind === "index") {
+      const children = rankChildSitemaps(parsed.locs);
+      if (children.length > SITEMAP_MAX_CHILDREN) partial = `${children.length - SITEMAP_MAX_CHILDREN} sous-plan(s) du site au-delà de la limite de ${SITEMAP_MAX_CHILDREN}`;
+      queue.push(...children.slice(0, SITEMAP_MAX_CHILDREN));
+    }
     else for (const u of parsed.locs) if (urls.length < SITEMAP_MAX_URLS) urls.push(u);
   }
-  const index = { at: now, urls, robots, sitemaps: read };
+  if (!partial && queue.length > 0) partial = `${queue.length} sous-plan(s) du site non lu(s) (limites de taille ou de nombre)`;
+  if (!partial && urls.length >= SITEMAP_MAX_URLS) partial = `plan du site plafonné à ${SITEMAP_MAX_URLS} URLs`;
+  const index: SiteIndex = { at: now, urls, robots, sitemaps: read, partial };
   if (urls.length > 0) cache.set(base, index);
   return index;
 }
@@ -269,7 +280,7 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
         // la trace de la requête conserve l'erreur ; la page suivante est tentée
       }
     }
-    return { offers, method: "public_html", requests: http.requests, nextCursor: i < urls.length ? String(i) : null };
+    return { offers, method: "public_html", requests: http.requests, nextCursor: i < urls.length ? String(i) : null, incomplete: index.partial };
   },
   async testConnection(config, ctx) {
     const r = await sitemapJsonLdAdapter.search(config, parseQuery("iphone"), "iphone", ctx);

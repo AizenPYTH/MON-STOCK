@@ -58,6 +58,7 @@ import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { randomToken } from "@/lib/crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { runSourceCrawl } from "@/services/sourcing/crawler/crawler-manager";
 import { ebayEnv } from "@/lib/env";
 import { authorizeCron } from "@/lib/cron-auth";
 import { errorResponse, handle, parseBody, parseQuery, uuidParam } from "@/features/mobile-api/http";
@@ -75,7 +76,7 @@ import { EbayNotificationKeyStore } from "@/integrations/ebay/notification-keys"
 import { handleEbayNotification } from "@/services/sync/ebay-webhook";
 import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
-import { activateLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
+import { activateLibrarySource, activateLibrarySourceFor, getLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
 import { runChainSelfTest, runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
 import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listingRequestSchema, prefillListing, publishListingForOrg } from "@/services/channels/ebay-listing-service";
@@ -277,7 +278,33 @@ export async function route(request: Request): Promise<Response> {
       if (!auth.ok) return auth.response;
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
-      if (m === "POST" && path === "/cron/library-checks") return handle(() => runLibraryChecks());
+      if (m === "POST" && path === "/cron/library-checks") {
+        return handle(async () => runLibraryChecks((await parseBody(request, z.object({ keys: z.array(z.string().min(1).max(80)).max(60).optional() }))).keys));
+      }
+      if (m === "POST" && path === "/cron/library-activate") {
+        return handle(async () => {
+          const body = await parseBody(request, z.object({ organizationId: uuidParam, keys: z.array(z.string().min(1).max(80)).min(1).max(60), requestedBy: z.string().min(10).max(600) }));
+          const admin = createAdminSupabaseClient();
+          const out: { key: string; sourceId: string | null; alreadyActive: boolean; error: string | null }[] = [];
+          for (const key of body.keys) {
+            const terms = getLibrarySource(key)?.termsUrl ?? "?";
+            const attestation = `${body.requestedBy} Conditions du fournisseur : ${terms}. robots.txt vérifié par le serveur. Activation enregistrée le ${new Date().toISOString()}.`;
+            try {
+              const r = await activateLibrarySourceFor(admin, body.organizationId, key, attestation);
+              out.push({ key, sourceId: r.sourceId, alreadyActive: r.alreadyActive, error: null });
+            } catch (e) {
+              out.push({ key, sourceId: null, alreadyActive: false, error: e instanceof Error ? e.message : String(e) });
+            }
+          }
+          return out;
+        });
+      }
+      if (m === "POST" && path === "/cron/collect-source") {
+        return handle(async () => {
+          const body = await parseBody(request, z.object({ sourceId: uuidParam, budgetMs: z.number().int().min(10_000).max(110_000).optional() }));
+          return runSourceCrawl(body.sourceId, { trigger: "scheduled", budgetMs: body.budgetMs });
+        });
+      }
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
           const body = await parseBody(request, z.object({ query: z.string().min(2).max(120), source: z.string().min(1).max(80) }));

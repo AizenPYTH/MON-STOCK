@@ -4,7 +4,7 @@ import type { OrgContext } from "@/features/auth/dal";
 import { AppError } from "@/lib/errors";
 import { serverEnv } from "@/lib/env";
 import { createLogger } from "@/lib/logger";
-import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
 import { parseQuery } from "@/domain/sourcing/query-parser";
 import type { AdapterRunContext, AdapterSourceConfig } from "@/integrations/sourcing/core";
 import { getSourceAdapter } from "@/integrations/sourcing/registry";
@@ -688,27 +688,38 @@ export async function sourceLibrary(ctx: OrgContext): Promise<{ entries: Library
  */
 export async function activateLibrarySource(ctx: OrgContext, key: string): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
   const s = getLibrarySource(key);
+  const termsUrl = s?.termsUrl ?? "";
+  const attestation = `Conditions d'utilisation (${termsUrl}) déclarées lues et accès automatisé attesté par l'utilisateur ${ctx.user.email ?? ctx.user.id} le ${new Date().toISOString()} (application mobile).`;
+  return activateLibrarySourceFor(ctx.supabase, ctx.organization.id, key, attestation);
+}
+
+/**
+ * Activation d'une source de la bibliothèque pour une organisation, avec le client fourni :
+ * session de l'utilisateur (RLS, application mobile) ou client serveur (activation demandée
+ * par le titulaire du compte et tracée dans `access_conditions`).
+ */
+export async function activateLibrarySourceFor(db: OrgContext["supabase"] | AdminSupabaseClient, organizationId: string, key: string, attestation: string): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
+  const s = getLibrarySource(key);
   if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
   if (s.blocked) throw new AppError("FORBIDDEN", s.blocked);
-  const { data: check } = await ctx.supabase.from("sourcing_library_checks").select("status, checked_at, adapter").eq("key", key).maybeSingle();
+  const { data: check } = await db.from("sourcing_library_checks").select("status, checked_at, adapter").eq("key", key).maybeSingle();
   if (check?.status !== "ok") throw new AppError("VALIDATION", "Cette source n'a pas passé la vérification en direct (robots.txt + produits avec prix) : elle ne peut pas être activée.");
 
-  const { data: existing } = await ctx.supabase.from("supplier_sources").select("id, supplier_id, config").eq("organization_id", ctx.organization.id);
+  const { data: existing } = await db.from("supplier_sources").select("id, supplier_id, config").eq("organization_id", organizationId);
   const found = (existing ?? []).find((r) => (r.config as { library_key?: unknown } | null)?.library_key === key);
   if (found) return { sourceId: found.id, supplierId: found.supplier_id, alreadyActive: true };
 
   const country = s.country.length === 2 && s.country !== "EU" ? s.country : null;
-  const { data: supplier, error: supErr } = await ctx.supabase
+  const { data: supplier, error: supErr } = await db
     .from("suppliers")
-    .insert({ organization_id: ctx.organization.id, name: s.name.slice(0, 200), website: s.website, country, currency: s.currency, notes: `Ajouté depuis la bibliothèque de sources MON STOCK (${s.key}). ${s.notes}` })
+    .insert({ organization_id: organizationId, name: s.name.slice(0, 200), website: s.website, country, currency: s.currency, notes: `Ajouté depuis la bibliothèque de sources MON STOCK (${s.key}). ${s.notes}` })
     .select("id")
     .single();
   if (supErr || !supplier) throw supErr ?? new AppError("INTERNAL", "Fournisseur non créé.");
-  const attestation = `Conditions d'utilisation (${s.termsUrl}) déclarées lues et accès automatisé attesté par l'utilisateur ${ctx.user.email ?? ctx.user.id} le ${new Date().toISOString()} (application mobile).`;
-  const { data: source, error: srcErr } = await ctx.supabase
+  const { data: source, error: srcErr } = await db
     .from("supplier_sources")
     .insert({
-      organization_id: ctx.organization.id,
+      organization_id: organizationId,
       supplier_id: supplier.id,
       name: s.name.slice(0, 200),
       source_type: s.access === "official_api" ? "API" : "PUBLIC_WEB",
@@ -716,7 +727,7 @@ export async function activateLibrarySource(ctx: OrgContext, key: string): Promi
       country,
       default_currency: s.currency,
       default_tax_type: s.taxType,
-      access_conditions: attestation,
+      access_conditions: attestation.slice(0, 2000),
       automated_access_confirmed: true,
       robots_checked_at: check.checked_at,
       robots_allowed: s.access === "official_api" ? null : true,
@@ -728,9 +739,9 @@ export async function activateLibrarySource(ctx: OrgContext, key: string): Promi
     .select("id")
     .single();
   if (srcErr || !source) {
-    await ctx.supabase.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", ctx.organization.id);
+    await db.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", organizationId);
     throw srcErr ?? new AppError("INTERNAL", "Source non créée.");
   }
-  log.info("source de bibliothèque activée", { orgId: ctx.organization.id, key });
+  log.info("source de bibliothèque activée", { orgId: organizationId, key });
   return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
 }
