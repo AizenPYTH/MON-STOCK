@@ -14,6 +14,8 @@ export interface FetchTextOptions {
   headers?: Record<string, string>;
   /** corps de requête (POST) */
   body?: string;
+  /** au-delà de maxBytes : garder le début au lieu d'échouer (plans du site très volumineux) */
+  truncate?: boolean;
 }
 
 export interface FetchTextResult {
@@ -23,6 +25,8 @@ export interface FetchTextResult {
   contentType: string | null;
   bytes: number;
   finalUrl: string;
+  /** contenu coupé à maxBytes (option truncate) */
+  truncated?: boolean;
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -104,22 +108,38 @@ export async function assertResolvesToPublicAddress(u: URL, resolver: (host: str
 
 const MAX_REDIRECTS = 5;
 
-async function readBounded(res: Response, maxBytes: number): Promise<ArrayBuffer> {
+async function readBounded(res: Response, maxBytes: number, truncate = false): Promise<{ buffer: ArrayBuffer; truncated: boolean }> {
   const declared = Number(res.headers.get("content-length") ?? "0");
-  if (declared > maxBytes) throw new Error(`Réponse trop volumineuse (${declared} octets, maximum ${maxBytes}).`);
-  if (!res.body) return new ArrayBuffer(0);
+  if (declared > maxBytes && !truncate) throw new Error(`Réponse trop volumineuse (${declared} octets, maximum ${maxBytes}).`);
+  if (!res.body) return { buffer: new ArrayBuffer(0), truncated: false };
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let truncated = false;
   for (;;) {
-    const { done, value } = await reader.read();
+    let step: ReadableStreamReadResult<Uint8Array>;
+    try {
+      step = await reader.read();
+    } catch (e) {
+      // flux gzip coupé (option truncate) : on garde ce qui a été décompressé
+      if (truncate && total > 0) {
+        truncated = true;
+        break;
+      }
+      throw e;
+    }
+    const { done, value } = step;
     if (done) break;
     if (value) {
-      total += value.byteLength;
-      if (total > maxBytes) {
+      if (total + value.byteLength > maxBytes) {
         await reader.cancel().catch(() => undefined);
-        throw new Error(`Réponse trop volumineuse (plus de ${maxBytes} octets).`);
+        if (!truncate) throw new Error(`Réponse trop volumineuse (plus de ${maxBytes} octets).`);
+        chunks.push(value.subarray(0, maxBytes - total));
+        total = maxBytes;
+        truncated = true;
+        break;
       }
+      total += value.byteLength;
       chunks.push(value);
     }
   }
@@ -129,7 +149,7 @@ async function readBounded(res: Response, maxBytes: number): Promise<ArrayBuffer
     out.set(c, offset);
     offset += c.byteLength;
   }
-  return out.buffer;
+  return { buffer: out.buffer, truncated };
 }
 
 /**
@@ -137,11 +157,15 @@ async function readBounded(res: Response, maxBytes: number): Promise<ArrayBuffer
  * même limite de taille sur le contenu décompressé (protection contre les « bombes » gzip).
  * Le décodage HTTP `Content-Encoding` est, lui, déjà fait par fetch.
  */
-export async function gunzipBounded(buffer: ArrayBuffer, maxBytes: number): Promise<ArrayBuffer> {
+export async function gunzipBounded(buffer: ArrayBuffer, maxBytes: number, truncate = false): Promise<ArrayBuffer> {
+  return (await gunzipBoundedResult(buffer, maxBytes, truncate)).buffer;
+}
+
+async function gunzipBoundedResult(buffer: ArrayBuffer, maxBytes: number, truncate: boolean): Promise<{ buffer: ArrayBuffer; truncated: boolean }> {
   const bytes = new Uint8Array(buffer);
-  if (bytes.byteLength < 2 || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return buffer;
+  if (bytes.byteLength < 2 || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return { buffer, truncated: false };
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return readBounded(new Response(stream), maxBytes);
+  return readBounded(new Response(stream), maxBytes, truncate);
 }
 
 export async function fetchText(url: string, options: FetchTextOptions & { encoding?: string | null; resolver?: (host: string) => Promise<Array<{ address: string }>> }): Promise<FetchTextResult> {
@@ -173,10 +197,12 @@ export async function fetchText(url: string, options: FetchTextOptions & { encod
       break;
     }
     if (!res) throw new Error("Aucune réponse.");
-    const buffer = await gunzipBounded(await readBounded(res, maxBytes), maxBytes);
+    const raw = await readBounded(res, maxBytes, options.truncate);
+    const unzipped = await gunzipBoundedResult(raw.buffer, maxBytes, Boolean(options.truncate));
+    const buffer = unzipped.buffer;
     const contentType = res.headers.get("content-type");
     const charset = contentType?.match(/charset=([\w-]+)/i)?.[1] ?? null;
-    return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString() };
+    return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString(), truncated: raw.truncated || unzipped.truncated };
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") throw new Error(`Délai dépassé (${timeoutMs / 1000} s) pour ${target.hostname}.`);
     throw e;

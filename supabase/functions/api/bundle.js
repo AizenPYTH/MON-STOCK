@@ -2493,22 +2493,37 @@ async function assertResolvesToPublicAddress(u, resolver = (h) => lookup(h, { al
   if (addresses.length === 0) throw new Error(`Nom d'h\xF4te introuvable : ${host}.`);
   if (addresses.some((a) => isPrivateAddress(a.address))) throw new Error("Les adresses locales ou priv\xE9es ne sont pas accessibles.");
 }
-async function readBounded(res, maxBytes) {
+async function readBounded(res, maxBytes, truncate = false) {
   const declared = Number(res.headers.get("content-length") ?? "0");
-  if (declared > maxBytes) throw new Error(`R\xE9ponse trop volumineuse (${declared} octets, maximum ${maxBytes}).`);
-  if (!res.body) return new ArrayBuffer(0);
+  if (declared > maxBytes && !truncate) throw new Error(`R\xE9ponse trop volumineuse (${declared} octets, maximum ${maxBytes}).`);
+  if (!res.body) return { buffer: new ArrayBuffer(0), truncated: false };
   const reader = res.body.getReader();
   const chunks = [];
   let total = 0;
+  let truncated = false;
   for (; ; ) {
-    const { done, value } = await reader.read();
+    let step;
+    try {
+      step = await reader.read();
+    } catch (e) {
+      if (truncate && total > 0) {
+        truncated = true;
+        break;
+      }
+      throw e;
+    }
+    const { done, value } = step;
     if (done) break;
     if (value) {
-      total += value.byteLength;
-      if (total > maxBytes) {
+      if (total + value.byteLength > maxBytes) {
         await reader.cancel().catch(() => void 0);
-        throw new Error(`R\xE9ponse trop volumineuse (plus de ${maxBytes} octets).`);
+        if (!truncate) throw new Error(`R\xE9ponse trop volumineuse (plus de ${maxBytes} octets).`);
+        chunks.push(value.subarray(0, maxBytes - total));
+        total = maxBytes;
+        truncated = true;
+        break;
       }
+      total += value.byteLength;
       chunks.push(value);
     }
   }
@@ -2518,13 +2533,13 @@ async function readBounded(res, maxBytes) {
     out.set(c, offset);
     offset += c.byteLength;
   }
-  return out.buffer;
+  return { buffer: out.buffer, truncated };
 }
-async function gunzipBounded(buffer, maxBytes) {
+async function gunzipBoundedResult(buffer, maxBytes, truncate) {
   const bytes = new Uint8Array(buffer);
-  if (bytes.byteLength < 2 || bytes[0] !== 31 || bytes[1] !== 139) return buffer;
+  if (bytes.byteLength < 2 || bytes[0] !== 31 || bytes[1] !== 139) return { buffer, truncated: false };
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return readBounded(new Response(stream), maxBytes);
+  return readBounded(new Response(stream), maxBytes, truncate);
 }
 async function fetchText(url, options) {
   let target = assertPublicHttpUrl(url);
@@ -2554,10 +2569,12 @@ async function fetchText(url, options) {
       break;
     }
     if (!res) throw new Error("Aucune r\xE9ponse.");
-    const buffer = await gunzipBounded(await readBounded(res, maxBytes), maxBytes);
+    const raw = await readBounded(res, maxBytes, options.truncate);
+    const unzipped = await gunzipBoundedResult(raw.buffer, maxBytes, Boolean(options.truncate));
+    const buffer = unzipped.buffer;
     const contentType = res.headers.get("content-type");
     const charset = contentType?.match(/charset=([\w-]+)/i)?.[1] ?? null;
-    return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString() };
+    return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString(), truncated: raw.truncated || unzipped.truncated };
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") throw new Error(`D\xE9lai d\xE9pass\xE9 (${timeoutMs / 1e3} s) pour ${target.hostname}.`);
     throw e;
@@ -2612,13 +2629,14 @@ function createAdapterHttp(ctx) {
           method: options.method,
           body: options.body,
           maxBytes: options.maxBytes,
+          truncate: options.truncate,
           timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, Number.isFinite(remaining) ? remaining : DEFAULT_REQUEST_TIMEOUT_MS)
         });
         if ((res.status === 429 || res.status === 503) && remainingMs() > RETRY_AFTER_MS + 5e3) {
           requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: `HTTP ${res.status} (nouvel essai dans ${RETRY_AFTER_MS / 1e3} s)` });
           await sleep3(RETRY_AFTER_MS);
           lastRequestAt = Date.now();
-          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs()) });
+          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, truncate: options.truncate, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs()) });
         }
         requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: res.ok ? null : `HTTP ${res.status}` });
         traced = true;
@@ -5356,7 +5374,7 @@ async function loadIndex(base, ctx, http, settings) {
     if (new URL(sm).host !== new URL(base).host) continue;
     let res;
     try {
-      res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: Math.min(SITEMAP_FILE_MAX_BYTES, SITEMAP_TOTAL_MAX_BYTES - totalBytes) });
+      res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: Math.min(SITEMAP_FILE_MAX_BYTES, SITEMAP_TOTAL_MAX_BYTES - totalBytes), truncate: true });
     } catch (e) {
       if (read.length === 0 || urls.length === 0) throw e;
       read.push(sm);
@@ -5374,7 +5392,8 @@ async function loadIndex(base, ctx, http, settings) {
 }
 function productUrlScore(path) {
   let score = 0;
-  if (/\/(products?|produkt[e]?|producto?s?|prodotto|prodotti|artikel|item|p)\//i.test(path) || /\/p\d+[,_-]/i.test(path)) score += 3;
+  if (/\/(products?|produkt[e]?|producto?s?|prodotto|prodotti|artikel|item|p)\//i.test(path) || /\/p\d+[,_-]/i.test(path) || /-p-\d+\.html?$/i.test(path)) score += 3;
+  if (/-c-\d+(_\d+)*\.html?$/i.test(path)) score -= 6;
   if (/\.html?$/i.test(path)) score += 1;
   const slug = path.split("/").filter(Boolean).pop() ?? "";
   if (slug.split(/[-_]/).length >= 3) score += 1;

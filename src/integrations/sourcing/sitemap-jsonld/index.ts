@@ -116,7 +116,7 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
     if (new URL(sm).host !== new URL(base).host) continue;
     let res;
     try {
-      res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: Math.min(SITEMAP_FILE_MAX_BYTES, SITEMAP_TOTAL_MAX_BYTES - totalBytes) });
+      res = await http.request(sm, { accept: "application/xml,text/xml;q=0.9,*/*;q=0.5", maxBytes: Math.min(SITEMAP_FILE_MAX_BYTES, SITEMAP_TOTAL_MAX_BYTES - totalBytes), truncate: true });
     } catch (e) {
       // racine illisible : erreur ; sous-sitemap trop gros ou en erreur : on garde ce qui a déjà été lu
       if (read.length === 0 || urls.length === 0) throw e;
@@ -147,7 +147,8 @@ const SERVICE_PAGE_RE = /^\/?([a-z]{2}\/)?(betaling|verzending|algemene-voorwaar
  */
 export function productUrlScore(path: string): number {
   let score = 0;
-  if (/\/(products?|produkt[e]?|producto?s?|prodotto|prodotti|artikel|item|p)\//i.test(path) || /\/p\d+[,_-]/i.test(path)) score += 3;
+  if (/\/(products?|produkt[e]?|producto?s?|prodotto|prodotti|artikel|item|p)\//i.test(path) || /\/p\d+[,_-]/i.test(path) || /-p-\d+\.html?$/i.test(path)) score += 3;
+  if (/-c-\d+(_\d+)*\.html?$/i.test(path)) score -= 6; // catégorie osCommerce (« -c-12.html »)
   if (/\.html?$/i.test(path)) score += 1;
   const slug = path.split("/").filter(Boolean).pop() ?? "";
   if (slug.split(/[-_]/).length >= 3) score += 1;

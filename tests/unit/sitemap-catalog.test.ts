@@ -74,3 +74,27 @@ describe("plan du site compressé (.gz)", () => {
     expect(await gunzipBounded(plain, 10)).toBe(plain);
   });
 });
+
+describe("plan du site très volumineux", () => {
+  it("option truncate : garde le début au lieu d'échouer (gzip compris) ; sans elle, erreur", async () => {
+    const { fetchText } = await import("@/services/sourcing/http");
+    const locs = Array.from({ length: 200 }, (_, i) => `<url><loc>https://shop.example.com/produit-${i}-iphone</loc></url>`).join("");
+    const xml = `<?xml version="1.0"?><urlset>${locs}</urlset>`;
+    const gz = new Uint8Array(await new Response(new Blob([xml]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
+    const resolver = async () => [{ address: "93.184.216.34" }];
+    for (const body of [xml, gz]) {
+      const fetchImpl = (async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+      const r = await fetchText("https://shop.example.com/sitemap.xml", { userAgent: "MonStockBot/0.1", fetchImpl, resolver, maxBytes: 2_000, truncate: true });
+      expect(r.truncated).toBe(true);
+      expect(r.text.length).toBeLessThanOrEqual(2_000);
+      expect(r.text).toContain("https://shop.example.com/produit-0-iphone");
+      await expect(fetchText("https://shop.example.com/sitemap.xml", { userAgent: "MonStockBot/0.1", fetchImpl, resolver, maxBytes: 2_000 })).rejects.toThrow(/volumineuse/);
+    }
+  });
+
+  it("catégories osCommerce (-c-12.html) écartées, fiches (-p-123.html) en tête", () => {
+    const base = "https://shop.example.com";
+    const urls = ["/czesci-serwisowe-gsm-c-1.html", "/wyswietlacz-iphone-12-p-4521.html", "/narzedzia-c-333_12.html"].map((p) => base + p);
+    expect(productLikeUrls(urls, base)).toEqual([`${base}/wyswietlacz-iphone-12-p-4521.html`]);
+  });
+});

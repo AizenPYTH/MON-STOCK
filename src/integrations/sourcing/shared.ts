@@ -17,6 +17,7 @@ export interface AdapterHttpRequestOptions {
   method?: "GET" | "POST";
   body?: string;
   maxBytes?: number;
+  truncate?: boolean;
 }
 
 export interface AdapterHttp {
@@ -77,6 +78,7 @@ export function createAdapterHttp(ctx: AdapterRunContext): AdapterHttp {
           method: options.method,
           body: options.body,
           maxBytes: options.maxBytes,
+          truncate: options.truncate,
           timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, Number.isFinite(remaining) ? remaining : DEFAULT_REQUEST_TIMEOUT_MS),
         });
         // Trop de requêtes / indisponible : une seule nouvelle tentative, après une pause, si le budget le permet.
@@ -84,7 +86,7 @@ export function createAdapterHttp(ctx: AdapterRunContext): AdapterHttp {
           requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: `HTTP ${res.status} (nouvel essai dans ${RETRY_AFTER_MS / 1000} s)` });
           await sleep(RETRY_AFTER_MS);
           lastRequestAt = Date.now();
-          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs()) });
+          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, truncate: options.truncate, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs()) });
         }
         requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: res.ok ? null : `HTTP ${res.status}` });
         traced = true;
