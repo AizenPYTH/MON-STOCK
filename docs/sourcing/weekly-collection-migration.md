@@ -1,6 +1,6 @@
-# Migration « collecte hebdomadaire » — à valider
+# Migration « collecte hebdomadaire » — validée sur le principe, application en attente
 
-**État : NON APPLIQUÉE.** Les fichiers sont dans `supabase/pending/`, hors de `supabase/migrations/`, pour qu'aucun outil ne les applique par erreur. Après ton accord, ils seront déplacés puis appliqués en production.
+**État au 13/10/2026 : NON APPLIQUÉE.** Toutes les vérifications ont été faites sur le projet ciblé, sauf le script de retour arrière ; voir « Vérification sur le projet ciblé » plus bas. Les fichiers sont dans `supabase/pending/`, hors de `supabase/migrations/`, pour qu'aucun outil ne les applique par erreur. Après ton accord, ils seront déplacés puis appliqués en production.
 
 | Fichier | Rôle |
 | --- | --- |
@@ -39,15 +39,51 @@
 
 Rien n'est supprimé et aucune donnée existante n'est réécrite : les nouvelles colonnes démarrent vides ou à 0.
 
-## Fonctionnement prévu (code écrit après ta validation)
+## Vérification sur le projet ciblé (13/10/2026)
 
-- Toutes les 15 minutes, le cron `monstock-sourcing-weekly` demande au serveur de reprendre **au plus 3 collectes dues**.
+**Projet Supabase** : `ccywsegdowikeirbsfae` (« MON-STOCK », production, eu-west-1, PostgreSQL 17).
+
+**Méthode.** Chaque vérification tourne dans UNE transaction qui se termine volontairement par une erreur : PostgreSQL annule donc tout. Après chaque essai, on a contrôlé qu'il ne restait rien : aucune colonne, pas de valeur `weekly`, pas de fonction, aucune ligne de test, aucun verrou.
+
+Résultats :
+
+| Contrôle | Résultat |
+| --- | --- |
+| Migration complète (type, colonnes, contrainte, index, fonction, droits) | ✅ s'applique sans erreur |
+| 1re collecte complète : 2 offres revues, 1 absente | ✅ seen=2, missed=1, expired=0 ; l'absente reste active |
+| 2e collecte complète sans l'offre | ✅ expired=1 ; stock inchangé (`in_stock`) ; 3 lignes conservées |
+| `authenticated` / `anon` peuvent-ils clôturer une collecte ? | ✅ non (droit EXECUTE absent) ; seul `service_role` peut |
+| Changement de rôle `authenticated` + appel de la fonction | ✅ refusé |
+| **Retour arrière** (DROP des colonnes et de la fonction) | ⚠️ **non exécuté sur le projet ciblé** |
+
+Le retour arrière n'a pas pu être exécuté parce que l'outil d'accès SQL demande une confirmation manuelle pour toute instruction `DROP`. Sans réponse dans les 60 s, la requête est abandonnée, et cela s'est produit 3 fois.
+
+Le retour arrière est vérifié sur PostgreSQL 16 local : colonnes et fonction retirées, offres et sources conservées.
+
+**Conformément à la consigne** (« avant toute application en production, vérifie… le script de retour arrière sur le projet ciblé »), la migration n'est **pas appliquée**. Il suffit d'approuver la demande de confirmation `DROP` lors du prochain essai, qui reste annulé par la transaction.
+
+## Fonctionnement (code écrit et testé, actif après application)
+
+- Toutes les 15 minutes, le cron `monstock-sourcing-weekly` demande au serveur de reprendre **au plus 5 collectes dues**, dont 2 au plus par plan du site.
   - Budget de 100 s par passage.
   - Une requête à la fois par fournisseur, avec le délai de politesse et robots.txt respectés.
   - Quand aucune collecte n'est due, la réponse est immédiate.
 - Chaque passage lit un lot du catalogue (par exemple 100 produits WooCommerce ou 8 fiches de plan du site), enregistre les offres, puis sauvegarde le curseur. Le passage suivant reprend au curseur.
 - Fin de catalogue sans erreur bloquante : la fonction de clôture est appelée, puis le bilan est enregistré.
 - Après 3 échecs consécutifs, la source passe en erreur avec le message exact. Aucune offre n'est touchée.
+- **Garde-fous du code** (`src/services/sourcing/weekly-collection.ts`, 15 tests dans `tests/unit/weekly-collection.test.ts`) :
+  - **Collecte complète** seulement si tout le catalogue est parcouru avec :
+    - aucune requête en erreur et aucune écriture en échec ;
+    - un catalogue non signalé tronqué (plan du site plafonné ou coupé) ;
+    - au moins une offre ;
+    - pas d'effondrement du volume (moins de la moitié des offres de la collecte complète précédente).
+  - Sinon la collecte est « incomplète » : les offres sont enregistrées, mais aucune n'est déclarée absente.
+  - **Verrou** : l'index unique « un run en cours par source » interdit deux passages simultanés sur une même source. Le démarrage d'une collecte est conditionnel (`collection_started_at is null`).
+  - **Calendrier** : chaque source a un créneau hebdomadaire (jour, heure UTC) :
+    - une seule collecte par créneau ;
+    - une collecte abandonnée est relancée au plus 3 fois, à 1 h d'intervalle ;
+    - jamais avant le créneau.
+  - **Idempotence** : upsert sur (organisation, source, identifiant externe). Une page coupée en plein milieu reprend au bon rang (`pageOffset`), sans doublon ni perte.
 
 ## Vérification faite (PostgreSQL 16 local, jamais en production)
 

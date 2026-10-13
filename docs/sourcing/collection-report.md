@@ -146,3 +146,48 @@ Chiffres pour une seule page de collecte ; le catalogue complet est plus grand e
   - Leur activation dans l'application exige la vérification quotidienne, qui écrit son résultat en base : elle attend ton accord.
 - Aucun compte créé, aucun devis, aucune commande, aucun contournement (CAPTCHA, anti-robot, connexion).
 - Ingram Micro et BigBuy : adaptateurs testés sur données de test seulement (aucun compte).
+
+## 5. Étape 1 : première collecte réelle enregistrée en base (13/10/2026, organisation Snowolff)
+
+**Ce qui a été fait :**
+- Edge Function `api` déployée en v51 à v53.
+- Contrôle réel (robots.txt + produits avec prix) des 18 nouveaux fournisseurs et de MobileSentrix : 19 sur 19 « ok » dans `sourcing_library_checks`.
+- Activation sur l'organisation, avec mention dans `access_conditions` : « Activation demandée par le titulaire du compte (session Claude Code du 13/10/2026) ; conditions du fournisseur non relues individuellement par le titulaire, à relire ».
+- Collecte partielle bornée par source. Une collecte partielle n'expire **aucune** offre.
+
+**Comptage** : offres réellement persistées dans `sourcing_offers` et lisibles par le titulaire du compte. La lisibilité a été vérifiée avec la sécurité par ligne (RLS) sous son identité : 113 candidates pour « iphone 13 », triées par prix.
+
+| Fournisseur | Offres en base | Prix > 0 | Devise | En stock / faible / rupture / inconnu | Quantité | EAN | Dernier passage |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Subastalotes | 300 | 300 | EUR | 0 / 50 / 250 / 0 | 300 | 0 | succès |
+| Ekolow | 243 | 243 | EUR | 212 / 27 / 4 / 0 | 28 | 0 | coupé par la limite de 150 s (écriture en cours) |
+| Repuestosmovil | 208 | 208 | EUR | 208 / 0 / 0 / 0 | 0 | 0 | coupé par la limite de 150 s |
+| PC Ricondizionati | 198 | 198 | EUR | 197 / 0 / 1 / 0 | 0 | 0 | coupé par la limite de 150 s |
+| Flashmac | 127 | 127 | EUR | 82 / 45 / 0 / 0 | 45 | 1 | succès (catalogue complet ; contient des devis « Preventivo ») |
+| Mobinova | 22 | 22 | EUR | 14 / 0 / 8 / 0 | 0 | 0 | succès (partiel) |
+| Pulled Mac Parts | 21 | 21 | EUR | 7 / 0 / 14 / 0 | 0 | 0 | succès (partiel) |
+| 2repair | 16 | 16 | GBP | 4 / 0 / 12 / 0 | 0 | 0 | succès (partiel) |
+| Mobilepart.pl | 16 | 16 | PLN | 11 / 0 / 5 / 0 | 0 | 0 | succès (partiel) |
+| Bitstockz | 16 | 16 | PLN | 12 / 0 / 4 / 0 | 0 | 0 | succès (partiel) |
+| MobileSentrix EU | 14 | 14 | EUR | 14 / 0 / 0 / 0 | 0 | 0 | partiel (pages en erreur) |
+| GSMOK | 9 | 9 | EUR | 2 / 5 / 2 / 0 | 0 | 0 | partiel (7 pages sur 20 en erreur) |
+| DA Pièces | 8 | 8 | EUR | 8 / 0 / 0 / 0 | 0 | 0 | succès (partiel) |
+| Bestellaptops | 8 | 8 | EUR | 8 / 0 / 0 / 0 | 0 | 0 | succès (partiel) |
+| Portatilmovil | 8 | 8 | EUR | 8 / 0 / 0 / 0 | 0 | 8 | succès (partiel) |
+| Eurolots | 8 | 8 | EUR | 8 / 0 / 0 / 0 | 0 | 0 | succès (partiel) |
+| Hurtel | 6 | 6 | EUR | 5 / 0 / 1 / 0 | 0 | 0 | succès (partiel) |
+| Shop Technoworld | 4 | 4 | EUR | 4 / 0 / 0 / 0 | 0 | 0 | partiel (1er essai : erreur réseau) |
+| ComputerG | 3 | 3 | EUR | 3 / 0 / 0 / 0 | 0 | 0 | succès (fiches de plus de 4 Mo) |
+
+**Total : 1 225 nouvelles offres**, toutes avec un prix > 0, un lien vers la fiche et un prix converti en EUR (taux BCE).
+
+Les 3 sources existantes (Refreshed Apples, Brico-phone, Servisní díly) n'ont pas été recollectées : 396 offres inchangées. Leurs stocks « inconnu » sont restés « inconnu » (349 chez Refreshed Apples).
+
+**Garde-fous constatés :**
+- Aucun doublon : contrainte unique (organisation, source, identifiant externe).
+- Aucune offre expirée pendant ces collectes partielles.
+- Les ruptures enregistrées sont celles déclarées par le fournisseur : quantité 0 chez Subastalotes, disponibilité schema.org ailleurs.
+
+**Limites constatées :**
+- L'ancien parcours écrivait tout après avoir lu toutes les pages : 4 passages ont dépassé 150 s et ont été coupés pendant l'écriture. Les offres déjà écrites restent valides et rien n'a expiré.
+- Corrigé dans la collecte hebdomadaire : écriture page par page, 4 à la fois, budget vérifié pendant l'écriture, reprise au bon rang.
