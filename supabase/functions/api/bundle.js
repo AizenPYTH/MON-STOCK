@@ -17737,6 +17737,7 @@ var LIVE_SEARCH_CACHE_TTL_MS = 10 * 6e4;
 var LIVE_SEARCH_DEFAULT_TIMEOUT_MS = 8e3;
 var LIVE_SEARCH_MAX_SOURCES = 10;
 var LIVE_SEARCH_PARALLELISM = 10;
+var LIVE_SEARCH_STORE_CONCURRENCY = 8;
 var LIVE_SEARCH_PUBLIC_MIN_DELAY_MS = 2e3;
 var LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS = 500;
 var LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE = 2;
@@ -18084,18 +18085,22 @@ async function runLiveSearch(ctx, input, overrides = {}) {
       const offerIds = [];
       let stored = 0;
       let rejected = 0;
-      for (const offer of offers) {
-        try {
-          const r = await storeOffer(storage, offer);
-          if (r.outcome === "stored" && r.offerId) {
-            stored++;
-            offerIds.push(r.offerId);
-          } else rejected++;
-        } catch (e) {
-          rejected++;
-          log10.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
+      const queue = [...offers];
+      const storeNext = async () => {
+        for (let offer = queue.shift(); offer; offer = queue.shift()) {
+          try {
+            const r = await storeOffer(storage, offer);
+            if (r.outcome === "stored" && r.offerId) {
+              stored++;
+              offerIds.push(r.offerId);
+            } else rejected++;
+          } catch (e) {
+            rejected++;
+            log10.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
+          }
         }
-      }
+      };
+      await Promise.all(Array.from({ length: Math.min(LIVE_SEARCH_STORE_CONCURRENCY, queue.length) }, storeNext));
       if (stored > 0) await admin.from("supplier_sources").update({ status: "active", last_sync_at: retrievedAt.toISOString(), last_successful_sync_at: now().toISOString(), last_error: null }).eq("id", c.sourceId);
       return { offerIds, stored, rejected };
     },

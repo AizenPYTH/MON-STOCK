@@ -46,7 +46,9 @@ export async function callApi<T>(path: string, options: ApiCallOptions = {}): Pr
   try {
     res = await (options.fetchImpl ?? fetch)(url.toString(), { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: controller.signal });
   } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") throw new UserFacingError("Le serveur n'a pas répondu à temps. Réessayez.", "TIMEOUT");
+    // Sur iOS, l'annulation par délai n'est pas toujours une « AbortError » (TypeError « Network
+    // request failed ») : c'est le signal qui dit si c'est NOTRE délai, pas l'absence de réseau.
+    if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) throw new UserFacingError("Le serveur n'a pas répondu à temps. Réessayez.", "TIMEOUT");
     throw new UserFacingError(OFFLINE_MESSAGE, "OFFLINE");
   } finally {
     clearTimeout(timer);

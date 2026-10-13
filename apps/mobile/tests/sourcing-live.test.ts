@@ -59,4 +59,11 @@ describe("appels au serveur MON STOCK", () => {
     await expect(callApi("/x", { fetchImpl: (async () => { throw new TypeError("Network request failed"); }) as unknown as typeof fetch })).rejects.toThrow(/Connexion internet indisponible/);
     await expect(callApi("/x", { fetchImpl: (async () => new Response("<html>", { status: 502 })) as unknown as typeof fetch })).rejects.toThrow(/momentanément indisponible/);
   });
+
+  it("délai dépassé : « serveur trop lent », jamais « pas de connexion » (iOS : TypeError après annulation)", async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
+    const slow = ((_url: string, init: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new TypeError("Network request failed"))))) as unknown as typeof fetch;
+    await expect(callApi("/sourcing/search", { fetchImpl: slow, timeoutMs: 10 })).rejects.toThrow(/n'a pas répondu à temps/);
+  });
 });

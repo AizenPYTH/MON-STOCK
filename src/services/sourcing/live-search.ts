@@ -33,6 +33,8 @@ export const LIVE_SEARCH_CACHE_TTL_MS = 10 * 60_000;
 export const LIVE_SEARCH_DEFAULT_TIMEOUT_MS = 8_000;
 export const LIVE_SEARCH_MAX_SOURCES = 10;
 export const LIVE_SEARCH_PARALLELISM = 10;
+/** offres d'une source enregistrées simultanément (chaque enregistrement = plusieurs requêtes base) */
+export const LIVE_SEARCH_STORE_CONCURRENCY = 8;
 export const LIVE_SEARCH_PUBLIC_MIN_DELAY_MS = 2_000;
 export const LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS = 500;
 /** reformulations « adapter_search » envoyées au plus à chaque source (dans le même budget de temps) */
@@ -555,18 +557,24 @@ export async function runLiveSearch(ctx: LiveSearchContext, input: LiveSearchInp
       const offerIds: string[] = [];
       let stored = 0;
       let rejected = 0;
-      for (const offer of offers) {
-        try {
-          const r = await storeOffer(storage, offer);
-          if (r.outcome === "stored" && r.offerId) {
-            stored++;
-            offerIds.push(r.offerId);
-          } else rejected++;
-        } catch (e) {
-          rejected++;
-          log.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
+      // Enregistrement en parallèle borné : 4 à 6 allers-retours base par offre ; en série, 145 offres
+      // prenaient ~100 s (constaté en production le 13/10) et la recherche dépassait le délai du mobile.
+      const queue = [...offers];
+      const storeNext = async (): Promise<void> => {
+        for (let offer = queue.shift(); offer; offer = queue.shift()) {
+          try {
+            const r = await storeOffer(storage, offer);
+            if (r.outcome === "stored" && r.offerId) {
+              stored++;
+              offerIds.push(r.offerId);
+            } else rejected++;
+          } catch (e) {
+            rejected++;
+            log.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
+          }
         }
-      }
+      };
+      await Promise.all(Array.from({ length: Math.min(LIVE_SEARCH_STORE_CONCURRENCY, queue.length) }, storeNext));
       if (stored > 0) await admin.from("supplier_sources").update({ status: "active", last_sync_at: retrievedAt.toISOString(), last_successful_sync_at: now().toISOString(), last_error: null }).eq("id", c.sourceId);
       return { offerIds, stored, rejected };
     },
