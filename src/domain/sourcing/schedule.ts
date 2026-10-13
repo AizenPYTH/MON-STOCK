@@ -5,13 +5,14 @@
  * seules les dates et le compteur d'échecs changent.
  */
 
-export type SyncFrequency = "manual" | "hourly" | "every_6_hours" | "daily";
+export type SyncFrequency = "manual" | "hourly" | "every_6_hours" | "daily" | "weekly";
 
 export const FREQUENCY_MS: Record<SyncFrequency, number | null> = {
   manual: null,
   hourly: 3_600_000,
   every_6_hours: 6 * 3_600_000,
   daily: 24 * 3_600_000,
+  weekly: 7 * 24 * 3_600_000,
 };
 
 export const FREQUENCY_LABEL: Record<SyncFrequency, string> = {
@@ -19,6 +20,7 @@ export const FREQUENCY_LABEL: Record<SyncFrequency, string> = {
   hourly: "Toutes les heures",
   every_6_hours: "Toutes les 6 heures",
   daily: "Une fois par jour",
+  weekly: "Une fois par semaine",
 };
 
 export const BACKOFF_BASE_MS = 15 * 60_000;

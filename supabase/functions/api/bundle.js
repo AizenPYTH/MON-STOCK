@@ -5067,8 +5067,48 @@ var init_sync_runs = __esm({
       manual: null,
       hourly: 36e5,
       every_6_hours: 6 * 36e5,
-      daily: 24 * 36e5
+      daily: 24 * 36e5,
+      weekly: 7 * 24 * 36e5
     };
+  }
+});
+
+// src/services/sync/alerts.ts
+async function upsertAlert(admin, input) {
+  const { data: existing } = await admin.from("alerts").select("id").eq("organization_id", input.organizationId).eq("dedupe_key", input.dedupeKey).neq("status", "resolved").maybeSingle();
+  if (existing) {
+    const { error: error2 } = await admin.from("alerts").update({ title: input.title, message: input.message, severity: input.severity, action_href: input.actionHref ?? null }).eq("id", existing.id);
+    if (error2) log7.warn("mise \xE0 jour d'alerte impossible", { dedupeKey: input.dedupeKey, error: error2.message });
+    return;
+  }
+  const { error } = await admin.from("alerts").insert({
+    organization_id: input.organizationId,
+    type: input.type,
+    severity: input.severity,
+    title: input.title,
+    message: input.message,
+    dedupe_key: input.dedupeKey,
+    entity_type: input.entityType ?? null,
+    entity_id: input.entityId ?? null,
+    action_href: input.actionHref ?? null,
+    status: "open"
+  });
+  if (error && error.code !== "23505") log7.warn("cr\xE9ation d'alerte impossible", { dedupeKey: input.dedupeKey, error: error.message });
+}
+async function resolveAlerts(admin, organizationId, dedupeKeys) {
+  if (dedupeKeys.length === 0) return;
+  const { error } = await admin.from("alerts").update({ status: "resolved", resolved_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", organizationId).in("dedupe_key", dedupeKeys).neq("status", "resolved");
+  if (error) log7.warn("r\xE9solution d'alertes impossible", { dedupeKeys, error: error.message });
+}
+var log7, connectionExpiredKey, syncFailedKey;
+var init_alerts = __esm({
+  "src/services/sync/alerts.ts"() {
+    "use strict";
+    init_empty();
+    init_logger();
+    log7 = createLogger("ALERTS");
+    connectionExpiredKey = (connectionId) => `connection_expired:${connectionId}`;
+    syncFailedKey = (connectionId) => `sync_failed:${connectionId}`;
   }
 });
 
@@ -5224,7 +5264,7 @@ async function fetchWithRetry(url, init, options) {
         const tooLong = requested !== null && requested > MAX_RETRY_AFTER_MS;
         if (attempt < retries && !tooLong) {
           const wait = requested ?? backoff(attempt);
-          log8.warn("r\xE9ponse transitoire, nouvelle tentative", { provider: options.provider, label, status: res.status, attempt: attempt + 1, waitMs: wait });
+          log11.warn("r\xE9ponse transitoire, nouvelle tentative", { provider: options.provider, label, status: res.status, attempt: attempt + 1, waitMs: wait });
           await sleep(wait);
           continue;
         }
@@ -5249,7 +5289,7 @@ async function fetchWithRetry(url, init, options) {
       const aborted2 = e instanceof Error && e.name === "AbortError";
       if (attempt < retries) {
         const wait = backoff(attempt);
-        log8.warn(aborted2 ? "d\xE9lai d\xE9pass\xE9, nouvelle tentative" : "erreur r\xE9seau, nouvelle tentative", { provider: options.provider, label, attempt: attempt + 1, waitMs: wait });
+        log11.warn(aborted2 ? "d\xE9lai d\xE9pass\xE9, nouvelle tentative" : "erreur r\xE9seau, nouvelle tentative", { provider: options.provider, label, attempt: attempt + 1, waitMs: wait });
         await sleep(wait);
         continue;
       }
@@ -5285,13 +5325,13 @@ async function readJson(res, provider = "api") {
     return null;
   }
 }
-var log8, DEFAULT_TIMEOUT_MS2, DEFAULT_RETRIES, MAX_BACKOFF_MS, MAX_RETRY_AFTER_MS;
+var log11, DEFAULT_TIMEOUT_MS2, DEFAULT_RETRIES, MAX_BACKOFF_MS, MAX_RETRY_AFTER_MS;
 var init_http2 = __esm({
   "src/integrations/core/http.ts"() {
     "use strict";
     init_errors2();
     init_logger();
-    log8 = createLogger("HTTP");
+    log11 = createLogger("HTTP");
     DEFAULT_TIMEOUT_MS2 = 3e4;
     DEFAULT_RETRIES = 3;
     MAX_BACKOFF_MS = 8e3;
@@ -5300,7 +5340,7 @@ var init_http2 = __esm({
 });
 
 // src/integrations/ebay/oauth.ts
-import { z as z18 } from "npm:zod@4.6.5";
+import { z as z19 } from "npm:zod@4.6.5";
 function buildAuthorizeUrl(config, state, scopes = ebayScopeList()) {
   const url = new URL(config.authorizeUrl);
   url.searchParams.set("client_id", config.clientId);
@@ -5393,51 +5433,51 @@ var init_oauth = __esm({
     init_errors2();
     init_http2();
     init_config();
-    tokenResponseSchema = z18.object({
-      access_token: z18.string().min(1),
-      expires_in: z18.number().int().positive(),
-      token_type: z18.string().optional(),
-      refresh_token: z18.string().min(1).optional(),
-      refresh_token_expires_in: z18.number().int().positive().optional()
+    tokenResponseSchema = z19.object({
+      access_token: z19.string().min(1),
+      expires_in: z19.number().int().positive(),
+      token_type: z19.string().optional(),
+      refresh_token: z19.string().min(1).optional(),
+      refresh_token_expires_in: z19.number().int().positive().optional()
     });
-    tokenErrorSchema = z18.object({
-      error: z18.string(),
-      error_description: z18.string().optional()
+    tokenErrorSchema = z19.object({
+      error: z19.string(),
+      error_description: z19.string().optional()
     });
   }
 });
 
 // src/integrations/core/types.ts
-import { z as z19 } from "npm:zod@4.6.5";
+import { z as z20 } from "npm:zod@4.6.5";
 var ORDER_STATUSES3, LISTING_STATUSES, isoDate2, nullableNumber, normalizedOrderItemSchema, normalizedOrderSchema, normalizedListingVariationSchema, normalizedListingSchema, accountInfoSchema, tokenSetSchema;
 var init_types2 = __esm({
   "src/integrations/core/types.ts"() {
     "use strict";
     ORDER_STATUSES3 = ["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"];
     LISTING_STATUSES = ["active", "ended", "unsold", "unknown"];
-    isoDate2 = z19.string().refine((s) => !Number.isNaN(Date.parse(s)), "Date ISO invalide");
-    nullableNumber = z19.number().finite().nullable();
-    normalizedOrderItemSchema = z19.object({
-      externalLineItemId: z19.string().min(1),
-      externalListingId: z19.string().min(1).nullable(),
+    isoDate2 = z20.string().refine((s) => !Number.isNaN(Date.parse(s)), "Date ISO invalide");
+    nullableNumber = z20.number().finite().nullable();
+    normalizedOrderItemSchema = z20.object({
+      externalLineItemId: z20.string().min(1),
+      externalListingId: z20.string().min(1).nullable(),
       /** Clé de variation ('' si l'article n'a pas de variation). Voir variationKey(). */
-      externalVariationId: z19.string(),
-      externalSku: z19.string().min(1).nullable(),
-      title: z19.string(),
-      quantity: z19.number().int().positive(),
+      externalVariationId: z20.string(),
+      externalSku: z20.string().min(1).nullable(),
+      title: z20.string(),
+      quantity: z20.number().int().positive(),
       unitPrice: nullableNumber,
-      currency: z19.string().length(3).nullable(),
+      currency: z20.string().length(3).nullable(),
       total: nullableNumber
     });
-    normalizedOrderSchema = z19.object({
-      externalOrderId: z19.string().min(1),
-      orderNumber: z19.string().nullable(),
-      status: z19.enum(ORDER_STATUSES3),
-      paymentStatus: z19.string().nullable(),
-      fulfillmentStatus: z19.string().nullable(),
-      cancelStatus: z19.string().nullable(),
-      buyerUsername: z19.string().nullable(),
-      currency: z19.string().length(3),
+    normalizedOrderSchema = z20.object({
+      externalOrderId: z20.string().min(1),
+      orderNumber: z20.string().nullable(),
+      status: z20.enum(ORDER_STATUSES3),
+      paymentStatus: z20.string().nullable(),
+      fulfillmentStatus: z20.string().nullable(),
+      cancelStatus: z20.string().nullable(),
+      buyerUsername: z20.string().nullable(),
+      currency: z20.string().length(3),
       subtotal: nullableNumber,
       shippingTotal: nullableNumber,
       taxTotal: nullableNumber,
@@ -5445,53 +5485,53 @@ var init_types2 = __esm({
       total: nullableNumber,
       placedAt: isoDate2,
       externalModifiedAt: isoDate2.nullable(),
-      payloadHash: z19.string().min(1),
-      items: z19.array(normalizedOrderItemSchema)
+      payloadHash: z20.string().min(1),
+      items: z20.array(normalizedOrderItemSchema)
     });
-    normalizedListingVariationSchema = z19.object({
-      sku: z19.string().min(1).nullable(),
-      specifics: z19.record(z19.string(), z19.string()),
-      quantityListed: z19.number().int().nullable(),
-      quantitySold: z19.number().int().nullable(),
-      quantityAvailable: z19.number().int().nullable(),
+    normalizedListingVariationSchema = z20.object({
+      sku: z20.string().min(1).nullable(),
+      specifics: z20.record(z20.string(), z20.string()),
+      quantityListed: z20.number().int().nullable(),
+      quantitySold: z20.number().int().nullable(),
+      quantityAvailable: z20.number().int().nullable(),
       price: nullableNumber,
-      currency: z19.string().length(3).nullable()
+      currency: z20.string().length(3).nullable()
     });
-    normalizedListingSchema = z19.object({
-      externalListingId: z19.string().min(1),
-      title: z19.string(),
-      sku: z19.string().min(1).nullable(),
-      externalProductId: z19.string().nullable(),
-      quantityListed: z19.number().int().nullable(),
-      quantitySold: z19.number().int().nullable(),
-      quantityAvailable: z19.number().int().nullable(),
+    normalizedListingSchema = z20.object({
+      externalListingId: z20.string().min(1),
+      title: z20.string(),
+      sku: z20.string().min(1).nullable(),
+      externalProductId: z20.string().nullable(),
+      quantityListed: z20.number().int().nullable(),
+      quantitySold: z20.number().int().nullable(),
+      quantityAvailable: z20.number().int().nullable(),
       price: nullableNumber,
-      currency: z19.string().length(3).nullable(),
-      listingUrl: z19.string().nullable(),
-      imageUrl: z19.string().nullable(),
-      status: z19.enum(LISTING_STATUSES),
+      currency: z20.string().length(3).nullable(),
+      listingUrl: z20.string().nullable(),
+      imageUrl: z20.string().nullable(),
+      status: z20.enum(LISTING_STATUSES),
       startedAt: isoDate2.nullable(),
       endsAt: isoDate2.nullable(),
-      variations: z19.array(normalizedListingVariationSchema)
+      variations: z20.array(normalizedListingVariationSchema)
     });
-    accountInfoSchema = z19.object({
-      externalAccountId: z19.string().min(1),
-      username: z19.string().min(1),
-      accountType: z19.string().nullable(),
-      registrationMarketplaceId: z19.string().nullable()
+    accountInfoSchema = z20.object({
+      externalAccountId: z20.string().min(1),
+      username: z20.string().min(1),
+      accountType: z20.string().nullable(),
+      registrationMarketplaceId: z20.string().nullable()
     });
-    tokenSetSchema = z19.object({
-      accessToken: z19.string().min(1),
-      accessTokenExpiresAt: z19.date(),
-      refreshToken: z19.string().min(1).nullable(),
-      refreshTokenExpiresAt: z19.date().nullable(),
-      tokenType: z19.string()
+    tokenSetSchema = z20.object({
+      accessToken: z20.string().min(1),
+      accessTokenExpiresAt: z20.date(),
+      refreshToken: z20.string().min(1).nullable(),
+      refreshTokenExpiresAt: z20.date().nullable(),
+      tokenType: z20.string()
     });
   }
 });
 
 // src/integrations/ebay/rest.ts
-import { z as z20 } from "npm:zod@4.6.5";
+import { z as z21 } from "npm:zod@4.6.5";
 function summarizeRestErrors(json2) {
   const parsed = ebayRestErrorSchema.safeParse(json2);
   if (!parsed.success || parsed.data.errors.length === 0) return { message: "", errorIds: [] };
@@ -5554,14 +5594,14 @@ var init_rest = __esm({
     init_errors2();
     init_http2();
     init_config();
-    ebayRestErrorSchema = z20.object({
-      errors: z20.array(
-        z20.object({
-          errorId: z20.number().optional(),
-          domain: z20.string().optional(),
-          category: z20.string().optional(),
-          message: z20.string().optional(),
-          longMessage: z20.string().optional()
+    ebayRestErrorSchema = z21.object({
+      errors: z21.array(
+        z21.object({
+          errorId: z21.number().optional(),
+          domain: z21.string().optional(),
+          category: z21.string().optional(),
+          message: z21.string().optional(),
+          longMessage: z21.string().optional()
         })
       )
     });
@@ -5569,7 +5609,7 @@ var init_rest = __esm({
 });
 
 // src/integrations/ebay/identity.ts
-import { z as z21 } from "npm:zod@4.6.5";
+import { z as z22 } from "npm:zod@4.6.5";
 function normalizeEbayUser(raw) {
   const parsed = ebayUserSchema.safeParse(raw);
   if (!parsed.success) {
@@ -5596,12 +5636,12 @@ var init_identity = __esm({
     init_types2();
     init_config();
     init_rest();
-    ebayUserSchema = z21.object({
-      userId: z21.string().min(1),
-      username: z21.string().min(1),
-      accountType: z21.string().optional(),
-      registrationMarketplaceId: z21.string().optional(),
-      status: z21.string().optional()
+    ebayUserSchema = z22.object({
+      userId: z22.string().min(1),
+      username: z22.string().min(1),
+      accountType: z22.string().optional(),
+      registrationMarketplaceId: z22.string().optional(),
+      status: z22.string().optional()
     });
   }
 });
@@ -5628,7 +5668,7 @@ var init_variation = __esm({
 
 // src/integrations/ebay/fulfillment.ts
 import { createHash as createHash5 } from "node:crypto";
-import { z as z22 } from "npm:zod@4.6.5";
+import { z as z23 } from "npm:zod@4.6.5";
 function mapEbayOrderStatus(input) {
   if (input.cancelState === "CANCELED") return "cancelled";
   if (input.paymentStatus === "FULLY_REFUNDED") return "refunded";
@@ -5742,37 +5782,37 @@ var init_fulfillment = __esm({
     init_variation();
     init_config();
     init_rest();
-    amountSchema2 = z22.object({
-      value: z22.union([z22.string(), z22.number()]),
-      currency: z22.string().optional(),
-      convertedFromValue: z22.union([z22.string(), z22.number()]).optional(),
-      convertedFromCurrency: z22.string().optional()
+    amountSchema2 = z23.object({
+      value: z23.union([z23.string(), z23.number()]),
+      currency: z23.string().optional(),
+      convertedFromValue: z23.union([z23.string(), z23.number()]).optional(),
+      convertedFromCurrency: z23.string().optional()
     }).transform((a) => {
       const n = typeof a.value === "number" ? a.value : Number(a.value);
       return { value: Number.isFinite(n) ? n : null, currency: a.currency ?? null };
     });
-    lineItemSchema = z22.object({
-      lineItemId: z22.string().min(1),
-      legacyItemId: z22.string().optional(),
-      legacyVariationId: z22.string().optional(),
-      sku: z22.string().optional(),
-      title: z22.string().optional(),
-      quantity: z22.number().int().positive(),
+    lineItemSchema = z23.object({
+      lineItemId: z23.string().min(1),
+      legacyItemId: z23.string().optional(),
+      legacyVariationId: z23.string().optional(),
+      sku: z23.string().optional(),
+      title: z23.string().optional(),
+      quantity: z23.number().int().positive(),
       lineItemCost: amountSchema2.optional(),
       total: amountSchema2.optional(),
-      lineItemFulfillmentStatus: z22.string().optional(),
-      variationAspects: z22.array(z22.object({ name: z22.string(), value: z22.string() })).optional()
+      lineItemFulfillmentStatus: z23.string().optional(),
+      variationAspects: z23.array(z23.object({ name: z23.string(), value: z23.string() })).optional()
     });
-    ebayOrderSchema = z22.object({
-      orderId: z22.string().min(1),
-      legacyOrderId: z22.string().optional(),
-      creationDate: z22.string(),
-      lastModifiedDate: z22.string().optional(),
-      orderFulfillmentStatus: z22.string().optional(),
-      orderPaymentStatus: z22.string().optional(),
-      cancelStatus: z22.object({ cancelState: z22.string().optional() }).passthrough().optional(),
-      buyer: z22.object({ username: z22.string().optional() }).passthrough().optional(),
-      pricingSummary: z22.object({
+    ebayOrderSchema = z23.object({
+      orderId: z23.string().min(1),
+      legacyOrderId: z23.string().optional(),
+      creationDate: z23.string(),
+      lastModifiedDate: z23.string().optional(),
+      orderFulfillmentStatus: z23.string().optional(),
+      orderPaymentStatus: z23.string().optional(),
+      cancelStatus: z23.object({ cancelState: z23.string().optional() }).passthrough().optional(),
+      buyer: z23.object({ username: z23.string().optional() }).passthrough().optional(),
+      pricingSummary: z23.object({
         priceSubtotal: amountSchema2.optional(),
         deliveryCost: amountSchema2.optional(),
         tax: amountSchema2.optional(),
@@ -5780,14 +5820,14 @@ var init_fulfillment = __esm({
         fee: amountSchema2.optional()
       }).passthrough().optional(),
       totalMarketplaceFee: amountSchema2.optional(),
-      lineItems: z22.array(lineItemSchema).default([])
+      lineItems: z23.array(lineItemSchema).default([])
     });
-    ebayOrdersPageSchema = z22.object({
-      total: z22.number().int().nonnegative().optional(),
-      limit: z22.number().int().optional(),
-      offset: z22.number().int().optional(),
-      next: z22.string().optional(),
-      orders: z22.array(z22.unknown()).default([])
+    ebayOrdersPageSchema = z23.object({
+      total: z23.number().int().nonnegative().optional(),
+      limit: z23.number().int().optional(),
+      offset: z23.number().int().optional(),
+      next: z23.string().optional(),
+      orders: z23.array(z23.unknown()).default([])
     });
     EBAY_ORDERS_PAGE_SIZE = 100;
     EBAY_ORDERS_MAX_PAGES = 50;
@@ -6075,7 +6115,7 @@ var init_trading = __esm({
 });
 
 // src/integrations/ebay/connector.ts
-var log9, EbayConnector;
+var log12, EbayConnector;
 var init_connector = __esm({
   "src/integrations/ebay/connector.ts"() {
     "use strict";
@@ -6087,7 +6127,7 @@ var init_connector = __esm({
     init_identity();
     init_fulfillment();
     init_trading();
-    log9 = createLogger("EBAY");
+    log12 = createLogger("EBAY");
     EbayConnector = class {
       provider = EBAY_PROVIDER;
       label = "eBay";
@@ -6134,8 +6174,8 @@ var init_connector = __esm({
       async *getOrders(auth, params) {
         const config = this.requireConfig();
         for await (const page2 of iterateEbayOrders(config, auth, params)) {
-          for (const inv of page2.invalid) log9.warn("commande eBay ignor\xE9e (format inattendu)", { orderId: inv.orderId, reason: inv.message });
-          if (page2.truncated) log9.warn("r\xE9cup\xE9ration des commandes tronqu\xE9e (limite de pages atteinte) : la suite sera reprise au prochain run");
+          for (const inv of page2.invalid) log12.warn("commande eBay ignor\xE9e (format inattendu)", { orderId: inv.orderId, reason: inv.message });
+          if (page2.truncated) log12.warn("r\xE9cup\xE9ration des commandes tronqu\xE9e (limite de pages atteinte) : la suite sera reprise au prochain run");
           yield { orders: page2.orders, invalid: page2.invalid.map((i) => ({ ref: i.orderId, message: i.message })), truncated: page2.truncated, hasMore: page2.hasMore };
         }
       }
@@ -6144,9 +6184,9 @@ var init_connector = __esm({
         let pageIndex = 0;
         for await (const page2 of iterateGetMyeBaySelling(config, auth)) {
           pageIndex++;
-          for (const inv of page2.invalid) log9.warn("annonce eBay ignor\xE9e (format inattendu)", { itemId: inv.itemId, reason: inv.message });
+          for (const inv of page2.invalid) log12.warn("annonce eBay ignor\xE9e (format inattendu)", { itemId: inv.itemId, reason: inv.message });
           const truncated = pageIndex >= GET_MY_EBAY_SELLING_MAX_PAGES && page2.totalPages > pageIndex;
-          if (truncated) log9.warn("liste d'annonces tronqu\xE9e (limite de pages atteinte)", { pages: pageIndex, totalPages: page2.totalPages });
+          if (truncated) log12.warn("liste d'annonces tronqu\xE9e (limite de pages atteinte)", { pages: pageIndex, totalPages: page2.totalPages });
           yield { listings: page2.listings, invalid: page2.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page2.warnings, truncated };
         }
       }
@@ -6331,45 +6371,6 @@ var init_registry2 = __esm({
   }
 });
 
-// src/services/sync/alerts.ts
-async function upsertAlert(admin, input) {
-  const { data: existing } = await admin.from("alerts").select("id").eq("organization_id", input.organizationId).eq("dedupe_key", input.dedupeKey).neq("status", "resolved").maybeSingle();
-  if (existing) {
-    const { error: error2 } = await admin.from("alerts").update({ title: input.title, message: input.message, severity: input.severity, action_href: input.actionHref ?? null }).eq("id", existing.id);
-    if (error2) log14.warn("mise \xE0 jour d'alerte impossible", { dedupeKey: input.dedupeKey, error: error2.message });
-    return;
-  }
-  const { error } = await admin.from("alerts").insert({
-    organization_id: input.organizationId,
-    type: input.type,
-    severity: input.severity,
-    title: input.title,
-    message: input.message,
-    dedupe_key: input.dedupeKey,
-    entity_type: input.entityType ?? null,
-    entity_id: input.entityId ?? null,
-    action_href: input.actionHref ?? null,
-    status: "open"
-  });
-  if (error && error.code !== "23505") log14.warn("cr\xE9ation d'alerte impossible", { dedupeKey: input.dedupeKey, error: error.message });
-}
-async function resolveAlerts(admin, organizationId, dedupeKeys) {
-  if (dedupeKeys.length === 0) return;
-  const { error } = await admin.from("alerts").update({ status: "resolved", resolved_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", organizationId).in("dedupe_key", dedupeKeys).neq("status", "resolved");
-  if (error) log14.warn("r\xE9solution d'alertes impossible", { dedupeKeys, error: error.message });
-}
-var log14, connectionExpiredKey, syncFailedKey;
-var init_alerts = __esm({
-  "src/services/sync/alerts.ts"() {
-    "use strict";
-    init_empty();
-    init_logger();
-    log14 = createLogger("ALERTS");
-    connectionExpiredKey = (connectionId) => `connection_expired:${connectionId}`;
-    syncFailedKey = (connectionId) => `sync_failed:${connectionId}`;
-  }
-});
-
 // src/services/sync/context.ts
 function sanitizeDetails(details) {
   if (!details) return {};
@@ -6489,7 +6490,7 @@ async function upsertOAuthConnection(input) {
   }
   await saveConnectionTokens(connection.id, input.tokens);
   await resolveAlerts(admin, input.organizationId, [connectionExpiredKey(connection.id), syncFailedKey(connection.id)]);
-  log15.info("connexion enregistr\xE9e", { provider: input.provider, connectionId: connection.id, orgId: input.organizationId, isNew, username: input.account.username });
+  log17.info("connexion enregistr\xE9e", { provider: input.provider, connectionId: connection.id, orgId: input.organizationId, isNew, username: input.account.username });
   return { connection, isNew };
 }
 async function markConnectionExpired(connectionId, reason) {
@@ -6508,7 +6509,7 @@ async function markConnectionExpired(connectionId, reason) {
       entityId: connectionId,
       actionHref: "/settings/integrations"
     });
-    log15.warn("connexion marqu\xE9e expir\xE9e", { connectionId, reason: cleanReason });
+    log17.warn("connexion marqu\xE9e expir\xE9e", { connectionId, reason: cleanReason });
   }
 }
 function expired(connectionId, message, details = {}) {
@@ -6567,7 +6568,7 @@ async function refreshAndStore(connection, refreshEnc) {
     if (isConnectorError(e) && e.code === "AUTH_EXPIRED") {
       const latest = await loadTokenState(connectionId).catch(() => null);
       if (latest?.secrets?.refresh_token_enc && latest.secrets.refresh_token_enc !== refreshEnc && latest.connection.status !== "disconnected") {
-        log15.info("refresh token remplac\xE9 pendant le rafra\xEEchissement (reconnexion) : la connexion n'est pas marqu\xE9e expir\xE9e", { connectionId });
+        log17.info("refresh token remplac\xE9 pendant le rafra\xEEchissement (reconnexion) : la connexion n'est pas marqu\xE9e expir\xE9e", { connectionId });
         if (latest.secrets.access_token_enc && accessTokenIsFresh(latest, Date.now())) return safeDecrypt(connectionId, latest.secrets.access_token_enc);
         throw e;
       }
@@ -6582,7 +6583,7 @@ async function refreshAndStore(connection, refreshEnc) {
     p_refresh_token_enc_used: refreshEnc
   });
   if (error) {
-    log15.error("token rafra\xEEchi mais non enregistr\xE9", { connectionId, error: error.message });
+    log17.error("token rafra\xEEchi mais non enregistr\xE9", { connectionId, error: error.message });
     return tokens.accessToken;
   }
   if (outcome === "disconnected") {
@@ -6591,12 +6592,12 @@ async function refreshAndStore(connection, refreshEnc) {
   if (outcome === "stale") {
     const latest = await loadTokenState(connectionId);
     if (latest.secrets?.access_token_enc && accessTokenIsFresh(latest, Date.now())) {
-      log15.info("token plus r\xE9cent d\xE9j\xE0 enregistr\xE9 par un autre processus", { connectionId });
+      log17.info("token plus r\xE9cent d\xE9j\xE0 enregistr\xE9 par un autre processus", { connectionId });
       return safeDecrypt(connectionId, latest.secrets.access_token_enc);
     }
     return tokens.accessToken;
   }
-  log15.info("access token rafra\xEEchi", { connectionId, provider: connection.provider, expiresAt: tokens.accessTokenExpiresAt.toISOString() });
+  log17.info("access token rafra\xEEchi", { connectionId, provider: connection.provider, expiresAt: tokens.accessTokenExpiresAt.toISOString() });
   return tokens.accessToken;
 }
 async function safeDecrypt(connectionId, payload) {
@@ -6630,10 +6631,10 @@ async function disconnectConnection(connectionId, organizationId) {
   const { error } = await admin.from("channel_connections").update({ status: "disconnected", disconnected_at: (/* @__PURE__ */ new Date()).toISOString(), token_expires_at: null, refresh_token_expires_at: null, last_error: null }).eq("id", connectionId).eq("organization_id", organizationId);
   if (error) throw fromPostgrestError(error);
   await resolveAlerts(admin, organizationId, [connectionExpiredKey(connectionId), syncFailedKey(connectionId)]);
-  log15.info("connexion d\xE9connect\xE9e", { connectionId, orgId: organizationId, revoked });
+  log17.info("connexion d\xE9connect\xE9e", { connectionId, orgId: organizationId, revoked });
   return { revoked, note };
 }
-var log15, PROVIDER_LABEL, ACCESS_TOKEN_REFRESH_MARGIN_MS, inflightRefresh;
+var log17, PROVIDER_LABEL, ACCESS_TOKEN_REFRESH_MARGIN_MS, inflightRefresh;
 var init_connection_store = __esm({
   "src/services/channels/connection-store.ts"() {
     "use strict";
@@ -6646,7 +6647,7 @@ var init_connection_store = __esm({
     init_registry2();
     init_alerts();
     init_context();
-    log15 = createLogger("CONNECTIONS");
+    log17 = createLogger("CONNECTIONS");
     PROVIDER_LABEL = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "Ventes manuelles" };
     ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 6e4;
     inflightRefresh = /* @__PURE__ */ new Map();
@@ -6654,7 +6655,7 @@ var init_connection_store = __esm({
 });
 
 // src/services/sourcing/feed-secrets.ts
-import { z as z27 } from "npm:zod@4.6.5";
+import { z as z28 } from "npm:zod@4.6.5";
 function authHeaders2(auth) {
   if (auth.kind === "header") {
     if (FORBIDDEN_HEADERS.has(auth.name.toLowerCase())) throw new AppError("VALIDATION", `En-t\xEAte \xAB ${auth.name} \xBB non autoris\xE9.`);
@@ -6676,10 +6677,10 @@ var init_feed_secrets = __esm({
     init_empty();
     init_crypto();
     init_errors();
-    feedAuthSchema = z27.discriminatedUnion("kind", [
-      z27.object({ kind: z27.literal("none") }),
-      z27.object({ kind: z27.literal("header"), name: z27.string().trim().regex(/^[A-Za-z0-9-]{1,64}$/, "Nom d'en-t\xEAte invalide (lettres, chiffres, tirets)."), value: z27.string().min(1).max(2e3) }),
-      z27.object({ kind: z27.literal("basic"), username: z27.string().min(1).max(200), password: z27.string().min(1).max(500) })
+    feedAuthSchema = z28.discriminatedUnion("kind", [
+      z28.object({ kind: z28.literal("none") }),
+      z28.object({ kind: z28.literal("header"), name: z28.string().trim().regex(/^[A-Za-z0-9-]{1,64}$/, "Nom d'en-t\xEAte invalide (lettres, chiffres, tirets)."), value: z28.string().min(1).max(2e3) }),
+      z28.object({ kind: z28.literal("basic"), username: z28.string().min(1).max(200), password: z28.string().min(1).max(500) })
     ]);
     FORBIDDEN_HEADERS = /* @__PURE__ */ new Set(["host", "cookie", "content-length", "transfer-encoding", "connection", "user-agent"]);
   }
@@ -6798,7 +6799,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
       content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl, await loadFeedAuthHeaders(admin, feed.id), options.resolver);
     }
     const parsed = parseFeedContent(content, feed.format, feedOptions);
-    for (const w2 of parsed.warnings) log19.info("feed warning", { feedId, warning: w2 });
+    for (const w2 of parsed.warnings) log21.info("feed warning", { feedId, warning: w2 });
     const ctx = {
       supabase: admin,
       organizationId: feed.organization_id,
@@ -6894,7 +6895,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, duplicates: duplicateIdx.size, quarantined: false, quality, created, updated, unchanged, unrecognized, totalRows: parsed.rows.length, truncated, mode, issues };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
-    log19.error("feed ingestion failed", { feedId, error: message });
+    log21.error("feed ingestion failed", { feedId, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "FEED_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: processed, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message, status: "error" }).eq("id", feed.id);
@@ -6902,7 +6903,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     return { feedId, runId: run.id, status: "failed", processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, created, updated, unchanged, unrecognized, mode, issues };
   }
 }
-var MAX_ROWS_PER_RUN, log19, FEED_ACCEPT, MAX_IMPORT_ISSUES;
+var MAX_ROWS_PER_RUN, log21, FEED_ACCEPT, MAX_IMPORT_ISSUES;
 var init_feed_ingestion = __esm({
   "src/services/sourcing/feed-ingestion.ts"() {
     "use strict";
@@ -6917,7 +6918,7 @@ var init_feed_ingestion = __esm({
     init_sync_runs();
     init_import_quality();
     MAX_ROWS_PER_RUN = 5e3;
-    log19 = createLogger("FEED_INGESTION");
+    log21 = createLogger("FEED_INGESTION");
     FEED_ACCEPT = {
       csv: "text/csv,text/plain,application/csv;q=0.9,*/*;q=0.5",
       xml: "application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.5",
@@ -7057,7 +7058,7 @@ __export(catalog_import_exports, {
   suggestCatalogMappingDetailed: () => suggestCatalogMappingDetailed
 });
 import { createHash as createHash7 } from "node:crypto";
-import { z as z28 } from "npm:zod@4.6.5";
+import { z as z29 } from "npm:zod@4.6.5";
 function decodeBase64(b64) {
   const clean = b64.replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) throw new AppError("VALIDATION", "Fichier illisible (encodage invalide).");
@@ -7387,41 +7388,41 @@ var init_catalog_import = __esm({
     init_xlsx();
     MAX_CATALOG_BYTES = 15 * 1024 * 1024;
     CATALOG_IMPORT_KIND = "catalog_file_import";
-    catalogFileSchema = z28.object({
-      fileName: z28.string().trim().min(1).max(200),
+    catalogFileSchema = z29.object({
+      fileName: z29.string().trim().min(1).max(200),
       /** contenu du fichier encodé en base64 */
-      contentBase64: z28.string().min(4).max(Math.ceil(MAX_CATALOG_BYTES * 4 / 3) + 8, "Fichier trop volumineux (15 Mo maximum)."),
-      format: z28.enum(["csv", "xlsx", "xml", "json"]).optional(),
-      sheet: z28.string().max(100).optional()
+      contentBase64: z29.string().min(4).max(Math.ceil(MAX_CATALOG_BYTES * 4 / 3) + 8, "Fichier trop volumineux (15 Mo maximum)."),
+      format: z29.enum(["csv", "xlsx", "xml", "json"]).optional(),
+      sheet: z29.string().max(100).optional()
     });
-    catalogDefaultsSchema = z28.object({
-      currency: z28.string().trim().regex(/^[A-Za-z]{3}$/, "Devise sur 3 lettres (EUR, USD\u2026).").transform((s) => s.toUpperCase()),
-      taxType: z28.enum(["ht", "ttc", "unknown"]).default("unknown"),
-      country: z28.string().trim().regex(/^[A-Za-z]{2}$/).transform((s) => s.toUpperCase()).nullish()
+    catalogDefaultsSchema = z29.object({
+      currency: z29.string().trim().regex(/^[A-Za-z]{3}$/, "Devise sur 3 lettres (EUR, USD\u2026).").transform((s) => s.toUpperCase()),
+      taxType: z29.enum(["ht", "ttc", "unknown"]).default("unknown"),
+      country: z29.string().trim().regex(/^[A-Za-z]{2}$/).transform((s) => s.toUpperCase()).nullish()
     });
-    catalogPreviewSchema = z28.object({
+    catalogPreviewSchema = z29.object({
       file: catalogFileSchema,
       mapping: fieldMappingSchema.optional(),
       defaults: catalogDefaultsSchema.partial({ currency: true }).optional(),
       /** fournisseur choisi : retrouve son mapping mémorisé et signale un fichier déjà importé */
-      supplierId: z28.string().uuid().optional()
+      supplierId: z29.string().uuid().optional()
     });
-    importModeSchema = z28.enum(["partial", "snapshot"]);
-    catalogImportSchema = z28.object({
+    importModeSchema = z29.enum(["partial", "snapshot"]);
+    catalogImportSchema = z29.object({
       file: catalogFileSchema,
       mapping: fieldMappingSchema,
       defaults: catalogDefaultsSchema,
-      supplierId: z28.string().uuid().optional(),
-      supplierName: z28.string().trim().min(2).max(160).optional(),
+      supplierId: z29.string().uuid().optional(),
+      supplierName: z29.string().trim().min(2).max(160).optional(),
       /** confirmation explicite après un import suspendu par le contrôle de qualité */
-      force: z28.boolean().optional(),
+      force: z29.boolean().optional(),
       /**
        * partial (défaut) : seules les lignes du fichier sont créées / mises à jour ;
        * snapshot : catalogue COMPLET, les offres absentes du fichier sont marquées « expirées ».
        */
       mode: importModeSchema.default("partial"),
       /** confirmation explicite pour réimporter un fichier identique à un import déjà réussi */
-      allowSameFile: z28.boolean().optional()
+      allowSameFile: z29.boolean().optional()
     }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), {
       message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix."
     });
@@ -7535,7 +7536,7 @@ async function runLibraryChecks(keys) {
       message: r.message,
       duration_ms: r.durationMs
     });
-    if (error) log24.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
+    if (error) log25.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
   }
   return out;
 }
@@ -7579,7 +7580,7 @@ async function activateLibrarySource(ctx, key2) {
   const attestation = `Conditions d'utilisation (${termsUrl}) d\xE9clar\xE9es lues et acc\xE8s automatis\xE9 attest\xE9 par l'utilisateur ${ctx.user.email ?? ctx.user.id} le ${(/* @__PURE__ */ new Date()).toISOString()} (application mobile).`;
   return activateLibrarySourceFor(ctx.supabase, ctx.organization.id, key2, attestation);
 }
-async function activateLibrarySourceFor(db, organizationId, key2, attestation) {
+async function activateLibrarySourceFor(db, organizationId, key2, attestation, opts = {}) {
   const s = getLibrarySource(key2);
   if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
   if (s.blocked) throw new AppError("FORBIDDEN", s.blocked);
@@ -7607,16 +7608,16 @@ async function activateLibrarySourceFor(db, organizationId, key2, attestation) {
     sync_frequency: "manual",
     status: "active",
     // Adaptateur ayant réellement répondu lors de la vérification (détection de plateforme).
-    config: { adapter: check.adapter ?? s.adapter, library_key: s.key }
+    config: { adapter: opts.adapter ?? check.adapter ?? s.adapter, library_key: s.key }
   }).select("id").single();
   if (srcErr || !source) {
     await db.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", organizationId);
     throw srcErr ?? new AppError("INTERNAL", "Source non cr\xE9\xE9e.");
   }
-  log24.info("source de biblioth\xE8que activ\xE9e", { orgId: organizationId, key: key2 });
+  log25.info("source de biblioth\xE8que activ\xE9e", { orgId: organizationId, key: key2 });
   return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
 }
-var log24, shopifyTerms, SOURCE_LIBRARY;
+var log25, shopifyTerms, SOURCE_LIBRARY;
 var init_source_library = __esm({
   "src/services/sourcing/source-library.ts"() {
     "use strict";
@@ -7629,7 +7630,7 @@ var init_source_library = __esm({
     init_registry();
     init_robots();
     init_env();
-    log24 = createLogger("SOURCE_LIBRARY");
+    log25 = createLogger("SOURCE_LIBRARY");
     shopifyTerms = (base) => `${base}/policies/terms-of-service`;
     SOURCE_LIBRARY = [
       {
@@ -7900,7 +7901,7 @@ var init_source_library = __esm({
         termsUrl: "https://2repair.parts",
         access: "public_html",
         notes: "Pi\xE8ces smartphone, prix en livres sterling. Collecte r\xE9elle par le serveur MON STOCK le 13/10/2026 : 8 fiches en GBP via le plan du site, ex. \xE9cran HTC One M8 21,35 \xA3 (rupture). Frais de douane possibles depuis le Royaume-Uni.",
-        probeQuery: "iphone"
+        probeQuery: "lcd"
       },
       {
         key: "gsmok",
@@ -7930,7 +7931,7 @@ var init_source_library = __esm({
         termsUrl: "https://mobilepart.pl",
         access: "public_html",
         notes: "Pi\xE8ces smartphone (Pologne), prix en zlotys. Collecte r\xE9elle par le serveur MON STOCK le 13/10/2026 : 8 fiches en PLN, ex. \xE9cran Samsung A10 48 PLN (en stock).",
-        probeQuery: "samsung"
+        probeQuery: "lcd"
       },
       {
         key: "portatilmovil",
@@ -8511,7 +8512,7 @@ var init_assessment = __esm({
 });
 
 // src/domain/sourcing/radar-settings.ts
-import { z as z31 } from "npm:zod@4.6.5";
+import { z as z32 } from "npm:zod@4.6.5";
 function readCostSettings(orgSettings, channel) {
   const raw = orgSettings?.radar ?? {};
   const s = { ...EMPTY_COST_SETTINGS };
@@ -8543,11 +8544,11 @@ var init_radar_settings = __esm({
   "src/domain/sourcing/radar-settings.ts"() {
     "use strict";
     init_radar();
-    nullableNumber2 = (min, max) => z31.number().finite().min(min).max(max).nullable();
-    radarSettingsSchema = z31.object({
-      vatRegime: z31.enum(["normal", "margin", "franchise"]).nullable(),
+    nullableNumber2 = (min, max) => z32.number().finite().min(min).max(max).nullable();
+    radarSettingsSchema = z32.object({
+      vatRegime: z32.enum(["normal", "margin", "franchise"]).nullable(),
       vatRate: nullableNumber2(0, 30),
-      vatRecoverable: z31.boolean().nullable(),
+      vatRecoverable: z32.boolean().nullable(),
       marketplaceFeePercent: nullableNumber2(0, 50),
       paymentFeePercent: nullableNumber2(0, 20),
       paymentFeeFixed: nullableNumber2(0, 50),
@@ -8831,7 +8832,7 @@ var init_conditions = __esm({
 });
 
 // src/integrations/ebay/listing.ts
-import { z as z32 } from "npm:zod@4.6.5";
+import { z as z33 } from "npm:zod@4.6.5";
 function checkListingDraft(input) {
   const parsed = listingDraftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "annonce"} : ${i.message}`), warnings: [], draft: null };
@@ -8965,24 +8966,24 @@ var init_listing = __esm({
     init_conditions();
     init_conditions();
     SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
-    listingDraftSchema = z32.object({
-      sku: z32.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
-      marketplaceId: z32.literal("EBAY_FR").default("EBAY_FR"),
-      title: z32.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
-      description: z32.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
-      categoryId: z32.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
-      condition: z32.enum(EBAY_CONDITIONS),
-      conditionDescription: z32.string().trim().max(1e3).optional(),
-      price: z32.number().finite().positive("Prix positif requis.").max(1e6),
-      currency: z32.literal("EUR").default("EUR"),
-      quantity: z32.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
-      imageUrls: z32.array(z32.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
-      aspects: z32.record(z32.string().min(1).max(65), z32.array(z32.string().min(1).max(65)).min(1)).default({}),
-      brand: z32.string().trim().max(65).optional(),
-      mpn: z32.string().trim().max(65).optional(),
-      ean: z32.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
-      policies: z32.object({ fulfillmentPolicyId: z32.string().min(1), paymentPolicyId: z32.string().min(1), returnPolicyId: z32.string().min(1) }).optional(),
-      merchantLocationKey: z32.string().trim().min(1).max(36).optional()
+    listingDraftSchema = z33.object({
+      sku: z33.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
+      marketplaceId: z33.literal("EBAY_FR").default("EBAY_FR"),
+      title: z33.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
+      description: z33.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
+      categoryId: z33.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
+      condition: z33.enum(EBAY_CONDITIONS),
+      conditionDescription: z33.string().trim().max(1e3).optional(),
+      price: z33.number().finite().positive("Prix positif requis.").max(1e6),
+      currency: z33.literal("EUR").default("EUR"),
+      quantity: z33.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
+      imageUrls: z33.array(z33.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
+      aspects: z33.record(z33.string().min(1).max(65), z33.array(z33.string().min(1).max(65)).min(1)).default({}),
+      brand: z33.string().trim().max(65).optional(),
+      mpn: z33.string().trim().max(65).optional(),
+      ean: z33.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
+      policies: z33.object({ fulfillmentPolicyId: z33.string().min(1), paymentPolicyId: z33.string().min(1), returnPolicyId: z33.string().min(1) }).optional(),
+      merchantLocationKey: z33.string().trim().min(1).max(36).optional()
     });
   }
 });
@@ -8998,7 +8999,7 @@ __export(ebay_listing_service_exports, {
   prefillListing: () => prefillListing,
   publishListingForOrg: () => publishListingForOrg
 });
-import { z as z33 } from "npm:zod@4.6.5";
+import { z as z34 } from "npm:zod@4.6.5";
 async function connectedEbay(ctx) {
   const { data, error } = await ctx.supabase.from("channel_connections").select("id, status").eq("organization_id", ctx.organization.id).eq("provider", "ebay").eq("status", "connected").limit(1).maybeSingle();
   if (error) throw fromPostgrestError(error);
@@ -9108,8 +9109,8 @@ var init_ebay_listing_service = __esm({
     init_rest();
     init_listing();
     init_connection_store();
-    listingRequestSchema = z33.object({ draft: z33.unknown(), confirm: z33.boolean().default(false) });
-    disconnectSchema = z33.object({ connectionId: z33.string().uuid() });
+    listingRequestSchema = z34.object({ draft: z34.unknown(), confirm: z34.boolean().default(false) });
+    disconnectSchema = z34.object({ connectionId: z34.string().uuid() });
   }
 });
 
@@ -9121,7 +9122,7 @@ __export(offer_linking_exports, {
   listMatchSuggestions: () => listMatchSuggestions,
   matchDecisionSchema: () => matchDecisionSchema2
 });
-import { z as z34 } from "npm:zod@4.6.5";
+import { z as z35 } from "npm:zod@4.6.5";
 async function confirmOfferLink(orgId, supabase, userId, offerId, skuId, sourcingProductId) {
   const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", orgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -9171,7 +9172,7 @@ var init_offer_linking = __esm({
     init_empty();
     init_errors();
     init_matching_service();
-    matchDecisionSchema2 = z34.object({ matchId: z34.string().uuid(), decision: z34.enum(["confirm", "reject"]) });
+    matchDecisionSchema2 = z35.object({ matchId: z35.string().uuid(), decision: z35.enum(["confirm", "reject"]) });
   }
 });
 
@@ -15612,7 +15613,7 @@ init_errors();
 init_logger();
 init_crypto();
 init_admin();
-import { z as z48 } from "npm:zod@4.6.5";
+import { z as z49 } from "npm:zod@4.6.5";
 
 // src/services/sourcing/crawler/crawler-manager.ts
 init_empty();
@@ -15933,6 +15934,378 @@ async function crawlWithAdapter(adapter, config, params) {
   return { offers, pages, skippedUrls: [], delaySeconds, complete };
 }
 
+// src/services/sourcing/weekly-collection.ts
+init_empty();
+init_admin();
+init_logger();
+init_registry();
+import { z as z13 } from "npm:zod@4.6.5";
+init_robots();
+init_offer_storage();
+
+// src/services/sourcing/source-health.ts
+init_empty();
+init_logger();
+
+// src/domain/sourcing/schedule.ts
+var FREQUENCY_MS2 = {
+  manual: null,
+  hourly: 36e5,
+  every_6_hours: 6 * 36e5,
+  daily: 24 * 36e5,
+  weekly: 7 * 24 * 36e5
+};
+var FREQUENCY_LABEL = {
+  manual: "Manuelle",
+  hourly: "Toutes les heures",
+  every_6_hours: "Toutes les 6 heures",
+  daily: "Une fois par jour",
+  weekly: "Une fois par semaine"
+};
+var BACKOFF_BASE_MS = 15 * 6e4;
+var BACKOFF_MAX_MS = 24 * 36e5;
+var FAILURE_ALERT_THRESHOLD = 3;
+function backoffMs(failures, frequency) {
+  const n = Math.max(1, failures);
+  const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (n - 1));
+  const interval = FREQUENCY_MS2[frequency];
+  return interval === null ? delay : Math.min(delay, interval);
+}
+function nextRunAt(frequency, now, outcome) {
+  const interval = FREQUENCY_MS2[frequency];
+  if (interval === null) return null;
+  return new Date(now.getTime() + (outcome.ok ? interval : backoffMs(outcome.consecutiveFailures, frequency)));
+}
+function isScheduleDue(s, now) {
+  const interval = FREQUENCY_MS2[s.sync_frequency];
+  if (interval === null || s.status === "paused") return false;
+  if (s.next_run_at) return now.getTime() >= new Date(s.next_run_at).getTime();
+  if (!s.last_sync_at) return true;
+  return now.getTime() - new Date(s.last_sync_at).getTime() >= interval;
+}
+var SOURCE_STATUS_LABEL = {
+  connected: "Connect\xE9",
+  to_configure: "\xC0 configurer",
+  manual_import: "Import manuel",
+  running: "Synchronisation en cours",
+  error: "Erreur",
+  disabled: "Source d\xE9sactiv\xE9e"
+};
+function sourceDisplayStatus(s) {
+  if (s.status === "paused") return "disabled";
+  if (s.running) return "running";
+  if (s.kind === "file_import" || s.kind === "manual") return s.consecutiveFailures > 0 || s.status === "error" ? "error" : "manual_import";
+  if (!s.attested) return "to_configure";
+  if (s.status === "error" || s.consecutiveFailures >= FAILURE_ALERT_THRESHOLD) return "error";
+  return s.lastSuccessfulSyncAt ? "connected" : "to_configure";
+}
+
+// src/services/sourcing/source-health.ts
+init_alerts();
+var log8 = createLogger("SOURCE_HEALTH");
+var syncFailedAlertKey = (sourceId) => `sourcing_sync_failed:${sourceId}`;
+async function recordSourceOutcome(admin, input) {
+  const now = input.now ?? /* @__PURE__ */ new Date();
+  const failures = input.ok ? 0 : input.previousFailures + 1;
+  const next = nextRunAt(input.frequency, now, { ok: input.ok, consecutiveFailures: failures });
+  const patch = input.ok ? { consecutive_failures: 0, next_run_at: next?.toISOString() ?? null } : { consecutive_failures: failures, last_failure_at: now.toISOString(), next_run_at: next?.toISOString() ?? null, ...failures >= FAILURE_ALERT_THRESHOLD ? { status: "error" } : {} };
+  const { error } = await admin.from("supplier_sources").update(patch).eq("id", input.sourceId);
+  if (error) log8.warn("\xE9tat de la source non enregistr\xE9", { sourceId: input.sourceId, error: error.message });
+  if (input.ok) await resolveAlerts(admin, input.organizationId, [syncFailedAlertKey(input.sourceId)]);
+  else if (failures >= FAILURE_ALERT_THRESHOLD) {
+    await upsertAlert(admin, {
+      organizationId: input.organizationId,
+      type: "sync_failed",
+      severity: failures >= FAILURE_ALERT_THRESHOLD * 2 ? "critical" : "warning",
+      title: `Synchronisation en \xE9chec : ${input.sourceName}`,
+      message: `${failures} \xE9checs cons\xE9cutifs${input.error ? ` (dernier : ${input.error.slice(0, 300)})` : ""}. Les offres d\xE9j\xE0 connues sont conserv\xE9es, avec leur date de v\xE9rification. Prochain essai : ${next ? next.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "manuel"}.`,
+      dedupeKey: syncFailedAlertKey(input.sourceId),
+      entityType: "supplier_source",
+      entityId: input.sourceId,
+      actionHref: "/sourcing-sources"
+    });
+  }
+  return { consecutiveFailures: failures, nextRunAt: next?.toISOString() ?? null };
+}
+
+// src/services/sourcing/weekly-collection.ts
+init_sync_runs();
+
+// src/domain/sourcing/weekly-schedule.ts
+var WEEKLY_MAX_ATTEMPTS = 3;
+var WEEKLY_RETRY_AFTER_MS = 60 * 6e4;
+var WEEK_MS = 7 * 24 * 36e5;
+var EMPTY_CURSOR = { cursor: null, pages: 0, offers: 0, stored: 0, rejected: 0, requestErrors: 0, consecutiveFailures: 0, incomplete: null };
+function parseCursor(raw) {
+  const o = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const n = (v2) => typeof v2 === "number" && Number.isFinite(v2) && v2 >= 0 ? Math.floor(v2) : 0;
+  return {
+    cursor: typeof o.cursor === "string" ? o.cursor : null,
+    pages: n(o.pages),
+    offers: n(o.offers),
+    stored: n(o.stored),
+    rejected: n(o.rejected),
+    requestErrors: n(o.requestErrors),
+    consecutiveFailures: n(o.consecutiveFailures),
+    incomplete: typeof o.incomplete === "string" ? o.incomplete : null
+  };
+}
+function parseStats(raw) {
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+}
+function defaultSlot(sourceId) {
+  let h = 0;
+  for (const ch of sourceId) h = h * 31 + ch.charCodeAt(0) >>> 0;
+  return { weekday: 1 + h % 7, hour: 1 + Math.floor(h / 7) % 5 };
+}
+function slotStart(now, weekday, hour) {
+  const isoDay = (now.getUTCDay() + 6) % 7 + 1;
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, 0, 0, 0));
+  d.setUTCDate(d.getUTCDate() - (isoDay - weekday + 7) % 7);
+  return d.getTime() > now.getTime() ? new Date(d.getTime() - WEEK_MS) : d;
+}
+function weeklyDecision(s, now, opts = {}) {
+  if (s.status === "paused") return { action: "wait", reason: "source d\xE9sactiv\xE9e" };
+  if (s.sync_frequency !== "weekly" && !opts.force) return { action: "wait", reason: "source non hebdomadaire" };
+  if (s.collection_started_at) return { action: "continue" };
+  const fallback = defaultSlot(s.id);
+  const slot = slotStart(now, s.schedule_weekday ?? fallback.weekday, s.schedule_hour_utc ?? fallback.hour);
+  const slotIso = slot.toISOString();
+  const stats = parseStats(s.last_collection_stats);
+  const sameSlot = stats.slot === slotIso;
+  const attempt = sameSlot ? (stats.attempts ?? 0) + 1 : 1;
+  if (opts.force) return { action: "start", slot: slotIso, attempt };
+  if (s.last_full_collection_at && new Date(s.last_full_collection_at).getTime() >= slot.getTime()) return { action: "wait", reason: "collecte compl\xE8te d\xE9j\xE0 faite pour ce cr\xE9neau" };
+  if (sameSlot) {
+    if (stats.result === "complete" || stats.result === "incomplete") return { action: "wait", reason: "collecte d\xE9j\xE0 termin\xE9e pour ce cr\xE9neau" };
+    if ((stats.attempts ?? 0) >= WEEKLY_MAX_ATTEMPTS) return { action: "wait", reason: `${WEEKLY_MAX_ATTEMPTS} essais d\xE9j\xE0 faits pour ce cr\xE9neau` };
+    if (stats.finishedAt && now.getTime() - new Date(stats.finishedAt).getTime() < WEEKLY_RETRY_AFTER_MS) return { action: "wait", reason: "nouvel essai dans moins d'une heure" };
+  }
+  return { action: "start", slot: slotIso, attempt };
+}
+function endOfCatalogResult(c, previousSeen = null) {
+  if (c.incomplete) return { result: "incomplete", reason: c.incomplete };
+  if (c.requestErrors > 0) return { result: "incomplete", reason: `${c.requestErrors} requ\xEAte(s) en erreur` };
+  if (c.consecutiveFailures > 0) return { result: "incomplete", reason: "derni\xE8re page de catalogue en erreur" };
+  if (c.stored === 0) return { result: "incomplete", reason: "aucune offre enregistr\xE9e" };
+  if (previousSeen !== null && previousSeen > 0 && c.stored < previousSeen / 2) return { result: "incomplete", reason: `volume en forte baisse (${c.stored} offres contre ${previousSeen} \xE0 la collecte compl\xE8te pr\xE9c\xE9dente)` };
+  return { result: "complete", reason: null };
+}
+
+// src/services/sourcing/weekly-collection.ts
+var log9 = createLogger("WEEKLY_COLLECTION");
+var WEEKLY_PASS_BUDGET_MS = 1e5;
+var WEEKLY_MAX_SOURCES_PER_PASS = 3;
+var WEEKLY_MAX_SITEMAP_SOURCES_PER_PASS = 2;
+var PAGE_MARGIN_MS = 25e3;
+var ABORT_AFTER_FAILURES = 3;
+var weeklyRunSchema = z13.object({
+  /** démarrer tout de suite, sans attendre le créneau (collecte demandée explicitement) */
+  force: z13.boolean().optional(),
+  sourceIds: z13.array(z13.string().uuid()).max(100).optional(),
+  maxSources: z13.number().int().min(1).max(WEEKLY_MAX_SOURCES_PER_PASS).optional(),
+  budgetMs: z13.number().int().min(2e4).max(11e4).optional()
+});
+var COLUMNS = "id, organization_id, supplier_id, name, source_type, base_url, country, config, default_currency, default_tax_type, automated_access_confirmed, sync_frequency, status, crawl_delay_seconds, consecutive_failures, last_successful_sync_at, schedule_weekday, schedule_hour_utc, collect_cursor, collection_started_at, last_full_collection_at, last_collection_stats, organization:organizations(default_currency)";
+function catalogAdapter(s) {
+  const key2 = adapterKeyOf(s.config);
+  const adapter = key2 ? getSourceAdapter(key2) : null;
+  return adapter && adapter.access === "public" && adapter.capabilities.catalog && adapter.fetchCatalog ? adapter : null;
+}
+async function runWeeklyCollection(input = {}, deps = {}) {
+  const admin = deps.admin ?? createAdminSupabaseClient();
+  const now = (deps.now ?? (() => /* @__PURE__ */ new Date()))();
+  let query = admin.from("supplier_sources").select(COLUMNS).eq("source_type", "PUBLIC_WEB").eq("automated_access_confirmed", true).neq("status", "paused");
+  if (input.sourceIds?.length) query = query.in("id", input.sourceIds);
+  else if (!input.force) query = query.eq("sync_frequency", "weekly");
+  const { data, error } = await query.limit(500);
+  if (error) throw new Error(`Sources illisibles : ${error.message}`);
+  const sources = (data ?? []).filter((s) => catalogAdapter(s));
+  const waiting = [];
+  const due = [];
+  for (const s of sources) {
+    const d = weeklyDecision(s, now, { force: input.force });
+    if (d.action === "wait") waiting.push({ sourceId: s.id, reason: d.reason });
+    else due.push({ source: s, decision: d });
+  }
+  due.sort((a, b) => a.decision.action === b.decision.action ? (a.source.collection_started_at ?? "").localeCompare(b.source.collection_started_at ?? "") : a.decision.action === "continue" ? -1 : 1);
+  const picked = [];
+  const hosts = /* @__PURE__ */ new Set();
+  let sitemaps = 0;
+  const max = input.maxSources ?? WEEKLY_MAX_SOURCES_PER_PASS;
+  for (const d of due) {
+    if (picked.length >= max) break;
+    const host = safeHost(d.source.base_url);
+    if (host && hosts.has(host)) continue;
+    const isSitemap = adapterKeyOf(d.source.config) === "sitemap-jsonld";
+    if (isSitemap && sitemaps >= WEEKLY_MAX_SITEMAP_SOURCES_PER_PASS) continue;
+    if (isSitemap) sitemaps++;
+    if (host) hosts.add(host);
+    picked.push(d);
+  }
+  const deadline = (deps.clock ?? Date.now)() + (input.budgetMs ?? WEEKLY_PASS_BUDGET_MS);
+  const passes = await Promise.all(picked.map((d) => collectionPass(admin, d.source, d.decision, deadline, deps)));
+  log9.info("weekly pass", { due: due.length, ran: passes.length, waiting: waiting.length });
+  return { passes, due: due.length, waiting };
+}
+function safeHost(url) {
+  try {
+    return url ? new URL(url).host.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+async function collectionPass(admin, source, decision, deadline, deps = {}) {
+  const nowFn = deps.now ?? (() => /* @__PURE__ */ new Date());
+  const clock = deps.clock ?? Date.now;
+  const adapter = catalogAdapter(source);
+  const base = { sourceId: source.id, name: source.name, action: decision.action === "continue" ? "continued" : "started", result: null, pagesThisPass: 0, storedThisPass: 0, totals: null, message: "" };
+  let run;
+  try {
+    run = await startSyncRun(admin, { organizationId: source.organization_id, sourceKind: "supplier_source", sourceRef: source.id, provider: adapter.key, trigger: "scheduled" });
+  } catch (e) {
+    return { ...base, action: "skipped", result: "locked", message: e instanceof Error ? e.message : String(e) };
+  }
+  let startedAt = source.collection_started_at;
+  let stats = parseStats(source.last_collection_stats);
+  let cursor = decision.action === "continue" ? parseCursor(source.collect_cursor) : { ...EMPTY_CURSOR };
+  if (decision.action === "start") {
+    startedAt = nowFn().toISOString();
+    stats = { slot: decision.slot, attempts: decision.attempt, result: "running", attemptStartedAt: startedAt, finishedAt: null, message: null };
+    const { data: claimed } = await admin.from("supplier_sources").update({ collection_started_at: startedAt, collect_cursor: cursor, last_collection_stats: stats }).eq("id", source.id).is("collection_started_at", null).select("id");
+    if (!claimed?.length) {
+      await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: 0, errorSummary: "Collecte d\xE9j\xE0 d\xE9marr\xE9e par un autre passage." });
+      return { ...base, action: "skipped", result: "locked", message: "Collecte d\xE9j\xE0 d\xE9marr\xE9e par un autre passage." };
+    }
+  }
+  const errors = [];
+  const userAgent = deps.userAgent ?? process.env.SOURCING_USER_AGENT ?? "MonStockBot/0.1";
+  const config = adapterConfigFromSource(source);
+  const storageCtx = {
+    supabase: admin,
+    organizationId: source.organization_id,
+    organizationCurrency: source.organization?.default_currency ?? "EUR",
+    supplierId: source.supplier_id,
+    sourceId: source.id,
+    sourceType: "PUBLIC_WEB",
+    defaultCurrency: source.default_currency,
+    defaultTaxType: source.default_tax_type,
+    defaultCountry: source.country
+  };
+  const saveCursor = () => admin.from("supplier_sources").update({ collect_cursor: cursor, last_sync_at: nowFn().toISOString() }).eq("id", source.id);
+  try {
+    const urls = adapter.urlsForCatalog?.(config) ?? [];
+    const robots = await checkRobotsForUrls(config.baseUrl ?? urls[0] ?? "", urls.length ? urls : [`${config.baseUrl}/`], userAgent, deps.fetchImpl);
+    if (!robots.allowed) {
+      return await abortCollection(admin, source, run, stats, cursor, `robots.txt : ${robots.details}`, [...errors, { code: "ROBOTS_DISALLOW", message: robots.details }], nowFn, base);
+    }
+    const delaySeconds = Math.max(MIN_DELAY_SECONDS, robots.crawlDelay ?? 0, source.crawl_delay_seconds ?? 0);
+    const scheduler = new HostScheduler(delaySeconds * 1e3, deps.sleep);
+    const ctxBase = { userAgent, fetchImpl: scheduler.wrapFetch(deps.fetchImpl), sleep: deps.sleep, minDelayMs: delaySeconds * 1e3, disallowedUrls: robots.disallowedUrls };
+    let finished = false;
+    while (clock() < deadline - PAGE_MARGIN_MS) {
+      let page2;
+      try {
+        page2 = await adapter.fetchCatalog(config, cursor.cursor, { ...ctxBase, timeoutMs: Math.max(5e3, deadline - clock() - 5e3) });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        cursor = { ...cursor, consecutiveFailures: cursor.consecutiveFailures + 1, requestErrors: cursor.requestErrors + 1 };
+        errors.push({ code: "CATALOG_PAGE_FAILED", message, entityType: "page", entityRef: cursor.cursor ?? "d\xE9but" });
+        await saveCursor();
+        if (cursor.consecutiveFailures >= ABORT_AFTER_FAILURES) return await abortCollection(admin, source, run, stats, cursor, `${ABORT_AFTER_FAILURES} pages de catalogue en \xE9chec d'affil\xE9e : ${message}`, errors, nowFn, base);
+        break;
+      }
+      const retrievedAt = nowFn().toISOString();
+      const requestUrl = page2.requests.find((q) => q.offers > 0)?.url ?? page2.requests[0]?.url ?? null;
+      let stored = 0;
+      let rejected = 0;
+      for (const o of page2.offers) {
+        try {
+          const r = await storeOffer({ ...storageCtx, now: nowFn() }, withProvenance(o, { adapterKey: adapter.key, method: page2.method, retrievedAt, requestUrl, sourceUrl: o.url ?? null }));
+          if (r.outcome === "stored") stored++;
+          else rejected++;
+        } catch (e) {
+          rejected++;
+          errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: o.externalOfferId });
+        }
+      }
+      const failedRequests = page2.requests.filter((q) => q.error);
+      for (const q of failedRequests.slice(0, 20)) errors.push({ code: "PAGE_FAILED", message: q.error ?? "erreur", entityType: "page", entityRef: q.url });
+      cursor = {
+        cursor: page2.nextCursor,
+        pages: cursor.pages + 1,
+        offers: cursor.offers + page2.offers.length,
+        stored: cursor.stored + stored,
+        rejected: cursor.rejected + rejected,
+        requestErrors: cursor.requestErrors + failedRequests.length,
+        consecutiveFailures: 0,
+        incomplete: cursor.incomplete ?? page2.incomplete ?? null
+      };
+      base.pagesThisPass++;
+      base.storedThisPass += stored;
+      if (!page2.nextCursor) {
+        finished = true;
+        break;
+      }
+      await saveCursor();
+    }
+    if (!finished) {
+      await saveCursor();
+      stats = { ...stats, result: "running", pages: cursor.pages, offers: cursor.offers, stored: cursor.stored, rejected: cursor.rejected, requestErrors: cursor.requestErrors };
+      await admin.from("supplier_sources").update({ last_collection_stats: stats, status: "active", last_error: null }).eq("id", source.id);
+      await recordSyncErrors(admin, run, errors);
+      await finishSyncRun(admin, run, { status: errors.length ? "partial" : "success", recordsProcessed: base.storedThisPass, errorCount: errors.length, stats: { weekly: true, pass: "continue", cursor } });
+      return { ...base, result: "running", totals: totals(cursor), message: `Passage termin\xE9 (collecte en cours) : ${base.pagesThisPass} page(s), ${base.storedThisPass} offre(s) enregistr\xE9e(s) ; total ${cursor.stored}.` };
+    }
+    const previous = parseStats(source.last_collection_stats);
+    const verdict = endOfCatalogResult(cursor, previous.result === "complete" && typeof previous.seen === "number" ? previous.seen : null);
+    const finishedAt = nowFn().toISOString();
+    let closing = null;
+    if (verdict.result === "complete") {
+      const { data: rows, error } = await admin.rpc("sourcing_close_full_collection", { p_source_id: source.id, p_started_at: startedAt });
+      if (error) throw new Error(`Cl\xF4ture impossible : ${error.message}`);
+      const row2 = Array.isArray(rows) ? rows[0] : rows;
+      closing = { seen: Number(row2?.seen ?? 0), missed: Number(row2?.missed ?? 0), expired: Number(row2?.expired ?? 0) };
+    }
+    stats = {
+      ...stats,
+      result: verdict.result,
+      finishedAt,
+      pages: cursor.pages,
+      offers: cursor.offers,
+      stored: cursor.stored,
+      rejected: cursor.rejected,
+      requestErrors: cursor.requestErrors,
+      incomplete: verdict.reason,
+      ...closing ?? {},
+      message: verdict.result === "complete" ? `Collecte compl\xE8te : ${cursor.stored} offres, ${closing.missed} absente(s), ${closing.expired} expir\xE9e(s).` : `Collecte termin\xE9e mais incompl\xE8te (${verdict.reason}) : aucune offre d\xE9clar\xE9e absente.`
+    };
+    await admin.from("supplier_sources").update({ collection_started_at: null, collect_cursor: null, last_collection_stats: stats, status: "active", last_error: null, last_sync_at: finishedAt, last_successful_sync_at: finishedAt }).eq("id", source.id);
+    await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: true });
+    await recordSyncErrors(admin, run, errors);
+    await finishSyncRun(admin, run, { status: verdict.result === "complete" && errors.length === 0 ? "success" : "partial", recordsProcessed: base.storedThisPass, errorCount: errors.length, stats: { weekly: true, pass: "end", result: verdict.result, cursor, closing } });
+    return { ...base, result: verdict.result, totals: totals(cursor), message: stats.message ?? "" };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    log9.error("weekly pass failed", { sourceId: source.id, error: message });
+    await recordSyncErrors(admin, run, [...errors, { code: "PASS_FAILED", message }]);
+    await finishSyncRun(admin, run, { status: "failed", recordsProcessed: base.storedThisPass, errorCount: errors.length + 1, errorSummary: message });
+    return { ...base, result: "running", totals: totals(cursor), message: `Passage interrompu : ${message}` };
+  }
+}
+function totals(c) {
+  return { pages: c.pages, offers: c.offers, stored: c.stored, rejected: c.rejected, requestErrors: c.requestErrors };
+}
+async function abortCollection(admin, source, run, stats, cursor, message, errors, nowFn, base) {
+  const finishedAt = nowFn().toISOString();
+  const next = { ...stats, result: "failed", finishedAt, pages: cursor.pages, offers: cursor.offers, stored: cursor.stored, rejected: cursor.rejected, requestErrors: cursor.requestErrors, message };
+  await admin.from("supplier_sources").update({ collection_started_at: null, collect_cursor: null, last_collection_stats: next, last_error: message.slice(0, 1e3), last_sync_at: finishedAt }).eq("id", source.id);
+  await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: false, error: message });
+  await recordSyncErrors(admin, run, errors);
+  await finishSyncRun(admin, run, { status: "failed", recordsProcessed: base.storedThisPass, errorCount: errors.length, errorSummary: message.slice(0, 1e3) });
+  return { ...base, result: errors.some((e) => e.code === "ROBOTS_DISALLOW") ? "refused" : "failed", totals: totals(cursor), message };
+}
+
 // server/edge/api.ts
 init_env();
 
@@ -15977,8 +16350,8 @@ init_errors();
 init_logger();
 init_sanitize();
 init_errors2();
-import { z as z13 } from "npm:zod@4.6.5";
-var log7 = createLogger("MOBILE_API");
+import { z as z14 } from "npm:zod@4.6.5";
+var log10 = createLogger("MOBILE_API");
 var NO_STORE = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 function jsonOk(data, status = 200) {
   return NextResponse.json({ ok: true, data }, { status, headers: NO_STORE });
@@ -15996,10 +16369,10 @@ function errorResponse(e) {
   if (isAppError(e)) app = e;
   else if (isConnectorError(e)) app = connectorErrorToAppError(e);
   else if (isPostgrestLike2(e)) app = fromPostgrestError(e);
-  else if (e instanceof z13.ZodError) app = new AppError("VALIDATION", e.issues[0]?.message ?? "Param\xE8tres invalides.");
+  else if (e instanceof z14.ZodError) app = new AppError("VALIDATION", e.issues[0]?.message ?? "Param\xE8tres invalides.");
   if (app) return jsonError(app.status, { code: app.code, message: app.message });
   const ref = newErrorReference();
-  log7.error("unexpected mobile api error", { ref, error: scrubSecrets(e instanceof Error ? `${e.name}: ${e.message}` : String(e)) });
+  log10.error("unexpected mobile api error", { ref, error: scrubSecrets(e instanceof Error ? `${e.name}: ${e.message}` : String(e)) });
   return jsonError(500, { code: "INTERNAL", message: `Une erreur inattendue est survenue. R\xE9essayez ou contactez le support (r\xE9f. ${ref}).` });
 }
 async function handle(fn, status = 200) {
@@ -16033,12 +16406,12 @@ async function parseBody(request, schema, maxBytes = 64e3) {
   if (!parsed.success) throw new AppError("VALIDATION", parsed.error.issues[0]?.message ?? "Param\xE8tres invalides.");
   return parsed.data;
 }
-var uuidParam = z13.string().uuid("Identifiant invalide.");
+var uuidParam = z14.string().uuid("Identifiant invalide.");
 
 // src/features/mobile-api/context.ts
 init_empty();
 init_errors();
-import { z as z15 } from "npm:zod@4.6.5";
+import { z as z16 } from "npm:zod@4.6.5";
 
 // src/lib/supabase/bearer.ts
 init_empty();
@@ -16146,28 +16519,28 @@ function isAdmin(role) {
 }
 
 // src/features/mobile-api/contract.ts
-import { z as z14 } from "npm:zod@4.6.5";
+import { z as z15 } from "npm:zod@4.6.5";
 var ORGANIZATION_HEADER = "x-organization-id";
-var createOrganizationInputSchema = z14.object({
-  name: z14.string().trim().min(2, "Nom trop court (2 caract\xE8res minimum).").max(120, "Nom trop long (120 caract\xE8res maximum).")
+var createOrganizationInputSchema = z15.object({
+  name: z15.string().trim().min(2, "Nom trop court (2 caract\xE8res minimum).").max(120, "Nom trop long (120 caract\xE8res maximum).")
 });
 var STOCK_LEVELS = ["out_of_stock", "at_risk", "low", "normal"];
 var MOBILE_STOCK_SORTS = ["best_sellers", "low_stock", "margin", "stock_value", "last_sale", "name"];
-var stockListQuerySchema = z14.object({
-  q: z14.string().trim().max(120).optional(),
-  status: z14.enum(STOCK_LEVELS).optional(),
-  stock: z14.enum(["in_stock", "empty", "negative"]).optional(),
-  sort: z14.enum(MOBILE_STOCK_SORTS).default("best_sellers"),
-  page: z14.coerce.number().int().min(1).max(1e4).default(1)
+var stockListQuerySchema = z15.object({
+  q: z15.string().trim().max(120).optional(),
+  status: z15.enum(STOCK_LEVELS).optional(),
+  stock: z15.enum(["in_stock", "empty", "negative"]).optional(),
+  sort: z15.enum(MOBILE_STOCK_SORTS).default("best_sellers"),
+  page: z15.coerce.number().int().min(1).max(1e4).default(1)
 });
 var MOVEMENT_TYPES = ["receipt", "adjustment", "return", "transfer_in", "transfer_out", "correction"];
 var MOVEMENT_FIXED_DIRECTION = { receipt: "in", return: "in", transfer_in: "in", transfer_out: "out" };
-var stockMovementInputSchema = z14.object({
-  sku_id: z14.string().uuid(),
-  type: z14.enum(MOVEMENT_TYPES),
-  direction: z14.enum(["in", "out"]),
-  quantity: z14.coerce.number().int("Nombre entier attendu.").min(1, "La quantit\xE9 doit \xEAtre au moins 1.").max(1e6, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum)."),
-  note: z14.string().trim().max(500).optional().or(z14.literal(""))
+var stockMovementInputSchema = z15.object({
+  sku_id: z15.string().uuid(),
+  type: z15.enum(MOVEMENT_TYPES),
+  direction: z15.enum(["in", "out"]),
+  quantity: z15.coerce.number().int("Nombre entier attendu.").min(1, "La quantit\xE9 doit \xEAtre au moins 1.").max(1e6, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum)."),
+  note: z15.string().trim().max(500).optional().or(z15.literal(""))
 });
 function signedMovementQuantity(input) {
   const fixed = MOVEMENT_FIXED_DIRECTION[input.type];
@@ -16175,63 +16548,63 @@ function signedMovementQuantity(input) {
   return inbound ? input.quantity : -input.quantity;
 }
 var ORDER_STATUSES = ["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"];
-var salesListQuerySchema = z14.object({
-  q: z14.string().trim().max(120).optional(),
-  status: z14.enum(ORDER_STATUSES).optional(),
-  inventory: z14.enum(["pending"]).optional(),
-  page: z14.coerce.number().int().min(1).max(1e4).default(1)
+var salesListQuerySchema = z15.object({
+  q: z15.string().trim().max(120).optional(),
+  status: z15.enum(ORDER_STATUSES).optional(),
+  inventory: z15.enum(["pending"]).optional(),
+  page: z15.coerce.number().int().min(1).max(1e4).default(1)
 });
 var PURCHASE_ORDER_STATUSES = ["draft", "sent", "confirmed", "partially_received", "received", "cancelled"];
 var MANUAL_PO_STATUSES = ["draft", "sent", "confirmed", "cancelled"];
-var purchaseOrderListQuerySchema = z14.object({
-  status: z14.enum(["open", ...PURCHASE_ORDER_STATUSES]).optional(),
-  supplier_id: z14.string().uuid().optional(),
-  page: z14.coerce.number().int().min(1).max(1e4).default(1)
+var purchaseOrderListQuerySchema = z15.object({
+  status: z15.enum(["open", ...PURCHASE_ORDER_STATUSES]).optional(),
+  supplier_id: z15.string().uuid().optional(),
+  page: z15.coerce.number().int().min(1).max(1e4).default(1)
 });
-var purchaseOrderStatusInputSchema = z14.object({ status: z14.enum(MANUAL_PO_STATUSES) });
-var purchaseOrderReceiveInputSchema = z14.object({
-  receipts: z14.array(
-    z14.object({
-      item_id: z14.string().uuid(),
-      quantity: z14.coerce.number().int().min(0).max(1e5),
-      expected_received: z14.coerce.number().int().min(0).max(1e6).optional()
+var purchaseOrderStatusInputSchema = z15.object({ status: z15.enum(MANUAL_PO_STATUSES) });
+var purchaseOrderReceiveInputSchema = z15.object({
+  receipts: z15.array(
+    z15.object({
+      item_id: z15.string().uuid(),
+      quantity: z15.coerce.number().int().min(0).max(1e5),
+      expected_received: z15.coerce.number().int().min(0).max(1e6).optional()
     })
   ).min(1).max(500)
 });
-var sourcingSearchQuerySchema = z14.object({
-  q: z14.string().trim().max(200).optional(),
+var sourcingSearchQuerySchema = z15.object({
+  q: z15.string().trim().max(200).optional(),
   /** code SKU : « Trouver moins cher » (comparaison avec le fournisseur actuel) */
-  sku: z14.string().trim().max(120).optional(),
-  qty: z14.coerce.number().int().min(1).max(1e5).optional(),
-  max_price: z14.coerce.number().min(0).max(1e6).optional(),
-  page: z14.coerce.number().int().min(1).max(500).default(1),
+  sku: z15.string().trim().max(120).optional(),
+  qty: z15.coerce.number().int().min(1).max(1e5).optional(),
+  max_price: z15.coerce.number().min(0).max(1e6).optional(),
+  page: z15.coerce.number().int().min(1).max(500).default(1),
   /** "0" : lecture des offres déjà enregistrées seulement (pas de requête vers les sources) */
-  live: z14.enum(["0", "1"]).optional()
+  live: z15.enum(["0", "1"]).optional()
 });
 var ADVISOR_MESSAGE_MAX_CHARS = 2e3;
-var advisorChatSchema = z14.object({
+var advisorChatSchema = z15.object({
   /** conversation existante (sinon une nouvelle est créée) */
-  conversationId: z14.string().uuid().nullable().optional(),
-  message: z14.string().trim().min(1, "Posez votre question.").max(ADVISOR_MESSAGE_MAX_CHARS, `Message trop long (${ADVISOR_MESSAGE_MAX_CHARS} caract\xE8res maximum).`),
+  conversationId: z15.string().uuid().nullable().optional(),
+  message: z15.string().trim().min(1, "Posez votre question.").max(ADVISOR_MESSAGE_MAX_CHARS, `Message trop long (${ADVISOR_MESSAGE_MAX_CHARS} caract\xE8res maximum).`),
   /** question dictée : réponse plus courte, adaptée à la lecture à voix haute */
-  voice: z14.boolean().optional()
+  voice: z15.boolean().optional()
 });
-var advisorActionDecisionSchema = z14.object({ actionId: z14.string().uuid() });
-var shippingQuoteRequestSchema = z14.object({
-  weightKg: z14.number().positive().max(1e3),
-  lengthCm: z14.number().positive().max(600),
-  widthCm: z14.number().positive().max(600),
-  heightCm: z14.number().positive().max(600),
-  fromCountry: z14.string().regex(/^[A-Z]{2}$/),
-  fromPostcode: z14.string().trim().min(2).max(12),
-  fromCity: z14.string().trim().max(80).optional(),
-  toCountry: z14.string().regex(/^[A-Z]{2}$/),
-  toPostcode: z14.string().trim().min(2).max(12),
-  toCity: z14.string().trim().max(80).optional(),
+var advisorActionDecisionSchema = z15.object({ actionId: z15.string().uuid() });
+var shippingQuoteRequestSchema = z15.object({
+  weightKg: z15.number().positive().max(1e3),
+  lengthCm: z15.number().positive().max(600),
+  widthCm: z15.number().positive().max(600),
+  heightCm: z15.number().positive().max(600),
+  fromCountry: z15.string().regex(/^[A-Z]{2}$/),
+  fromPostcode: z15.string().trim().min(2).max(12),
+  fromCity: z15.string().trim().max(80).optional(),
+  toCountry: z15.string().regex(/^[A-Z]{2}$/),
+  toPostcode: z15.string().trim().min(2).max(12),
+  toCity: z15.string().trim().max(80).optional(),
   /** valeur déclarée (requise par certains transporteurs à l'international) */
-  declaredValue: z14.number().nonnegative().max(1e5).optional()
+  declaredValue: z15.number().nonnegative().max(1e5).optional()
 });
-var trackingRefreshSchema = z14.object({ parcelId: z14.string().uuid() });
+var trackingRefreshSchema = z15.object({ parcelId: z15.string().uuid() });
 
 // src/features/mobile-api/context.ts
 var MAX_TOKEN_LENGTH = 8192;
@@ -16251,7 +16624,7 @@ async function requireMobileUser(request, factory = createBearerSupabaseClient) 
   if (error || !data.user) throw new AppError("AUTH_REQUIRED", MOBILE_SESSION_EXPIRED);
   return { supabase, user: data.user };
 }
-var orgIdSchema = z15.string().uuid();
+var orgIdSchema = z16.string().uuid();
 async function requireMobileOrgContext(request, options = {}, factory = createBearerSupabaseClient) {
   const rawOrg = request.headers.get(ORGANIZATION_HEADER);
   let orgId = null;
@@ -16512,17 +16885,17 @@ async function getMarginContext(ctx) {
 }
 
 // src/features/stock/schemas.ts
-import { z as z16 } from "npm:zod@4.6.5";
+import { z as z17 } from "npm:zod@4.6.5";
 var MAX_MONEY = 1e6;
 var MAX_QUANTITY = 1e6;
 var MAX_LEAD_TIME_DAYS = 365;
-var optionalText = z16.string().trim().max(300).optional().or(z16.literal(""));
-var optionalMoney = z16.union([z16.literal(""), z16.coerce.number().min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).")]).optional();
-var optionalInt = z16.union([z16.literal(""), z16.coerce.number().int("Nombre entier attendu.").min(0, "La valeur ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Valeur trop \xE9lev\xE9e (1 000 000 maximum).")]).optional();
-var optionalLeadTime = z16.union([z16.literal(""), z16.coerce.number().int("Nombre entier attendu.").min(0).max(MAX_LEAD_TIME_DAYS, "D\xE9lai trop long (365 jours maximum).")]).optional();
-var eanSchema = z16.string().trim().regex(/^(\d{8}|\d{12,14})?$/, "EAN / GTIN : 8, 12, 13 ou 14 chiffres.").optional().or(z16.literal(""));
-var skuCodeSchema = z16.string().trim().min(1, "Le code SKU est requis.").max(64).regex(/^[A-Za-z0-9._\-\/]+$/, "Le SKU ne peut contenir que lettres, chiffres, points, tirets et barres obliques.");
-var conditionSchema = z16.enum(["new", "refurbished", "used", "unknown"]);
+var optionalText = z17.string().trim().max(300).optional().or(z17.literal(""));
+var optionalMoney = z17.union([z17.literal(""), z17.coerce.number().min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).")]).optional();
+var optionalInt = z17.union([z17.literal(""), z17.coerce.number().int("Nombre entier attendu.").min(0, "La valeur ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Valeur trop \xE9lev\xE9e (1 000 000 maximum).")]).optional();
+var optionalLeadTime = z17.union([z17.literal(""), z17.coerce.number().int("Nombre entier attendu.").min(0).max(MAX_LEAD_TIME_DAYS, "D\xE9lai trop long (365 jours maximum).")]).optional();
+var eanSchema = z17.string().trim().regex(/^(\d{8}|\d{12,14})?$/, "EAN / GTIN : 8, 12, 13 ou 14 chiffres.").optional().or(z17.literal(""));
+var skuCodeSchema = z17.string().trim().min(1, "Le code SKU est requis.").max(64).regex(/^[A-Za-z0-9._\-\/]+$/, "Le SKU ne peut contenir que lettres, chiffres, points, tirets et barres obliques.");
+var conditionSchema = z17.enum(["new", "refurbished", "used", "unknown"]);
 var variantFields = {
   variant_name: optionalText,
   condition: conditionSchema.default("unknown"),
@@ -16541,29 +16914,29 @@ var skuFields = {
   reorder_point: optionalInt,
   safety_stock: optionalInt,
   lead_time_days: optionalLeadTime,
-  default_supplier_id: z16.string().uuid().optional().or(z16.literal("")),
+  default_supplier_id: z17.string().uuid().optional().or(z17.literal("")),
   initial_quantity: optionalInt
 };
-var createProductSchema = z16.object({
-  name: z16.string().trim().min(1, "Le nom du produit est requis.").max(300),
+var createProductSchema = z17.object({
+  name: z17.string().trim().min(1, "Le nom du produit est requis.").max(300),
   brand: optionalText,
   category: optionalText,
-  description: z16.string().trim().max(5e3).optional().or(z16.literal("")),
-  image_url: z16.string().trim().url("URL d'image invalide.").optional().or(z16.literal("")),
+  description: z17.string().trim().max(5e3).optional().or(z17.literal("")),
+  image_url: z17.string().trim().url("URL d'image invalide.").optional().or(z17.literal("")),
   ...variantFields,
   ...skuFields
 });
-var addSkuSchema = z16.object({
-  product_id: z16.string().uuid(),
+var addSkuSchema = z17.object({
+  product_id: z17.string().uuid(),
   ...variantFields,
   ...skuFields
 });
-var updateSkuSchema = z16.object({
-  sku_id: z16.string().uuid(),
+var updateSkuSchema = z17.object({
+  sku_id: z17.string().uuid(),
   /** Version lue à l'ouverture du formulaire (verrou optimiste contre les éditions simultanées). */
-  expected_updated_at: z16.string().trim().min(1).max(64).optional(),
+  expected_updated_at: z17.string().trim().min(1).max(64).optional(),
   /** Version de la variante lue à l'ouverture du formulaire (même verrou optimiste). */
-  expected_variant_updated_at: z16.string().trim().min(1).max(64).optional(),
+  expected_variant_updated_at: z17.string().trim().min(1).max(64).optional(),
   barcode: optionalText,
   cost_price: optionalMoney,
   sale_price: optionalMoney,
@@ -16571,8 +16944,8 @@ var updateSkuSchema = z16.object({
   reorder_point: optionalInt,
   safety_stock: optionalInt,
   lead_time_days: optionalLeadTime,
-  default_supplier_id: z16.string().uuid().optional().or(z16.literal("")),
-  is_active: z16.enum(["true", "false"]).optional(),
+  default_supplier_id: z17.string().uuid().optional().or(z17.literal("")),
+  is_active: z17.enum(["true", "false"]).optional(),
   variant_name: optionalText,
   condition: conditionSchema.optional(),
   grade: optionalText,
@@ -16581,35 +16954,35 @@ var updateSkuSchema = z16.object({
   ean: eanSchema,
   mpn: optionalText
 });
-var updateProductSchema = z16.object({
-  product_id: z16.string().uuid(),
-  name: z16.string().trim().min(1, "Le nom du produit est requis.").max(300),
+var updateProductSchema = z17.object({
+  product_id: z17.string().uuid(),
+  name: z17.string().trim().min(1, "Le nom du produit est requis.").max(300),
   brand: optionalText,
   category: optionalText,
-  description: z16.string().trim().max(5e3).optional().or(z16.literal("")),
-  image_url: z16.string().trim().url("URL d'image invalide.").optional().or(z16.literal(""))
+  description: z17.string().trim().max(5e3).optional().or(z17.literal("")),
+  image_url: z17.string().trim().url("URL d'image invalide.").optional().or(z17.literal(""))
 });
-var adjustStockSchema = z16.object({
-  sku_id: z16.string().uuid(),
-  type: z16.enum(["receipt", "adjustment", "return", "transfer_in", "transfer_out", "correction"]),
-  direction: z16.enum(["in", "out"]),
-  quantity: z16.coerce.number().int("Nombre entier attendu.").min(1, "La quantit\xE9 doit \xEAtre au moins 1.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum)."),
-  note: z16.string().trim().max(500).optional().or(z16.literal(""))
+var adjustStockSchema = z17.object({
+  sku_id: z17.string().uuid(),
+  type: z17.enum(["receipt", "adjustment", "return", "transfer_in", "transfer_out", "correction"]),
+  direction: z17.enum(["in", "out"]),
+  quantity: z17.coerce.number().int("Nombre entier attendu.").min(1, "La quantit\xE9 doit \xEAtre au moins 1.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum)."),
+  note: z17.string().trim().max(500).optional().or(z17.literal(""))
 });
 var STOCK_SORTS = ["best_sellers", "low_stock", "margin", "stock_value", "last_sale", "oldest_sale", "name"];
 var STOCK_STATUS_FILTERS = ["out_of_stock", "at_risk", "low", "normal"];
-var stockListParamsSchema = z16.object({
-  q: z16.string().trim().max(120).optional(),
-  brand: z16.string().trim().max(120).optional(),
-  category: z16.string().trim().max(120).optional(),
-  status: z16.enum(STOCK_STATUS_FILTERS).optional(),
-  supplier: z16.string().uuid().optional(),
-  channel: z16.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
-  min_margin: z16.coerce.number().min(-MAX_MONEY).max(MAX_MONEY).optional(),
-  stock: z16.enum(["in_stock", "empty", "negative"]).optional(),
-  sort: z16.enum(STOCK_SORTS).default("best_sellers"),
-  page: z16.coerce.number().int().min(1).default(1),
-  archived: z16.enum(["1"]).optional()
+var stockListParamsSchema = z17.object({
+  q: z17.string().trim().max(120).optional(),
+  brand: z17.string().trim().max(120).optional(),
+  category: z17.string().trim().max(120).optional(),
+  status: z17.enum(STOCK_STATUS_FILTERS).optional(),
+  supplier: z17.string().uuid().optional(),
+  channel: z17.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
+  min_margin: z17.coerce.number().min(-MAX_MONEY).max(MAX_MONEY).optional(),
+  stock: z17.enum(["in_stock", "empty", "negative"]).optional(),
+  sort: z17.enum(STOCK_SORTS).default("best_sellers"),
+  page: z17.coerce.number().int().min(1).default(1),
+  archived: z17.enum(["1"]).optional()
 });
 
 // src/features/analytics/dashboard.ts
@@ -16649,28 +17022,28 @@ function isDeadStock(view, now, days = DEAD_STOCK_DAYS) {
 }
 function groupStockViews(views, now = /* @__PURE__ */ new Date(), opts = {}) {
   const byLevel = { out_of_stock: [], at_risk: [], low: [], normal: [] };
-  const totals = { skus: views.length, unitsOnHand: 0, stockValueKnown: 0, skusValued: 0, skusUnknownCost: 0, skusUnknownCostWithStock: 0, skusOtherCurrency: 0 };
+  const totals2 = { skus: views.length, unitsOnHand: 0, stockValueKnown: 0, skusValued: 0, skusUnknownCost: 0, skusUnknownCostWithStock: 0, skusOtherCurrency: 0 };
   const negativeStock = [];
   const deadStock = [];
   for (const v2 of views) {
     byLevel[v2.classification.level].push(v2);
     const onHand = v2.row.quantity_on_hand ?? 0;
-    totals.unitsOnHand += Math.max(0, onHand);
+    totals2.unitsOnHand += Math.max(0, onHand);
     if (v2.row.cost_price === null) {
-      totals.skusUnknownCost++;
-      if (onHand > 0) totals.skusUnknownCostWithStock++;
+      totals2.skusUnknownCost++;
+      if (onHand > 0) totals2.skusUnknownCostWithStock++;
     } else if (onHand > 0) {
       if (opts.currency && v2.row.currency && v2.row.currency.toUpperCase() !== opts.currency.toUpperCase()) {
-        totals.skusOtherCurrency++;
+        totals2.skusOtherCurrency++;
       } else {
-        totals.stockValueKnown += v2.row.cost_price * onHand;
-        totals.skusValued++;
+        totals2.stockValueKnown += v2.row.cost_price * onHand;
+        totals2.skusValued++;
       }
     }
     if (onHand < 0 || (v2.row.quantity_available ?? 0) < 0) negativeStock.push(v2);
     if (isDeadStock(v2, now)) deadStock.push(v2);
   }
-  totals.stockValueKnown = Math.round(totals.stockValueKnown * 100) / 100;
+  totals2.stockValueKnown = Math.round(totals2.stockValueKnown * 100) / 100;
   for (const level of Object.keys(byLevel)) byLevel[level].sort(urgencyComparator);
   const topSellers = views.filter((v2) => (v2.row.units_30d ?? 0) > 0).sort((a, b) => (b.row.units_30d ?? 0) - (a.row.units_30d ?? 0) || Number(b.row.revenue_30d ?? 0) - Number(a.row.revenue_30d ?? 0)).slice(0, opts.topN ?? 10);
   const valueOf = (v2) => v2.row.cost_price === null ? -1 : v2.row.cost_price * Math.max(0, v2.row.quantity_on_hand ?? 0);
@@ -16680,7 +17053,7 @@ function groupStockViews(views, now = /* @__PURE__ */ new Date(), opts = {}) {
     all: [...views],
     byLevel,
     counts: { out_of_stock: byLevel.out_of_stock.length, at_risk: byLevel.at_risk.length, low: byLevel.low.length, normal: byLevel.normal.length },
-    totals,
+    totals: totals2,
     topSellers,
     deadStock,
     negativeStock,
@@ -16970,29 +17343,29 @@ init_empty();
 init_errors();
 
 // src/features/analytics/schemas.ts
-import { z as z17 } from "npm:zod@4.6.5";
-var isoDate = z17.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date attendue au format AAAA-MM-JJ");
-var page = z17.coerce.number().int().min(1).default(1);
+import { z as z18 } from "npm:zod@4.6.5";
+var isoDate = z18.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date attendue au format AAAA-MM-JJ");
+var page = z18.coerce.number().int().min(1).default(1);
 var ORDER_STATUSES2 = ["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"];
-var salesListParamsSchema = z17.object({
-  q: z17.string().trim().max(120).optional(),
-  channel: z17.string().uuid().optional(),
-  status: z17.enum(ORDER_STATUSES2).optional(),
+var salesListParamsSchema = z18.object({
+  q: z18.string().trim().max(120).optional(),
+  channel: z18.string().uuid().optional(),
+  status: z18.enum(ORDER_STATUSES2).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
-  inventory: z17.enum(["pending"]).optional(),
+  inventory: z18.enum(["pending"]).optional(),
   page
 });
-var marginsParamsSchema = z17.object({
-  channel: z17.string().uuid().optional(),
-  unknown: z17.enum(["1"]).optional(),
-  min_margin: z17.coerce.number().optional(),
-  sort: z17.enum(MARGIN_SORTS).default("profit_total"),
+var marginsParamsSchema = z18.object({
+  channel: z18.string().uuid().optional(),
+  unknown: z18.enum(["1"]).optional(),
+  min_margin: z18.coerce.number().optional(),
+  sort: z18.enum(MARGIN_SORTS).default("profit_total"),
   page
 });
 var ALERT_LEVEL_TABS = ["todo", "out_of_stock", "at_risk", "low", "normal"];
-var alertsParamsSchema = z17.object({
-  level: z17.enum(ALERT_LEVEL_TABS).default("todo"),
+var alertsParamsSchema = z18.object({
+  level: z18.enum(ALERT_LEVEL_TABS).default("todo"),
   page
 });
 
@@ -18020,34 +18393,34 @@ async function loadSourcingStatus(ctx) {
 }
 
 // src/features/sourcing/schemas.ts
-import { z as z23 } from "npm:zod@4.6.5";
-var optionalText2 = z23.string().trim().max(120).optional();
-var optionalMoney2 = z23.union([z23.literal(""), z23.coerce.number().min(0)]).optional();
-var optionalInt2 = z23.union([z23.literal(""), z23.coerce.number().int().min(0)]).optional();
+import { z as z24 } from "npm:zod@4.6.5";
+var optionalText2 = z24.string().trim().max(120).optional();
+var optionalMoney2 = z24.union([z24.literal(""), z24.coerce.number().min(0)]).optional();
+var optionalInt2 = z24.union([z24.literal(""), z24.coerce.number().int().min(0)]).optional();
 var SOURCE_TYPES = ["PUBLIC_WEB", "API", "CSV", "XML", "JSON", "SUPPLIER_ACCOUNT", "MANUAL", "PARTNER_FEED"];
-var sourcingSearchParamsSchema = z23.object({
-  q: z23.string().trim().max(200).optional(),
-  sku: z23.string().trim().max(64).optional(),
+var sourcingSearchParamsSchema = z24.object({
+  q: z24.string().trim().max(200).optional(),
+  sku: z24.string().trim().max(64).optional(),
   category: optionalText2,
   brand: optionalText2,
   model: optionalText2,
   storage: optionalText2,
   color: optionalText2,
-  condition: z23.enum(["new", "refurbished", "used"]).optional(),
-  grade: z23.string().trim().max(5).optional(),
-  qty: z23.coerce.number().int().min(1).optional(),
-  max_price: z23.coerce.number().positive().optional(),
-  country: z23.string().trim().max(60).optional(),
-  max_delivery: z23.coerce.number().int().min(0).optional(),
-  max_moq: z23.coerce.number().int().min(1).optional(),
-  tax: z23.enum(["ht", "ttc"]).optional(),
-  supplier: z23.string().uuid().optional(),
-  source: z23.enum(SOURCE_TYPES).optional(),
-  availability: z23.enum(["in_stock", "any"]).optional(),
-  sort: z23.enum(RANKING_MODES).default("best_offer"),
-  page: z23.coerce.number().int().min(1).default(1),
+  condition: z24.enum(["new", "refurbished", "used"]).optional(),
+  grade: z24.string().trim().max(5).optional(),
+  qty: z24.coerce.number().int().min(1).optional(),
+  max_price: z24.coerce.number().positive().optional(),
+  country: z24.string().trim().max(60).optional(),
+  max_delivery: z24.coerce.number().int().min(0).optional(),
+  max_moq: z24.coerce.number().int().min(1).optional(),
+  tax: z24.enum(["ht", "ttc"]).optional(),
+  supplier: z24.string().uuid().optional(),
+  source: z24.enum(SOURCE_TYPES).optional(),
+  availability: z24.enum(["in_stock", "any"]).optional(),
+  sort: z24.enum(RANKING_MODES).default("best_offer"),
+  page: z24.coerce.number().int().min(1).default(1),
   /** live=0 : recherche dans les offres enregistrées uniquement (sans interroger les sources) */
-  live: z23.enum(["0", "1"]).optional()
+  live: z24.enum(["0", "1"]).optional()
 });
 function parseCountries(text3) {
   if (!text3) return void 0;
@@ -18077,22 +18450,22 @@ function toOfferFilters(p) {
     page: p.page
   };
 }
-var alertFormSchema = z23.object({
-  alert_id: z23.string().uuid().optional().or(z23.literal("")),
-  name: z23.string().trim().min(1, "Le nom de l'alerte est requis.").max(120),
-  query_text: z23.string().trim().min(1, "Indiquez le produit recherch\xE9.").max(200),
+var alertFormSchema = z24.object({
+  alert_id: z24.string().uuid().optional().or(z24.literal("")),
+  name: z24.string().trim().min(1, "Le nom de l'alerte est requis.").max(120),
+  query_text: z24.string().trim().min(1, "Indiquez le produit recherch\xE9.").max(200),
   max_price: optionalMoney2,
   min_quantity: optionalInt2,
-  countries: z23.string().trim().max(60).optional().or(z23.literal("")),
-  max_moq: z23.union([z23.literal(""), z23.coerce.number().int().min(1)]).optional(),
-  grades: z23.string().trim().max(40).optional().or(z23.literal("")),
-  condition: z23.enum(["", "new", "refurbished", "used"]).optional(),
+  countries: z24.string().trim().max(60).optional().or(z24.literal("")),
+  max_moq: z24.union([z24.literal(""), z24.coerce.number().int().min(1)]).optional(),
+  grades: z24.string().trim().max(40).optional().or(z24.literal("")),
+  condition: z24.enum(["", "new", "refurbished", "used"]).optional(),
   max_delivery_days: optionalInt2,
-  sku_id: z23.string().uuid().optional().or(z23.literal(""))
+  sku_id: z24.string().uuid().optional().or(z24.literal(""))
 });
-var matchDecisionSchema = z23.object({ match_id: z23.string().uuid(), decision: z23.enum(["confirm", "reject"]) });
-var linkOfferSchema = z23.object({ offer_id: z23.string().uuid(), sku_id: z23.string().uuid("Choisissez un SKU.") });
-var offerStatusSchema = z23.object({ offer_id: z23.string().uuid(), status: z23.enum(["rejected", "active"]) });
+var matchDecisionSchema = z24.object({ match_id: z24.string().uuid(), decision: z24.enum(["confirm", "reject"]) });
+var linkOfferSchema = z24.object({ offer_id: z24.string().uuid(), sku_id: z24.string().uuid("Choisissez un SKU.") });
+var offerStatusSchema = z24.object({ offer_id: z24.string().uuid(), status: z24.enum(["rejected", "active"]) });
 
 // src/services/sourcing/search.ts
 init_empty();
@@ -18276,7 +18649,7 @@ function getConnectorDescriptor(key2) {
 // src/services/sourcing/supplier-connectors.ts
 init_offer_storage();
 init_sync_runs();
-var log10 = createLogger("SUPPLIER_CONNECTORS");
+var log13 = createLogger("SUPPLIER_CONNECTORS");
 var MAX_CONNECTION_CATALOG_PAGES = 20;
 var CONNECTION_MIN_DELAY_MS = 500;
 async function loadConnectionCredentials(connectionId) {
@@ -18385,7 +18758,7 @@ async function syncSupplierConnection(connectionId, options = {}) {
     return { connectionId, sourceId: source.id, runId: run.id, status, pages, found, stored, rejected, expired: expired2, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
-    log10.error("connection sync failed", { connectionId, error: message });
+    log13.error("connection sync failed", { connectionId, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "SYNC_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: found, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_connections").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", connection.id);
@@ -18396,7 +18769,7 @@ async function syncSupplierConnection(connectionId, options = {}) {
 
 // src/services/sourcing/live-search.ts
 init_sync_runs();
-var log11 = createLogger("LIVE_SEARCH");
+var log14 = createLogger("LIVE_SEARCH");
 var LIVE_SEARCH_SOURCE_TYPES = ["PUBLIC_WEB", "API", "JSON", "XML", "CSV", "SUPPLIER_ACCOUNT"];
 var LIVE_SEARCH_CACHE_TTL_MS = 10 * 6e4;
 var LIVE_SEARCH_DEFAULT_TIMEOUT_MS = 8e3;
@@ -18481,7 +18854,7 @@ async function querySource(c, input, rt, scheduler) {
     const urls = Array.from(new Set(variants.flatMap((v2) => adapter.urlsForQuery?.(c.config, v2.parsed, v2.text) ?? [])));
     if (urls.length === 0) return report(c, "no_search", "Aucune URL de recherche configur\xE9e pour cette source : recherche en direct impossible.", {}, startedAt);
     const robots = await rt.checkRobots(c, urls);
-    if (rt.recordRobots) await rt.recordRobots(c, robots).catch((e) => log11.warn("robots status not recorded", { sourceId: c.sourceId, error: e instanceof Error ? e.message : String(e) }));
+    if (rt.recordRobots) await rt.recordRobots(c, robots).catch((e) => log14.warn("robots status not recorded", { sourceId: c.sourceId, error: e instanceof Error ? e.message : String(e) }));
     if (!robots.allowed) return report(c, "robots_disallowed", `robots.txt : ${robots.details}`, { durationMs: Date.now() - t0 }, startedAt);
     disallowedUrls = robots.disallowedUrls;
   }
@@ -18645,7 +19018,7 @@ async function ensureConnectionSource2(admin, organizationId, connection, adapte
   if (connection.source_id) return connection.source_id;
   const { data, error } = await admin.from("supplier_sources").insert({ organization_id: organizationId, supplier_id: connection.supplier_id, name: adapterLabel, source_type: "SUPPLIER_ACCOUNT", automated_access_confirmed: true, access_conditions: "Compte fournisseur connect\xE9 par le vendeur (API officielle, identifiants chiffr\xE9s).", status: "active", sync_frequency: "manual", config: { adapter: connection.connector_key } }).select("id").single();
   if (error || !data) {
-    log11.warn("connection source not created", { connectionId: connection.id, error: error?.message });
+    log14.warn("connection source not created", { connectionId: connection.id, error: error?.message });
     return null;
   }
   await admin.from("supplier_connections").update({ source_id: data.id }).eq("id", connection.id);
@@ -18761,7 +19134,7 @@ async function runLiveSearch(ctx, input, overrides = {}) {
             } else rejected++;
           } catch (e) {
             rejected++;
-            log11.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
+            log14.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
           }
         }
       };
@@ -18795,7 +19168,7 @@ async function runLiveSearch(ctx, input, overrides = {}) {
     input,
     runtime
   );
-  log11.info("live search finished", { organizationId, query: input.rawQuery, queried: summary.queried, found: summary.found, stored: summary.stored, durationMs: summary.durationMs });
+  log14.info("live search finished", { organizationId, query: input.rawQuery, queried: summary.queried, found: summary.found, stored: summary.stored, durationMs: summary.durationMs });
   return summary;
 }
 
@@ -20151,16 +20524,16 @@ async function probeCandidate(candidate, deps) {
 
 // src/services/sourcing/discovery/web-search-providers.ts
 init_http();
-import { z as z24 } from "npm:zod@4.6.5";
+import { z as z25 } from "npm:zod@4.6.5";
 var DISCOVERY_DISABLED_MESSAGE = "D\xE9couverte d\xE9sactiv\xE9e : aucune API de recherche configur\xE9e";
 var MAX_DISCOVERY_QUERIES = 6;
 var DISCOVERY_CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
 var BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 var BRAVE_RESULT_COUNT = 20;
 var BRAVE_MIN_INTERVAL_MS = 1100;
-var discoveryEnvSchema = z24.object({
-  SOURCING_DISCOVERY_PROVIDER: z24.preprocess((v2) => typeof v2 === "string" && v2.trim() ? v2.trim().toLowerCase() : void 0, z24.enum(["brave", "none"]).default("none")),
-  BRAVE_SEARCH_API_KEY: z24.preprocess((v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : void 0, z24.string().min(8).optional())
+var discoveryEnvSchema = z25.object({
+  SOURCING_DISCOVERY_PROVIDER: z25.preprocess((v2) => typeof v2 === "string" && v2.trim() ? v2.trim().toLowerCase() : void 0, z25.enum(["brave", "none"]).default("none")),
+  BRAVE_SEARCH_API_KEY: z25.preprocess((v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : void 0, z25.string().min(8).optional())
 });
 function readDiscoveryConfig(env = process.env) {
   const parsed = discoveryEnvSchema.safeParse(env);
@@ -20173,14 +20546,14 @@ function readDiscoveryConfig(env = process.env) {
   if (!key2) return { enabled: false, provider: "brave", apiKey: null, message: `${DISCOVERY_DISABLED_MESSAGE} (BRAVE_SEARCH_API_KEY manquante)` };
   return { enabled: true, provider: "brave", apiKey: key2, message: "D\xE9couverte via l'API Brave Search" };
 }
-var braveResultSchema = z24.object({
-  url: z24.string(),
-  title: z24.string().optional().default(""),
-  description: z24.string().nullable().optional()
+var braveResultSchema = z25.object({
+  url: z25.string(),
+  title: z25.string().optional().default(""),
+  description: z25.string().nullable().optional()
 });
-var braveResponseSchema = z24.object({
-  web: z24.object({
-    results: z24.array(z24.unknown()).optional().default([])
+var braveResponseSchema = z25.object({
+  web: z25.object({
+    results: z25.array(z25.unknown()).optional().default([])
   }).optional()
 });
 function cleanSnippet(s) {
@@ -20290,7 +20663,7 @@ async function runDiscoverySearches(provider, queries, options = {}) {
 
 // src/services/sourcing/discovery/discovery-service.ts
 init_logger();
-var log12 = createLogger("SOURCING_DISCOVERY");
+var log15 = createLogger("SOURCING_DISCOVERY");
 var MAX_PROBED_CANDIDATES = 10;
 function domainsFrom(values) {
   const out = [];
@@ -20467,11 +20840,11 @@ async function discoverSources(ctx, parsedQuery) {
       known2.add(probed.domain);
       report2.push(reportFromCandidate(probed, "new", newReason(probed), ids));
     } catch (e) {
-      log12.warn("discovered source not stored", { orgId: ctx.organizationId, domain: probed.domain, error: e instanceof Error ? e.message : String(e) });
+      log15.warn("discovered source not stored", { orgId: ctx.organizationId, domain: probed.domain, error: e instanceof Error ? e.message : String(e) });
       report2.push(reportFromCandidate(probed, "skipped", `Non enregistr\xE9 : ${e instanceof Error ? e.message : "erreur inconnue"}`));
     }
   }
-  log12.info("discovery done", { orgId: ctx.organizationId, provider: provider.key, queries: runs.length, new: report2.filter((r) => r.status === "new").length });
+  log15.info("discovery done", { orgId: ctx.organizationId, provider: provider.key, queries: runs.length, new: report2.filter((r) => r.status === "new").length });
   const failed = runs.filter((r) => r.error).length;
   const summary = failed === runs.length ? `Recherche web en \xE9chec : ${runs[0]?.error ?? "erreur inconnue"}` : `${message} \u2014 ${runs.length} requ\xEAte(s)${failed ? `, ${failed} en \xE9chec` : ""}`;
   return finish2({ enabled: true, provider: provider.key, message: summary, queries: queryReport, candidates: report2 });
@@ -20510,7 +20883,7 @@ function currentDiscoveryConfig(env = process.env) {
 }
 
 // src/services/sourcing/search.ts
-var log13 = createLogger("SOURCING_SEARCH");
+var log16 = createLogger("SOURCING_SEARCH");
 var SEARCH_PAGE_SIZE = 20;
 var REJECTED_LIST_LIMIT = 100;
 var SKU_TOP_OFFERS = 3;
@@ -20602,14 +20975,14 @@ async function searchOffers(ctx, input) {
   const discoveryConfig = currentDiscoveryConfig();
   const admin = isAdmin(ctx.role);
   const decision = discoveryDecision({ config: discoveryConfig, canWrite: canWrite(ctx.role), isAdmin: admin, parsed, live: input.live !== false && input.discover !== false });
-  const discoveryPromise = decision.run ? runDiscoveryWithTimeout(() => discoverSources({ organizationId: orgId }, parsed), { isAdmin: admin, provider: discoveryConfig.provider, onLateError: (e) => log13.warn("late discovery failed", { orgId, error: e instanceof Error ? e.message : String(e) }) }) : Promise.resolve(decision.panel);
+  const discoveryPromise = decision.run ? runDiscoveryWithTimeout(() => discoverSources({ organizationId: orgId }, parsed), { isAdmin: admin, provider: discoveryConfig.provider, onLateError: (e) => log16.warn("late discovery failed", { orgId, error: e instanceof Error ? e.message : String(e) }) }) : Promise.resolve(decision.panel);
   let live = null;
   if (liveWanted) {
     try {
       const summary = await runLiveSearch(ctx, { rawQuery: liveQuery, parsed, variants, skuId: sku?.id ?? null });
       live = summary.sources.length > 0 ? summary : null;
     } catch (e) {
-      log13.warn("live search failed", { orgId, error: e instanceof Error ? e.message : String(e) });
+      log16.warn("live search failed", { orgId, error: e instanceof Error ? e.message : String(e) });
     }
   }
   const [{ offers, stage }, marginCtx, sources] = await Promise.all([findOffers(ctx.supabase, orgId, parsed, filters, { skuIdsForCategory, includeSkuId: sku?.id ?? null }), getMarginContext(ctx), listSourceStatuses(ctx)]);
@@ -20780,7 +21153,7 @@ async function searchOffers(ctx, input) {
   };
   if (parsed.kind !== "empty" || sku) {
     const { error } = await ctx.supabase.from("sourcing_searches").insert({ organization_id: orgId, user_id: ctx.user.id, query_text: input.query || sku?.code || "", parsed: { kind: parsed.kind, ean: parsed.ean, mpn: parsed.mpn, criteria: parsed.criteria, tokens: parsed.tokens }, filters, result_count: total });
-    if (error) log13.debug("search not recorded", { error: error.message });
+    if (error) log16.debug("search not recorded", { error: error.message });
   }
   const skuTopOffers = sku ? pipeline.ranking.ranked.filter((r) => r.offer.comparableUnitPrice !== null).slice(0, SKU_TOP_OFFERS).map((r) => ({
     id: r.offer.id,
@@ -20834,7 +21207,7 @@ async function loadPriceInsights(ctx, offers, orgCurrency, now) {
   if (offers.length === 0) return out;
   const since2 = new Date(now.getTime() - PRICE_INSIGHT_WINDOW_DAYS * 864e5).toISOString();
   const history = await loadRecentPriceHistory(ctx.supabase, ctx.organization.id, offers.map((o) => o.id), since2);
-  if (history.failedOfferIds.length > 0) log13.debug("price history not loaded", { offers: history.failedOfferIds.length });
+  if (history.failedOfferIds.length > 0) log16.debug("price history not loaded", { offers: history.failedOfferIds.length });
   const failed = new Set(history.failedOfferIds);
   const byOffer = groupPriceHistory(history.rows, orgCurrency);
   for (const o of offers) {
@@ -21225,7 +21598,7 @@ function emptyListingsResult() {
   return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
 }
 async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log35 } = ctx;
+  const { admin, log: log36 } = ctx;
   const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   const seen = /* @__PURE__ */ new Set();
   let truncated = false;
@@ -21233,7 +21606,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     result.fetched += page2.listings.length;
     result.invalid += page2.invalid.length;
     for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log35.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+    for (const w2 of page2.warnings) log36.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
@@ -21246,7 +21619,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
   result.complete = !truncated;
   if (truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log35.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log36.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
   const active = result.complete ? await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
@@ -21344,7 +21717,7 @@ async function computeSuggestions(ctx) {
 
 // src/services/sync/orders.ts
 init_empty();
-import { z as z25 } from "npm:zod@4.6.5";
+import { z as z26 } from "npm:zod@4.6.5";
 function emptyOrdersResult() {
   return {
     fetched: 0,
@@ -21365,13 +21738,13 @@ function emptyOrdersResult() {
 }
 var ORDERS_MIN_SLICE_HOURS = 1;
 var ORDERS_MAX_PAGES_PER_RUN = 200;
-var ingestResultSchema = z25.object({
-  order_id: z25.string(),
-  created: z25.boolean(),
-  status_changed: z25.boolean().optional(),
-  items_mapped: z25.number().int().optional(),
-  items_unmapped: z25.number().int().optional(),
-  movements: z25.number().int().optional()
+var ingestResultSchema = z26.object({
+  order_id: z26.string(),
+  created: z26.boolean(),
+  status_changed: z26.boolean().optional(),
+  items_mapped: z26.number().int().optional(),
+  items_unmapped: z26.number().int().optional(),
+  movements: z26.number().int().optional()
 });
 function orderToRpcPayload(order) {
   return {
@@ -21536,7 +21909,7 @@ init_errors();
 init_logger();
 init_errors2();
 init_context();
-var log16 = createLogger("SYNC");
+var log18 = createLogger("SYNC");
 var MAX_PUSH_PER_RUN = 200;
 function listingRefOf(row2) {
   if (!row2.external_variation_id) return { externalListingId: row2.external_listing_id, variationSku: null };
@@ -21552,7 +21925,7 @@ async function pushQuantityToChannel(admin, connector, auth, listing, quantity) 
   const result = await connector.updateListingInventory(auth, ref, qty);
   const { error } = await admin.from("channel_listings").update({ quantity_available: qty, last_synced_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", listing.id);
   if (error) throw fromPostgrestError(error);
-  log16.info("quantit\xE9 envoy\xE9e au canal", { listingId: listing.id, externalListingId: listing.external_listing_id, variation: listing.external_variation_id || null, quantity: qty, warnings: result.warnings.length });
+  log18.info("quantit\xE9 envoy\xE9e au canal", { listingId: listing.id, externalListingId: listing.external_listing_id, variation: listing.external_variation_id || null, quantity: qty, warnings: result.warnings.length });
   return { quantity: qty, warnings: result.warnings };
 }
 async function pushInventory(ctx) {
@@ -21604,7 +21977,7 @@ async function pushInventory(ctx) {
 }
 
 // src/services/sync/engine.ts
-var log17 = createLogger("SYNC");
+var log19 = createLogger("SYNC");
 var RUNNING_STALE_MINUTES2 = 15;
 function emptyStats() {
   return {
@@ -21652,7 +22025,7 @@ async function runChannelSync(connectionId, options) {
     throw fromPostgrestError(runError);
   }
   const runId = run.id;
-  log17.info(`${label} sync started`, { runId, connectionId, orgId: connection.organization_id, trigger: options.trigger, scope, username: connection.external_username });
+  log19.info(`${label} sync started`, { runId, connectionId, orgId: connection.organization_id, trigger: options.trigger, scope, username: connection.external_username });
   const stats = emptyStats();
   const errors = [];
   const state = { fatal: null, authExpired: false, phasesCompleted: 0, newCursor: null };
@@ -21663,10 +22036,10 @@ async function runChannelSync(connectionId, options) {
     salesChannelId: connection.sales_channel_id,
     connector,
     auth: connectorAuthFor(connection.id),
-    log: log17,
+    log: log19,
     recordError: (e) => {
       errors.push(e);
-      log17.warn("erreur de synchronisation", { runId, code: e.code, entity: e.entityRef ?? null, message: e.message });
+      log19.warn("erreur de synchronisation", { runId, code: e.code, entity: e.entityRef ?? null, message: e.message });
     }
   };
   const runPhase = async (name, fn) => {
@@ -21685,7 +22058,7 @@ async function runChannelSync(connectionId, options) {
       } else if (!isConnectorError(e) && !(e instanceof AppError)) {
         state.fatal = entry;
       }
-      log17.error(`phase ${name} \xE9chou\xE9e`, { runId, code: d.code, message: d.message, fatal: state.fatal !== null });
+      log19.error(`phase ${name} \xE9chou\xE9e`, { runId, code: d.code, message: d.message, fatal: state.fatal !== null });
       return false;
     }
   };
@@ -21693,7 +22066,7 @@ async function runChannelSync(connectionId, options) {
     const r = emptyListingsResult();
     await runPhase("listings", async () => {
       await syncListings(ctx, r);
-      log17.info(`${label} listings synced`, { runId, fetched: r.fetched, upserted: r.upserted, ended: r.ended, autoMapped: r.autoMapped, suggestions: r.suggestionsCreated, invalid: r.invalid });
+      log19.info(`${label} listings synced`, { runId, fetched: r.fetched, upserted: r.upserted, ended: r.ended, autoMapped: r.autoMapped, suggestions: r.suggestionsCreated, invalid: r.invalid });
     });
     stats.listings_fetched = r.fetched;
     stats.listings_upserted = r.upserted;
@@ -21704,10 +22077,10 @@ async function runChannelSync(connectionId, options) {
   if (scope === "full" || scope === "orders") {
     const window = computeOrdersWindow(connection.last_orders_cursor, startedAt);
     const r = emptyOrdersResult();
-    log17.info(`${label} orders window`, { runId, since: window.since.toISOString(), until: window.until.toISOString(), initial: window.initial });
+    log19.info(`${label} orders window`, { runId, since: window.since.toISOString(), until: window.until.toISOString(), initial: window.initial });
     await runPhase("orders", async () => {
       await syncOrders(ctx, window, r, options.orders);
-      log17.info(`${label} orders synced`, { runId, fetched: r.fetched, created: r.created, updated: r.updated, itemsUnmapped: r.itemsUnmapped, movements: r.movements, failed: r.failed, invalid: r.invalid, truncated: r.truncated, pages: r.pages });
+      log19.info(`${label} orders synced`, { runId, fetched: r.fetched, created: r.created, updated: r.updated, itemsUnmapped: r.itemsUnmapped, movements: r.movements, failed: r.failed, invalid: r.invalid, truncated: r.truncated, pages: r.pages });
     });
     stats.orders_fetched = r.fetched;
     stats.orders_created = r.created;
@@ -21720,7 +22093,7 @@ async function runChannelSync(connectionId, options) {
     await runPhase("inventory_push", async () => {
       const r = await pushInventory(ctx);
       stats.inventory_pushed = r.pushed;
-      log17.info(`${label} inventory pushed`, { runId, checked: r.checked, changed: r.changed, pushed: r.pushed, failed: r.failed });
+      log19.info(`${label} inventory pushed`, { runId, checked: r.checked, changed: r.changed, pushed: r.pushed, failed: r.failed });
     });
   }
   stats.errors = errors.length;
@@ -21740,7 +22113,7 @@ async function runChannelSync(connectionId, options) {
         details: sanitizeDetails(e.details)
       }))
     );
-    if (error) log17.error("impossible d'enregistrer les erreurs de sync", { runId, error: error.message });
+    if (error) log19.error("impossible d'enregistrer les erreurs de sync", { runId, error: error.message });
   }
   const { error: finishError } = await admin.from("sync_runs").update({
     status,
@@ -21751,7 +22124,7 @@ async function runChannelSync(connectionId, options) {
     error_summary: errorSummary,
     stats
   }).eq("id", runId);
-  if (finishError) log17.error("impossible de finaliser le run", { runId, error: finishError.message });
+  if (finishError) log19.error("impossible de finaliser le run", { runId, error: finishError.message });
   const connectionPatch = { last_error: errorSummary };
   if (options.trigger !== "webhook") connectionPatch.last_sync_at = finishedAt.toISOString();
   if (status === "success") connectionPatch.last_successful_sync_at = finishedAt.toISOString();
@@ -21760,15 +22133,15 @@ async function runChannelSync(connectionId, options) {
     await markConnectionExpired(connection.id, state.fatal?.message ?? "Token d'autorisation expir\xE9.");
   }
   const { data: patched, error: patchError } = await admin.from("channel_connections").update(connectionPatch).eq("id", connection.id).neq("status", "disconnected").select("id").maybeSingle();
-  if (patchError) log17.error("impossible de mettre \xE0 jour la connexion", { connectionId, error: patchError.message });
+  if (patchError) log19.error("impossible de mettre \xE0 jour la connexion", { connectionId, error: patchError.message });
   const stillActive = Boolean(patched) || Boolean(patchError);
   if (stillActive && !state.authExpired) {
     const nextStatus = status === "failed" ? "error" : "connected";
     const { error: statusError } = await admin.from("channel_connections").update({ status: nextStatus }).eq("id", connection.id).in("status", ["connected", "error"]);
-    if (statusError) log17.error("impossible de mettre \xE0 jour le statut de la connexion", { connectionId, error: statusError.message });
+    if (statusError) log19.error("impossible de mettre \xE0 jour le statut de la connexion", { connectionId, error: statusError.message });
   }
   if (!stillActive) {
-    log17.warn("connexion d\xE9connect\xE9e pendant le run : \xE9tat et alertes inchang\xE9s", { runId, connectionId });
+    log19.warn("connexion d\xE9connect\xE9e pendant le run : \xE9tat et alertes inchang\xE9s", { runId, connectionId });
   } else if (status === "success") {
     await resolveAlerts(admin, connection.organization_id, [connectionExpiredKey(connection.id), syncFailedKey(connection.id)]);
   } else if (status === "partial") {
@@ -21786,7 +22159,7 @@ async function runChannelSync(connectionId, options) {
       actionHref: `/settings/sync/${runId}`
     });
   }
-  log17.info(`${label} sync finished`, { runId, status, durationMs, ...stats });
+  log19.info(`${label} sync finished`, { runId, status, durationMs, ...stats });
   return { runId, status, stats, durationMs, errorSummary, connectionId: connection.id };
 }
 async function guardConcurrency(admin, connection) {
@@ -21803,7 +22176,7 @@ async function guardConcurrency(admin, connection) {
   }
   if (staleIds.length > 0) {
     await admin.from("sync_runs").update({ status: "failed", finished_at: (/* @__PURE__ */ new Date()).toISOString(), error_summary: `Run interrompu (aucune fin enregistr\xE9e apr\xE8s ${RUNNING_STALE_MINUTES2} min).` }).in("id", staleIds);
-    log17.warn("runs interrompus marqu\xE9s en \xE9chec", { connectionId: connection.id, count: staleIds.length });
+    log19.warn("runs interrompus marqu\xE9s en \xE9chec", { connectionId: connection.id, count: staleIds.length });
   }
 }
 
@@ -21890,15 +22263,15 @@ init_connection_store();
 
 // src/integrations/ebay/webhook-verify.ts
 import { createHash as createHash6, createVerify } from "node:crypto";
-import { z as z26 } from "npm:zod@4.6.5";
+import { z as z27 } from "npm:zod@4.6.5";
 function computeChallengeResponse(challengeCode, verificationToken, endpointUrl) {
   return createHash6("sha256").update(challengeCode).update(verificationToken).update(endpointUrl).digest("hex");
 }
-var ebaySignatureHeaderSchema = z26.object({
-  alg: z26.string().optional(),
-  kid: z26.string().min(1),
-  signature: z26.string().min(1),
-  digest: z26.string().optional()
+var ebaySignatureHeaderSchema = z27.object({
+  alg: z27.string().optional(),
+  kid: z27.string().min(1),
+  signature: z27.string().min(1),
+  digest: z27.string().optional()
 });
 function parseSignatureHeader(header) {
   if (!header) return null;
@@ -21910,10 +22283,10 @@ function parseSignatureHeader(header) {
     return null;
   }
 }
-var ebayPublicKeySchema = z26.object({
-  key: z26.string().min(1),
-  algorithm: z26.string().optional(),
-  digest: z26.string().optional()
+var ebayPublicKeySchema = z27.object({
+  key: z27.string().min(1),
+  algorithm: z27.string().optional(),
+  digest: z27.string().optional()
 });
 function formatPem(key2) {
   const trimmed = key2.trim();
@@ -21951,14 +22324,14 @@ function verifyNotificationSignature(rawBody, header, publicKey) {
     return false;
   }
 }
-var ebayNotificationSchema = z26.object({
-  metadata: z26.object({ topic: z26.string().min(1), schemaVersion: z26.string().optional(), deprecated: z26.boolean().optional() }),
-  notification: z26.object({
-    notificationId: z26.string().min(1).optional(),
-    eventDate: z26.string().optional(),
-    publishDate: z26.string().optional(),
-    publishAttemptCount: z26.number().optional(),
-    data: z26.record(z26.string(), z26.unknown()).optional()
+var ebayNotificationSchema = z27.object({
+  metadata: z27.object({ topic: z27.string().min(1), schemaVersion: z27.string().optional(), deprecated: z27.boolean().optional() }),
+  notification: z27.object({
+    notificationId: z27.string().min(1).optional(),
+    eventDate: z27.string().optional(),
+    publishDate: z27.string().optional(),
+    publishAttemptCount: z27.number().optional(),
+    data: z27.record(z27.string(), z27.unknown()).optional()
   })
 });
 function notificationEventId(notification, payloadHash) {
@@ -22045,7 +22418,7 @@ init_errors();
 init_logger();
 init_alerts();
 init_context();
-var log18 = createLogger("EBAY_WEBHOOK");
+var log20 = createLogger("EBAY_WEBHOOK");
 var WEBHOOK_MAX_BODY_BYTES = 64 * 1024;
 var WEBHOOK_STALE_RECEIVED_MS = 5 * 6e4;
 var WEBHOOK_ROUTE_MAX_DURATION_S = 60;
@@ -22086,7 +22459,7 @@ function redactedDeletionPayload(n) {
 }
 async function markEvent(admin, id, patch) {
   const { error } = await admin.from("webhook_events").update({ status: patch.status, processed_at: patch.status === "received" ? null : (/* @__PURE__ */ new Date()).toISOString(), error: patch.error ? sanitizeMessage(patch.error, 1e3) : null, ...patch.payload !== void 0 ? { payload: patch.payload } : {} }).eq("id", id);
-  if (error) log18.error("mise \xE0 jour de la notification impossible", { eventRowId: id, error: error.message });
+  if (error) log20.error("mise \xE0 jour de la notification impossible", { eventRowId: id, error: error.message });
 }
 async function claimForRetry(admin, eventId) {
   const { data: failed } = await admin.from("webhook_events").update({ status: "received", error: null, processed_at: null }).eq("provider", "ebay").eq("event_id", eventId).eq("status", "failed").select("id").maybeSingle();
@@ -22101,7 +22474,7 @@ async function handleEbayNotification(request, deps) {
   const deadlineAt = clock() + (deps.processingBudgetMs ?? WEBHOOK_PROCESSING_BUDGET_MS);
   const raw = await readBodyLimited(request, WEBHOOK_MAX_BODY_BYTES);
   if (raw === null) {
-    log18.warn("notification refus\xE9e : corps trop volumineux", { limit: WEBHOOK_MAX_BODY_BYTES });
+    log20.warn("notification refus\xE9e : corps trop volumineux", { limit: WEBHOOK_MAX_BODY_BYTES });
     return json({ error: `Notification trop volumineuse (limite ${Math.round(WEBHOOK_MAX_BODY_BYTES / 1024)} Ko).` }, 413);
   }
   if (!deps.isConfigured()) {
@@ -22133,7 +22506,7 @@ async function handleEbayNotification(request, deps) {
       if (e instanceof PublicKeyNotFoundError) {
         signatureError = "Cl\xE9 de signature inconnue d'eBay (kid).";
       } else {
-        log18.warn("v\xE9rification de signature impossible, nouvelle tentative attendue", { eventId, topic, reason: toUserMessage(e) });
+        log20.warn("v\xE9rification de signature impossible, nouvelle tentative attendue", { eventId, topic, reason: toUserMessage(e) });
         return json({ status: "retry", error: "V\xE9rification de signature temporairement impossible : r\xE9essayez plus tard." }, 503);
       }
     }
@@ -22149,8 +22522,8 @@ async function handleEbayNotification(request, deps) {
       status: "failed",
       error: signatureError
     });
-    if (error && error.code !== "23505") log18.error("impossible de journaliser la notification rejet\xE9e", { error: error.message });
-    log18.warn("notification eBay rejet\xE9e", { topic, reason: signatureError, duplicate: error?.code === "23505" });
+    if (error && error.code !== "23505") log20.error("impossible de journaliser la notification rejet\xE9e", { error: error.message });
+    log20.warn("notification eBay rejet\xE9e", { topic, reason: signatureError, duplicate: error?.code === "23505" });
     return json({ status: error?.code === "23505" ? "duplicate" : "rejected", error: signatureError }, 401);
   }
   const data = notification.data.notification.data ?? {};
@@ -22160,7 +22533,7 @@ async function handleEbayNotification(request, deps) {
   try {
     connections = await deps.findConnections({ userId, username });
   } catch (e) {
-    log18.error("recherche des connexions impossible", { eventId, topic, reason: toUserMessage(e) });
+    log20.error("recherche des connexions impossible", { eventId, topic, reason: toUserMessage(e) });
     return json({ status: "retry", error: "Traitement temporairement impossible." }, 503);
   }
   const primary = connections[0] ?? null;
@@ -22179,26 +22552,26 @@ async function handleEbayNotification(request, deps) {
   let eventRowId = inserted?.id ?? null;
   if (insertError) {
     if (insertError.code !== "23505") {
-      log18.error("impossible d'enregistrer la notification", { eventId, error: insertError.message });
+      log20.error("impossible d'enregistrer la notification", { eventId, error: insertError.message });
       return json({ error: "Enregistrement impossible." }, 500);
     }
     eventRowId = await claimForRetry(admin, eventId);
     if (!eventRowId) {
-      log18.info("notification dupliqu\xE9e ignor\xE9e", { eventId, topic });
+      log20.info("notification dupliqu\xE9e ignor\xE9e", { eventId, topic });
       return json({ status: "duplicate" }, 200);
     }
-    log18.info("notification d\xE9j\xE0 re\xE7ue mais non trait\xE9e : reprise", { eventId, topic });
+    log20.info("notification d\xE9j\xE0 re\xE7ue mais non trait\xE9e : reprise", { eventId, topic });
   }
   if (!eventRowId) return json({ error: "Enregistrement impossible." }, 500);
   if (isDeletion) {
     try {
       const result = await handleAccountDeletion(admin, { username, userId }, connections);
       await markEvent(admin, eventRowId, { status: "processed" });
-      log18.info("demande de suppression de compte eBay trait\xE9e", { eventId, ...result });
+      log20.info("demande de suppression de compte eBay trait\xE9e", { eventId, ...result });
       return json({ status: "processed", topic, ...result });
     } catch (e) {
       await markEvent(admin, eventRowId, { status: "failed", error: `Suppression de compte non appliqu\xE9e : ${toUserMessage(e)}` });
-      log18.error("suppression de compte eBay non appliqu\xE9e : eBay red\xE9livrera la notification", { eventId, reason: toUserMessage(e) });
+      log20.error("suppression de compte eBay non appliqu\xE9e : eBay red\xE9livrera la notification", { eventId, reason: toUserMessage(e) });
       return json({ status: "retry", error: "Traitement de la suppression impossible pour le moment." }, 500);
     }
   }
@@ -22212,13 +22585,13 @@ async function handleEbayNotification(request, deps) {
         for (const c of active) {
           const outcome2 = await runWithConflictRetry(deps, c.id, scope, deadlineAt);
           if (!outcome2.ok) failures.push(outcome2.message);
-          else log18.info("synchronisation d\xE9clench\xE9e par webhook", { eventId, connectionId: c.id, runId: outcome2.runId, status: outcome2.status });
+          else log20.info("synchronisation d\xE9clench\xE9e par webhook", { eventId, connectionId: c.id, runId: outcome2.runId, status: outcome2.status });
         }
         return failures;
       })().catch((e) => [toUserMessage(e)]);
       const outcome = await withDeadline(work, deadlineAt - clock());
       if (outcome === DEADLINE) {
-        log18.warn("traitement de la notification interrompu (d\xE9lai maximal atteint)", { eventId, topic });
+        log20.warn("traitement de la notification interrompu (d\xE9lai maximal atteint)", { eventId, topic });
         await markEvent(admin, rowId, { status: "failed", error: WEBHOOK_DEADLINE_MESSAGE });
         return;
       }
@@ -22316,96 +22689,11 @@ init_empty();
 init_admin();
 init_errors();
 init_logger();
-import { z as z29 } from "npm:zod@4.6.5";
-
-// src/domain/sourcing/schedule.ts
-var FREQUENCY_MS2 = {
-  manual: null,
-  hourly: 36e5,
-  every_6_hours: 6 * 36e5,
-  daily: 24 * 36e5
-};
-var FREQUENCY_LABEL = {
-  manual: "Manuelle",
-  hourly: "Toutes les heures",
-  every_6_hours: "Toutes les 6 heures",
-  daily: "Une fois par jour"
-};
-var BACKOFF_BASE_MS = 15 * 6e4;
-var BACKOFF_MAX_MS = 24 * 36e5;
-var FAILURE_ALERT_THRESHOLD = 3;
-function backoffMs(failures, frequency) {
-  const n = Math.max(1, failures);
-  const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** (n - 1));
-  const interval = FREQUENCY_MS2[frequency];
-  return interval === null ? delay : Math.min(delay, interval);
-}
-function nextRunAt(frequency, now, outcome) {
-  const interval = FREQUENCY_MS2[frequency];
-  if (interval === null) return null;
-  return new Date(now.getTime() + (outcome.ok ? interval : backoffMs(outcome.consecutiveFailures, frequency)));
-}
-function isScheduleDue(s, now) {
-  const interval = FREQUENCY_MS2[s.sync_frequency];
-  if (interval === null || s.status === "paused") return false;
-  if (s.next_run_at) return now.getTime() >= new Date(s.next_run_at).getTime();
-  if (!s.last_sync_at) return true;
-  return now.getTime() - new Date(s.last_sync_at).getTime() >= interval;
-}
-var SOURCE_STATUS_LABEL = {
-  connected: "Connect\xE9",
-  to_configure: "\xC0 configurer",
-  manual_import: "Import manuel",
-  running: "Synchronisation en cours",
-  error: "Erreur",
-  disabled: "Source d\xE9sactiv\xE9e"
-};
-function sourceDisplayStatus(s) {
-  if (s.status === "paused") return "disabled";
-  if (s.running) return "running";
-  if (s.kind === "file_import" || s.kind === "manual") return s.consecutiveFailures > 0 || s.status === "error" ? "error" : "manual_import";
-  if (!s.attested) return "to_configure";
-  if (s.status === "error" || s.consecutiveFailures >= FAILURE_ALERT_THRESHOLD) return "error";
-  return s.lastSuccessfulSyncAt ? "connected" : "to_configure";
-}
-
-// src/services/sourcing/source-sync.ts
+import { z as z30 } from "npm:zod@4.6.5";
 init_feed_ingestion();
-
-// src/services/sourcing/source-health.ts
-init_empty();
-init_logger();
-init_alerts();
-var log20 = createLogger("SOURCE_HEALTH");
-var syncFailedAlertKey = (sourceId) => `sourcing_sync_failed:${sourceId}`;
-async function recordSourceOutcome(admin, input) {
-  const now = input.now ?? /* @__PURE__ */ new Date();
-  const failures = input.ok ? 0 : input.previousFailures + 1;
-  const next = nextRunAt(input.frequency, now, { ok: input.ok, consecutiveFailures: failures });
-  const patch = input.ok ? { consecutive_failures: 0, next_run_at: next?.toISOString() ?? null } : { consecutive_failures: failures, last_failure_at: now.toISOString(), next_run_at: next?.toISOString() ?? null, ...failures >= FAILURE_ALERT_THRESHOLD ? { status: "error" } : {} };
-  const { error } = await admin.from("supplier_sources").update(patch).eq("id", input.sourceId);
-  if (error) log20.warn("\xE9tat de la source non enregistr\xE9", { sourceId: input.sourceId, error: error.message });
-  if (input.ok) await resolveAlerts(admin, input.organizationId, [syncFailedAlertKey(input.sourceId)]);
-  else if (failures >= FAILURE_ALERT_THRESHOLD) {
-    await upsertAlert(admin, {
-      organizationId: input.organizationId,
-      type: "sync_failed",
-      severity: failures >= FAILURE_ALERT_THRESHOLD * 2 ? "critical" : "warning",
-      title: `Synchronisation en \xE9chec : ${input.sourceName}`,
-      message: `${failures} \xE9checs cons\xE9cutifs${input.error ? ` (dernier : ${input.error.slice(0, 300)})` : ""}. Les offres d\xE9j\xE0 connues sont conserv\xE9es, avec leur date de v\xE9rification. Prochain essai : ${next ? next.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "manuel"}.`,
-      dedupeKey: syncFailedAlertKey(input.sourceId),
-      entityType: "supplier_source",
-      entityId: input.sourceId,
-      actionHref: "/sourcing-sources"
-    });
-  }
-  return { consecutiveFailures: failures, nextRunAt: next?.toISOString() ?? null };
-}
-
-// src/services/sourcing/source-sync.ts
 init_catalog_import();
 init_registry();
-var log21 = createLogger("SOURCE_SYNC");
+var log22 = createLogger("SOURCE_SYNC");
 var MANUAL_SYNC_COOLDOWN_MS = 2 * 6e4;
 var SOURCE_COLUMNS = "id, organization_id, supplier_id, name, source_type, base_url, country, config, automated_access_confirmed, sync_frequency, status, last_sync_at, last_successful_sync_at, last_error, next_run_at, consecutive_failures";
 function kindOf(s, hasUrlFeed, hasConnection) {
@@ -22494,6 +22782,7 @@ async function runScheduledSources(now = /* @__PURE__ */ new Date(), admin = cre
     const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
     if (kind === "file_import" || kind === "manual" || kind === "live_search") continue;
     if (kind === "public_web" && !source.automated_access_confirmed) continue;
+    if (kind === "public_web" && source.sync_frequency === "weekly") continue;
     let outcome;
     try {
       outcome = await runSourceOnce(admin, source, kind, "scheduled", null);
@@ -22504,14 +22793,14 @@ async function runScheduledSources(now = /* @__PURE__ */ new Date(), admin = cre
     await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
     out.push({ sourceId: source.id, status: outcome.status, message: outcome.message });
   }
-  log21.info("scheduled sources", { due: sources.length, ran: out.length });
+  log22.info("scheduled sources", { due: sources.length, ran: out.length });
   return out;
 }
-var sourceScheduleSchema = z29.object({
-  sourceId: z29.string().uuid(),
-  frequency: z29.enum(["manual", "hourly", "every_6_hours", "daily"]).optional(),
+var sourceScheduleSchema = z30.object({
+  sourceId: z30.string().uuid(),
+  frequency: z30.enum(["manual", "hourly", "every_6_hours", "daily", "weekly"]).optional(),
   /** désactiver (pause) / réactiver la source */
-  enabled: z29.boolean().optional()
+  enabled: z30.boolean().optional()
 });
 async function setSourceSchedule(ctx, input, admin = createAdminSupabaseClient(), now = /* @__PURE__ */ new Date()) {
   const { data, error } = await ctx.supabase.from("supplier_sources").select(SOURCE_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", input.sourceId).maybeSingle();
@@ -22592,7 +22881,7 @@ init_empty();
 init_admin();
 init_logger();
 init_query_parser();
-import { z as z30 } from "npm:zod@4.6.5";
+import { z as z31 } from "npm:zod@4.6.5";
 
 // src/domain/sourcing/opportunities.ts
 init_validation();
@@ -22650,16 +22939,16 @@ function detectOpportunities(offer, priceHistory, stockHistory, now = /* @__PURE
 // src/services/sourcing/alerts.ts
 init_offer_query();
 init_sync_runs();
-var log22 = createLogger("SOURCING_ALERTS");
-var alertCriteriaSchema = z30.object({
-  max_price: z30.number().positive().optional(),
-  min_quantity: z30.number().int().min(0).optional(),
-  countries: z30.array(z30.string().length(2)).optional(),
-  max_moq: z30.number().int().min(1).optional(),
-  grades: z30.array(z30.string().max(5)).optional(),
-  condition: z30.enum(["new", "refurbished", "used"]).optional(),
-  max_delivery_days: z30.number().int().min(0).optional(),
-  supplier_id: z30.string().uuid().optional()
+var log23 = createLogger("SOURCING_ALERTS");
+var alertCriteriaSchema = z31.object({
+  max_price: z31.number().positive().optional(),
+  min_quantity: z31.number().int().min(0).optional(),
+  countries: z31.array(z31.string().length(2)).optional(),
+  max_moq: z31.number().int().min(1).optional(),
+  grades: z31.array(z31.string().max(5)).optional(),
+  condition: z31.enum(["new", "refurbished", "used"]).optional(),
+  max_delivery_days: z31.number().int().min(0).optional(),
+  supplier_id: z31.string().uuid().optional()
 });
 function criteriaToFilters(c) {
   return { maxPrice: c.max_price, minQuantity: c.min_quantity, countries: c.countries, maxMoq: c.max_moq, grades: c.grades, condition: c.condition, maxDeliveryDays: c.max_delivery_days, supplierId: c.supplier_id };
@@ -22746,7 +23035,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
         totalAlerts++;
       } catch (e) {
         errors++;
-        log22.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
+        log23.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
       }
     }
     totalEvents += events;
@@ -22756,7 +23045,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
 }
 
 // src/services/sourcing/sync.ts
-var log23 = createLogger("SOURCING_SYNC");
+var log24 = createLogger("SOURCING_SYNC");
 async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
   const startedAt = now.toISOString();
   let fx = { ok: false, date: null, count: 0, error: null };
@@ -22765,23 +23054,23 @@ async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
     fx = { ok: true, date: r.date, count: r.count, error: null };
   } catch (e) {
     fx = { ok: false, date: null, count: 0, error: e instanceof Error ? e.message : String(e) };
-    log23.warn("fx refresh failed", { error: fx.error });
+    log24.warn("fx refresh failed", { error: fx.error });
   }
   let sources = [];
   try {
     sources = await runScheduledSources(now);
   } catch (e) {
-    log23.error("scheduled sources failed", { error: e instanceof Error ? e.message : String(e) });
+    log24.error("scheduled sources failed", { error: e instanceof Error ? e.message : String(e) });
   }
   let alerts;
   try {
     alerts = await evaluateSourcingAlerts(now);
   } catch (e) {
     alerts = { error: e instanceof Error ? e.message : String(e) };
-    log23.error("alerts evaluation failed", { error: alerts.error });
+    log24.error("alerts evaluation failed", { error: alerts.error });
   }
   const summary = { startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), fx, sources, alerts };
-  log23.info("sourcing sync finished", { fx: fx.ok, sources: sources.length });
+  log24.info("sourcing sync finished", { fx: fx.ok, sources: sources.length });
   return summary;
 }
 
@@ -23042,7 +23331,7 @@ init_empty();
 init_errors();
 init_logger();
 init_query_parser();
-var log25 = createLogger("SUPPLIER_SEARCH");
+var log26 = createLogger("SUPPLIER_SEARCH");
 var SIMPLE_SEARCH_LIVE_BUDGET_MS = 35e3;
 var SIMPLE_SEARCH_PER_SUPPLIER = 30;
 var SCAN_LIMIT = 3e3;
@@ -23109,7 +23398,7 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
     else summary = r;
   } catch (e) {
     partial = true;
-    log25.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+    log26.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
   }
   const { data, error } = await ctx.supabase.from("sourcing_offers").select("id, title_original, original_price, original_currency, normalized_price, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, supplier:suppliers(name, country)").eq("organization_id", ctx.organization.id).eq("status", "active").order("last_seen_at", { ascending: false }).limit(SCAN_LIMIT);
   if (error) throw fromPostgrestError(error);
@@ -23131,17 +23420,17 @@ init_empty();
 init_query_parser();
 init_registry();
 init_robots();
-import { z as z35 } from "npm:zod@4.6.5";
-var adapterProbeSchema = z35.object({
-  probes: z35.array(
-    z35.object({
-      key: z35.string().min(1).max(80),
-      adapter: z35.string().min(1).max(40),
-      baseUrl: z35.string().url().max(300),
-      query: z35.string().min(2).max(80).default("iphone"),
-      mode: z35.enum(["search", "catalog"]).default("search"),
-      settings: z35.record(z35.string(), z35.unknown()).default({}),
-      currency: z35.string().length(3).optional()
+import { z as z36 } from "npm:zod@4.6.5";
+var adapterProbeSchema = z36.object({
+  probes: z36.array(
+    z36.object({
+      key: z36.string().min(1).max(80),
+      adapter: z36.string().min(1).max(40),
+      baseUrl: z36.string().url().max(300),
+      query: z36.string().min(2).max(80).default("iphone"),
+      mode: z36.enum(["search", "catalog"]).default("search"),
+      settings: z36.record(z36.string(), z36.unknown()).default({}),
+      currency: z36.string().length(3).optional()
     })
   ).min(1).max(8)
 });
@@ -23202,8 +23491,8 @@ init_http();
 init_feed_parsers();
 init_feed_ingestion();
 init_catalog_import();
-import { z as z36 } from "npm:zod@4.6.5";
-var urlSchema = z36.string().trim().max(2e3).refine((u) => {
+import { z as z37 } from "npm:zod@4.6.5";
+var urlSchema = z37.string().trim().max(2e3).refine((u) => {
   try {
     const parsed = assertPublicHttpUrl(u);
     return parsed.protocol === "https:";
@@ -23211,23 +23500,23 @@ var urlSchema = z36.string().trim().max(2e3).refine((u) => {
     return false;
   }
 }, "Adresse HTTPS publique requise (aucune adresse locale, interne ni identifiant dans l'URL).");
-var remoteFeedPreviewSchema = z36.object({
+var remoteFeedPreviewSchema = z37.object({
   url: urlSchema,
-  format: z36.enum(["csv", "xml", "json"]),
+  format: z37.enum(["csv", "xml", "json"]),
   auth: feedAuthSchema.default({ kind: "none" }),
   mapping: fieldMappingSchema.optional(),
   defaults: catalogDefaultsSchema.partial({ currency: true }).optional(),
-  rootPath: z36.string().max(200).optional()
+  rootPath: z37.string().max(200).optional()
 });
 var remoteFeedCreateSchema = remoteFeedPreviewSchema.extend({
   mapping: fieldMappingSchema,
   defaults: catalogDefaultsSchema,
-  supplierId: z36.string().uuid().optional(),
-  supplierName: z36.string().trim().min(2).max(160).optional(),
-  mode: z36.enum(["partial", "snapshot"]).default("snapshot"),
-  frequency: z36.enum(["manual", "hourly", "every_6_hours", "daily"]).default("daily"),
+  supplierId: z37.string().uuid().optional(),
+  supplierName: z37.string().trim().min(2).max(160).optional(),
+  mode: z37.enum(["partial", "snapshot"]).default("snapshot"),
+  frequency: z37.enum(["manual", "hourly", "every_6_hours", "daily"]).default("daily"),
   /** l'utilisateur atteste disposer de l'accord du fournisseur pour la lecture automatisée */
-  attest: z36.literal(true, { message: "Confirmez disposer de l'accord du fournisseur pour lire ce flux automatiquement." })
+  attest: z37.literal(true, { message: "Confirmez disposer de l'accord du fournisseur pour lire ce flux automatiquement." })
 }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), { message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix." });
 async function fetchRemoteFeed(url, format, headers, fetchImpl, resolver) {
   const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], headers, fetchImpl, resolver, timeoutMs: 3e4 });
@@ -23333,7 +23622,7 @@ init_empty();
 init_errors();
 init_logger();
 import OpenAI from "npm:openai@7.23.0";
-var log26 = createLogger("AI_LLM");
+var log27 = createLogger("AI_LLM");
 var DEFAULT_AI_MODEL = "gpt-5.4-mini";
 function aiModel(env = process.env) {
   const m = env.OPENAI_MODEL?.trim();
@@ -23404,7 +23693,7 @@ function rejectedParam(e) {
   return null;
 }
 function logApiError(e, model, withTools) {
-  if (e instanceof OpenAI.APIError) log26.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
+  if (e instanceof OpenAI.APIError) log27.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
 }
 function openAILlm(sdk2, model) {
   return {
@@ -23490,7 +23779,7 @@ function speakableText(raw, max = MAX_SPOKEN_CHARS) {
 // src/services/ai/speech.ts
 init_errors();
 init_logger();
-var log27 = createLogger("AI_SPEECH");
+var log28 = createLogger("AI_SPEECH");
 var TTS_DEFAULT_MODEL = "gpt-4o-mini-tts";
 var TTS_CHOICES = ["marin", "cedar"];
 var TTS_DEFAULT_VOICE = "marin";
@@ -23533,8 +23822,8 @@ async function synthesize(input, voice, deps, what) {
     return await res.arrayBuffer();
   } catch (e) {
     logApiError(e, model, false);
-    if (e instanceof AppError) log27.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
-    else log27.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+    if (e instanceof AppError) log28.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
+    else log28.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
     throw aiError(e);
   }
 }
@@ -23572,43 +23861,43 @@ async function enforceAiQuota(ctx, kind, now = /* @__PURE__ */ new Date(), admin
 
 // src/services/ai/product-draft.ts
 init_empty();
-import { z as z38 } from "npm:zod@4.6.5";
+import { z as z39 } from "npm:zod@4.6.5";
 
 // src/features/stock/product-form.ts
-import { z as z37 } from "npm:zod@4.6.5";
+import { z as z38 } from "npm:zod@4.6.5";
 var MAX_VARIANTS = 50;
 var PRODUCT_GRADES = ["A", "B", "C"];
 var PRODUCT_CATEGORIES = ["Smartphone", "Tablette", "Ordinateur", "Montre connect\xE9e", "Console", "Audio", "Accessoire", "Pi\xE8ce d\xE9tach\xE9e"];
 var CONDITION_LABEL = { new: "Neuf", refurbished: "Reconditionn\xE9", used: "Occasion", unknown: "Non pr\xE9cis\xE9" };
 var productFields = {
-  name: z37.string().trim().max(300).optional().or(z37.literal("")),
-  brand: z37.string().trim().max(120).optional().or(z37.literal("")),
-  model: z37.string().trim().max(160).optional().or(z37.literal("")),
-  category: z37.string().trim().max(120).optional().or(z37.literal("")),
-  description: z37.string().trim().max(5e3).optional().or(z37.literal(""))
+  name: z38.string().trim().max(300).optional().or(z38.literal("")),
+  brand: z38.string().trim().max(120).optional().or(z38.literal("")),
+  model: z38.string().trim().max(160).optional().or(z38.literal("")),
+  category: z38.string().trim().max(120).optional().or(z38.literal("")),
+  description: z38.string().trim().max(5e3).optional().or(z38.literal(""))
 };
 function blankToUndefined(v2) {
   if (typeof v2 !== "string") return v2;
   const t = v2.trim().replace(/\s/g, "").replace(",", ".");
   return t === "" ? void 0 : t;
 }
-var moneyInput = z37.preprocess(
+var moneyInput = z38.preprocess(
   blankToUndefined,
-  z37.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
+  z38.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
 );
-var quantityInput = z37.preprocess(
+var quantityInput = z38.preprocess(
   blankToUndefined,
-  z37.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
+  z38.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
 );
-var variantInputSchema = z37.object({
+var variantInputSchema = z38.object({
   ...variantFields,
-  grade: z37.union([z37.enum(PRODUCT_GRADES), z37.literal("")], { error: "Grade A, B ou C." }).optional(),
+  grade: z38.union([z38.enum(PRODUCT_GRADES), z38.literal("")], { error: "Grade A, B ou C." }).optional(),
   ...skuFields,
   cost_price: moneyInput,
   sale_price: moneyInput,
   initial_quantity: quantityInput
 });
-var variantsArraySchema = z37.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
+var variantsArraySchema = z38.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
   for (const [i, message] of duplicateCodes(variants)) ctx.addIssue({ code: "custom", path: [i, "code"], message });
 });
 function duplicateCodes(variants) {
@@ -23623,10 +23912,10 @@ function duplicateCodes(variants) {
   });
   return out;
 }
-var productWithVariantsSchema = z37.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
+var productWithVariantsSchema = z38.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
   if (!productDisplayName(d)) ctx.addIssue({ code: "custom", path: ["name"], message: "Indiquez le nom du produit, ou au moins la marque et le mod\xE8le." });
 });
-var addVariantsSchema = z37.object({ product_id: z37.string().uuid(), variants: variantsArraySchema });
+var addVariantsSchema = z38.object({ product_id: z38.string().uuid(), variants: variantsArraySchema });
 function productDisplayName(d) {
   const name = d.name?.trim();
   if (name) return name;
@@ -23670,25 +23959,25 @@ var PRODUCT_DRAFT_JSON_SCHEMA = {
     notes: { type: "array", items: { type: "string" } }
   }
 };
-var money4 = z38.number().finite().min(0).max(1e6).nullable();
-var draftSchema = z38.object({
-  understood: z38.boolean(),
-  brand: z38.string().max(120).nullable(),
-  model: z38.string().max(160).nullable(),
-  name: z38.string().max(300).nullable(),
-  category: z38.string().max(120).nullable(),
-  variants: z38.array(
-    z38.object({
-      storage: z38.string().max(60).nullable(),
-      color: z38.string().max(60).nullable(),
-      grade: z38.enum(PRODUCT_GRADES).nullable(),
-      condition: z38.enum(CONDITIONS),
+var money4 = z39.number().finite().min(0).max(1e6).nullable();
+var draftSchema = z39.object({
+  understood: z39.boolean(),
+  brand: z39.string().max(120).nullable(),
+  model: z39.string().max(160).nullable(),
+  name: z39.string().max(300).nullable(),
+  category: z39.string().max(120).nullable(),
+  variants: z39.array(
+    z39.object({
+      storage: z39.string().max(60).nullable(),
+      color: z39.string().max(60).nullable(),
+      grade: z39.enum(PRODUCT_GRADES).nullable(),
+      condition: z39.enum(CONDITIONS),
       cost_price: money4,
       sale_price: money4,
-      initial_quantity: z38.number().int().min(0).max(1e6).nullable()
+      initial_quantity: z39.number().int().min(0).max(1e6).nullable()
     })
   ).max(MAX_VARIANTS),
-  notes: z38.array(z38.string().max(300)).max(10)
+  notes: z39.array(z39.string().max(300)).max(10)
 });
 function productDraftSystemPrompt(currency) {
   return [
@@ -23771,18 +24060,18 @@ function parseProductDraft(raw, transcript) {
 init_empty();
 init_errors();
 init_logger();
-import { z as z40 } from "npm:zod@4.6.5";
+import { z as z41 } from "npm:zod@4.6.5";
 
 // src/services/ai/assistant-tools.ts
 init_empty();
-import { z as z39 } from "npm:zod@4.6.5";
+import { z as z40 } from "npm:zod@4.6.5";
 var DAY = 864e5;
 var PAGE = 1e3;
 var MAX_ROWS = 5e3;
 var EXCLUDED_STATUSES = "(cancelled,refunded)";
-var daysSchema = z39.coerce.number().int().min(1).max(730).default(30);
-var limitSchema = (max, def) => z39.coerce.number().int().min(1).max(max).default(def);
-var textQuery = z39.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
+var daysSchema = z40.coerce.number().int().min(1).max(730).default(30);
+var limitSchema = (max, def) => z40.coerce.number().int().min(1).max(max).default(def);
+var textQuery = z40.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
 function since(ctx, days) {
   return new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime() - days * DAY).toISOString();
 }
@@ -23804,11 +24093,11 @@ async function fetchAll(page2) {
   }
   return { rows, truncated: true };
 }
-var salesRankingInput = z39.object({
+var salesRankingInput = z40.object({
   days: daysSchema,
-  by: z39.enum(["units", "revenue"]).default("units"),
+  by: z40.enum(["units", "revenue"]).default("units"),
   limit: limitSchema(25, 10),
-  channel: z39.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
+  channel: z40.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
   query: textQuery
 });
 async function salesRanking(ctx, raw) {
@@ -23864,7 +24153,7 @@ async function salesRanking(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues. revenue = montant des lignes de commande (hors frais de port), par devise."
   };
 }
-var salesSummaryInput = z39.object({ days: daysSchema });
+var salesSummaryInput = z40.object({ days: daysSchema });
 async function salesSummary(ctx, raw) {
   const input = salesSummaryInput.parse(raw);
   const from = since(ctx, input.days * 2).slice(0, 10);
@@ -23894,9 +24183,9 @@ async function salesSummary(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues ; jours sans vente non compt\xE9s dans activeDays."
   };
 }
-var stockInput = z39.object({
+var stockInput = z40.object({
   query: textQuery,
-  filter: z39.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
+  filter: z40.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
   limit: limitSchema(40, 15)
 });
 async function stockSearch(ctx, raw) {
@@ -23925,19 +24214,19 @@ async function stockSearch(ctx, raw) {
     }
   });
   filtered.sort((a, b) => input.filter === "best_sellers" ? (b.units_30d ?? 0) - (a.units_30d ?? 0) : (b.stock_value ?? 0) - (a.stock_value ?? 0));
-  const totals = { skus: rows.length, unitsAvailable: rows.reduce((s, r) => s + Math.max(0, r.quantity_available ?? 0), 0), stockValue: {} };
-  for (const r of rows) addMoney(totals.stockValue, r.currency ?? ctx.currency, r.stock_value);
+  const totals2 = { skus: rows.length, unitsAvailable: rows.reduce((s, r) => s + Math.max(0, r.quantity_available ?? 0), 0), stockValue: {} };
+  for (const r of rows) addMoney(totals2.stockValue, r.currency ?? ctx.currency, r.stock_value);
   return {
     filter: input.filter,
     query: input.query ?? null,
     matching: filtered.length,
-    totalsForQuery: totals,
+    totalsForQuery: totals2,
     items: filtered.slice(0, input.limit),
     truncated: rows.length >= 1e3,
     note: "stock_value = quantit\xE9 en stock \xD7 prix d'achat (null si prix d'achat inconnu). unit_margin = prix de vente \u2212 prix d'achat."
   };
 }
-var ordersInput = z39.object({ days: daysSchema, limit: limitSchema(30, 10), status: z39.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
+var ordersInput = z40.object({ days: daysSchema, limit: limitSchema(30, 10), status: z40.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
 async function recentOrders(ctx, raw) {
   const input = ordersInput.parse(raw);
   let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
@@ -23970,11 +24259,11 @@ async function ebayAccount(ctx) {
     recentSyncErrors: errors.data ?? []
   };
 }
-var listingsInput = z39.object({
+var listingsInput = z40.object({
   query: textQuery,
-  status: z39.enum(["active", "ended", "unsold", "unknown"]).optional(),
-  onlyNotLinkedToStock: z39.boolean().default(false),
-  sort: z39.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
+  status: z40.enum(["active", "ended", "unsold", "unknown"]).optional(),
+  onlyNotLinkedToStock: z40.boolean().default(false),
+  sort: z40.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
   limit: limitSchema(30, 10)
 });
 async function listingsSearch(ctx, raw) {
@@ -24075,15 +24364,15 @@ async function runAssistantTool(ctx, name, input) {
     const json2 = JSON.stringify(result);
     return { content: json2.length > MAX_RESULT_CHARS ? `${json2.slice(0, MAX_RESULT_CHARS)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false };
   } catch (e) {
-    if (e instanceof z39.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
+    if (e instanceof z40.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true };
   }
 }
 
 // src/services/ai/assistant.ts
-var log28 = createLogger("AI_ASSISTANT");
-var assistantRequestSchema = z40.object({
-  messages: z40.array(z40.object({ role: z40.enum(["user", "assistant"]), content: z40.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
+var log29 = createLogger("AI_ASSISTANT");
+var assistantRequestSchema = z41.object({
+  messages: z41.array(z41.object({ role: z41.enum(["user", "assistant"]), content: z41.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
 var MAX_STEPS = 8;
 var ASSISTANT_DEADLINE_MS = 11e4;
@@ -24136,7 +24425,7 @@ async function askAssistant(ctx, request, deps = {}) {
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
-          if (r.isError) log28.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log29.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -24155,7 +24444,7 @@ init_logger();
 
 // src/services/ai/advisor-tools.ts
 init_empty();
-import { z as z44 } from "npm:zod@4.6.5";
+import { z as z45 } from "npm:zod@4.6.5";
 
 // src/domain/tools/decimal.ts
 var abs = (x) => x < 0n ? -x : x;
@@ -24473,22 +24762,22 @@ async function boxtalQuotes(req, env = process.env, now = /* @__PURE__ */ new Da
 init_empty();
 init_errors2();
 init_http2();
-import { z as z41 } from "npm:zod@4.6.5";
+import { z as z42 } from "npm:zod@4.6.5";
 var PACKLINK_BASE_URL = "https://api.packlink.com/v1/";
-var money5 = z41.union([z41.number(), z41.string()]).nullable().optional();
-var serviceSchema = z41.object({
-  id: z41.union([z41.number(), z41.string()]),
-  carrier_name: z41.string().nullable().optional(),
-  name: z41.string().nullable().optional(),
-  currency: z41.string().nullable().optional(),
-  price: z41.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
-  transit_time: z41.string().nullable().optional(),
-  transit_hours: z41.union([z41.number(), z41.string()]).nullable().optional(),
-  dropoff: z41.boolean().nullable().optional(),
-  delivery_to_parcelshop: z41.boolean().nullable().optional(),
-  category: z41.string().nullable().optional(),
-  first_estimated_delivery_date: z41.string().nullable().optional(),
-  customs_required: z41.boolean().nullable().optional()
+var money5 = z42.union([z42.number(), z42.string()]).nullable().optional();
+var serviceSchema = z42.object({
+  id: z42.union([z42.number(), z42.string()]),
+  carrier_name: z42.string().nullable().optional(),
+  name: z42.string().nullable().optional(),
+  currency: z42.string().nullable().optional(),
+  price: z42.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
+  transit_time: z42.string().nullable().optional(),
+  transit_hours: z42.union([z42.number(), z42.string()]).nullable().optional(),
+  dropoff: z42.boolean().nullable().optional(),
+  delivery_to_parcelshop: z42.boolean().nullable().optional(),
+  category: z42.string().nullable().optional(),
+  first_estimated_delivery_date: z42.string().nullable().optional(),
+  customs_required: z42.boolean().nullable().optional()
 }).passthrough();
 function packlinkConfigured(env = process.env) {
   return Boolean(env.PACKLINK_API_KEY && env.PACKLINK_API_KEY.trim().length >= 10);
@@ -24573,27 +24862,27 @@ async function packlinkQuotes(req, env = process.env, now = /* @__PURE__ */ new 
 
 // src/integrations/shipping/sendcloud.ts
 init_empty();
-import { z as z42 } from "npm:zod@4.6.5";
+import { z as z43 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var SENDCLOUD_SHIPPING_OPTIONS_URL = "https://panel.sendcloud.sc/api/v3/shipping-options";
-var money6 = z42.object({ value: z42.union([z42.string(), z42.number()]).nullable().optional(), currency: z42.string().nullable().optional() }).passthrough();
-var optionSchema = z42.object({
-  code: z42.string().min(1),
-  name: z42.string().nullable().optional(),
-  carrier: z42.object({ code: z42.string().nullable().optional(), name: z42.string().nullable().optional() }).passthrough().nullable().optional(),
-  functionalities: z42.object({ tracked: z42.boolean().nullable().optional(), first_mile: z42.string().nullable().optional(), last_mile: z42.string().nullable().optional() }).passthrough().nullable().optional(),
-  requirements: z42.object({ fields: z42.array(z42.string()).nullable().optional(), is_service_point_required: z42.boolean().nullable().optional() }).passthrough().nullable().optional(),
-  quotes: z42.array(
-    z42.object({
-      price: z42.object({
+var money6 = z43.object({ value: z43.union([z43.string(), z43.number()]).nullable().optional(), currency: z43.string().nullable().optional() }).passthrough();
+var optionSchema = z43.object({
+  code: z43.string().min(1),
+  name: z43.string().nullable().optional(),
+  carrier: z43.object({ code: z43.string().nullable().optional(), name: z43.string().nullable().optional() }).passthrough().nullable().optional(),
+  functionalities: z43.object({ tracked: z43.boolean().nullable().optional(), first_mile: z43.string().nullable().optional(), last_mile: z43.string().nullable().optional() }).passthrough().nullable().optional(),
+  requirements: z43.object({ fields: z43.array(z43.string()).nullable().optional(), is_service_point_required: z43.boolean().nullable().optional() }).passthrough().nullable().optional(),
+  quotes: z43.array(
+    z43.object({
+      price: z43.object({
         total: money6.nullable().optional(),
-        breakdown: z42.array(z42.object({ type: z42.string().nullable().optional(), label: z42.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
+        breakdown: z43.array(z43.object({ type: z43.string().nullable().optional(), label: z43.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
       }).passthrough().nullable().optional(),
-      lead_time: z42.number().nullable().optional()
+      lead_time: z43.number().nullable().optional()
     }).passthrough()
   ).nullable().optional(),
-  quote_error: z42.unknown().optional()
+  quote_error: z43.unknown().optional()
 }).passthrough();
 var PICKUP_LAST_MILE = /* @__PURE__ */ new Set(["service_point", "locker", "locker_or_service_point"]);
 var REQUIREMENT_LABEL = {
@@ -24724,7 +25013,7 @@ async function sendcloudQuotes(req, env = process.env, now = /* @__PURE__ */ new
 
 // src/services/shipping/quotes.ts
 init_logger();
-var log29 = createLogger("SHIPPING");
+var log30 = createLogger("SHIPPING");
 var PROVIDERS = [
   { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: async (req, env, now) => ({ quotes: await packlinkQuotes(req, env, now), excluded: 0 }) },
   { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: async (req, env, now) => ({ quotes: await boxtalQuotes(req, env, now), excluded: 0 }) },
@@ -24755,7 +25044,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
         return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message, count: quotes.length }, quotes };
       } catch (e) {
         const message = isConnectorError(e) ? e.message : "Erreur inattendue.";
-        log29.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
+        log30.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
         return { status: { id: p.id, label: p.label, state: "error", message, count: 0 }, quotes: [] };
       }
     })
@@ -24765,7 +25054,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
 
 // src/services/ai/advisor-actions.ts
 init_empty();
-import { z as z43 } from "npm:zod@4.6.5";
+import { z as z44 } from "npm:zod@4.6.5";
 
 // src/features/stock/movement-service.ts
 init_empty();
@@ -24818,7 +25107,7 @@ function stockErrorMessage(e) {
 }
 
 // src/features/stock/movement-service.ts
-var log30 = createLogger("STOCK");
+var log31 = createLogger("STOCK");
 async function applyManualMovement(ctx, d) {
   const signed = signedMovementQuantity(d);
   const { data, error } = await ctx.supabase.rpc("apply_inventory_movement", {
@@ -24833,7 +25122,7 @@ async function applyManualMovement(ctx, d) {
   });
   if (error) throw new AppError("VALIDATION", stockErrorMessage(error));
   const { data: sku } = await ctx.supabase.from("skus").select("code").eq("id", d.sku_id).eq("organization_id", ctx.organization.id).maybeSingle();
-  log30.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
+  log31.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
   return { quantityAfter: data?.quantity_after ?? null, skuCode: sku?.code ?? null };
 }
 
@@ -24841,7 +25130,7 @@ async function applyManualMovement(ctx, d) {
 init_errors();
 init_logger();
 init_admin();
-var log31 = createLogger("AI_ADVISOR_ACTIONS");
+var log32 = createLogger("AI_ADVISOR_ACTIONS");
 var ACTION_TTL_MS = 10 * 6e4;
 var ACTION_COLUMNS = "id, organization_id, user_id, conversation_id, kind, sku_id, payload, summary, amount, currency, status, expires_at, result, error";
 function actionToDTO(r) {
@@ -24865,8 +25154,8 @@ async function prepareAdvisorAction(ctx, input) {
   if (error || !data) throw new Error(error?.message ?? "pr\xE9paration impossible");
   return actionToDTO(data);
 }
-var adjustPayload = z43.object({ change: z43.number().int(), reason: z43.enum(["receipt", "adjustment", "return", "correction"]), note: z43.string().nullable(), expectedAvailable: z43.number().int(), code: z43.string() });
-var pricePayload = z43.object({ newPrice: z43.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z43.number().nullable(), code: z43.string() });
+var adjustPayload = z44.object({ change: z44.number().int(), reason: z44.enum(["receipt", "adjustment", "return", "correction"]), note: z44.string().nullable(), expectedAvailable: z44.number().int(), code: z44.string() });
+var pricePayload = z44.object({ newPrice: z44.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z44.number().nullable(), code: z44.string() });
 async function finish(admin, id, status, patch, now) {
   const { data, error } = await admin.from("advisor_actions").update({ status, decided_at: now.toISOString(), result: patch.result ?? null, error: patch.error?.slice(0, 400) ?? null }).eq("id", id).select(ACTION_COLUMNS).single();
   if (error || !data) throw new AppError("INTERNAL", "R\xE9sultat de l'action non enregistr\xE9 : v\xE9rifiez l'\xE9tat dans l'application.");
@@ -24922,13 +25211,13 @@ async function decideAdvisorAction(ctx, actionId, decision, deps = {}) {
   try {
     const done = await execute(ctx, claimed);
     const final = await finish(admin, row2.id, "executed", { result: { message: done.message, ...done.result } }, now);
-    log31.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
+    log32.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e et ex\xE9cut\xE9e : ${done.message}`);
     return { action: actionToDTO(final), message: done.message };
   } catch (e) {
     const message = e instanceof AppError ? e.message : "Ex\xE9cution impossible : rien n'a \xE9t\xE9 modifi\xE9.";
     const final = await finish(admin, row2.id, "failed", { error: message }, now);
-    log31.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
+    log32.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e mais non ex\xE9cut\xE9e : ${message}`);
     return { action: actionToDTO(final), message };
   }
@@ -25153,8 +25442,8 @@ function periodRange(period, now) {
 // src/services/ai/advisor-tools.ts
 var obj2 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
 var periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "P\xE9riode (calendrier de Paris). \xAB this_week \xBB = depuis lundi, \xAB this_month \xBB = depuis le 1er. D\xE9faut : 30d." };
-var periodSchema = z44.enum(ADVISOR_PERIODS).default("30d");
-var skuRef = z44.string().trim().min(1).max(64);
+var periodSchema = z45.enum(ADVISOR_PERIODS).default("30d");
+var skuRef = z45.string().trim().min(1).max(64);
 function card(kind, title, rows, extra = {}) {
   return { kind, title, subtitle: null, rows: rows.slice(0, 12), warnings: [], action: null, text: null, ...extra };
 }
@@ -25204,7 +25493,7 @@ async function cancelledInPeriod(ctx, from, to) {
   }
   return out;
 }
-var reportInput = z44.object({ period: periodSchema });
+var reportInput = z45.object({ period: periodSchema });
 async function businessReport(ctx, raw) {
   const { period } = reportInput.parse(raw);
   const range = periodRange(period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -25231,7 +25520,7 @@ async function businessReport(ctx, raw) {
   if (cancels.cancelled || cancels.refunded) rows.push(row("Annul\xE9es / rembours\xE9es", `${cancels.cancelled} / ${cancels.refunded}`, `rembours\xE9 : ${money7(cancels.refundedCents, c)}`, "warning"));
   return { result, cards: [card("kpis", "Bilan des ventes", rows, { subtitle: range.label, warnings: p.missing.slice(0, 4) })] };
 }
-var profitInput = z44.object({ period: periodSchema, sort: z44.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z44.coerce.number().int().min(1).max(20).default(8) });
+var profitInput = z45.object({ period: periodSchema, sort: z45.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z45.coerce.number().int().min(1).max(20).default(8) });
 async function productProfitability(ctx, raw) {
   const input = profitInput.parse(raw);
   const range = periodRange(input.period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -25254,7 +25543,7 @@ async function productProfitability(ctx, raw) {
   );
   return { result, cards: [card("list", "Rentabilit\xE9 par produit", rows, { subtitle: range.label, warnings: unknown ? [`${unknown} produit(s) sans b\xE9n\xE9fice calculable (co\xFBt d'achat ou frais manquants).`] : [] })] };
 }
-var stockRiskInput = z44.object({ kind: z44.enum(["rupture", "dormant", "all"]).default("all"), limit: z44.coerce.number().int().min(1).max(20).default(8) });
+var stockRiskInput = z45.object({ kind: z45.enum(["rupture", "dormant", "all"]).default("all"), limit: z45.coerce.number().int().min(1).max(20).default(8) });
 async function stockRisks(ctx, raw) {
   const input = stockRiskInput.parse(raw);
   const bundle = await loadStockViews(ctx.org);
@@ -25281,7 +25570,7 @@ async function stockRisks(ctx, raw) {
   return { result, cards };
 }
 async function restockPlan(ctx, raw) {
-  const { limit } = z44.object({ limit: z44.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
+  const { limit } = z45.object({ limit: z45.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
   const drafts = (await computeRecommendations(ctx.org)).filter((d) => d.result.needed).slice(0, limit);
   const result = {
     proposals: drafts.map((d) => ({ product: d.label, sku: d.code, currentStock: d.currentStock, onOrder: d.onOrder, recommendedQuantity: d.result.recommendedQuantity, explanation: d.result.explanation, supplier: d.supplier?.name ?? null, unitPrice: d.unitPrice, currency: d.currency, warnings: d.result.warnings })),
@@ -25293,7 +25582,7 @@ async function restockPlan(ctx, raw) {
   };
 }
 async function orderLookup(ctx, raw) {
-  const { orderNumber } = z44.object({ orderNumber: z44.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
+  const { orderNumber } = z45.object({ orderNumber: z45.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
   const { data, error } = await ctx.supabase.from("orders").select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).or(`order_number.eq.${orderNumber},external_order_id.eq.${orderNumber}`).limit(2);
   if (error) throw new Error(error.message);
   const order = data?.[0];
@@ -25311,7 +25600,7 @@ async function orderLookup(ctx, raw) {
   return { result, cards: [card("list", `Commande ${order.order_number ?? orderNumber}`, rows, { subtitle: `${order.provider} \u2014 ${order.placed_at.slice(0, 10).split("-").reverse().join("/")}` })] };
 }
 async function parcelsOverview(ctx, raw) {
-  const { filter } = z44.object({ filter: z44.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
+  const { filter } = z45.object({ filter: z45.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
   let q = ctx.supabase.from("tracked_parcels").select("tracking_number, label, carrier_code, status, estimated_delivery, delivered_at, last_checked_at, last_error").eq("organization_id", ctx.organizationId).is("archived_at", null);
   if (filter === "problems") q = q.in("status", ["exception", "failed_attempt", "returned", "expired", "not_found"]);
   if (filter === "in_progress") q = q.not("status", "in", "(delivered,returned,expired)");
@@ -25323,15 +25612,15 @@ async function parcelsOverview(ctx, raw) {
     cards: [card("list", "Colis suivis", list.slice(0, 10).map((p) => row(p.label || p.tracking_number, p.status, p.estimated_delivery ? `estim\xE9e : ${p.estimated_delivery}` : p.last_checked_at ? null : "jamais v\xE9rifi\xE9", ["exception", "failed_attempt", "returned", "not_found"].includes(p.status) ? "danger" : p.status === "delivered" ? "success" : "neutral")), { subtitle: `${list.length} colis` })]
   };
 }
-var shippingInput = z44.object({
-  weightKg: z44.coerce.number().positive().max(70),
-  lengthCm: z44.coerce.number().positive().max(300),
-  widthCm: z44.coerce.number().positive().max(300),
-  heightCm: z44.coerce.number().positive().max(300),
-  fromPostcode: z44.string().trim().min(2).max(12),
-  toPostcode: z44.string().trim().min(2).max(12),
-  fromCountry: z44.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
-  toCountry: z44.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
+var shippingInput = z45.object({
+  weightKg: z45.coerce.number().positive().max(70),
+  lengthCm: z45.coerce.number().positive().max(300),
+  widthCm: z45.coerce.number().positive().max(300),
+  heightCm: z45.coerce.number().positive().max(300),
+  fromPostcode: z45.string().trim().min(2).max(12),
+  toPostcode: z45.string().trim().min(2).max(12),
+  fromCountry: z45.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
+  toCountry: z45.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
 });
 async function shippingQuotesTool(ctx, raw) {
   const input = shippingInput.parse(raw);
@@ -25398,11 +25687,11 @@ async function findSku(ctx, ref) {
 function requireWriter(ctx) {
   return ctx.org.role === "viewer" ? "Votre r\xF4le (lecture seule) ne permet pas de pr\xE9parer une modification. Demandez \xE0 un administrateur." : null;
 }
-var adjustInput = z44.object({
+var adjustInput = z45.object({
   sku: skuRef,
-  change: z44.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
-  reason: z44.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
-  note: z44.string().trim().max(200).optional()
+  change: z45.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
+  reason: z45.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
+  note: z45.string().trim().max(200).optional()
 });
 async function prepareStockAdjustment(ctx, raw) {
   const denied = requireWriter(ctx);
@@ -25417,7 +25706,7 @@ async function prepareStockAdjustment(ctx, raw) {
   const action = await prepareAdvisorAction(ctx, { kind: "adjust_stock", skuId: sku.sku_id, summary, amount: null, currency: null, payload: { change: input.change, reason: input.reason, note: input.note ?? null, expectedAvailable: before, code: sku.code } });
   return actionOutput(action, "Ajustement de stock \xE0 confirmer");
 }
-var priceInput = z44.object({ sku: skuRef, newPrice: z44.union([z44.string(), z44.number()]).transform((v2) => String(v2)) });
+var priceInput = z45.object({ sku: skuRef, newPrice: z45.union([z45.string(), z45.number()]).transform((v2) => String(v2)) });
 async function preparePriceChange(ctx, raw) {
   const denied = requireWriter(ctx);
   if (denied) return { result: { prepared: false, reason: denied }, cards: [] };
@@ -25442,7 +25731,7 @@ function actionOutput(action, title) {
     cards: [card("action", title, [], { action, subtitle: "Rien n'est modifi\xE9 sans votre confirmation." })]
   };
 }
-var draftInput = z44.object({ orderNumber: z44.string().trim().max(64).optional(), subject: z44.string().trim().min(1).max(120), text: z44.string().trim().min(1).max(1500) });
+var draftInput = z45.object({ orderNumber: z45.string().trim().max(64).optional(), subject: z45.string().trim().min(1).max(120), text: z45.string().trim().min(1).max(1500) });
 async function draftBuyerMessage(ctx, raw) {
   const input = draftInput.parse(raw);
   return {
@@ -25591,13 +25880,13 @@ async function runAdvisorTool(ctx, name, input) {
     const json2 = JSON.stringify(out.result);
     return { content: json2.length > MAX_RESULT_CHARS2 ? `${json2.slice(0, MAX_RESULT_CHARS2)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false, cards: out.cards };
   } catch (e) {
-    if (e instanceof z44.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
+    if (e instanceof z45.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true, cards: [] };
   }
 }
 
 // src/services/ai/advisor.ts
-var log32 = createLogger("AI_ADVISOR");
+var log33 = createLogger("AI_ADVISOR");
 var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 6, maxTokens: 2500, deadlineMs: 1e5 };
 var ADVISOR_SYSTEM_STABLE = [
   "Tu es le conseiller e-commerce personnel de l'utilisateur dans MON STOCK (gestion de stock et de ventes d'un revendeur d'appareils \xE9lectroniques, principalement sur eBay). Tu es son employ\xE9 : tu analyses SES donn\xE9es, tu recommandes, tu pr\xE9pares des actions.",
@@ -25648,7 +25937,7 @@ function supabaseAdvisorStore(ctx) {
     async addMessage(conversationId, m) {
       const { data, error } = await ctx.supabase.from("advisor_messages").insert({ organization_id: org, conversation_id: conversationId, user_id: ctx.user.id, role: m.role, content: m.content.slice(0, 12e3), cards: (m.cards ?? []).slice(0, 12), sources: (m.sources ?? []).slice(0, 20), interrupted: m.interrupted ?? false }).select("id").single();
       if (error) {
-        log32.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
+        log33.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
         return null;
       }
       await ctx.supabase.from("advisor_conversations").update({ last_message_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", conversationId);
@@ -25742,7 +26031,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
               emit2({ type: "card", card: c });
             }
           }
-          if (r.isError) log32.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log33.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -26076,21 +26365,21 @@ init_errors2();
 
 // src/integrations/tracking/laposte.ts
 init_empty();
-import { z as z45 } from "npm:zod@4.6.5";
+import { z as z46 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var LAPOSTE_SUIVI_URL = "https://api.laposte.fr/suivi/v2/idships/";
-var responseSchema = z45.object({
-  returnCode: z45.number().optional(),
-  returnMessage: z45.string().optional(),
-  shipment: z45.object({
-    idShip: z45.string().optional(),
-    product: z45.string().nullable().optional(),
-    isFinal: z45.boolean().optional(),
-    estimDate: z45.string().nullable().optional(),
-    deliveryDate: z45.string().nullable().optional(),
-    url: z45.string().nullable().optional(),
-    event: z45.array(z45.object({ code: z45.string().nullable().optional(), label: z45.string().nullable().optional(), date: z45.string().nullable().optional(), order: z45.number().nullable().optional() }).passthrough()).optional()
+var responseSchema = z46.object({
+  returnCode: z46.number().optional(),
+  returnMessage: z46.string().optional(),
+  shipment: z46.object({
+    idShip: z46.string().optional(),
+    product: z46.string().nullable().optional(),
+    isFinal: z46.boolean().optional(),
+    estimDate: z46.string().nullable().optional(),
+    deliveryDate: z46.string().nullable().optional(),
+    url: z46.string().nullable().optional(),
+    event: z46.array(z46.object({ code: z46.string().nullable().optional(), label: z46.string().nullable().optional(), date: z46.string().nullable().optional(), order: z46.number().nullable().optional() }).passthrough()).optional()
   }).passthrough().optional()
 }).passthrough();
 function laPosteConfigured(env = process.env) {
@@ -26134,29 +26423,29 @@ async function laPosteTrack(trackingNumber, env = process.env) {
 
 // src/integrations/tracking/ship24.ts
 init_empty();
-import { z as z46 } from "npm:zod@4.6.5";
+import { z as z47 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var SHIP24_TRACK_URL = "https://api.ship24.com/public/v1/trackers/track";
-var eventSchema = z46.object({
-  status: z46.string().nullable().optional(),
-  occurrenceDatetime: z46.string().nullable().optional(),
-  datetime: z46.string().nullable().optional(),
-  location: z46.string().nullable().optional(),
-  courierCode: z46.string().nullable().optional(),
-  statusMilestone: z46.string().nullable().optional(),
-  statusCode: z46.string().nullable().optional()
+var eventSchema = z47.object({
+  status: z47.string().nullable().optional(),
+  occurrenceDatetime: z47.string().nullable().optional(),
+  datetime: z47.string().nullable().optional(),
+  location: z47.string().nullable().optional(),
+  courierCode: z47.string().nullable().optional(),
+  statusMilestone: z47.string().nullable().optional(),
+  statusCode: z47.string().nullable().optional()
 }).passthrough();
-var trackingSchema = z46.object({
-  shipment: z46.object({
-    statusMilestone: z46.string().nullable().optional(),
-    statusCode: z46.string().nullable().optional(),
-    delivery: z46.object({ estimatedDeliveryDate: z46.string().nullable().optional(), courierEstimatedDeliveryDate: z46.object({ from: z46.string().nullable().optional(), to: z46.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
+var trackingSchema = z47.object({
+  shipment: z47.object({
+    statusMilestone: z47.string().nullable().optional(),
+    statusCode: z47.string().nullable().optional(),
+    delivery: z47.object({ estimatedDeliveryDate: z47.string().nullable().optional(), courierEstimatedDeliveryDate: z47.object({ from: z47.string().nullable().optional(), to: z47.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
   }).passthrough().nullable().optional(),
-  events: z46.array(eventSchema).optional(),
-  statistics: z46.object({ timestamps: z46.object({ deliveredDatetime: z46.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
+  events: z47.array(eventSchema).optional(),
+  statistics: z47.object({ timestamps: z47.object({ deliveredDatetime: z47.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
 }).passthrough();
-var responseSchema2 = z46.object({ data: z46.object({ trackings: z46.array(trackingSchema) }).passthrough() }).passthrough();
+var responseSchema2 = z47.object({ data: z47.object({ trackings: z47.array(trackingSchema) }).passthrough() }).passthrough();
 function ship24Configured(env = process.env) {
   return Boolean(env.SHIP24_API_KEY && env.SHIP24_API_KEY.trim().length >= 10);
 }
@@ -26197,20 +26486,20 @@ async function ship24Track(trackingNumber, opts = {}, env = process.env) {
 
 // src/integrations/tracking/dhl.ts
 init_empty();
-import { z as z47 } from "npm:zod@4.6.5";
+import { z as z48 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var DHL_TRACK_URL = "https://api-eu.dhl.com/track/shipments";
-var place = z47.object({ address: z47.object({ addressLocality: z47.string().nullable().optional(), countryCode: z47.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
-var event = z47.object({ timestamp: z47.string().nullable().optional(), statusCode: z47.string().nullable().optional(), status: z47.string().nullable().optional(), description: z47.string().nullable().optional(), location: place }).passthrough();
-var responseSchema3 = z47.object({
-  shipments: z47.array(
-    z47.object({
-      id: z47.string().optional(),
-      service: z47.string().nullable().optional(),
+var place = z48.object({ address: z48.object({ addressLocality: z48.string().nullable().optional(), countryCode: z48.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
+var event = z48.object({ timestamp: z48.string().nullable().optional(), statusCode: z48.string().nullable().optional(), status: z48.string().nullable().optional(), description: z48.string().nullable().optional(), location: place }).passthrough();
+var responseSchema3 = z48.object({
+  shipments: z48.array(
+    z48.object({
+      id: z48.string().optional(),
+      service: z48.string().nullable().optional(),
       status: event.nullable().optional(),
-      estimatedTimeOfDelivery: z47.string().nullable().optional(),
-      events: z47.array(event).optional()
+      estimatedTimeOfDelivery: z48.string().nullable().optional(),
+      events: z48.array(event).optional()
     }).passthrough()
   ).optional()
 }).passthrough();
@@ -26276,7 +26565,7 @@ init_errors();
 init_logger();
 init_admin();
 init_alerts();
-var log33 = createLogger("TRACKING");
+var log34 = createLogger("TRACKING");
 function trackingProviders(env = process.env) {
   return { laposte: laPosteConfigured(env), ship24: ship24Configured(env), dhl: dhlConfigured(env) };
 }
@@ -26294,7 +26583,7 @@ async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), en
     snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : provider === "dhl" ? await track.dhl(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
   } catch (e) {
     const message = isConnectorError(e) ? e.message : "Erreur inattendue lors du suivi.";
-    log33.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
+    log34.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
     const retry = new Date(now.getTime() + 6 * 36e5).toISOString();
     await admin.from("tracked_parcels").update({ last_error: message.slice(0, 500), last_checked_at: now.toISOString(), next_check_at: retry, check_count: parcel.check_count + 1 }).eq("id", parcel.id);
     return { parcelId: parcel.id, status: parcel.status, provider, checked: false, message };
@@ -26344,7 +26633,7 @@ async function runDueTracking(now = /* @__PURE__ */ new Date(), admin = createAd
       else failed++;
     } catch (e) {
       failed++;
-      log33.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
+      log34.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
     }
   }
   return { checked, failed, skipped };
@@ -26380,18 +26669,18 @@ async function probeToolConnectors(fetchImpl = fetch) {
 }
 
 // server/edge/api.ts
-var log34 = createLogger("EDGE_API");
+var log35 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z48.object({ code: z48.string().min(1).max(2048), state: z48.string().min(16).max(200) });
-var syncSchema = z48.object({ connectionId: uuidParam, scope: z48.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z48.object({ hosts: z48.array(z48.string().min(3).max(120)).min(1).max(25), query: z48.string().min(2).max(80).optional() });
+var ebayFinalizeSchema = z49.object({ code: z49.string().min(1).max(2048), state: z49.string().min(16).max(200) });
+var syncSchema = z49.object({ connectionId: uuidParam, scope: z49.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z49.object({ hosts: z49.array(z49.string().min(3).max(120)).min(1).max(25), query: z49.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z48.object({ text: z48.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z48.object({ key: z48.string().min(1).max(80), attest: z48.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z49.object({ text: z49.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z49.object({ key: z49.string().min(1).max(80), attest: z49.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -26421,7 +26710,7 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log34.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
+  log35.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
   return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
 }
 async function finalizeEbayConnect(request) {
@@ -26432,7 +26721,7 @@ async function finalizeEbayConnect(request) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row2) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row2.created_by !== ctx.user.id || row2.organization_id !== ctx.organization.id) {
-    log34.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log35.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row2.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -26443,11 +26732,11 @@ async function finalizeEbayConnect(request) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
-    log34.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log35.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log34.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log35.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
@@ -26528,18 +26817,18 @@ async function route(request) {
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") {
-        return handle(async () => runLibraryChecks((await parseBody(request, z48.object({ keys: z48.array(z48.string().min(1).max(80)).max(60).optional() }))).keys));
+        return handle(async () => runLibraryChecks((await parseBody(request, z49.object({ keys: z49.array(z49.string().min(1).max(80)).max(60).optional() }))).keys));
       }
       if (m === "POST" && path === "/cron/library-activate") {
         return handle(async () => {
-          const body = await parseBody(request, z48.object({ organizationId: uuidParam, keys: z48.array(z48.string().min(1).max(80)).min(1).max(60), requestedBy: z48.string().min(10).max(600) }));
+          const body = await parseBody(request, z49.object({ organizationId: uuidParam, keys: z49.array(z49.string().min(1).max(80)).min(1).max(60), requestedBy: z49.string().min(10).max(600) }));
           const admin = createAdminSupabaseClient();
           const out = [];
           for (const key2 of body.keys) {
             const terms = getLibrarySource(key2)?.termsUrl ?? "?";
             const attestation = `${body.requestedBy} Conditions du fournisseur : ${terms}. robots.txt v\xE9rifi\xE9 par le serveur. Activation enregistr\xE9e le ${(/* @__PURE__ */ new Date()).toISOString()}.`;
             try {
-              const r = await activateLibrarySourceFor(admin, body.organizationId, key2, attestation);
+              const r = await activateLibrarySourceFor(admin, body.organizationId, key2, attestation, { adapter: getLibrarySource(key2)?.adapter });
               out.push({ key: key2, sourceId: r.sourceId, alreadyActive: r.alreadyActive, error: null });
             } catch (e) {
               out.push({ key: key2, sourceId: null, alreadyActive: false, error: e instanceof Error ? e.message : String(e) });
@@ -26548,21 +26837,22 @@ async function route(request) {
           return out;
         });
       }
+      if (m === "POST" && path === "/cron/sourcing-weekly") return handle(async () => runWeeklyCollection(await parseBody(request, weeklyRunSchema)));
       if (m === "POST" && path === "/cron/collect-source") {
         return handle(async () => {
-          const body = await parseBody(request, z48.object({ sourceId: uuidParam, budgetMs: z48.number().int().min(1e4).max(11e4).optional() }));
+          const body = await parseBody(request, z49.object({ sourceId: uuidParam, budgetMs: z49.number().int().min(1e4).max(11e4).optional() }));
           return runSourceCrawl(body.sourceId, { trigger: "scheduled", budgetMs: body.budgetMs });
         });
       }
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z48.object({ query: z48.string().min(2).max(120), source: z48.string().min(1).max(80) }));
+          const body = await parseBody(request, z49.object({ query: z49.string().min(2).max(120), source: z49.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request, z48.object({ keys: z48.array(z48.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request, z49.object({ keys: z49.array(z49.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
@@ -26571,11 +26861,11 @@ async function route(request) {
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z48.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z49.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z48.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request, z49.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
@@ -26587,7 +26877,7 @@ async function route(request) {
         });
       }
     }
-    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request), parseQuery2(request, z48.object({ q: z48.string().trim().min(1).max(120) })).q));
+    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request), parseQuery2(request, z49.object({ q: z49.string().trim().min(1).max(120) })).q));
     if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request), parseQuery2(request, sourcingSearchQuerySchema)));
     if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request)));
     if (m === "GET" && path === "/sourcing/library") return handle(async () => sourceLibrary(await requireMobileOrgContext(request)));
@@ -26601,7 +26891,7 @@ async function route(request) {
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery2(request, z48.object({ sort: z48.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const q = parseQuery2(request, z49.object({ sort: z49.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
       });
     }
@@ -26626,7 +26916,7 @@ async function route(request) {
     if (m === "GET" && path === "/radar/offer") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery2(request, z48.object({ id: uuidParam, quantity: z48.coerce.number().int().min(1).max(1e5).optional() }));
+        const q = parseQuery2(request, z49.object({ id: uuidParam, quantity: z49.coerce.number().int().min(1).max(1e5).optional() }));
         return buildRadarOffer(ctx, q.id, q.quantity ? [q.quantity] : []);
       });
     }
@@ -26655,7 +26945,7 @@ async function route(request) {
     if (m === "POST" && path === "/sourcing/sources/sync") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return syncSourceNow(ctx, (await parseBody(request, z48.object({ sourceId: uuidParam }))).sourceId);
+        return syncSourceNow(ctx, (await parseBody(request, z49.object({ sourceId: uuidParam }))).sourceId);
       });
     }
     if (m === "POST" && path === "/sourcing/sources/schedule") {
@@ -26679,14 +26969,14 @@ async function route(request) {
     if (m === "GET" && path === "/sourcing/imports") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery2(request, z48.object({ supplierId: uuidParam.optional(), limit: z48.coerce.number().int().min(1).max(200).optional() }));
+        const q = parseQuery2(request, z49.object({ supplierId: uuidParam.optional(), limit: z49.coerce.number().int().min(1).max(200).optional() }));
         return listImportJobs(ctx, { supplierId: q.supplierId ?? null, limit: q.limit ?? 50 });
       });
     }
     if (m === "GET" && path === "/sourcing/imports/detail") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request);
-        return getImportJob(ctx, parseQuery2(request, z48.object({ id: uuidParam })).id);
+        return getImportJob(ctx, parseQuery2(request, z49.object({ id: uuidParam })).id);
       });
     }
     if (m === "POST" && path === "/sourcing/import") {
@@ -26776,7 +27066,7 @@ async function route(request) {
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return prefillListing(ctx, parseQuery2(request, z48.object({ skuId: uuidParam })).skuId);
+        return prefillListing(ctx, parseQuery2(request, z49.object({ skuId: uuidParam })).skuId);
       });
     }
     if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));
@@ -26808,7 +27098,7 @@ async function route(request) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log34.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log35.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;

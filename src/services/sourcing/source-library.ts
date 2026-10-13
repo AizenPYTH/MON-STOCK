@@ -327,7 +327,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     termsUrl: "https://2repair.parts",
     access: "public_html",
     notes: "Pièces smartphone, prix en livres sterling. Collecte réelle par le serveur MON STOCK le 13/10/2026 : 8 fiches en GBP via le plan du site, ex. écran HTC One M8 21,35 £ (rupture). Frais de douane possibles depuis le Royaume-Uni.",
-    probeQuery: "iphone",
+    probeQuery: "lcd",
   },
   {
     key: "gsmok",
@@ -357,7 +357,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     termsUrl: "https://mobilepart.pl",
     access: "public_html",
     notes: "Pièces smartphone (Pologne), prix en zlotys. Collecte réelle par le serveur MON STOCK le 13/10/2026 : 8 fiches en PLN, ex. écran Samsung A10 48 PLN (en stock).",
-    probeQuery: "samsung",
+    probeQuery: "lcd",
   },
   {
     key: "portatilmovil",
@@ -698,7 +698,14 @@ export async function activateLibrarySource(ctx: OrgContext, key: string): Promi
  * session de l'utilisateur (RLS, application mobile) ou client serveur (activation demandée
  * par le titulaire du compte et tracée dans `access_conditions`).
  */
-export async function activateLibrarySourceFor(db: OrgContext["supabase"] | AdminSupabaseClient, organizationId: string, key: string, attestation: string): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
+export async function activateLibrarySourceFor(
+  db: OrgContext["supabase"] | AdminSupabaseClient,
+  organizationId: string,
+  key: string,
+  attestation: string,
+  /** adaptateur imposé : celui de la bibliothèque, vérifié en mode catalogue (collecte complète), plutôt que celui qui a répondu à la recherche de contrôle */
+  opts: { adapter?: string } = {},
+): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
   const s = getLibrarySource(key);
   if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
   if (s.blocked) throw new AppError("FORBIDDEN", s.blocked);
@@ -734,7 +741,7 @@ export async function activateLibrarySourceFor(db: OrgContext["supabase"] | Admi
       sync_frequency: "manual",
       status: "active",
       // Adaptateur ayant réellement répondu lors de la vérification (détection de plateforme).
-      config: { adapter: check.adapter ?? s.adapter, library_key: s.key } as unknown as NonNullable<Json>,
+      config: { adapter: opts.adapter ?? check.adapter ?? s.adapter, library_key: s.key } as unknown as NonNullable<Json>,
     })
     .select("id")
     .single();

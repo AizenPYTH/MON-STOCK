@@ -13,6 +13,7 @@ import { color, space } from "~/theme/tokens";
 
 const FREQUENCIES: { value: SourceOverviewDTO["frequency"]; label: string }[] = [
   { value: "manual", label: "Manuelle" },
+  { value: "weekly", label: "1 fois / semaine" },
   { value: "daily", label: "1 fois / jour" },
   { value: "every_6_hours", label: "Toutes les 6 h" },
   { value: "hourly", label: "Toutes les heures" },

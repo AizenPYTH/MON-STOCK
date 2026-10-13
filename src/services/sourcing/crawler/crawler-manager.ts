@@ -175,7 +175,8 @@ async function crawlWithAdapter(adapter: SourceAdapter, config: ReturnType<typeo
 /** Sources PUBLIC_WEB attestées dont la fréquence est échue, regroupées par hôte (1 à la fois par hôte). */
 export async function runDueCrawls(now: Date = new Date(), admin: AdminSupabaseClient = createAdminSupabaseClient()): Promise<CrawlRunResult[]> {
   const { data: sources } = await admin.from("supplier_sources").select("id, base_url, config, sync_frequency, last_sync_at, status").eq("source_type", "PUBLIC_WEB").eq("automated_access_confirmed", true).neq("sync_frequency", "manual").neq("status", "paused").limit(200);
-  const due = (sources ?? []).filter((s) => isDue(s.sync_frequency, s.last_sync_at, now));
+  // les sources hebdomadaires sont collectées par tranches par la collecte hebdomadaire (jamais ici)
+  const due = (sources ?? []).filter((s) => s.sync_frequency !== "weekly" && isDue(s.sync_frequency, s.last_sync_at, now));
   const byHost = new Map<string, string[]>();
   for (const s of due) {
     const cfg = parseCrawlConfig(s.config);

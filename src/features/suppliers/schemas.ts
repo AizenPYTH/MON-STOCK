@@ -11,7 +11,7 @@ const optionalCountry = z.string().trim().toUpperCase().length(2, "Code pays à 
 const optionalCurrency = z.string().trim().toUpperCase().length(3, "Code devise à 3 lettres (ex. EUR).").optional().or(z.literal(""));
 const optionalUrl = z.url("URL invalide.").optional().or(z.literal(""));
 
-export const syncFrequencySchema = z.enum(["manual", "hourly", "every_6_hours", "daily"]);
+export const syncFrequencySchema = z.enum(["manual", "hourly", "every_6_hours", "daily", "weekly"]);
 export const taxTypeSchema = z.enum(["ht", "ttc", "unknown"]);
 export const conditionSchema = z.enum(["new", "refurbished", "used", "unknown"]);
 

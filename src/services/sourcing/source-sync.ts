@@ -155,6 +155,8 @@ export async function runScheduledSources(now: Date = new Date(), admin: AdminSu
     const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
     if (kind === "file_import" || kind === "manual" || kind === "live_search") continue;
     if (kind === "public_web" && !source.automated_access_confirmed) continue;
+    // catalogue public hebdomadaire : collecte par tranches avec reprise (weekly-collection), jamais d'une traite
+    if (kind === "public_web" && source.sync_frequency === "weekly") continue;
     let outcome: SyncOutcome;
     try {
       outcome = await runSourceOnce(admin, source, kind, "scheduled", null);
@@ -172,7 +174,7 @@ export async function runScheduledSources(now: Date = new Date(), admin: AdminSu
 
 export const sourceScheduleSchema = z.object({
   sourceId: z.string().uuid(),
-  frequency: z.enum(["manual", "hourly", "every_6_hours", "daily"]).optional(),
+  frequency: z.enum(["manual", "hourly", "every_6_hours", "daily", "weekly"]).optional(),
   /** désactiver (pause) / réactiver la source */
   enabled: z.boolean().optional(),
 });

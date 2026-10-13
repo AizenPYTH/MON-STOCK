@@ -84,11 +84,12 @@ export async function recordSyncErrors(admin: AdminSupabaseClient, run: SyncRunH
   if (error) log.warn("sync errors not recorded", { runId: run.id, error: error.message });
 }
 
-export const FREQUENCY_MS: Record<"manual" | "hourly" | "every_6_hours" | "daily", number | null> = {
+export const FREQUENCY_MS: Record<"manual" | "hourly" | "every_6_hours" | "daily" | "weekly", number | null> = {
   manual: null,
   hourly: 3_600_000,
   every_6_hours: 6 * 3_600_000,
   daily: 24 * 3_600_000,
+  weekly: 7 * 24 * 3_600_000,
 };
 
 export function isDue(frequency: keyof typeof FREQUENCY_MS, lastSyncAt: string | null, now: Date): boolean {

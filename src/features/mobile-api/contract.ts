@@ -750,7 +750,7 @@ export interface SourceOverviewDTO {
   nextRunAt: string | null;
   lastError: string | null;
   consecutiveFailures: number;
-  frequency: "manual" | "hourly" | "every_6_hours" | "daily";
+  frequency: "manual" | "hourly" | "every_6_hours" | "daily" | "weekly";
   frequencyLabel: string;
   /** synchronisation automatique possible (page publique attestée, flux distant, API) */
   schedulable: boolean;

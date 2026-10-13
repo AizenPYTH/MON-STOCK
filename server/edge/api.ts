@@ -59,6 +59,7 @@ import { createLogger } from "@/lib/logger";
 import { randomToken } from "@/lib/crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { runSourceCrawl } from "@/services/sourcing/crawler/crawler-manager";
+import { runWeeklyCollection, weeklyRunSchema } from "@/services/sourcing/weekly-collection";
 import { ebayEnv } from "@/lib/env";
 import { authorizeCron } from "@/lib/cron-auth";
 import { errorResponse, handle, parseBody, parseQuery, uuidParam } from "@/features/mobile-api/http";
@@ -290,7 +291,7 @@ export async function route(request: Request): Promise<Response> {
             const terms = getLibrarySource(key)?.termsUrl ?? "?";
             const attestation = `${body.requestedBy} Conditions du fournisseur : ${terms}. robots.txt vérifié par le serveur. Activation enregistrée le ${new Date().toISOString()}.`;
             try {
-              const r = await activateLibrarySourceFor(admin, body.organizationId, key, attestation);
+              const r = await activateLibrarySourceFor(admin, body.organizationId, key, attestation, { adapter: getLibrarySource(key)?.adapter });
               out.push({ key, sourceId: r.sourceId, alreadyActive: r.alreadyActive, error: null });
             } catch (e) {
               out.push({ key, sourceId: null, alreadyActive: false, error: e instanceof Error ? e.message : String(e) });
@@ -299,6 +300,7 @@ export async function route(request: Request): Promise<Response> {
           return out;
         });
       }
+      if (m === "POST" && path === "/cron/sourcing-weekly") return handle(async () => runWeeklyCollection(await parseBody(request, weeklyRunSchema)));
       if (m === "POST" && path === "/cron/collect-source") {
         return handle(async () => {
           const body = await parseBody(request, z.object({ sourceId: uuidParam, budgetMs: z.number().int().min(10_000).max(110_000).optional() }));

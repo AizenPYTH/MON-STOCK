@@ -53,6 +53,7 @@ export const SYNC_FREQUENCY_LABEL: Record<string, string> = {
   hourly: "Toutes les heures",
   every_6_hours: "Toutes les 6 heures",
   daily: "Quotidienne",
+  weekly: "Hebdomadaire",
 };
 
 export const PO_STATUS_LABEL: Record<string, string> = {
