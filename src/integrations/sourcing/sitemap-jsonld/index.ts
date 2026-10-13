@@ -222,7 +222,7 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
       for (const url of candidates) {
         if (pages >= max || http.exhausted()) break;
         try {
-          const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4_000_000 });
+          const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4_000_000, truncate: true });
           pages += 1;
           const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
           http.countOffers(found.length);
@@ -261,7 +261,7 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
       // robots.txt vérifié pour chaque fiche du lot seulement (un plan du site peut compter 40 000 URLs)
       if (!allowedByRobots(index.robots, ctx.userAgent, url)) continue;
       try {
-        const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4_000_000 });
+        const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4_000_000, truncate: true });
         const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
         http.countOffers(found.length);
         offers.push(...found);

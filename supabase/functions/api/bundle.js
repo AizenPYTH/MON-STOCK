@@ -5480,7 +5480,7 @@ var init_sitemap_jsonld = __esm({
           for (const url of candidates) {
             if (pages >= max || http.exhausted()) break;
             try {
-              const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
+              const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6, truncate: true });
               pages += 1;
               const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
               http.countOffers(found.length);
@@ -5518,7 +5518,7 @@ var init_sitemap_jsonld = __esm({
           const url = urls[i];
           if (!allowedByRobots(index.robots, ctx.userAgent, url)) continue;
           try {
-            const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6 });
+            const res = await http.request(url, { accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5", maxBytes: 4e6, truncate: true });
             const found = parseProductPage(res.text, res.finalUrl || url).map((o) => mapJsonLdOffer(o, config, res.finalUrl || url));
             http.countOffers(found.length);
             offers.push(...found);
