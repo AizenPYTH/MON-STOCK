@@ -5320,7 +5320,7 @@ function parseSitemapXml(xml) {
   return { kind, locs };
 }
 function rankChildSitemaps(locs) {
-  const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer/i;
+  const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer|tuto|guide|faq/i;
   const score = (u) => /product|produit|(^|[^a-z])items?([^a-z]|$)/i.test(u) ? 0 : 1;
   return locs.filter((u) => !skip.test(u)).sort((a, b) => score(a) - score(b));
 }

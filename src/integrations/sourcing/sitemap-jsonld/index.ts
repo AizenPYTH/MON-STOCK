@@ -53,7 +53,7 @@ export function parseSitemapXml(xml: string): { kind: "index" | "urlset" | "unkn
 
 /** Sous-sitemaps à lire en priorité : produits d'abord, jamais images/vidéos/blog. */
 export function rankChildSitemaps(locs: string[]): string[] {
-  const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer/i;
+  const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer|tuto|guide|faq/i;
   // « sitemap » contient les lettres « item » : mots entiers uniquement.
   const score = (u: string) => (/product|produit|(^|[^a-z])items?([^a-z]|$)/i.test(u) ? 0 : 1);
   return locs.filter((u) => !skip.test(u)).sort((a, b) => score(a) - score(b));
