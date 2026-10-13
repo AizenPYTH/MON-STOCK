@@ -12,13 +12,21 @@ import { runSourceCrawl } from "@/services/sourcing/crawler/crawler-manager";
 import { syncSupplierConnection } from "@/services/sourcing/supplier-connectors";
 import { recordSourceOutcome } from "@/services/sourcing/source-health";
 import { CATALOG_IMPORT_KIND } from "@/services/sourcing/catalog-import";
+import { adapterKeyOf } from "@/services/sourcing/adapter-runtime";
+import { parseCrawlConfig } from "@/services/sourcing/crawler/source-crawler";
+import { getSourceAdapter } from "@/integrations/sourcing/registry";
 
 const log = createLogger("SOURCE_SYNC");
 
 /** Délai minimal entre deux synchronisations manuelles d'une même source (anti-abus). */
 export const MANUAL_SYNC_COOLDOWN_MS = 2 * 60_000;
 
-export type SourceKind = "file_import" | "public_web" | "remote_feed" | "connection" | "manual";
+/**
+ * public_web : page publique parcourue par le crawler (catalogue de l'adaptateur ou URLs configurées) ;
+ * live_search : page publique interrogée EN DIRECT à chaque recherche (adaptateur sans catalogue,
+ * ex. sitemap-jsonld) — rien à synchroniser ni à planifier.
+ */
+export type SourceKind = "file_import" | "public_web" | "live_search" | "remote_feed" | "connection" | "manual";
 
 type SourceRow = {
   id: string;
@@ -44,16 +52,27 @@ const SOURCE_COLUMNS = "id, organization_id, supplier_id, name, source_type, bas
 function kindOf(s: Pick<SourceRow, "source_type" | "config">, hasUrlFeed: boolean, hasConnection: boolean): SourceKind {
   const kind = (s.config as { kind?: string } | null)?.kind;
   if (kind === CATALOG_IMPORT_KIND) return "file_import";
-  if (s.source_type === "PUBLIC_WEB") return "public_web";
+  if (s.source_type === "PUBLIC_WEB") return isCrawlable(s.config) ? "public_web" : "live_search";
   if (hasConnection) return "connection";
   if (hasUrlFeed) return "remote_feed";
   if (s.source_type === "MANUAL") return "manual";
   return "file_import";
 }
 
+/** Le crawler a-t-il quelque chose à parcourir (catalogue de l'adaptateur ou URLs configurées) ? */
+function isCrawlable(config: Json): boolean {
+  if (parseCrawlConfig(config).urls.length > 0) return true;
+  const key = adapterKeyOf(config);
+  const adapter = key ? getSourceAdapter(key) : null;
+  return Boolean(adapter?.capabilities.catalog && adapter.fetchCatalog);
+}
+
+const LIVE_SEARCH_MESSAGE = "Source interrogée en direct à chaque recherche : ses offres se mettent à jour quand vous cherchez un produit, il n'y a rien à synchroniser.";
+
 export const METHOD_LABEL: Record<SourceKind, string> = {
   file_import: "Import de fichier",
   public_web: "Page publique (robots.txt vérifié)",
+  live_search: "Recherche en direct (page publique)",
   remote_feed: "Flux distant autorisé",
   connection: "API fournisseur (compte)",
   manual: "Saisie manuelle",
@@ -89,6 +108,7 @@ async function runSourceOnce(admin: AdminSupabaseClient, source: SourceRow, kind
     const r = await syncSupplierConnection(conns[0]!.id, { trigger, createdBy, admin });
     return { ok: r.status === "success" || r.status === "partial", status: r.status, message: r.message, runIds: r.runId ? [r.runId] : [] };
   }
+  if (kind === "live_search") return { ok: false, status: "refused", message: LIVE_SEARCH_MESSAGE, runIds: [] };
   return { ok: false, status: "refused", message: kind === "file_import" ? "Source alimentée par fichier : importez la nouvelle liste du fournisseur (Sourcing → Importer)." : "Source manuelle : aucune synchronisation automatique.", runIds: [] };
 }
 
@@ -109,6 +129,7 @@ export async function syncSourceNow(ctx: OrgContext, sourceId: string, admin: Ad
   if (source.last_sync_at && now.getTime() - new Date(source.last_sync_at).getTime() < MANUAL_SYNC_COOLDOWN_MS) throw new AppError("RATE_LIMITED", "Synchronisation lancée il y a moins de 2 minutes : patientez un peu.");
   const { urlFeeds, connections } = await sourceContext(admin, [source.id]);
   const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+  if (kind === "live_search") throw new AppError("VALIDATION", LIVE_SEARCH_MESSAGE);
   if (kind === "file_import" || kind === "manual") throw new AppError("VALIDATION", kind === "file_import" ? "Cette source est alimentée par fichier : importez la nouvelle liste du fournisseur." : "Source manuelle : rien à synchroniser.");
   let outcome: SyncOutcome;
   try {
@@ -132,7 +153,7 @@ export async function runScheduledSources(now: Date = new Date(), admin: AdminSu
   sources.sort((a, b) => (a.next_run_at ?? a.last_sync_at ?? "").localeCompare(b.next_run_at ?? b.last_sync_at ?? ""));
   for (const source of sources.slice(0, limit)) {
     const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
-    if (kind === "file_import" || kind === "manual") continue;
+    if (kind === "file_import" || kind === "manual" || kind === "live_search") continue;
     if (kind === "public_web" && !source.automated_access_confirmed) continue;
     let outcome: SyncOutcome;
     try {
@@ -167,6 +188,7 @@ export async function setSourceSchedule(ctx: OrgContext, input: z.infer<typeof s
   const patch: { sync_frequency?: SyncFrequency; next_run_at?: string | null; status?: "paused" | "active" | "not_connected" } = {};
   if (input.frequency) {
     if (input.frequency !== "manual" && (kind === "file_import" || kind === "manual")) throw new AppError("VALIDATION", "Une source alimentée par fichier ne se synchronise pas automatiquement : demandez au fournisseur un flux (URL CSV / XML) ou une API.");
+    if (input.frequency !== "manual" && kind === "live_search") throw new AppError("VALIDATION", LIVE_SEARCH_MESSAGE);
     if (input.frequency !== "manual" && kind === "public_web" && !source.automated_access_confirmed) throw new AppError("VALIDATION", "Accès automatisé non attesté pour cette page publique.");
     patch.sync_frequency = input.frequency;
     patch.next_run_at = input.frequency === "manual" ? null : now.toISOString();
@@ -207,6 +229,7 @@ export async function listSourcesForOrg(ctx: OrgContext, admin: AdminSupabaseCli
   return sources.map((s) => {
     const kind = kindOf(s, urlFeeds.has(s.id), connections.has(s.id));
     const display = sourceDisplayStatus({ status: s.status, kind, running: running.has(s.id), lastSuccessfulSyncAt: s.last_successful_sync_at, consecutiveFailures: s.consecutive_failures, attested: s.automated_access_confirmed || kind === "connection" || kind === "remote_feed" });
+    // live_search : rien à planifier ; l'action proposée est la recherche elle-même (aucun bouton ici)
     const schedulable = kind === "public_web" || kind === "remote_feed" || kind === "connection";
     return {
       id: s.id,

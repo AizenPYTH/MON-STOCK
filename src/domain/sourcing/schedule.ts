@@ -65,7 +65,7 @@ export const SOURCE_STATUS_LABEL: Record<SourceDisplayStatus, string> = {
  * Statut affiché d'une source : « connecté » seulement si une synchronisation automatique a déjà
  * réussi (un fournisseur enregistré n'est pas un fournisseur connecté).
  */
-export function sourceDisplayStatus(s: { status: string; kind: "file_import" | "public_web" | "remote_feed" | "connection" | "manual"; running: boolean; lastSuccessfulSyncAt: string | null; consecutiveFailures: number; attested: boolean }): SourceDisplayStatus {
+export function sourceDisplayStatus(s: { status: string; kind: "file_import" | "public_web" | "live_search" | "remote_feed" | "connection" | "manual"; running: boolean; lastSuccessfulSyncAt: string | null; consecutiveFailures: number; attested: boolean }): SourceDisplayStatus {
   if (s.status === "paused") return "disabled";
   if (s.running) return "running";
   if (s.kind === "file_import" || s.kind === "manual") return s.consecutiveFailures > 0 || s.status === "error" ? "error" : "manual_import";

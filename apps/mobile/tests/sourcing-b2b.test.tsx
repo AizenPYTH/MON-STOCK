@@ -94,6 +94,7 @@ describe("Mes sources", () => {
         return Promise.resolve([
           source({}),
           source({ id: "src-2", supplierName: "Grossiste B", status: "error", statusLabel: "En erreur", consecutiveFailures: 3, lastError: "Le flux a répondu HTTP 503.", activeOffers: 7 }),
+          source({ id: "src-4", supplierName: "Brico-phone", kind: "live_search", methodLabel: "Recherche en direct (page publique)", schedulable: false, canSyncNow: false, primaryAction: "configure", frequency: "manual", activeOffers: 12 }),
           source({ id: "src-3", supplierName: "Foxway", kind: "file_import", methodLabel: "Import de fichier", status: "manual_import", statusLabel: "Import manuel", schedulable: false, canSyncNow: false, primaryAction: "import_file", frequency: "manual", activeOffers: 120 }),
         ]);
       if (path === "/sourcing/sources/sync") return Promise.resolve({ status: "success", message: "42 offres à jour.", nextRunAt: null, consecutiveFailures: 0 });
@@ -104,6 +105,8 @@ describe("Mes sources", () => {
     await waitFor(() => expect(screen.getByText("Grossiste A")).toBeTruthy());
     expect(screen.getByText("Synchronisation automatique (2)")).toBeTruthy();
     expect(screen.getByText("Fichiers et saisie (1)")).toBeTruthy();
+    expect(screen.getByText("Recherche en direct (1)")).toBeTruthy();
+    expect(screen.queryByTestId("source-action-src-4")).toBeNull();
     expect(screen.getByText(/3 échec\(s\) consécutif\(s\)\. Le flux a répondu HTTP 503\./)).toBeTruthy();
     expect(screen.getByText(/120 offres exploitables/)).toBeTruthy();
     fireEvent.press(screen.getByTestId("source-action-src-1"));

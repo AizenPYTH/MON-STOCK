@@ -26,7 +26,7 @@ comparaison du coût rendu, radar d'opportunités) **sans architecture parallèl
   - Refreshed Apples.
 - 132 offres actives, vues pour la dernière fois le 10/10.
 - 0 correspondance produit confirmée.
-- Le cron tourne, mais il ignore les sources « manuel ». Ces offres ne se mettent donc jamais à jour seules.
+- Ces 3 sources utilisent l'adaptateur `sitemap-jsonld`, qui fonctionne **en recherche directe** (pas de catalogue à parcourir) : leurs offres se mettent à jour quand un utilisateur cherche un produit, pas par le cron. Les planifier n'a pas de sens (constaté en production le 13/10, voir 3.6).
 
 ### 1.3 Défauts trouvés et vérifiés dans le code
 
@@ -193,14 +193,16 @@ Les questions à poser figurent dans chaque fiche de l'annuaire et dans l'e-mail
 
 Aucune nouvelle variable. Utilisées : `TOKEN_ENCRYPTION_KEY` (déjà en place, chiffrement des identifiants de flux) et `SOURCING_USER_AGENT` (facultative, valeur par défaut). Les identifiants fournisseurs se saisissent dans l'application ; ils ne sont ni dans le code, ni dans Git, ni dans les journaux.
 
-### 3.6 Restant, soumis à autorisation
+### 3.6 Déploiement en production (13/10/2026, autorisé par l'utilisateur)
 
-1. Appliquer la migration `20261013000100` sur le projet MON-STOCK (`ccywsegdowikeirbsfae`).
-2. Redéployer l'Edge Function `api` (bundle de cette branche).
-3. Construire et envoyer un build TestFlight.
-4. Optionnel : passer les 3 sources publiques existantes en fréquence quotidienne.
+| Étape | Résultat vérifié |
+| --- | --- |
+| Migration `20261013000100` sur MON-STOCK | appliquée par blocs (l'outil d'application dépassait 60 s), enregistrée dans `schema_migrations` ; contrôlé : 4 tables avec RLS, 3 politiques de lecture, aucun privilège client sur les secrets ni en écriture, 5 gardes « même organisation », 7 + 3 colonnes, 4 index ; 132 offres et 3 sources intactes |
+| Edge Function `api` | version 40 (commit `1346ec8`) puis version 41 (correctif ci-dessous) ; `/health` 200, nouvelles routes 401 sans connexion |
+| Build TestFlight | build 14 (commit `1346ec8`) terminé et envoyé ; build 15 avec le correctif |
+| 3 sources publiques en quotidien | **annulé** : premier passage réel → « Aucune URL configurée » sur les 3 (adaptateur de recherche directe, rien à parcourir). Garde-fous vérifiés en réel : aucune offre touchée, nouvel essai programmé à +15 min, aucune alerte avant 3 échecs. Sources remises en manuel, compteurs remis à zéro |
 
-Tant que 1 et 2 ne sont pas faits, l'application continue de fonctionner : l'import reste accessible et l'écran « Mes sources » affiche une erreur de chargement sans bloquer l'import.
+Correctif : nouveau type de source `live_search` (page publique sans catalogue ni URL) — jamais planifiée, jamais comptée en échec, synchronisation et fréquence refusées avec une explication ; section « Recherche en direct » dans « Mes sources ». Test de non-régression reprenant la configuration réelle (les tests précédents simulaient le crawler, ce qui masquait le problème).
 
 ### 3.7 Limites
 

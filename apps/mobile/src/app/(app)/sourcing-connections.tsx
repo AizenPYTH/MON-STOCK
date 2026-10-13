@@ -71,7 +71,8 @@ export default function SourcingConnectionsScreen() {
 
   const list = sources.data;
   const automatic = list.filter((s) => s.schedulable);
-  const manual = list.filter((s) => !s.schedulable);
+  const live = list.filter((s) => s.kind === "live_search");
+  const manual = list.filter((s) => !s.schedulable && s.kind !== "live_search");
 
   function runSync(s: SourceOverviewDTO) {
     sync.mutate(s.id, {
@@ -97,6 +98,11 @@ export default function SourcingConnectionsScreen() {
       {automatic.length > 0 ? <SectionHeader title={`Synchronisation automatique (${automatic.length})`} /> : null}
       {automatic.map((s) => (
         <SourceCard key={s.id} source={s} busy={sync.isPending && sync.variables === s.id} canWrite={permissions.canWrite} onPrimary={() => primary(s)} onSettings={permissions.isAdmin ? () => setSettings(s) : undefined} />
+      ))}
+      {live.length > 0 ? <SectionHeader title={`Recherche en direct (${live.length})`} /> : null}
+      {live.length > 0 ? <Txt variant="label">Interrogées à chaque recherche de produit : leurs offres se mettent à jour quand vous cherchez, sans synchronisation.</Txt> : null}
+      {live.map((s) => (
+        <SourceCard key={s.id} source={s} busy={false} canWrite={permissions.canWrite} onPrimary={() => primary(s)} onSettings={permissions.isAdmin ? () => setSettings(s) : undefined} />
       ))}
       {manual.length > 0 ? <SectionHeader title={`Fichiers et saisie (${manual.length})`} /> : null}
       {manual.map((s) => (
@@ -127,6 +133,8 @@ export default function SourcingConnectionsScreen() {
               ))}
             </View>
           </>
+        ) : settings?.kind === "live_search" ? (
+          <Txt variant="bodyRegular">Source interrogée en direct à chaque recherche de produit (page publique, robots.txt respecté) : il n'y a rien à planifier.</Txt>
         ) : (
           <Txt variant="bodyRegular">Source alimentée par fichier : elle se met à jour à chaque nouvel import. Pour l'automatiser, demandez au fournisseur un lien de flux (CSV / XML) ou une API.</Txt>
         )}
@@ -172,9 +180,9 @@ function SourceCard({ source: s, busy, canWrite, onPrimary, onSettings }: { sour
           {s.lastError ?? ""}
         </Txt>
       ) : null}
-      {canWrite && s.primaryAction !== "configure" ? (
+      {canWrite && (s.primaryAction !== "configure" || onSettings) ? (
         <View style={{ flexDirection: "row", gap: space[2] }}>
-          <Button label={action} compact loading={busy} disabled={s.primaryAction === "sync_now" && !s.canSyncNow} onPress={onPrimary} style={{ flex: 1 }} testID={`source-action-${s.id}`} />
+          {s.primaryAction !== "configure" ? <Button label={action} compact loading={busy} disabled={s.primaryAction === "sync_now" && !s.canSyncNow} onPress={onPrimary} style={{ flex: 1 }} testID={`source-action-${s.id}`} /> : null}
           {onSettings ? <Button label="Réglages" compact variant="secondary" onPress={onSettings} testID={`source-settings-${s.id}`} /> : null}
         </View>
       ) : null}

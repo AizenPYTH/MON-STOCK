@@ -53,11 +53,12 @@ function source(over: Record<string, unknown> = {}) {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     organization_id: ORG,
     supplier_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-    name: "Refreshed Apples — page publique",
+    name: "Refreshed Apples — pages catalogue",
     source_type: "PUBLIC_WEB",
     base_url: "https://www.refreshedapples.com",
     country: "NL",
-    config: { adapter: "sitemap-jsonld" },
+    // page publique PARCOURABLE : URLs de catalogue configurées
+    config: { urls: ["https://www.refreshedapples.com/collections/iphone"], parser: "jsonld" },
     automated_access_confirmed: true,
     sync_frequency: "daily",
     status: "active",
@@ -95,6 +96,18 @@ describe("santé des sources : échecs, alerte, rétablissement", () => {
 });
 
 describe("synchronisation d'une source", () => {
+  it("source interrogée en direct (sitemap-jsonld sans URL, cas réel de production) : jamais planifiée, jamais comptée en échec", async () => {
+    const live = source({ id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "Brico-phone — recherche en direct", config: { adapter: "sitemap-jsonld", library_key: "brico-phone" }, sync_frequency: "daily", next_run_at: "2026-10-13T09:00:00Z" });
+    db.tables.supplier_sources = [live];
+    expect(await runScheduledSources(NOW, db.client)).toEqual([]);
+    expect(crawl).not.toHaveBeenCalled();
+    expect(db.tables.supplier_sources![0]).toMatchObject({ consecutive_failures: 0, last_error: null });
+    await expect(syncSourceNow(ctx(), live.id, db.client, NOW)).rejects.toMatchObject({ code: "VALIDATION", message: expect.stringMatching(/en direct/) });
+    await expect(setSourceSchedule(ctx(), { sourceId: live.id, frequency: "daily" }, db.client, NOW)).rejects.toMatchObject({ code: "VALIDATION" });
+    const [dto] = await listSourcesForOrg(ctx(), db.client);
+    expect(dto).toMatchObject({ kind: "live_search", methodLabel: "Recherche en direct (page publique)", schedulable: false, canSyncNow: false, primaryAction: "configure" });
+  });
+
   it("planifiée : un échec n'efface aucune offre, reprise dans 15 min ; une synchro déjà en cours n'est pas un échec", async () => {
     db.tables.sourcing_offers = [{ id: "o1", organization_id: ORG, source_id: source().id, status: "active", available_quantity: 7 }];
     crawl.mockResolvedValueOnce({ status: "failed", message: "Délai dépassé", runId: "r1" });

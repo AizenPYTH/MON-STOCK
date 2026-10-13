@@ -739,7 +739,7 @@ export interface SourceOverviewDTO {
   supplierId: string;
   supplierName: string | null;
   country: string | null;
-  kind: "file_import" | "public_web" | "remote_feed" | "connection" | "manual";
+  kind: "file_import" | "public_web" | "live_search" | "remote_feed" | "connection" | "manual";
   methodLabel: string;
   status: "connected" | "to_configure" | "manual_import" | "running" | "error" | "disabled";
   statusLabel: string;

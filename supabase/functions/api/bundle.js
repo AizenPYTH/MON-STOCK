@@ -21939,21 +21939,30 @@ async function recordSourceOutcome(admin, input) {
 
 // src/services/sourcing/source-sync.ts
 init_catalog_import();
+init_registry2();
 var log21 = createLogger("SOURCE_SYNC");
 var MANUAL_SYNC_COOLDOWN_MS = 2 * 6e4;
 var SOURCE_COLUMNS = "id, organization_id, supplier_id, name, source_type, base_url, country, config, automated_access_confirmed, sync_frequency, status, last_sync_at, last_successful_sync_at, last_error, next_run_at, consecutive_failures";
 function kindOf(s, hasUrlFeed, hasConnection) {
   const kind = s.config?.kind;
   if (kind === CATALOG_IMPORT_KIND) return "file_import";
-  if (s.source_type === "PUBLIC_WEB") return "public_web";
+  if (s.source_type === "PUBLIC_WEB") return isCrawlable(s.config) ? "public_web" : "live_search";
   if (hasConnection) return "connection";
   if (hasUrlFeed) return "remote_feed";
   if (s.source_type === "MANUAL") return "manual";
   return "file_import";
 }
+function isCrawlable(config) {
+  if (parseCrawlConfig(config).urls.length > 0) return true;
+  const key2 = adapterKeyOf(config);
+  const adapter = key2 ? getSourceAdapter(key2) : null;
+  return Boolean(adapter?.capabilities.catalog && adapter.fetchCatalog);
+}
+var LIVE_SEARCH_MESSAGE = "Source interrog\xE9e en direct \xE0 chaque recherche : ses offres se mettent \xE0 jour quand vous cherchez un produit, il n'y a rien \xE0 synchroniser.";
 var METHOD_LABEL = {
   file_import: "Import de fichier",
   public_web: "Page publique (robots.txt v\xE9rifi\xE9)",
+  live_search: "Recherche en direct (page publique)",
   remote_feed: "Flux distant autoris\xE9",
   connection: "API fournisseur (compte)",
   manual: "Saisie manuelle"
@@ -21980,6 +21989,7 @@ async function runSourceOnce(admin, source, kind, trigger, createdBy) {
     const r = await syncSupplierConnection(conns[0].id, { trigger, createdBy, admin });
     return { ok: r.status === "success" || r.status === "partial", status: r.status, message: r.message, runIds: r.runId ? [r.runId] : [] };
   }
+  if (kind === "live_search") return { ok: false, status: "refused", message: LIVE_SEARCH_MESSAGE, runIds: [] };
   return { ok: false, status: "refused", message: kind === "file_import" ? "Source aliment\xE9e par fichier : importez la nouvelle liste du fournisseur (Sourcing \u2192 Importer)." : "Source manuelle : aucune synchronisation automatique.", runIds: [] };
 }
 async function sourceContext(admin, ids) {
@@ -21996,6 +22006,7 @@ async function syncSourceNow(ctx, sourceId, admin = createAdminSupabaseClient(),
   if (source.last_sync_at && now.getTime() - new Date(source.last_sync_at).getTime() < MANUAL_SYNC_COOLDOWN_MS) throw new AppError("RATE_LIMITED", "Synchronisation lanc\xE9e il y a moins de 2 minutes : patientez un peu.");
   const { urlFeeds, connections } = await sourceContext(admin, [source.id]);
   const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+  if (kind === "live_search") throw new AppError("VALIDATION", LIVE_SEARCH_MESSAGE);
   if (kind === "file_import" || kind === "manual") throw new AppError("VALIDATION", kind === "file_import" ? "Cette source est aliment\xE9e par fichier : importez la nouvelle liste du fournisseur." : "Source manuelle : rien \xE0 synchroniser.");
   let outcome;
   try {
@@ -22016,7 +22027,7 @@ async function runScheduledSources(now = /* @__PURE__ */ new Date(), admin = cre
   sources.sort((a, b) => (a.next_run_at ?? a.last_sync_at ?? "").localeCompare(b.next_run_at ?? b.last_sync_at ?? ""));
   for (const source of sources.slice(0, limit)) {
     const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
-    if (kind === "file_import" || kind === "manual") continue;
+    if (kind === "file_import" || kind === "manual" || kind === "live_search") continue;
     if (kind === "public_web" && !source.automated_access_confirmed) continue;
     let outcome;
     try {
@@ -22047,6 +22058,7 @@ async function setSourceSchedule(ctx, input, admin = createAdminSupabaseClient()
   const patch = {};
   if (input.frequency) {
     if (input.frequency !== "manual" && (kind === "file_import" || kind === "manual")) throw new AppError("VALIDATION", "Une source aliment\xE9e par fichier ne se synchronise pas automatiquement : demandez au fournisseur un flux (URL CSV / XML) ou une API.");
+    if (input.frequency !== "manual" && kind === "live_search") throw new AppError("VALIDATION", LIVE_SEARCH_MESSAGE);
     if (input.frequency !== "manual" && kind === "public_web" && !source.automated_access_confirmed) throw new AppError("VALIDATION", "Acc\xE8s automatis\xE9 non attest\xE9 pour cette page publique.");
     patch.sync_frequency = input.frequency;
     patch.next_run_at = input.frequency === "manual" ? null : now.toISOString();
