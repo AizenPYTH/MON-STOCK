@@ -28,7 +28,7 @@ function wrap(node: React.ReactElement) {
 
 const o = (id: string, title: string, price: number, over: Record<string, unknown> = {}) => ({ id, title, price, currency: "EUR", priceConverted: price, taxType: "unknown", stock: "in_stock", quantity: null, url: `https://example.test/${id}`, seenAt: "2026-10-13T16:10:00Z", ...over });
 
-it("affiche « Chez <fournisseur> » puis ses produits et prix, fournisseur par fournisseur", async () => {
+it("affiche tous les résultats du moins cher au plus cher, avec le fournisseur ; un appui ouvre la page du produit", async () => {
   mockCallApi.mockResolvedValue({
     query: "iPhone 15 Pro",
     currency: "EUR",
@@ -52,13 +52,20 @@ it("affiche « Chez <fournisseur> » puis ses produits et prix, fournisseur par 
   fireEvent.press(screen.getByTestId("supplier-search"));
   await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
   expect(screen.getByText(/4 résultats chez 2 fournisseurs pour « iPhone 15 Pro »/)).toBeTruthy();
-  expect(screen.getByText("Chez Brico-phone")).toBeTruthy();
-  expect(screen.getByText("Chez Refreshed Apples")).toBeTruthy();
-  expect(screen.getByText("Verre trempé iPhone 15 Pro")).toBeTruthy();
-  expect(screen.getByText(/7,90/)).toBeTruthy();
-  expect(screen.getByText(/550,00/)).toBeTruthy();
-  expect(screen.getAllByText(/En rupture/).length).toBe(1);
+  // ordre : 1,15 € (converti) < 7,90 < 369,90 < 550
+  const titles = screen.getAllByText(/iPhone 15 Pro/).map((n) => n.props.children).filter((t) => typeof t === "string" && t !== "iPhone 15 Pro");
+  expect(titles).toEqual(["Lepení pod baterii iPhone 15 Pro", "Verre trempé iPhone 15 Pro", "Ecran iPhone 15 Pro - Origine Apple", "iPhone 15 Pro Used - 128 GB / Mixed / A/B Grade"]);
+  expect(screen.getAllByText("Chez Brico-phone")).toHaveLength(2);
+  expect(screen.getAllByText("Chez Refreshed Apples")).toHaveLength(2);
   expect(screen.getByText(/≈ 1,15/)).toBeTruthy();
+  expect(screen.getAllByText(/En rupture/).length).toBe(1);
+  fireEvent.press(screen.getByLabelText(/Verre trempé iPhone 15 Pro, .*chez Brico-phone/));
+  const { openBrowserAsync } = jest.requireMock("expo-web-browser");
+  expect(openBrowserAsync).toHaveBeenCalledWith("https://example.test/1");
+  // vue par fournisseur
+  fireEvent.press(screen.getByText("Par fournisseur"));
+  expect(screen.getByText(/^Chez Brico-phone$/)).toBeTruthy();
+  expect(screen.getByText(/550,00/)).toBeTruthy();
   expect(screen.getByText(/Servisní díly \(n'a pas répondu\)/)).toBeTruthy();
   expect(mockCallApi).toHaveBeenCalledWith("/suppliers/search", expect.objectContaining({ query: { q: "iPhone 15 Pro" } }));
 });

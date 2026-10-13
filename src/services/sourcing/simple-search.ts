@@ -5,9 +5,9 @@ import { createLogger } from "@/lib/logger";
 import { parseQuery } from "@/domain/sourcing/query-parser";
 import { runLiveSearch } from "@/services/sourcing/live-search";
 import type { LiveSearchSummary } from "@/services/sourcing/live-search.types";
-import type { SimpleOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO } from "@/features/mobile-api/contract";
+import type { SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO } from "@/features/mobile-api/contract";
 
-export type { SimpleOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO };
+export type { SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO };
 
 /**
  * Recherche « Fournisseurs » simple : on interroge les fournisseurs en direct, puis on liste
@@ -88,6 +88,23 @@ export function groupBySupplier(rows: OfferRow[], perSupplier = SIMPLE_SEARCH_PE
   return out.sort((a, b) => key(a.offers[0]!) - key(b.offers[0]!) || a.supplierName.localeCompare(b.supplierName));
 }
 
+/**
+ * Motif ILIKE d'un mot, insensible aux accents : chaque voyelle (et « c », pour « ç ») devient
+ * le joker « _ » (« ecran » → « %_cr_n% » trouve « Écran »). Le contrôle exact suit en mémoire.
+ */
+export function ilikePattern(token: string): string {
+  return `%${token.replace(/[^a-z0-9+]/g, "").replace(/[aeiouyc]/g, "_")}%`;
+}
+
+export const SIMPLE_SEARCH_MAX_OFFERS = 400;
+
+/** Toutes les offres, du moins cher au plus cher (prix converti dans la devise de l'organisation ; prix inconnu en dernier). Pur. */
+export function byPrice(rows: OfferRow[], max = SIMPLE_SEARCH_MAX_OFFERS): SimpleRankedOfferDTO[] {
+  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
+  const key = (o: SimpleOfferDTO) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
+  return all.sort((a, b) => key(a) - key(b) || a.title.localeCompare(b.title)).slice(0, max);
+}
+
 async function withBudget<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -121,22 +138,25 @@ export async function simpleSupplierSearch(
     log.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
   }
 
-  // 2. Offres actives enregistrées qui contiennent tous les mots de la recherche.
-  const { data, error } = await ctx.supabase
+  // 2. Offres actives enregistrées qui contiennent tous les mots de la recherche : filtre en base
+  //    (insensible aux accents grâce aux jokers), puis contrôle exact mot par mot.
+  let offersQuery = ctx.supabase
     .from("sourcing_offers")
     .select("id, title_original, original_price, original_currency, normalized_price, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, supplier:suppliers(name, country)")
     .eq("organization_id", ctx.organization.id)
-    .eq("status", "active")
-    .order("last_seen_at", { ascending: false })
-    .limit(SCAN_LIMIT);
+    .eq("status", "active");
+  for (const tok of tokens) offersQuery = offersQuery.ilike("title_original", ilikePattern(tok));
+  const { data, error } = await offersQuery.order("normalized_price", { ascending: true, nullsFirst: false }).limit(SCAN_LIMIT);
   if (error) throw fromPostgrestError(error);
   const rows = ((data ?? []) as unknown as OfferRow[]).filter((r) => r.title_original && matchesQuery(r.title_original, tokens));
   const suppliers = groupBySupplier(rows);
+  const offers = byPrice(rows);
 
   return {
     query,
     currency: ctx.organization.default_currency,
     total: rows.length,
+    offers,
     suppliers,
     checked: (summary?.sources ?? []).map((s) => ({ supplierName: s.supplierName, ok: s.status === "ok" || s.status === "cached", found: s.found, message: s.status === "ok" || s.status === "cached" ? null : s.message })),
     partial,

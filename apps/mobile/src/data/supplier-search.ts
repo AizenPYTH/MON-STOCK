@@ -1,7 +1,7 @@
 import type { SimpleSearchDTO } from "@/features/mobile-api/contract";
 import { callApi } from "~/lib/api";
 
-export type { SimpleOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO } from "@/features/mobile-api/contract";
+export type { SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO } from "@/features/mobile-api/contract";
 
 /** Recherche « Fournisseurs » : offres trouvées chez chaque fournisseur, du moins cher au plus cher. */
 export function searchSuppliers(organizationId: string, q: string): Promise<SimpleSearchDTO> {

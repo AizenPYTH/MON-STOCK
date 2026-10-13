@@ -1049,6 +1049,13 @@ export interface SimpleOfferDTO {
   seenAt: string | null;
 }
 
+/** Offre dans la liste « du moins cher au plus cher », tous fournisseurs confondus. */
+export interface SimpleRankedOfferDTO extends SimpleOfferDTO {
+  supplierId: string;
+  supplierName: string;
+  country: string | null;
+}
+
 export interface SimpleSupplierResultDTO {
   supplierId: string;
   supplierName: string;
@@ -1061,6 +1068,8 @@ export interface SimpleSearchDTO {
   query: string;
   currency: string;
   total: number;
+  /** toutes les offres trouvées, du moins cher au plus cher (prix converti ; au plus 400) */
+  offers: SimpleRankedOfferDTO[];
   suppliers: SimpleSupplierResultDTO[];
   /** fournisseurs interrogés en direct pour cette recherche */
   checked: { supplierName: string; ok: boolean; found: number; message: string | null }[];

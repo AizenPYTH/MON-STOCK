@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { ExternalLink, Search, Truck } from "lucide-react-native";
 import { useSupplierSearch } from "~/data/hooks";
-import { STOCK_TEXT, type SimpleOfferDTO, type SimpleSupplierResultDTO } from "~/data/supplier-search";
+import { STOCK_TEXT, type SimpleOfferDTO, type SimpleRankedOfferDTO, type SimpleSearchDTO, type SimpleSupplierResultDTO } from "~/data/supplier-search";
 import { fontFamily } from "~/theme/typography";
 import { userMessage } from "~/lib/errors";
 import { formatMoney, formatNumber } from "~/lib/format";
@@ -14,9 +14,19 @@ import { color, radius, space } from "~/theme/tokens";
 
 const EXAMPLES = ["iPhone 13", "iPhone 15 Pro", "Écran iPhone 12", "Batterie iPhone 11"];
 
+const PAGE = 60;
+
+/** Toutes les offres du moins cher au plus cher (serveur récent : `offers` ; sinon reconstitué). */
+export function rankedOffers(data: Pick<SimpleSearchDTO, "suppliers"> & { offers?: SimpleRankedOfferDTO[] }): SimpleRankedOfferDTO[] {
+  if (data.offers) return data.offers;
+  const key = (o: SimpleOfferDTO) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
+  return data.suppliers.flatMap((s) => s.offers.map((o) => ({ ...o, supplierId: s.supplierId, supplierName: s.supplierName, country: s.country }))).sort((a, b) => key(a) - key(b));
+}
+
 /**
- * Fournisseurs : on tape ce qu'on cherche, l'application interroge les fournisseurs et affiche
- * les résultats fournisseur par fournisseur, avec les prix, du moins cher au plus cher.
+ * Fournisseurs : on tape ce qu'on cherche ; tous les résultats s'affichent du moins cher au plus
+ * cher (tous fournisseurs confondus), et un appui ouvre la page du produit chez le fournisseur.
+ * Vue « par fournisseur » disponible.
  */
 export default function SuppliersScreen() {
   const params = useLocalSearchParams<{ q?: string }>();
@@ -32,10 +42,13 @@ export default function SuppliersScreen() {
     }
   }
   const search = useSupplierSearch(submitted);
+  const [view, setView] = useState<"price" | "supplier">("price");
+  const [shown, setShown] = useState(PAGE);
   const run = (q: string) => {
     const t = q.trim();
     setDraft(t);
     setSubmitted(t);
+    setShown(PAGE);
   };
 
   return (
@@ -87,15 +100,32 @@ export default function SuppliersScreen() {
             {formatNumber(search.data.total)} résultat{search.data.total > 1 ? "s" : ""} chez {search.data.suppliers.length} fournisseur{search.data.suppliers.length > 1 ? "s" : ""} pour « {search.data.query} »
           </Txt>
           {search.data.partial ? <Txt variant="label">Certains fournisseurs ont mis trop de temps à répondre : les résultats déjà connus sont affichés.</Txt> : null}
-          {search.data.suppliers.map((s) => (
-            <SupplierBlock key={s.supplierId} supplier={s} orgCurrency={search.data.currency} />
-          ))}
+          <View style={{ flexDirection: "row", gap: space[2] }}>
+            <FilterChip label="Du moins cher au plus cher" selected={view === "price"} onPress={() => setView("price")} />
+            <FilterChip label="Par fournisseur" selected={view === "supplier"} onPress={() => setView("supplier")} />
+          </View>
+          {view === "price" ? (
+            <PriceList offers={rankedOffers(search.data)} orgCurrency={search.data.currency} shown={shown} onMore={() => setShown((n) => n + PAGE)} />
+          ) : (
+            search.data.suppliers.map((s) => <SupplierBlock key={s.supplierId} supplier={s} orgCurrency={search.data.currency} />)
+          )}
           <Checked data={search.data} />
         </>
       )}
 
       <Button label="Gérer mes fournisseurs" variant="ghost" compact onPress={() => router.push("/sourcing-connections")} testID="manage-suppliers" />
     </Screen>
+  );
+}
+
+function PriceList({ offers, orgCurrency, shown, onMore }: { offers: SimpleRankedOfferDTO[]; orgCurrency: string; shown: number; onMore: () => void }) {
+  return (
+    <Card padded style={{ gap: space[2] }} accessibilityLabel={`${offers.length} résultats du moins cher au plus cher`}>
+      {offers.slice(0, shown).map((o, i) => (
+        <OfferRow key={o.id} offer={o} orgCurrency={orgCurrency} first={i === 0} supplierName={o.supplierName} />
+      ))}
+      {offers.length > shown ? <Button label={`Afficher ${Math.min(PAGE, offers.length - shown)} de plus (${offers.length - shown} restant${offers.length - shown > 1 ? "s" : ""})`} variant="ghost" compact onPress={onMore} testID="price-list-more" /> : null}
+    </Card>
   );
 }
 
@@ -119,7 +149,7 @@ function SupplierBlock({ supplier: s, orgCurrency }: { supplier: SimpleSupplierR
   );
 }
 
-function OfferRow({ offer: o, orgCurrency, first }: { offer: SimpleOfferDTO; orgCurrency: string; first: boolean }) {
+function OfferRow({ offer: o, orgCurrency, first, supplierName }: { offer: SimpleOfferDTO; orgCurrency: string; first: boolean; supplierName?: string }) {
   const link = safeExternalUrl(o.url);
   const price = o.price !== null && o.currency ? formatMoney(o.price, o.currency) : "Prix non indiqué";
   const converted = o.currency && o.currency !== orgCurrency && o.priceConverted !== null ? `≈ ${formatMoney(o.priceConverted, orgCurrency)}` : null;
@@ -129,13 +159,18 @@ function OfferRow({ offer: o, orgCurrency, first }: { offer: SimpleOfferDTO; org
       disabled={!link}
       onPress={() => link && void WebBrowser.openBrowserAsync(link).catch(() => {})}
       accessibilityRole={link ? "link" : undefined}
-      accessibilityLabel={`${o.title}, ${price}`}
+      accessibilityLabel={`${o.title}, ${price}${supplierName ? `, chez ${supplierName}` : ""}`}
       style={{ flexDirection: "row", gap: space[3], paddingTop: first ? 0 : space[2], borderTopWidth: first ? 0 : 1, borderTopColor: color.line }}
     >
       <View style={{ flex: 1, gap: 2 }}>
         <Txt variant="body" numberOfLines={2}>
           {o.title}
         </Txt>
+        {supplierName ? (
+          <Txt variant="label" numberOfLines={1} style={{ fontFamily: fontFamily[700] }}>
+            Chez {supplierName}
+          </Txt>
+        ) : null}
         <Txt variant="label" color={o.stock === "out_of_stock" ? color.dangerInk : o.stock === "in_stock" ? color.success : color.ink2}>
           {o.quantity !== null && o.stock !== "out_of_stock" ? `${formatNumber(o.quantity)} en stock` : STOCK_TEXT[o.stock]}
           {link ? "  ·  Voir chez le fournisseur" : ""}
