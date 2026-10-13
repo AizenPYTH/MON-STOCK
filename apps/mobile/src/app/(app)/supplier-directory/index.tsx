@@ -52,14 +52,14 @@ export default function SupplierDirectoryScreen() {
   if (directory.isPending)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Sourcing" />
+        <DetailHeader parentLabel="Fournisseurs" />
         <SkeletonList rows={6} thumb={false} />
       </Screen>
     );
   if (directory.isError)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Sourcing" />
+        <DetailHeader parentLabel="Fournisseurs" />
         <ErrorState description={userMessage(directory.error)} onRetry={() => void directory.refetch()} />
       </Screen>
     );
@@ -67,7 +67,7 @@ export default function SupplierDirectoryScreen() {
   const segments: Segment[] = ["all", "A_refurb", "B_parts", "C_liquidation", "D_distributor", "E_specialist"];
   return (
     <Screen refreshControl={<RefreshControl refreshing={directory.isRefetching} onRefresh={() => void directory.refetch()} />}>
-      <DetailHeader parentLabel="Sourcing" />
+      <DetailHeader parentLabel="Fournisseurs" />
       <View style={{ gap: 4 }}>
         <Txt variant="title2" accessibilityRole="header">
           Fournisseurs professionnels

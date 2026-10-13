@@ -1030,3 +1030,42 @@ export interface TrackingRefreshDTO {
   checked: boolean;
   message: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Recherche simple « Fournisseurs » (offres par fournisseur, du moins cher au plus cher)
+// ---------------------------------------------------------------------------
+
+export interface SimpleOfferDTO {
+  id: string;
+  title: string;
+  price: number | null;
+  currency: string | null;
+  /** prix converti dans la devise de l'organisation (taux BCE), null si conversion impossible */
+  priceConverted: number | null;
+  taxType: "ht" | "ttc" | "unknown";
+  stock: "in_stock" | "low" | "out_of_stock" | "unknown";
+  quantity: number | null;
+  url: string | null;
+  seenAt: string | null;
+}
+
+export interface SimpleSupplierResultDTO {
+  supplierId: string;
+  supplierName: string;
+  country: string | null;
+  total: number;
+  offers: SimpleOfferDTO[];
+}
+
+export interface SimpleSearchDTO {
+  query: string;
+  currency: string;
+  total: number;
+  suppliers: SimpleSupplierResultDTO[];
+  /** fournisseurs interrogés en direct pour cette recherche */
+  checked: { supplierName: string; ok: boolean; found: number; message: string | null }[];
+  /** la recherche en direct n'a pas fini à temps : résultats déjà enregistrés uniquement */
+  partial: boolean;
+  durationMs: number;
+}
+

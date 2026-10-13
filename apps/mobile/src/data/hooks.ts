@@ -30,6 +30,7 @@ import {
   type ProductEditInput,
   type SkuEditInput,
 } from "~/data/products";
+import { searchSuppliers } from "~/data/supplier-search";
 import { createRemoteFeed, fetchImportJob, fetchImportJobs, fetchSources, previewRemoteFeed, scheduleSource, syncSource } from "~/data/sourcing-b2b";
 
 /** Toutes les clés commencent par l'organisation : changer d'organisation ne mélange jamais les données. */
@@ -526,4 +527,11 @@ export function useDeleteParcel() {
 export function useOrdersForLink(q: string) {
   const orgId = useOrgId();
   return useQuery({ queryKey: [orgId, "tools", "orders-link", q], queryFn: () => fetchRecentOrdersForLink(requireSupabase(), orgId, q), staleTime: 60_000 });
+}
+
+/** Recherche « Fournisseurs » (lancée à la validation, gardée 5 min pour la même recherche). */
+export function useSupplierSearch(q: string) {
+  const orgId = useOrgId();
+  const query = q.trim();
+  return useQuery({ queryKey: [orgId, "supplier-search", query.toLowerCase()], queryFn: () => searchSuppliers(orgId, query), enabled: query.length >= 2, staleTime: 5 * 60_000, retry: false });
 }

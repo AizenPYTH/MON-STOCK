@@ -8,6 +8,7 @@
  * les MÊMES services que le web (aucune logique dupliquée) :
  *
  *   GET  /api/health                      état de configuration (aucun secret)
+ *   GET  /api/suppliers/search?q=…        recherche simple « Fournisseurs » : offres par fournisseur, du moins cher au plus cher
  *   GET  /api/sourcing/search?q=…         recherche d'offres (sources connectées en direct + offres stockées)
  *   GET  /api/sourcing/status             état des sources de l'organisation
  *   GET  /api/sourcing/library            bibliothèque de sources (catalogue + état d'activation)
@@ -83,6 +84,7 @@ import { buildRadar, buildRadarOffer, radarSettingsSchema, saveCostSettings } fr
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
 import { listSourcesForOrg, setSourceSchedule, sourceScheduleSchema, syncSourceNow } from "@/services/sourcing/source-sync";
+import { simpleSupplierSearch } from "@/services/sourcing/simple-search";
 import { createRemoteFeed, previewRemoteFeed, remoteFeedCreateSchema, remoteFeedPreviewSchema } from "@/services/sourcing/remote-feeds";
 import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
 import { synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
@@ -307,6 +309,7 @@ export async function route(request: Request): Promise<Response> {
         });
       }
     }
+    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request), parseQuery(request, z.object({ q: z.string().trim().min(1).max(120) })).q));
     if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request), parseQuery(request, sourcingSearchQuerySchema)));
     if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request)));
     if (m === "GET" && path === "/sourcing/library") return handle(async () => sourceLibrary(await requireMobileOrgContext(request)));

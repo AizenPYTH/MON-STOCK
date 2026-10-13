@@ -12,7 +12,7 @@ function tabIcon(Icon: LucideIcon) {
 }
 
 /**
- * 5 onglets (handoff v3) : Aujourd'hui · Stock · Ventes · Sourcing · Outils, barre ancrée. Réglages et Diagnostic passent par l'avatar (haut droite). Pas de badge numérique.
+ * 5 onglets (handoff v3) : Aujourd'hui · Stock · Ventes · Fournisseurs · Outils, barre ancrée. Réglages et Diagnostic passent par l'avatar (haut droite). Pas de badge numérique.
  */
 export default function TabsLayout() {
   return (
@@ -21,7 +21,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="today" options={{ title: "Aujourd'hui", tabBarIcon: tabIcon(Sun) }} />
         <Tabs.Screen name="stock" options={{ title: "Stock", tabBarIcon: tabIcon(Package) }} />
         <Tabs.Screen name="sales" options={{ title: "Ventes", tabBarIcon: tabIcon(Tag) }} />
-        <Tabs.Screen name="sourcing" options={{ title: "Sourcing", tabBarIcon: tabIcon(Truck) }} />
+        <Tabs.Screen name="sourcing" options={{ title: "Fournisseurs", tabBarIcon: tabIcon(Truck) }} />
         <Tabs.Screen name="tools" options={{ title: "Outils", tabBarIcon: tabIcon(Wrench), tabBarAccessibilityLabel: "Mes outils" }} />
       </Tabs>
     </InTabsContext.Provider>

@@ -41,7 +41,7 @@ export default function SourcingConnectionsScreen() {
   const toast = useToast();
   const [settings, setSettings] = useState<SourceOverviewDTO | null>(null);
 
-  const header = <DetailHeader parentLabel="Sourcing" title="Mes sources" sub="Statut réel, âge des données et synchronisation" />;
+  const header = <DetailHeader parentLabel="Fournisseurs" title="Mes sources" sub="Statut réel, âge des données et synchronisation" />;
   const actions = (
     <>
       {permissions.canWrite ? (

@@ -36,14 +36,14 @@ export default function RadarScreen() {
   if (radar.isPending)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Sourcing" />
+        <DetailHeader parentLabel="Fournisseurs" />
         <SkeletonList rows={6} thumb={false} />
       </Screen>
     );
   if (radar.isError)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Sourcing" />
+        <DetailHeader parentLabel="Fournisseurs" />
         <ErrorState description={userMessage(radar.error)} onRetry={() => void radar.refetch()} />
       </Screen>
     );
@@ -51,7 +51,7 @@ export default function RadarScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={radar.isRefetching} onRefresh={() => void Promise.all([radar.refetch(), matches.refetch()])} />}>
-      <DetailHeader parentLabel="Sourcing" right={<IconButton icon={<Settings2 size={18} color={color.ink} />} label="Paramètres de coûts" onPress={() => router.push("/radar/settings")} />} />
+      <DetailHeader parentLabel="Fournisseurs" right={<IconButton icon={<Settings2 size={18} color={color.ink} />} label="Paramètres de coûts" onPress={() => router.push("/radar/settings")} />} />
       <View style={{ gap: 4 }}>
         <Txt variant="title2" accessibilityRole="header">
           Radar d'opportunités
