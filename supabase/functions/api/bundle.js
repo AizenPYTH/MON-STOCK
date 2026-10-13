@@ -2520,6 +2520,12 @@ async function readBounded(res, maxBytes) {
   }
   return out.buffer;
 }
+async function gunzipBounded(buffer, maxBytes) {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.byteLength < 2 || bytes[0] !== 31 || bytes[1] !== 139) return buffer;
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return readBounded(new Response(stream), maxBytes);
+}
 async function fetchText(url, options) {
   let target = assertPublicHttpUrl(url);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS2;
@@ -2548,7 +2554,7 @@ async function fetchText(url, options) {
       break;
     }
     if (!res) throw new Error("Aucune r\xE9ponse.");
-    const buffer = await readBounded(res, maxBytes);
+    const buffer = await gunzipBounded(await readBounded(res, maxBytes), maxBytes);
     const contentType = res.headers.get("content-type");
     const charset = contentType?.match(/charset=([\w-]+)/i)?.[1] ?? null;
     return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString() };
@@ -5291,7 +5297,7 @@ function parseSitemapXml(xml) {
 function rankChildSitemaps(locs) {
   const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer/i;
   const score = (u) => /product|produit|(^|[^a-z])items?([^a-z]|$)/i.test(u) ? 0 : 1;
-  return locs.filter((u) => !skip.test(u) && !/\.gz($|\?)/i.test(u)).sort((a, b) => score(a) - score(b));
+  return locs.filter((u) => !skip.test(u)).sort((a, b) => score(a) - score(b));
 }
 function queryTokens(rawQuery) {
   return [...new Set(normalizeText(rawQuery).split(/[^a-z0-9]+/).filter((t) => t.length >= 2 && !STOP.has(t)))].slice(0, 8);
@@ -5350,26 +5356,41 @@ async function loadIndex(base, ctx, http, settings) {
   if (urls.length > 0) cache2.set(base, index);
   return index;
 }
+function productUrlScore(path) {
+  let score = 0;
+  if (/\/(products?|produkt[e]?|producto?s?|prodotto|prodotti|artikel|item|p)\//i.test(path) || /\/p\d+[,_-]/i.test(path)) score += 3;
+  if (/\.html?$/i.test(path)) score += 1;
+  const slug = path.split("/").filter(Boolean).pop() ?? "";
+  if (slug.split(/[-_]/).length >= 3) score += 1;
+  if (/\d/.test(slug)) score += 1;
+  if (/^\/?k\d+,/i.test(slug) || /\/k\d+,/i.test(path)) score -= 6;
+  if (SERVICE_PAGE_RE.test(path)) score -= 5;
+  if (slug.length < 10 && !/\d/.test(slug)) score -= 1;
+  return score;
+}
 function productLikeUrls(urls, base) {
   const host = new URL(base).host;
-  return urls.filter((u) => {
+  const kept = [];
+  urls.forEach((u, i) => {
     try {
       const x = new URL(u);
-      if (x.host !== host) return false;
+      if (x.host !== host) return;
       const path = x.pathname.replace(/\/+$/, "");
-      if (path === "" || NON_PRODUCT_RE.test(path)) return false;
-      return !/\.(jpe?g|png|webp|gif|pdf|xml)$/i.test(path);
+      if (path === "" || NON_PRODUCT_RE.test(path) || /\.(jpe?g|png|webp|gif|pdf|xml)$/i.test(path)) return;
+      const score = productUrlScore(path);
+      if (score <= -3) return;
+      kept.push({ url: u, score, i });
     } catch {
-      return false;
     }
   });
+  return kept.sort((a, b) => b.score - a.score || a.i - b.i).map((k) => k.url);
 }
 function allowedByRobots(robots, userAgent, url) {
   if (!robots) return true;
   const u = new URL(url);
   return evaluateRobots(robots, userAgent, u.pathname + u.search).allowed;
 }
-var SITEMAP_MAX_CHILDREN, SITEMAP_MAX_URLS, SITEMAP_DEFAULT_PAGES, SITEMAP_CACHE_TTL_MS, cache2, STOP, NON_PRODUCT_RE, SITEMAP_CATALOG_PAGES, sitemapJsonLdAdapter;
+var SITEMAP_MAX_CHILDREN, SITEMAP_MAX_URLS, SITEMAP_DEFAULT_PAGES, SITEMAP_CACHE_TTL_MS, cache2, STOP, NON_PRODUCT_RE, SERVICE_PAGE_RE, SITEMAP_CATALOG_PAGES, sitemapJsonLdAdapter;
 var init_sitemap_jsonld = __esm({
   "src/integrations/sourcing/sitemap-jsonld/index.ts"() {
     "use strict";
@@ -5386,6 +5407,7 @@ var init_sitemap_jsonld = __esm({
     cache2 = /* @__PURE__ */ new Map();
     STOP = /* @__PURE__ */ new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
     NON_PRODUCT_RE = /\/(blog|blogs|news|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
+    SERVICE_PAGE_RE = /^\/?([a-z]{2}\/)?(betaling|verzending|algemene-voorwaarden|privacy[\w-]*|cookies?[\w-]*|about[\w-]*|over-ons|chi-siamo|qui-sommes-nous|livraison|paiement|cgv|mentions-legales|impressum|datenschutz|agb|versand|zahlung|contact-us|kontakt|service|grading|process|stock-lists|[\w-]*application-form)(\/|$)/i;
     SITEMAP_CATALOG_PAGES = 8;
     sitemapJsonLdAdapter = {
       key: "sitemap-jsonld",
@@ -5449,6 +5471,7 @@ var init_sitemap_jsonld = __esm({
         const base = trimSlash(config.baseUrl);
         const http = createAdapterHttp(ctx);
         const index = await loadIndex(base, ctx, http, config.settings);
+        if (index.urls.length === 0) throw new Error("Plan du site (sitemap) introuvable ou vide : catalogue non lisible de cette fa\xE7on.");
         const urls = productLikeUrls(index.urls, base).filter((u) => allowedByRobots(index.robots, ctx.userAgent, u));
         const start = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);
         const size = settingInt(config.settings, "catalog_pages", SITEMAP_CATALOG_PAGES, 1, 30);

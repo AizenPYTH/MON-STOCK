@@ -132,6 +132,18 @@ async function readBounded(res: Response, maxBytes: number): Promise<ArrayBuffer
   return out.buffer;
 }
 
+/**
+ * Fichier compressé gzip publié tel quel (ex. « sitemap.xml.gz ») : décompressé en mémoire, avec la
+ * même limite de taille sur le contenu décompressé (protection contre les « bombes » gzip).
+ * Le décodage HTTP `Content-Encoding` est, lui, déjà fait par fetch.
+ */
+export async function gunzipBounded(buffer: ArrayBuffer, maxBytes: number): Promise<ArrayBuffer> {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.byteLength < 2 || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return buffer;
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return readBounded(new Response(stream), maxBytes);
+}
+
 export async function fetchText(url: string, options: FetchTextOptions & { encoding?: string | null; resolver?: (host: string) => Promise<Array<{ address: string }>> }): Promise<FetchTextResult> {
   let target = assertPublicHttpUrl(url);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -161,7 +173,7 @@ export async function fetchText(url: string, options: FetchTextOptions & { encod
       break;
     }
     if (!res) throw new Error("Aucune réponse.");
-    const buffer = await readBounded(res, maxBytes);
+    const buffer = await gunzipBounded(await readBounded(res, maxBytes), maxBytes);
     const contentType = res.headers.get("content-type");
     const charset = contentType?.match(/charset=([\w-]+)/i)?.[1] ?? null;
     return { ok: res.ok, status: res.status, text: decodeBytes(buffer, options.encoding ?? charset), contentType, bytes: buffer.byteLength, finalUrl: target.toString() };

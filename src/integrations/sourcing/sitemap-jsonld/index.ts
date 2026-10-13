@@ -53,7 +53,7 @@ export function rankChildSitemaps(locs: string[]): string[] {
   const skip = /image|video|blog|post|article|news|cms|categor|page-sitemap|tag|author|brand|manufacturer/i;
   // « sitemap » contient les lettres « item » : mots entiers uniquement.
   const score = (u: string) => (/product|produit|(^|[^a-z])items?([^a-z]|$)/i.test(u) ? 0 : 1);
-  return locs.filter((u) => !skip.test(u) && !/\.gz($|\?)/i.test(u)).sort((a, b) => score(a) - score(b));
+  return locs.filter((u) => !skip.test(u)).sort((a, b) => score(a) - score(b));
 }
 
 const STOP = new Set(["de", "du", "des", "la", "le", "les", "en", "et", "pour", "avec", "go", "gb", "to", "tb", "reconditionne", "reconditionnee", "occasion", "neuf", "grade", "lot", "lots", "gros", "pas", "cher", "prix", "bas"]);
@@ -124,19 +124,45 @@ async function loadIndex(base: string, ctx: AdapterRunContext, http: ReturnType<
 /** Pages qui ne sont manifestement pas des fiches produit (catégories, contenus, comptes). */
 const NON_PRODUCT_RE = /\/(blog|blogs|news|actualites?|category|categories|categorie|categoria|kategorie|kategoria|collections?\/?$|tag|tags|pages?|cms|content|brand|brands|marques?|account|compte|cart|panier|checkout|contact|faq|help|aide|search|recherche|wishlist|login|register)(\/|$)/i;
 
+/** Pages de service courantes (paiement, livraison, CGV…) dans plusieurs langues. */
+const SERVICE_PAGE_RE = /^\/?([a-z]{2}\/)?(betaling|verzending|algemene-voorwaarden|privacy[\w-]*|cookies?[\w-]*|about[\w-]*|over-ons|chi-siamo|qui-sommes-nous|livraison|paiement|cgv|mentions-legales|impressum|datenschutz|agb|versand|zahlung|contact-us|kontakt|service|grading|process|stock-lists|[\w-]*application-form)(\/|$)/i;
+
+/**
+ * Score « fiche produit » d'une URL (sans la télécharger) : segment produit explicite, fichier
+ * .html, slug de plusieurs mots, chiffres (modèle, capacité) ; pénalise les pages de service et
+ * les catégories numérotées (« /k882,huawei.html »).
+ */
+export function productUrlScore(path: string): number {
+  let score = 0;
+  if (/\/(products?|produkt[e]?|producto?s?|prodotto|prodotti|artikel|item|p)\//i.test(path) || /\/p\d+[,_-]/i.test(path)) score += 3;
+  if (/\.html?$/i.test(path)) score += 1;
+  const slug = path.split("/").filter(Boolean).pop() ?? "";
+  if (slug.split(/[-_]/).length >= 3) score += 1;
+  if (/\d/.test(slug)) score += 1;
+  if (/^\/?k\d+,/i.test(slug) || /\/k\d+,/i.test(path)) score -= 6;
+  if (SERVICE_PAGE_RE.test(path)) score -= 5;
+  if (slug.length < 10 && !/\d/.test(slug)) score -= 1;
+  return score;
+}
+
 export function productLikeUrls(urls: string[], base: string): string[] {
   const host = new URL(base).host;
-  return urls.filter((u) => {
+  const kept: Array<{ url: string; score: number; i: number }> = [];
+  urls.forEach((u, i) => {
     try {
       const x = new URL(u);
-      if (x.host !== host) return false;
+      if (x.host !== host) return;
       const path = x.pathname.replace(/\/+$/, "");
-      if (path === "" || NON_PRODUCT_RE.test(path)) return false;
-      return !/\.(jpe?g|png|webp|gif|pdf|xml)$/i.test(path);
+      if (path === "" || NON_PRODUCT_RE.test(path) || /\.(jpe?g|png|webp|gif|pdf|xml)$/i.test(path)) return;
+      const score = productUrlScore(path);
+      if (score <= -3) return;
+      kept.push({ url: u, score, i });
     } catch {
-      return false;
+      // URL invalide ignorée
     }
   });
+  // ordre stable : les URLs les plus « produit » d'abord, puis l'ordre du plan du site
+  return kept.sort((a, b) => b.score - a.score || a.i - b.i).map((k) => k.url);
 }
 
 export const SITEMAP_CATALOG_PAGES = 8;
@@ -210,6 +236,7 @@ export const sitemapJsonLdAdapter: SourceAdapter = {
     const base = trimSlash(config.baseUrl);
     const http = createAdapterHttp(ctx);
     const index = await loadIndex(base, ctx, http, config.settings);
+    if (index.urls.length === 0) throw new Error("Plan du site (sitemap) introuvable ou vide : catalogue non lisible de cette façon.");
     const urls = productLikeUrls(index.urls, base).filter((u) => allowedByRobots(index.robots, ctx.userAgent, u));
     const start = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0);
     const size = settingInt(config.settings, "catalog_pages", SITEMAP_CATALOG_PAGES, 1, 30);

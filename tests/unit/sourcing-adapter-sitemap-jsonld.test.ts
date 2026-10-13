@@ -10,10 +10,10 @@ const productPage = (name: string, price: string, sku: string) =>
 beforeEach(() => clearSitemapCache());
 
 describe("adaptateur sitemap-jsonld", () => {
-  it("lit les <loc> d'un index et d'un urlset ; priorise les sitemaps produits, ignore images et .gz", () => {
+  it("lit les <loc> d'un index et d'un urlset ; priorise les sitemaps produits, ignore les images", () => {
     expect(parseSitemapXml(`<sitemapindex><sitemap><loc>${base}/sitemap-products-1.xml</loc></sitemap></sitemapindex>`)).toEqual({ kind: "index", locs: [`${base}/sitemap-products-1.xml`] });
     expect(parseSitemapXml(`<urlset><url><loc><![CDATA[${base}/a?x=1&amp;y=2]]></loc></url></urlset>`).locs).toEqual([`${base}/a?x=1&y=2`]);
-    expect(rankChildSitemaps([`${base}/sitemap-cms.xml`, `${base}/sitemap-images.xml`, `${base}/s-2.xml.gz`, `${base}/sitemap-misc.xml`, `${base}/sitemap-product.xml`])).toEqual([`${base}/sitemap-product.xml`, `${base}/sitemap-misc.xml`]);
+    expect(rankChildSitemaps([`${base}/sitemap-cms.xml`, `${base}/sitemap-images.xml`, `${base}/s-2.xml.gz`, `${base}/sitemap-misc.xml`, `${base}/sitemap-product.xml`])).toEqual([`${base}/sitemap-product.xml`, `${base}/s-2.xml.gz`, `${base}/sitemap-misc.xml`]);
   });
 
   it("sélection des fiches par les mots de la requête (au moins 2 mots, les plus précises d'abord)", () => {
