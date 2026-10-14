@@ -256,3 +256,16 @@ describe("produits hors service (relevé eBay du 14/10/2026)", () => {
     for (const t of ["Apple iPhone 13 - 128 Go - Bleu (Déverrouillé)", "Apple iPhone 13 128 Go Starlight débloqué excellent état 81 %", "iPhone 13 Used (HSO) - 128 GB / Black / B", "iPhone 13 128GB unlocked"]) expect(sig(t).damaged).toBe(false);
   });
 });
+
+describe("annonces multi-modèles (relevé eBay du 14/10/2026)", () => {
+  it("« Écran pour iPhone X XS XR 11 12 13 14… » n'est comparable à rien", () => {
+    const s = productSignature({ title: "Ecran Pour iPhone X XS XR 11 12 13 14 15 16 PRO MAX PLUS MINI LCD OLED +Outils", brand: "apple", model: "iphone 12" });
+    expect(s.multiModel).toBe(true);
+    expect(s.identified).toBe(false);
+    expect(productSignature({ title: "Protector de cristal templado completo Iphone 13 / 13 PRO / 14", brand: "apple", model: "iphone 13" }).multiModel).toBe(true);
+  });
+  it("un seul modèle (capacité, mini, pro, %) reste comparable", () => {
+    for (const t of ["Apple iPhone 13 128 Go Starlight débloqué excellent état 81 %", "Flex JC V1S para iPhone 13, 13 Mini", "Écran iPhone 12 Pro OLED", "iPhone 13 d’occasion - 512 Go / Blue / A+ (100% battery)"])
+      expect(productSignature({ title: t, brand: "apple", model: "iphone 13" }).multiModel).toBe(false);
+  });
+});

@@ -93,6 +93,8 @@ export interface ProductSignature {
   quality: string[];
   /** hors service, pour pièces, bloqué iCloud, « as is » : jamais comparé à un produit fonctionnel */
   damaged: boolean;
+  /** annonce couvrant plusieurs modèles (sélecteur de variante) : prix affiché = variante la moins chère */
+  multiModel: boolean;
   /** mots descriptifs restants (fonction de la pièce : « flash », « arrière », « nfc »…) */
   descriptors: string[];
   /** l'identification est-elle assez sûre pour comparer ? */
@@ -170,6 +172,15 @@ const DAMAGED_RE = wholeWordsRegex([
   "para piezas", "averiado", "averia", "roto", "rota", "no funciona", "per ricambi", "difettoso", "rotto", "guasto", "nefunkcni", "na dily", "poskozeny", "uszkodzony", "na czesci", "defekt", "kaputt",
 ]);
 
+/** Générations d'iPhone citées dans le titre (« iPhone X XS XR 11 12 13… » = annonce multi-modèles). */
+export function iphoneGenerations(normalizedTitle: string): string[] {
+  if (!/(^|[^a-z0-9])iphone/.test(normalizedTitle)) return [];
+  const after = normalizedTitle.slice(normalizedTitle.search(/(^|[^a-z0-9])iphone/));
+  const found = new Set<string>();
+  for (const m of after.matchAll(/(?:^|[^a-z0-9])(x|xs|xr|se|[4-9]|1[0-9])(?=$|[^a-z0-9])/g)) found.add(m[1]!);
+  return [...found];
+}
+
 export interface OfferIdentity {
   title: string;
   brand?: string | null;
@@ -206,8 +217,9 @@ export function productSignature(o: OfferIdentity): ProductSignature {
     kind,
     quality: kind === "device" ? [] : qualityOfNormalized(t),
     damaged: DAMAGED_RE.test(t),
+    multiModel: iphoneGenerations(t).length >= 2,
     descriptors: LOOSE_KINDS.has(kind) ? descriptorsOf(o.title, { model: modelKey, kind }) : [],
-    identified: Boolean(brand && model) && kind !== "lot",
+    identified: Boolean(brand && model) && kind !== "lot" && iphoneGenerations(t).length < 2,
   };
 }
 
@@ -360,6 +372,7 @@ export function analyzeDeal(offer: DealOfferInput, comparables: DealComparable[]
   if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) uncertainties.push("En rupture chez le fournisseur.");
   if (sig.condition === "used" || sig.condition === "refurbished") uncertainties.push(sig.grade ? `Produit d'occasion / reconditionné (grade ${sig.grade.toUpperCase()}) : état à vérifier.` : "Produit d'occasion / reconditionné sans grade précisé.");
   if (sig.kind === "lot") uncertainties.push("Prix de lot : non comparable à un prix unitaire.");
+  if (sig.multiModel) uncertainties.push("Annonce multi-modèles : le prix affiché est celui de la variante la moins chère.");
   if (sig.damaged) uncertainties.push("Produit hors service, pour pièces, bloqué ou vendu en l'état : jamais comparé à un produit fonctionnel.");
   if (offer.originalCurrency && offer.originalCurrency.toUpperCase() !== offer.orgCurrency.toUpperCase()) uncertainties.push(`Prix converti depuis ${offer.originalCurrency.toUpperCase()} (taux BCE) : frais de change possibles.`);
   const { freshness, ageDays } = freshnessOf(offer.lastSeenAt, now);
@@ -368,7 +381,7 @@ export function analyzeDeal(offer: DealOfferInput, comparables: DealComparable[]
 
   if (offer.price === null || offer.price <= 0) return { ...base, summary: "Prix fournisseur absent." };
   if (!sig.identified) {
-    return { ...base, summary: sig.kind === "lot" ? "Lot : pas de comparaison à l'unité possible." : "Produit pas assez identifié (marque ou modèle) pour une comparaison fiable." };
+    return { ...base, summary: sig.kind === "lot" ? "Lot : pas de comparaison à l'unité possible." : sig.multiModel ? "Annonce multi-modèles : pas de comparaison fiable." : "Produit pas assez identifié (marque ou modèle) pour une comparaison fiable." };
   }
 
   // --- prix de marché : annonces équivalentes de la place de marché, sinon autres fournisseurs

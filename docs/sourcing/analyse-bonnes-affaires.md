@@ -54,6 +54,8 @@ Deux offres ne sont comparées que si tous les points suivants sont identiques :
 7. **Jamais de produit hors service.** Un produit hors service, pour pièces, bloqué iCloud, vendu
    « as is » ou non testé n'est jamais comparé à un produit fonctionnel (mots-clés en plusieurs
    langues, mots entiers).
+8. **Jamais d'annonce multi-modèles.** Par exemple « Écran pour iPhone X XS XR 11 12 13 14… » : le
+   prix affiché est celui de la variante la moins chère du sélecteur.
 
 Corrections apportées après le test sur les données réelles du 14/10/2026 :
 

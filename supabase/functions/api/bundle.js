@@ -16374,6 +16374,13 @@ function overlap(a, b) {
   const inter = a.filter((w2) => sb.has(w2)).length;
   return inter / (a.length + b.length - inter);
 }
+function iphoneGenerations(normalizedTitle) {
+  if (!/(^|[^a-z0-9])iphone/.test(normalizedTitle)) return [];
+  const after = normalizedTitle.slice(normalizedTitle.search(/(^|[^a-z0-9])iphone/));
+  const found = /* @__PURE__ */ new Set();
+  for (const m of after.matchAll(/(?:^|[^a-z0-9])(x|xs|xr|se|[4-9]|1[0-9])(?=$|[^a-z0-9])/g)) found.add(m[1]);
+  return [...found];
+}
 function productSignature(o) {
   const stored = Boolean(o.brand && o.model);
   const n = stored ? null : normalizeProduct(o.title, { brand: o.brand ?? null, model: o.model ?? null, storage: o.storage ?? null, grade: o.grade ?? null, condition: o.condition ?? null });
@@ -16397,8 +16404,9 @@ function productSignature(o) {
     kind,
     quality: kind === "device" ? [] : qualityOfNormalized(t),
     damaged: DAMAGED_RE.test(t),
+    multiModel: iphoneGenerations(t).length >= 2,
     descriptors: LOOSE_KINDS.has(kind) ? descriptorsOf(o.title, { model: modelKey, kind }) : [],
-    identified: Boolean(brand && model) && kind !== "lot"
+    identified: Boolean(brand && model) && kind !== "lot" && iphoneGenerations(t).length < 2
   };
 }
 function isEquivalent(a, b) {
@@ -16442,6 +16450,7 @@ function analyzeDeal(offer, comparables, settings, own = null, now = /* @__PURE_
   if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) uncertainties.push("En rupture chez le fournisseur.");
   if (sig.condition === "used" || sig.condition === "refurbished") uncertainties.push(sig.grade ? `Produit d'occasion / reconditionn\xE9 (grade ${sig.grade.toUpperCase()}) : \xE9tat \xE0 v\xE9rifier.` : "Produit d'occasion / reconditionn\xE9 sans grade pr\xE9cis\xE9.");
   if (sig.kind === "lot") uncertainties.push("Prix de lot : non comparable \xE0 un prix unitaire.");
+  if (sig.multiModel) uncertainties.push("Annonce multi-mod\xE8les : le prix affich\xE9 est celui de la variante la moins ch\xE8re.");
   if (sig.damaged) uncertainties.push("Produit hors service, pour pi\xE8ces, bloqu\xE9 ou vendu en l'\xE9tat : jamais compar\xE9 \xE0 un produit fonctionnel.");
   if (offer.originalCurrency && offer.originalCurrency.toUpperCase() !== offer.orgCurrency.toUpperCase()) uncertainties.push(`Prix converti depuis ${offer.originalCurrency.toUpperCase()} (taux BCE) : frais de change possibles.`);
   const { freshness: freshness2, ageDays } = freshnessOf(offer.lastSeenAt, now);
@@ -16449,7 +16458,7 @@ function analyzeDeal(offer, comparables, settings, own = null, now = /* @__PURE_
   if (offer.marketplace) uncertainties.push("Annonce de place de march\xE9 (vendeur particulier ou professionnel) : garantie et facture \xE0 v\xE9rifier.");
   if (offer.price === null || offer.price <= 0) return { ...base, summary: "Prix fournisseur absent." };
   if (!sig.identified) {
-    return { ...base, summary: sig.kind === "lot" ? "Lot : pas de comparaison \xE0 l'unit\xE9 possible." : "Produit pas assez identifi\xE9 (marque ou mod\xE8le) pour une comparaison fiable." };
+    return { ...base, summary: sig.kind === "lot" ? "Lot : pas de comparaison \xE0 l'unit\xE9 possible." : sig.multiModel ? "Annonce multi-mod\xE8les : pas de comparaison fiable." : "Produit pas assez identifi\xE9 (marque ou mod\xE8le) pour une comparaison fiable." };
   }
   const equivalents = comparables.filter((c) => c.offerId !== offer.offerId && c.price !== null && c.price > 0 && isEquivalent(sig, c.signature ?? productSignature(c)));
   const marketPrices = trimOutliers(equivalents.filter((c) => c.marketplace).map((c) => c.price));
