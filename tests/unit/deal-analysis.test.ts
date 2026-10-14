@@ -269,3 +269,7 @@ describe("annonces multi-modèles (relevé eBay du 14/10/2026)", () => {
       expect(productSignature({ title: t, brand: "apple", model: "iphone 13" }).multiModel).toBe(false);
   });
 });
+
+it("« Batterie prime … réglages d'origine » (Brico-phone) n'est pas une batterie d'origine", () => {
+  expect(isEquivalent(productSignature({ title: "Batterie prime iPhone 11 réglages d'origine | Bricophone" }), productSignature({ title: "Batterie origine OEM Apple iPhone 11 (A2111 A2221 A2223) 3110 mAh Battery neuf" }))).toBe(false);
+});

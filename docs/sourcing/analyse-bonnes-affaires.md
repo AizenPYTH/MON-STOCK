@@ -94,3 +94,33 @@ Pénalités : −4 si la marge est provisoire, −5 si le marché est estimé su
 - Les paramètres de coûts se renseignent dans l'application : Radar → Paramètres (TVA, commission,
   paiement, expédition, emballage, retours, douane). Tant qu'ils sont vides, toutes les marges sont
   « provisoires » et aucune offre ne dépasse « Moyen ».
+
+## Vérification en production (14/10/2026, projet `ccywsegdowikeirbsfae`, organisation Snowolff)
+
+Contrôles exécutés par `/cron/deal-check` sur des recherches réelles, avec eBay France activé.
+
+| Recherche | Offres | Comparées à des équivalents eBay | Résultat |
+|---|---|---|---|
+| iPhone 13 | 270 | 12 | 4 « moyen » (marges provisoires de 3 à 16 %), 8 « non compétitif », 258 « données insuffisantes » |
+| Écran iPhone 12 | 32 | 0 | Annonces eBay multi-modèles écartées ; aucun équivalent fiable |
+| Batterie iPhone 11 | 26 | 6 | Batterie Brico-phone à 28,90 € « non compétitive » face aux batteries d'origine eBay (environ 21,50 €) |
+
+Chaque piège ci-dessous a été corrigé puis couvert par un test :
+
+| Piège constaté | Correction |
+|---|---|
+| Un iPhone « hors service » ressortait « intéressant » face à des téléphones fonctionnels | Détection des produits hors service, pour pièces, bloqués ou vendus en l'état |
+| Des annonces « Écran pour iPhone X … 16 » se comparaient entre elles | Exclusion des annonces multi-modèles |
+| « (100% battery) » classait un téléphone parmi les batteries | L'état de batterie d'un appareil n'est plus lu comme une batterie |
+| Les grades mixtes « A/B » étaient lus comme un grade A | Grades mixtes traités comme un assortiment |
+| « Batterie prime … réglages d'origine » était lue comme une batterie d'origine | « prime » reconnu comme une qualité compatible |
+| eBay n'était jamais interrogé (limite de 10 sources par recherche) | Places de marché interrogées en premier |
+
+Limites connues :
+
+- La plupart des offres restent « Données insuffisantes ». Les téléphones viennent presque tous d'un
+  seul grossiste (Refreshed Apples, dont les grades sont mixtes), et eBay ne renvoie qu'une trentaine
+  d'annonces par recherche.
+- Les paramètres de coûts ne sont pas encore renseignés : toutes les marges sont provisoires et
+  plafonnées à « Moyen ». **À compléter dans Radar → Paramètres.**
+- Le prix de marché eBay est le prix affiché, sans les frais de port de l'acheteur.

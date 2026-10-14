@@ -78,7 +78,7 @@ const QUALITY_WORDS: Array<{ key: string; words: string[] }> = [
   { key: "incell", words: ["incell", "in-cell", "in cell"] },
   { key: "tft", words: ["tft"] },
   { key: "original", words: ["original", "origine", "originale", "oryginalny", "originalni", "genuine", "oem", "service pack", "pulled", "recupere", "refurbished original"] },
-  { key: "compatible", words: ["compatible", "aftermarket", "zamiennik", "copy", "replacement", "remplacement", "repart"] },
+  { key: "compatible", words: ["compatible", "aftermarket", "zamiennik", "copy", "replacement", "remplacement", "repart", "prime", "reglages d origine"] },
   { key: "high_capacity", words: ["capacidad aumentada", "haute capacite", "high capacity", "grande capacite", "zvysena kapacita", "capacita maggiorata"] },
 ];
 
