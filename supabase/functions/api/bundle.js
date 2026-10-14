@@ -16396,6 +16396,7 @@ function productSignature(o) {
     grade,
     kind,
     quality: kind === "device" ? [] : qualityOfNormalized(t),
+    damaged: DAMAGED_RE.test(t),
     descriptors: LOOSE_KINDS.has(kind) ? descriptorsOf(o.title, { model: modelKey, kind }) : [],
     identified: Boolean(brand && model) && kind !== "lot"
   };
@@ -16403,6 +16404,7 @@ function productSignature(o) {
 function isEquivalent(a, b) {
   if (!a.identified || !b.identified) return false;
   if (a.brand !== b.brand || a.model !== b.model || a.kind !== b.kind) return false;
+  if (a.damaged || b.damaged) return false;
   if (a.kind === "lot") return false;
   if (a.quality.join(",") !== b.quality.join(",")) return false;
   if (a.kind === "device") {
@@ -16440,6 +16442,7 @@ function analyzeDeal(offer, comparables, settings, own = null, now = /* @__PURE_
   if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) uncertainties.push("En rupture chez le fournisseur.");
   if (sig.condition === "used" || sig.condition === "refurbished") uncertainties.push(sig.grade ? `Produit d'occasion / reconditionn\xE9 (grade ${sig.grade.toUpperCase()}) : \xE9tat \xE0 v\xE9rifier.` : "Produit d'occasion / reconditionn\xE9 sans grade pr\xE9cis\xE9.");
   if (sig.kind === "lot") uncertainties.push("Prix de lot : non comparable \xE0 un prix unitaire.");
+  if (sig.damaged) uncertainties.push("Produit hors service, pour pi\xE8ces, bloqu\xE9 ou vendu en l'\xE9tat : jamais compar\xE9 \xE0 un produit fonctionnel.");
   if (offer.originalCurrency && offer.originalCurrency.toUpperCase() !== offer.orgCurrency.toUpperCase()) uncertainties.push(`Prix converti depuis ${offer.originalCurrency.toUpperCase()} (taux BCE) : frais de change possibles.`);
   const { freshness: freshness2, ageDays } = freshnessOf(offer.lastSeenAt, now);
   if (freshness2 === "stale") uncertainties.push(`Prix relev\xE9 il y a ${ageDays} jours : \xE0 rev\xE9rifier.`);
@@ -16500,7 +16503,7 @@ function analyzeDeal(offer, comparables, settings, own = null, now = /* @__PURE_
   else if ((marginPercent ?? 0) >= 20 && (discountPercent ?? 0) >= 20 && reliable && offer.taxType !== "unknown") level = "very_good";
   else if ((marginPercent ?? 0) >= 10 && (discountPercent ?? 0) >= 8) level = "good";
   else level = "average";
-  if (provisional && level === "very_good") level = "good";
+  if (provisional && (level === "very_good" || level === "good")) level = "average";
   if (!reliable && level === "very_good") level = "good";
   let score = 0;
   score += Math.min(35, Math.max(0, marginPercent ?? 0) * (35 / 40));
@@ -16519,7 +16522,7 @@ function landedOnly(offer, settings, origin, country) {
 function comparableBucket(sig) {
   return sig.identified ? `${sig.brand}|${sig.model}|${sig.kind}` : null;
 }
-var KIND_WORDS, QUALITY_WORDS, escapeRe, wordsRegex, KIND_RES, QUALITY_RES, LOOSE_KINDS, DESCRIPTOR_OVERLAP_MIN, PART_WITH_STORAGE, FILLER, DEAL_LEVEL_LABEL, EU2, r22, MIN_MARKETPLACE_COMPARABLES, MIN_SUPPLIER_COMPARABLES;
+var KIND_WORDS, QUALITY_WORDS, escapeRe, wordsRegex, KIND_RES, QUALITY_RES, LOOSE_KINDS, DESCRIPTOR_OVERLAP_MIN, PART_WITH_STORAGE, FILLER, wholeWordsRegex, DAMAGED_RE, DEAL_LEVEL_LABEL, EU2, r22, MIN_MARKETPLACE_COMPARABLES, MIN_SUPPLIER_COMPARABLES;
 var init_deal_analysis = __esm({
   "src/domain/sourcing/deal-analysis.ts"() {
     "use strict";
@@ -16671,6 +16674,64 @@ var init_deal_analysis = __esm({
       "repuesto",
       "nahradni",
       "ricambio"
+    ]);
+    wholeWordsRegex = (words) => new RegExp(`(^|[^a-z0-9])(${words.map((w2) => escapeRe(normalizeText(w2))).join("|")})(?![a-z0-9])`);
+    DAMAGED_RE = wholeWordsRegex([
+      "hors service",
+      "hs",
+      "pour pieces",
+      "pour piece",
+      "pour pc",
+      "a reparer",
+      "en panne",
+      "ne fonctionne pas",
+      "ne s allume pas",
+      "defectueux",
+      "defectueuse",
+      "defaut",
+      "casse",
+      "cassee",
+      "casses",
+      "fissure",
+      "fissuree",
+      "fele",
+      "felee",
+      "for parts",
+      "for spares",
+      "spares",
+      "not working",
+      "faulty",
+      "broken",
+      "cracked",
+      "damaged",
+      "as is",
+      "asis",
+      "untested",
+      "non teste",
+      "icloud",
+      "bloque",
+      "bloquee",
+      "locked",
+      "sim lock",
+      "blacklist",
+      "blacklisted",
+      "para piezas",
+      "averiado",
+      "averia",
+      "roto",
+      "rota",
+      "no funciona",
+      "per ricambi",
+      "difettoso",
+      "rotto",
+      "guasto",
+      "nefunkcni",
+      "na dily",
+      "poskozeny",
+      "uszkodzony",
+      "na czesci",
+      "defekt",
+      "kaputt"
     ]);
     DEAL_LEVEL_LABEL = {
       very_good: "Tr\xE8s int\xE9ressant",

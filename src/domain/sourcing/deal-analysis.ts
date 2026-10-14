@@ -91,6 +91,8 @@ export interface ProductSignature {
   kind: ProductKind;
   /** qualités de pièce détectées (triées) */
   quality: string[];
+  /** hors service, pour pièces, bloqué iCloud, « as is » : jamais comparé à un produit fonctionnel */
+  damaged: boolean;
   /** mots descriptifs restants (fonction de la pièce : « flash », « arrière », « nfc »…) */
   descriptors: string[];
   /** l'identification est-elle assez sûre pour comparer ? */
@@ -160,6 +162,14 @@ function overlap(a: string[], b: string[]): number {
   return inter / (a.length + b.length - inter);
 }
 
+/** Produit hors service, pour pièces, bloqué ou vendu « en l'état » (FR, EN, ES, IT, CS, PL, DE). */
+const wholeWordsRegex = (words: string[]) => new RegExp(`(^|[^a-z0-9])(${words.map((w) => escapeRe(normalizeText(w))).join("|")})(?![a-z0-9])`);
+const DAMAGED_RE = wholeWordsRegex([
+  "hors service", "hs", "pour pieces", "pour piece", "pour pc", "a reparer", "en panne", "ne fonctionne pas", "ne s allume pas", "defectueux", "defectueuse", "defaut", "casse", "cassee", "casses", "fissure", "fissuree", "fele", "felee",
+  "for parts", "for spares", "spares", "not working", "faulty", "broken", "cracked", "damaged", "as is", "asis", "untested", "non teste", "icloud", "bloque", "bloquee", "locked", "sim lock", "blacklist", "blacklisted",
+  "para piezas", "averiado", "averia", "roto", "rota", "no funciona", "per ricambi", "difettoso", "rotto", "guasto", "nefunkcni", "na dily", "poskozeny", "uszkodzony", "na czesci", "defekt", "kaputt",
+]);
+
 export interface OfferIdentity {
   title: string;
   brand?: string | null;
@@ -195,6 +205,7 @@ export function productSignature(o: OfferIdentity): ProductSignature {
     grade,
     kind,
     quality: kind === "device" ? [] : qualityOfNormalized(t),
+    damaged: DAMAGED_RE.test(t),
     descriptors: LOOSE_KINDS.has(kind) ? descriptorsOf(o.title, { model: modelKey, kind }) : [],
     identified: Boolean(brand && model) && kind !== "lot",
   };
@@ -207,6 +218,7 @@ export function productSignature(o: OfferIdentity): ProductSignature {
 export function isEquivalent(a: ProductSignature, b: ProductSignature): boolean {
   if (!a.identified || !b.identified) return false;
   if (a.brand !== b.brand || a.model !== b.model || a.kind !== b.kind) return false;
+  if (a.damaged || b.damaged) return false;
   if (a.kind === "lot") return false;
   if (a.quality.join(",") !== b.quality.join(",")) return false;
   if (a.kind === "device") {
@@ -348,6 +360,7 @@ export function analyzeDeal(offer: DealOfferInput, comparables: DealComparable[]
   if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) uncertainties.push("En rupture chez le fournisseur.");
   if (sig.condition === "used" || sig.condition === "refurbished") uncertainties.push(sig.grade ? `Produit d'occasion / reconditionné (grade ${sig.grade.toUpperCase()}) : état à vérifier.` : "Produit d'occasion / reconditionné sans grade précisé.");
   if (sig.kind === "lot") uncertainties.push("Prix de lot : non comparable à un prix unitaire.");
+  if (sig.damaged) uncertainties.push("Produit hors service, pour pièces, bloqué ou vendu en l'état : jamais comparé à un produit fonctionnel.");
   if (offer.originalCurrency && offer.originalCurrency.toUpperCase() !== offer.orgCurrency.toUpperCase()) uncertainties.push(`Prix converti depuis ${offer.originalCurrency.toUpperCase()} (taux BCE) : frais de change possibles.`);
   const { freshness, ageDays } = freshnessOf(offer.lastSeenAt, now);
   if (freshness === "stale") uncertainties.push(`Prix relevé il y a ${ageDays} jours : à revérifier.`);
@@ -419,8 +432,8 @@ export function analyzeDeal(offer: DealOfferInput, comparables: DealComparable[]
   else if ((marginPercent ?? 0) >= 20 && (discountPercent ?? 0) >= 20 && reliable && offer.taxType !== "unknown") level = "very_good";
   else if ((marginPercent ?? 0) >= 10 && (discountPercent ?? 0) >= 8) level = "good";
   else level = "average";
-  // coûts manquants : la marge n'est pas confirmée → jamais « très intéressant »
-  if (provisional && level === "very_good") level = "good";
+  // coûts manquants : la marge « après les coûts » n'est pas établie → au mieux « moyen »
+  if (provisional && (level === "very_good" || level === "good")) level = "average";
   if (!reliable && level === "very_good") level = "good";
 
   // --- score de rentabilité : marge 35, écart au marché 25, fiabilité 20, disponibilité 20

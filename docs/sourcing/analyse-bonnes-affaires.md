@@ -51,6 +51,9 @@ Deux offres ne sont comparées que si tous les points suivants sont identiques :
      descriptifs proches (au moins 50 %). La nappe du flash n'est jamais comparée à celle de
      l'écouteur.
 6. **Jamais de lot.** Un prix de lot n'est pas comparable à un prix unitaire.
+7. **Jamais de produit hors service.** Un produit hors service, pour pièces, bloqué iCloud, vendu
+   « as is » ou non testé n'est jamais comparé à un produit fonctionnel (mots-clés en plusieurs
+   langues, mots entiers).
 
 Corrections apportées après le test sur les données réelles du 14/10/2026 :
 
@@ -65,8 +68,8 @@ Corrections apportées après le test sur les données réelles du 14/10/2026 :
 |---|---|
 | Non compétitif | Marge ≤ 0 après les coûts, ou coût au-dessus du marché |
 | Très intéressant | Marge ≥ 20 % **et** ≥ 20 % sous le marché **et** prix récent **et** pas de rupture **et** HT/TTC connu **et** tous les coûts renseignés |
-| Intéressant | Marge ≥ 10 % et ≥ 8 % sous le marché, ou « très intéressant » avec un coût manquant ou une offre peu fiable |
-| Moyen | Marge positive, sous les seuils |
+| Intéressant | Marge ≥ 10 % et ≥ 8 % sous le marché, ou « très intéressant » avec une offre peu fiable (rupture, prix ancien) |
+| Moyen | Marge positive sous les seuils, **ou marge provisoire** : un coût n'est pas renseigné, donc la marge « après les coûts » n'est pas établie |
 | Données insuffisantes | Pas d'équivalent fiable, pas de prix de revente, lot ou produit mal identifié |
 
 ## Score de rentabilité (0 à 100)
@@ -88,4 +91,4 @@ Pénalités : −4 si la marge est provisoire, −5 si le marché est estimé su
   les annonces de revente qui servent de prix de marché et de prix de revente.
 - Les paramètres de coûts se renseignent dans l'application : Radar → Paramètres (TVA, commission,
   paiement, expédition, emballage, retours, douane). Tant qu'ils sont vides, toutes les marges sont
-  « provisoires » et rien n'est classé « Très intéressant ».
+  « provisoires » et aucune offre ne dépasse « Moyen ».

@@ -143,11 +143,12 @@ describe("analyse d'une offre", () => {
     expect(d.margin).toBeNull();
   });
 
-  it("coûts inconnus : jamais supposés nuls, marge provisoire, jamais « très intéressant »", () => {
+  it("coûts inconnus : jamais supposés nuls, marge provisoire, au mieux « moyen »", () => {
     const d = analyzeDeal(offer({ price: 250 }), market, EMPTY_COST_SETTINGS, null, NOW);
     expect(d.provisional).toBe(true);
     expect(d.missingCosts).toContain("commission marketplace");
-    expect(d.level).not.toBe("very_good");
+    expect(d.level).toBe("average");
+    expect(d.summary).toMatch(/provisoire, coûts à compléter/);
   });
 
   it("vos ventes réelles priment sur le marché pour le prix de revente", () => {
@@ -240,5 +241,18 @@ describe("cas relevés sur les données réelles (14/10/2026)", () => {
     expect(isEquivalent(sig("Baterie pro iPhone 13", { condition: "new" }), sig("Batería para iPhone 13", { condition: "unknown" }))).toBe(true);
     expect(isEquivalent(sig("Batería para iPhone 13 Capacidad Aumentada"), sig("Batería para iPhone 13"))).toBe(false);
     expect(isEquivalent(sig("Batterie iPhone 13 reconditionnée grade B"), sig("Batterie iPhone 13 neuve"))).toBe(false);
+  });
+});
+
+describe("produits hors service (relevé eBay du 14/10/2026)", () => {
+  const sig = (title: string) => productSignature({ title, brand: "apple", model: "iphone 13", storage: "128gb", condition: "used" });
+  it("hors service, pour pièces, iCloud, « as is » : jamais comparés à un produit fonctionnel", () => {
+    for (const t of ["Apple iPhone 13 bleu foncé 128GB (hors service)", "iPhone 13 128 Go HS écran cassé", "iPhone 13 128GB for parts", "iPhone 13 128 Go bloqué iCloud", "iPhone 13 d’occasion - 128GB / Mixed Color / Apple ASIS", "iPhone 13 128GB para piezas"]) {
+      expect(sig(t).damaged).toBe(true);
+      expect(isEquivalent(sig(t), sig("Apple iPhone 13 - 128 Go - Bleu (Déverrouillé)"))).toBe(false);
+    }
+  });
+  it("pas de faux positif sur « Déverrouillé », « débloqué », « (HSO) », « 81 % »", () => {
+    for (const t of ["Apple iPhone 13 - 128 Go - Bleu (Déverrouillé)", "Apple iPhone 13 128 Go Starlight débloqué excellent état 81 %", "iPhone 13 Used (HSO) - 128 GB / Black / B", "iPhone 13 128GB unlocked"]) expect(sig(t).damaged).toBe(false);
   });
 });
