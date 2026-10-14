@@ -7069,13 +7069,13 @@ async function runLiveSearch(ctx, input, overrides = {}) {
       if (c.connectionId) await admin.from("supplier_connections").update({ last_sync_at: startedAt.toISOString(), last_error: r.status === "ok" ? null : r.message, ...r.status === "ok" ? { status: "connected" } : {} }).eq("id", c.connectionId);
     }
   };
-  const summary = await executeLiveSearch(
-    loaded.map((l) => l.candidate),
-    input,
-    runtime
-  );
+  const summary = await executeLiveSearch(prioritizeMarketplaces(loaded.map((l) => l.candidate)), input, runtime);
   log14.info("live search finished", { organizationId, query: input.rawQuery, queried: summary.queried, found: summary.found, stored: summary.stored, durationMs: summary.durationMs });
   return summary;
+}
+function prioritizeMarketplaces(candidates) {
+  const market = (c) => c.adapterKey === "ebay-browse" ? 0 : 1;
+  return candidates.map((c, i) => ({ c, i })).sort((a, b) => market(a.c) - market(b.c) || a.i - b.i).map((x) => x.c);
 }
 var log14, LIVE_SEARCH_SOURCE_TYPES, LIVE_SEARCH_CACHE_TTL_MS, LIVE_SEARCH_DEFAULT_TIMEOUT_MS, LIVE_SEARCH_MAX_SOURCES, LIVE_SEARCH_PARALLELISM, LIVE_SEARCH_STORE_CONCURRENCY, LIVE_SEARCH_PUBLIC_MIN_DELAY_MS, LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS, LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE, LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, liveSearchCache;
 var init_live_search = __esm({

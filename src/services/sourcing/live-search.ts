@@ -600,13 +600,19 @@ export async function runLiveSearch(ctx: LiveSearchContext, input: LiveSearchInp
     },
   };
 
-  const summary = await executeLiveSearch(
-    loaded.map((l) => l.candidate),
-    input,
-    runtime,
-  );
+  const summary = await executeLiveSearch(prioritizeMarketplaces(loaded.map((l) => l.candidate)), input, runtime);
   log.info("live search finished", { organizationId, query: input.rawQuery, queried: summary.queried, found: summary.found, stored: summary.stored, durationMs: summary.durationMs });
   return summary;
+}
+
+/**
+ * Les places de marché (eBay, API officielle) passent en premier : leurs annonces servent de prix
+ * de marché et de revente à l'analyse « bonne affaire », et la limite de sources par recherche les
+ * écartait (sources triées par date de création, eBay ajoutée en dernier). Ordre stable sinon.
+ */
+export function prioritizeMarketplaces<T extends { adapterKey: string | null }>(candidates: T[]): T[] {
+  const market = (c: T) => (c.adapterKey === "ebay-browse" ? 0 : 1);
+  return candidates.map((c, i) => ({ c, i })).sort((a, b) => market(a.c) - market(b.c) || a.i - b.i).map((x) => x.c);
 }
 
 export { hostOf };
