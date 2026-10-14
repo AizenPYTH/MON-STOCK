@@ -75,3 +75,33 @@ export async function checkReadOnlyRoutes(organizationId?: string): Promise<{ or
   }
   return { organization: org.id, checks };
 }
+
+/**
+ * Contrôle d'exploitation de l'analyse « bonne affaire » : exécute la recherche Fournisseurs de
+ * l'organisation (en direct ou non) au nom d'un de ses membres et résume les niveaux obtenus.
+ * Lecture seule hormis l'enregistrement normal des offres trouvées en direct (comme une recherche
+ * faite dans l'application).
+ */
+export async function checkDealAnalysis(input: { organizationId: string; userId: string; query: string; live: boolean }): Promise<Record<string, unknown>> {
+  const admin = createAdminSupabaseClient();
+  const { data: org } = await admin.from("organizations").select("*").eq("id", input.organizationId).maybeSingle();
+  if (!org) return { organization: null };
+  const { data: member } = await admin.from("organization_members").select("role").eq("organization_id", org.id).eq("user_id", input.userId).maybeSingle();
+  if (!member) return { organization: org.id, error: "utilisateur non membre de l'organisation" };
+  const ctx = { supabase: admin, organization: org, user: { id: input.userId }, role: member.role, profile: null, memberships: [] } as unknown as import("@/features/auth/dal").OrgContext;
+  const { simpleSupplierSearch } = await import("@/services/sourcing/simple-search");
+  const r = await simpleSupplierSearch(ctx, input.query, input.live ? {} : { live: async () => ({ sources: [] }) as never });
+  const levels: Record<string, number> = {};
+  const basis: Record<string, number> = {};
+  for (const o of r.offers) {
+    levels[o.deal?.level ?? "none"] = (levels[o.deal?.level ?? "none"] ?? 0) + 1;
+    basis[o.deal?.marketBasis ?? "none"] = (basis[o.deal?.marketBasis ?? "none"] ?? 0) + 1;
+  }
+  const order = { very_good: 0, good: 1, average: 2, not_competitive: 3, insufficient_data: 4 } as const;
+  const top = [...r.offers]
+    .filter((o) => o.deal && o.deal.level !== "insufficient_data")
+    .sort((a, b) => order[a.deal!.level] - order[b.deal!.level] || (b.deal!.score ?? 0) - (a.deal!.score ?? 0))
+    .slice(0, 15)
+    .map((o) => ({ title: o.title.slice(0, 90), supplier: o.supplierName, level: o.deal!.level, supplierPrice: o.deal!.supplierPrice, marketPrice: o.deal!.marketPrice, marketBasis: o.deal!.marketBasis, marketCount: o.deal!.marketCount, totalCost: o.deal!.totalCost, resalePrice: o.deal!.resalePrice, margin: o.deal!.margin, marginPercent: o.deal!.marginPercent, provisional: o.deal!.provisional, uncertainties: o.deal!.uncertainties.length }));
+  return { organization: org.id, query: r.query, total: r.total, offers: r.offers.length, partial: r.partial, durationMs: r.durationMs, checked: r.checked, levels, basis, missingCostSettings: r.missingCostSettings ?? null, top };
+}

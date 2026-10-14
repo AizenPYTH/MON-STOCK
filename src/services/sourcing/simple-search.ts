@@ -5,9 +5,12 @@ import { createLogger } from "@/lib/logger";
 import { parseQuery } from "@/domain/sourcing/query-parser";
 import { runLiveSearch } from "@/services/sourcing/live-search";
 import type { LiveSearchSummary } from "@/services/sourcing/live-search.types";
-import type { SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO } from "@/features/mobile-api/contract";
+import type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO } from "@/features/mobile-api/contract";
+import { analyzeDeal, comparableBucket, DEAL_LEVEL_LABEL, productSignature, type DealAnalysis, type DealComparable, type DealOfferInput, type DealOwnProduct, type ProductSignature } from "@/domain/sourcing/deal-analysis";
+import { missingSettings, type RadarCostSettings } from "@/domain/sourcing/radar";
+import { readCostSettings } from "@/domain/sourcing/radar-settings";
 
-export type { SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO };
+export type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO };
 
 /**
  * Recherche « Fournisseurs » simple : on interroge les fournisseurs en direct, puis on liste
@@ -56,12 +59,27 @@ interface OfferRow {
   last_seen_at: string | null;
   supplier_id: string;
   supplier: { name: string; country: string | null } | null;
+  // champs utiles à l'analyse « bonne affaire » (absents des anciens appels de test)
+  normalized_currency?: string | null;
+  fx_rate?: number | string | null;
+  brand?: string | null;
+  model?: string | null;
+  storage?: string | null;
+  condition?: string | null;
+  grade?: string | null;
+  shipping_cost?: number | string | null;
+  shipping_currency?: string | null;
+  moq?: number | null;
+  ship_from_country?: string | null;
+  sku_id?: string | null;
+  source_type?: string | null;
+  source?: { config: unknown } | null;
 }
 
 const num = (v: number | string | null): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 
 /** Regroupe par fournisseur ; offres du moins cher au plus cher (prix inconnu en dernier), fournisseurs par meilleur prix. Pur. */
-export function groupBySupplier(rows: OfferRow[], perSupplier = SIMPLE_SEARCH_PER_SUPPLIER): SimpleSupplierResultDTO[] {
+export function groupBySupplier(rows: OfferRow[], perSupplier = SIMPLE_SEARCH_PER_SUPPLIER, deals?: Map<string, SimpleDealDTO>): SimpleSupplierResultDTO[] {
   const groups = new Map<string, { supplierName: string; country: string | null; offers: SimpleOfferDTO[] }>();
   for (const r of rows) {
     const g = groups.get(r.supplier_id) ?? { supplierName: r.supplier?.name ?? "Fournisseur", country: r.supplier?.country ?? null, offers: [] };
@@ -77,6 +95,7 @@ export function groupBySupplier(rows: OfferRow[], perSupplier = SIMPLE_SEARCH_PE
       quantity: r.available_quantity,
       url: r.source_url,
       seenAt: r.last_seen_at,
+      deal: deals?.get(r.id) ?? null,
     });
     groups.set(r.supplier_id, g);
   }
@@ -99,11 +118,106 @@ export function ilikePattern(token: string): string {
 export const SIMPLE_SEARCH_MAX_OFFERS = 400;
 
 /** Toutes les offres, du moins cher au plus cher (prix converti dans la devise de l'organisation ; prix inconnu en dernier). Pur. */
-export function byPrice(rows: OfferRow[], max = SIMPLE_SEARCH_MAX_OFFERS): SimpleRankedOfferDTO[] {
-  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
+export function byPrice(rows: OfferRow[], max = SIMPLE_SEARCH_MAX_OFFERS, deals?: Map<string, SimpleDealDTO>): SimpleRankedOfferDTO[] {
+  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER, deals).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
   const key = (o: SimpleOfferDTO) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
   return all.sort((a, b) => key(a) - key(b) || a.title.localeCompare(b.title)).slice(0, max);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Analyse « bonne affaire »
+
+/** Source de type place de marché (annonces de revente, pas un fournisseur de gros). */
+export function isMarketplaceSource(config: unknown): boolean {
+  const c = (config ?? {}) as { adapter?: unknown; kind?: unknown };
+  return c.adapter === "ebay-browse" || c.kind === "marketplace";
+}
+
+/** Prix dans la devise de l'organisation : prix normalisé si sa devise est celle de l'organisation, sinon inconnu. */
+function orgPrice(r: OfferRow, orgCurrency: string): number | null {
+  const cur = (r.normalized_currency ?? (r.original_currency?.toUpperCase() === orgCurrency.toUpperCase() ? orgCurrency : null))?.toUpperCase();
+  if (cur !== orgCurrency.toUpperCase()) return null;
+  return num(r.normalized_price) ?? (r.original_currency?.toUpperCase() === orgCurrency.toUpperCase() ? num(r.original_price) : null);
+}
+
+/** Frais de port fournisseur dans la devise de l'organisation (même règle que le radar : jamais additionnés dans une autre devise). */
+function orgShipping(r: OfferRow, orgCurrency: string): number | null {
+  const ship = num(r.shipping_cost ?? null);
+  if (ship === null) return null;
+  const cur = (r.shipping_currency ?? r.original_currency ?? "").toUpperCase();
+  if (cur === orgCurrency.toUpperCase()) return ship;
+  const fx = num(r.fx_rate ?? null);
+  if (r.original_currency && cur === r.original_currency.toUpperCase() && fx) return Math.round(ship * fx * 100) / 100;
+  return null;
+}
+
+export function toDealDTO(d: DealAnalysis): SimpleDealDTO {
+  return { ...d, label: DEAL_LEVEL_LABEL[d.level] };
+}
+
+/**
+ * Analyse de chaque offre contre les offres ÉQUIVALENTES (mêmes marque, modèle, type de produit)
+ * de l'organisation. Pur : les lignes et réglages sont fournis par l'appelant.
+ */
+export function computeDeals(
+  targets: OfferRow[],
+  pool: OfferRow[],
+  input: { orgCurrency: string; settings: RadarCostSettings; own: Map<string, DealOwnProduct>; now: Date },
+): Map<string, SimpleDealDTO> {
+  const sigs = new Map<string, ProductSignature>();
+  const sigOf = (r: OfferRow) => {
+    let sg = sigs.get(r.id);
+    if (!sg) {
+      sg = productSignature({ title: r.title_original, brand: r.brand, model: r.model, storage: r.storage, condition: r.condition, grade: r.grade });
+      sigs.set(r.id, sg);
+    }
+    return sg;
+  };
+  const buckets = new Map<string, DealComparable[]>();
+  const seen = new Set<string>();
+  for (const r of [...targets, ...pool]) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    const sg = sigOf(r);
+    const key = comparableBucket(sg);
+    if (!key) continue;
+    const list = buckets.get(key) ?? [];
+    list.push({ offerId: r.id, supplierId: r.supplier_id, title: r.title_original, price: orgPrice(r, input.orgCurrency), marketplace: isMarketplaceSource(r.source?.config), stockStatus: r.stock_status, signature: sg });
+    buckets.set(key, list);
+  }
+  const out = new Map<string, SimpleDealDTO>();
+  for (const r of targets) {
+    const sg = sigOf(r);
+    const key = comparableBucket(sg);
+    const tax = r.tax_type === "ht" || r.tax_type === "ttc" ? r.tax_type : "unknown";
+    const stock = r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown";
+    const offer: DealOfferInput = {
+      offerId: r.id,
+      supplierId: r.supplier_id,
+      title: r.title_original,
+      price: orgPrice(r, input.orgCurrency),
+      originalCurrency: r.original_currency,
+      orgCurrency: input.orgCurrency,
+      taxType: tax,
+      shippingCost: orgShipping(r, input.orgCurrency),
+      moq: r.moq ?? null,
+      supplierCountry: r.ship_from_country ?? r.supplier?.country ?? null,
+      stockStatus: stock,
+      availableQuantity: r.available_quantity,
+      lastSeenAt: r.last_seen_at,
+      marketplace: isMarketplaceSource(r.source?.config),
+      publicPrice: (r.source_type ?? "PUBLIC_WEB") === "PUBLIC_WEB",
+      signature: sg,
+    };
+    const own = r.sku_id ? (input.own.get(r.sku_id) ?? null) : null;
+    out.set(r.id, toDealDTO(analyzeDeal(offer, key ? (buckets.get(key) ?? []) : [], input.settings, own, input.now)));
+  }
+  return out;
+}
+
+const DEAL_POOL_LIMIT = 3000;
+const OFFER_COLUMNS =
+  "id, title_original, original_price, original_currency, normalized_price, normalized_currency, fx_rate, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, brand, model, storage, condition, grade, shipping_cost, shipping_currency, moq, ship_from_country, sku_id, source_type, supplier:suppliers(name, country), source:supplier_sources(config)";
 
 async function withBudget<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -142,15 +256,26 @@ export async function simpleSupplierSearch(
   //    (insensible aux accents grâce aux jokers), puis contrôle exact mot par mot.
   let offersQuery = ctx.supabase
     .from("sourcing_offers")
-    .select("id, title_original, original_price, original_currency, normalized_price, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, supplier:suppliers(name, country)")
+    .select(OFFER_COLUMNS)
     .eq("organization_id", ctx.organization.id)
     .eq("status", "active");
   for (const tok of tokens) offersQuery = offersQuery.ilike("title_original", ilikePattern(tok));
   const { data, error } = await offersQuery.order("normalized_price", { ascending: true, nullsFirst: false }).limit(SCAN_LIMIT);
   if (error) throw fromPostgrestError(error);
   const rows = ((data ?? []) as unknown as OfferRow[]).filter((r) => r.title_original && matchesQuery(r.title_original, tokens));
-  const suppliers = groupBySupplier(rows);
-  const offers = byPrice(rows);
+
+  // 3. Analyse « bonne affaire » : best effort, la liste reste affichée si elle échoue.
+  let deals: Map<string, SimpleDealDTO> | undefined;
+  let missingCostSettings: string[] | undefined;
+  try {
+    const r = await loadDeals(ctx, rows, new Date(now()));
+    deals = r.deals;
+    missingCostSettings = r.missing;
+  } catch (e) {
+    log.warn("deal analysis failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+  }
+  const suppliers = groupBySupplier(rows, SIMPLE_SEARCH_PER_SUPPLIER, deals);
+  const offers = byPrice(rows, SIMPLE_SEARCH_MAX_OFFERS, deals);
 
   return {
     query,
@@ -161,5 +286,36 @@ export async function simpleSupplierSearch(
     checked: (summary?.sources ?? []).map((s) => ({ supplierName: s.supplierName, ok: s.status === "ok" || s.status === "cached", found: s.found, message: s.status === "ok" || s.status === "cached" ? null : s.message })),
     partial,
     durationMs: now() - t0,
+    ...(missingCostSettings ? { missingCostSettings } : {}),
   };
+}
+
+/**
+ * Données de l'analyse : offres équivalentes possibles (mêmes modèles, toute l'organisation, y
+ * compris les annonces eBay), vos ventes par SKU et vos paramètres de coûts. Sous la session de
+ * l'utilisateur (RLS).
+ */
+async function loadDeals(ctx: OrgContext, rows: OfferRow[], now: Date): Promise<{ deals: Map<string, SimpleDealDTO>; missing: string[] }> {
+  const orgId = ctx.organization.id;
+  const shown = new Set([...byPrice(rows).map((o) => o.id), ...groupBySupplier(rows).flatMap((g) => g.offers.map((o) => o.id))]);
+  const targets = rows.filter((r) => shown.has(r.id));
+  const models = Array.from(new Set(targets.map((r) => r.model).filter((m): m is string => Boolean(m)))).slice(0, 40);
+  const skuIds = Array.from(new Set(targets.map((r) => r.sku_id).filter((v): v is string => Boolean(v)))).slice(0, 500);
+  const [poolRes, channelsRes, stockRes] = await Promise.all([
+    models.length ? ctx.supabase.from("sourcing_offers").select(OFFER_COLUMNS).eq("organization_id", orgId).eq("status", "active").in("model", models).limit(DEAL_POOL_LIMIT) : Promise.resolve({ data: [], error: null }),
+    ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost, is_active").eq("organization_id", orgId),
+    skuIds.length ? ctx.supabase.from("v_stock_overview").select("sku_id, avg_sale_price_30d, sale_price, currency").eq("organization_id", orgId).in("sku_id", skuIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  for (const r of [poolRes, channelsRes, stockRes]) if (r.error) throw fromPostgrestError(r.error);
+  const channels = (channelsRes.data ?? []) as { provider: string; fee_percent: number | null; payment_fee_percent: number | null; payment_fee_fixed: number | null; default_shipping_cost: number | null }[];
+  const channel = channels.find((c) => c.provider === "ebay") ?? channels.find((c) => c.provider !== "manual") ?? channels[0] ?? null;
+  const { settings } = readCostSettings(ctx.organization.settings, channel);
+  const orgCurrency = ctx.organization.default_currency;
+  const own = new Map<string, DealOwnProduct>();
+  for (const s of (stockRes.data ?? []) as { sku_id: string | null; avg_sale_price_30d: number | null; sale_price: number | null; currency: string | null }[]) {
+    // ventes dans une autre devise : non utilisées (aucune conversion supposée)
+    if (s.sku_id && (!s.currency || s.currency.toUpperCase() === orgCurrency.toUpperCase())) own.set(s.sku_id, { avgSalePrice30d: s.avg_sale_price_30d, salePrice: s.sale_price });
+  }
+  const deals = computeDeals(targets, (poolRes.data ?? []) as unknown as OfferRow[], { orgCurrency, settings, own, now });
+  return { deals, missing: missingSettings(settings) };
 }

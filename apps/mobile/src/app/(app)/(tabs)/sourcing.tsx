@@ -4,12 +4,12 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { ExternalLink, Search, Truck } from "lucide-react-native";
 import { useSupplierSearch } from "~/data/hooks";
-import { STOCK_TEXT, type SimpleOfferDTO, type SimpleRankedOfferDTO, type SimpleSearchDTO, type SimpleSupplierResultDTO } from "~/data/supplier-search";
+import { STOCK_TEXT, type SimpleDealDTO, type SimpleOfferDTO, type SimpleRankedOfferDTO, type SimpleSearchDTO, type SimpleSupplierResultDTO } from "~/data/supplier-search";
 import { fontFamily } from "~/theme/typography";
 import { userMessage } from "~/lib/errors";
 import { formatMoney, formatNumber } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
-import { Button, Card, EmptyState, ErrorState, FilterChip, Screen, Skeleton, TabHeader, Txt } from "~/components/ui";
+import { AlertBanner, Button, Card, EmptyState, ErrorState, FilterChip, Screen, Skeleton, StatusChip, TabHeader, Txt, type ChipTone } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 const EXAMPLES = ["iPhone 13", "iPhone 15 Pro", "Écran iPhone 12", "Batterie iPhone 11"];
@@ -21,6 +21,15 @@ export function rankedOffers(data: Pick<SimpleSearchDTO, "suppliers"> & { offers
   if (data.offers) return data.offers;
   const key = (o: SimpleOfferDTO) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
   return data.suppliers.flatMap((s) => s.offers.map((o) => ({ ...o, supplierId: s.supplierId, supplierName: s.supplierName, country: s.country }))).sort((a, b) => key(a) - key(b));
+}
+
+const DEAL_ORDER: Record<SimpleDealDTO["level"], number> = { very_good: 0, good: 1, average: 2, not_competitive: 3, insufficient_data: 4 };
+const DEAL_TONE: Record<SimpleDealDTO["level"], ChipTone> = { very_good: "success", good: "success", average: "accent", not_competitive: "danger", insufficient_data: "neutral" };
+
+/** « Meilleures affaires » : niveau, puis score, puis marge ; offres sans analyse en dernier. Pur. */
+export function bestDeals(offers: SimpleRankedOfferDTO[]): SimpleRankedOfferDTO[] {
+  const lvl = (o: SimpleRankedOfferDTO) => (o.deal ? DEAL_ORDER[o.deal.level] : 5);
+  return [...offers].sort((a, b) => lvl(a) - lvl(b) || (b.deal?.score ?? -1) - (a.deal?.score ?? -1) || (b.deal?.margin ?? -Infinity) - (a.deal?.margin ?? -Infinity));
 }
 
 /**
@@ -42,7 +51,7 @@ export default function SuppliersScreen() {
     }
   }
   const search = useSupplierSearch(submitted);
-  const [view, setView] = useState<"price" | "supplier">("price");
+  const [view, setView] = useState<"price" | "deals" | "supplier">("price");
   const [shown, setShown] = useState(PAGE);
   const run = (q: string) => {
     const t = q.trim();
@@ -100,12 +109,19 @@ export default function SuppliersScreen() {
             {formatNumber(search.data.total)} résultat{search.data.total > 1 ? "s" : ""} chez {search.data.suppliers.length} fournisseur{search.data.suppliers.length > 1 ? "s" : ""} pour « {search.data.query} »
           </Txt>
           {search.data.partial ? <Txt variant="label">Certains fournisseurs ont mis trop de temps à répondre : les résultats déjà connus sont affichés.</Txt> : null}
-          <View style={{ flexDirection: "row", gap: space[2] }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
             <FilterChip label="Du moins cher au plus cher" selected={view === "price"} onPress={() => setView("price")} />
+            <FilterChip label="Meilleures affaires" selected={view === "deals"} onPress={() => setView("deals")} />
             <FilterChip label="Par fournisseur" selected={view === "supplier"} onPress={() => setView("supplier")} />
           </View>
-          {view === "price" ? (
-            <PriceList offers={rankedOffers(search.data)} orgCurrency={search.data.currency} shown={shown} onMore={() => setShown((n) => n + PAGE)} />
+          {search.data.missingCostSettings && search.data.missingCostSettings.length > 0 ? (
+            <AlertBanner text={`Marges provisoires : coûts à compléter (${search.data.missingCostSettings.slice(0, 3).join(", ")}${search.data.missingCostSettings.length > 3 ? "…" : ""}). Toucher pour les renseigner.`} onPress={() => router.push("/radar/settings")} />
+          ) : null}
+          {view === "deals" ? (
+            <Txt variant="label">Une offre n'est « intéressante » que si elle est comparée à des produits équivalents (même modèle, capacité, état, grade, type de pièce) et que la marge reste positive après les coûts.</Txt>
+          ) : null}
+          {view === "price" || view === "deals" ? (
+            <PriceList offers={view === "deals" ? bestDeals(rankedOffers(search.data)) : rankedOffers(search.data)} orgCurrency={search.data.currency} shown={shown} onMore={() => setShown((n) => n + PAGE)} />
           ) : (
             search.data.suppliers.map((s) => <SupplierBlock key={s.supplierId} supplier={s} orgCurrency={search.data.currency} />)
           )}
@@ -175,6 +191,7 @@ function OfferRow({ offer: o, orgCurrency, first, supplierName }: { offer: Simpl
           {o.quantity !== null && o.stock !== "out_of_stock" ? `${formatNumber(o.quantity)} en stock` : STOCK_TEXT[o.stock]}
           {link ? "  ·  Voir chez le fournisseur" : ""}
         </Txt>
+        {o.deal ? <DealLines deal={o.deal} orgCurrency={orgCurrency} /> : null}
       </View>
       <View style={{ alignItems: "flex-end", justifyContent: "center", gap: 2 }}>
         <Txt variant="body" num style={{ fontFamily: fontFamily[700] }}>
@@ -185,6 +202,50 @@ function OfferRow({ offer: o, orgCurrency, first, supplierName }: { offer: Simpl
         {link ? <ExternalLink size={14} color={color.ink3} /> : null}
       </View>
     </Pressable>
+  );
+}
+
+const money = (v: number | null, cur: string) => (v === null ? "—" : formatMoney(v, cur));
+
+/** Prix fournisseur, marché, coût total, revente, marge et niveau de l'offre (montants en devise de l'organisation). */
+export function DealLines({ deal: d, orgCurrency }: { deal: SimpleDealDTO; orgCurrency: string }) {
+  const basis = d.marketBasis === "marketplace" ? `${d.marketCount} annonce${d.marketCount > 1 ? "s" : ""} équivalente${d.marketCount > 1 ? "s" : ""}` : d.marketBasis === "suppliers" ? `${d.marketCount} autres fournisseurs` : null;
+  const resale = d.resaleBasis === "own_sales" ? "vos ventes" : d.resaleBasis === "own_price" ? "votre prix" : d.resaleBasis === "marketplace_low" ? "bas du marché" : null;
+  return (
+    <View style={{ gap: 2, marginTop: 4 }} accessibilityLabel={`Analyse : ${d.label}. ${d.summary}`}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" }}>
+        <StatusChip label={d.label} tone={DEAL_TONE[d.level]} />
+        {d.score !== null ? <Txt variant="label">Score {d.score}/100</Txt> : null}
+      </View>
+      {d.comparable || d.marketPrice !== null ? (
+        <>
+          <Txt variant="label" num>
+            Prix fournisseur {money(d.supplierPrice, orgCurrency)} · Marché ≈ {money(d.marketPrice, orgCurrency)}
+            {basis ? ` (${basis})` : ""}
+          </Txt>
+          <Txt variant="label" num>
+            Coût total ≈ {money(d.totalCost, orgCurrency)} · Revente ≈ {money(d.resalePrice, orgCurrency)}
+            {resale ? ` (${resale})` : ""}
+          </Txt>
+          {d.margin !== null ? (
+            <Txt variant="label" num color={d.margin > 0 ? color.success : color.dangerInk} style={{ fontFamily: fontFamily[700] }}>
+              Marge ≈ {money(d.margin, orgCurrency)}
+              {d.marginPercent !== null ? ` (${formatNumber(d.marginPercent)} %)` : ""}
+              {d.provisional ? " · provisoire" : ""}
+            </Txt>
+          ) : null}
+        </>
+      ) : null}
+      <Txt variant="label" numberOfLines={2}>
+        {d.summary}
+      </Txt>
+      {d.uncertainties.length > 0 ? (
+        <Txt variant="label" color={color.accentInkOnSoft} numberOfLines={3}>
+          À vérifier : {d.uncertainties.slice(0, 3).join(" · ")}
+          {d.uncertainties.length > 3 ? ` (+${d.uncertainties.length - 3})` : ""}
+        </Txt>
+      ) : null}
+    </View>
   );
 }
 

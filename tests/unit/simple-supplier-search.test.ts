@@ -96,3 +96,55 @@ describe("recherche Fournisseurs", () => {
     await expect(simpleSupplierSearch(ctx(db().client), "  ", { live: vi.fn() })).rejects.toMatchObject({ code: "VALIDATION" });
   });
 });
+
+describe("analyse « bonne affaire » dans la recherche", () => {
+  const EB = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const SRC_EBAY = "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e";
+  const SRC_WEB = "6f6f6f6f-6f6f-4f6f-8f6f-6f6f6f6f6f6f";
+  const dev = { brand: "apple", model: "iphone 13", storage: "128gb", condition: "refurbished", grade: "a" };
+  const db = (orgSettings: unknown = null) => ({
+    db: memoryDb({
+      suppliers: [
+        { id: RA, organization_id: ORG, name: "Refreshed Apples", country: "NL" },
+        { id: EB, organization_id: ORG, name: "eBay", country: null },
+      ],
+      supplier_sources: [
+        { id: SRC_EBAY, organization_id: ORG, config: { adapter: "ebay-browse" } },
+        { id: SRC_WEB, organization_id: ORG, config: { adapter: "shopify-storefront" } },
+      ],
+      sourcing_offers: [
+        offer("s1", RA, "iPhone 13 128GB Grade A reconditionné", 250, { ...dev, source_id: SRC_WEB, tax_type: "ttc", shipping_cost: 0, moq: 1 }),
+        offer("e1", EB, "Apple iPhone 13 128 Go Bleu - Grade A reconditionné", 400, { ...dev, source_id: SRC_EBAY }),
+        offer("e2", EB, "iPhone 13 128GB Minuit reconditionné grade A", 420, { ...dev, source_id: SRC_EBAY }),
+        offer("e3", EB, "iPhone 13 128 Go grade A reconditionné", 440, { ...dev, source_id: SRC_EBAY }),
+        // même modèle, autre capacité : jamais comparé
+        offer("x1", RA, "iPhone 13 256GB Grade A reconditionné", 100, { ...dev, storage: "256gb", source_id: SRC_WEB }),
+      ],
+      sales_channels: [{ id: "c1", organization_id: ORG, provider: "ebay", fee_percent: 10, payment_fee_percent: 0, payment_fee_fixed: 0, default_shipping_cost: 5 }],
+    }),
+    ctx: { user: { id: "u1" }, organization: { id: ORG, default_currency: "EUR", settings: orgSettings }, role: "owner" },
+  });
+
+  it("chaque offre porte son analyse : marché eBay équivalent, coût total, revente, marge, niveau", async () => {
+    const { db: d, ctx } = db({ radar: { vatRegime: "margin", vatRate: 20, vatRecoverable: false, packagingCost: 1, returnProvisionPercent: 0, importDutyPercent: 0 } });
+    const r = await simpleSupplierSearch({ ...ctx, supabase: d.client } as never, "iphone 13", { live: vi.fn().mockResolvedValue({ sources: [] }) });
+    const s1 = r.offers.find((o) => o.id === "s1")!;
+    expect(s1.deal).toMatchObject({ comparable: true, marketBasis: "marketplace", marketCount: 3, marketPrice: 420, resalePrice: 410, totalCost: 250, provisional: false });
+    // 410 − 250 = 160 ; TVA sur marge 26,67 ; frais 41 + 5 + 1 = 47 → 86,33
+    expect(s1.deal!.margin).toBe(86.33);
+    expect(s1.deal!.level).toBe("very_good");
+    expect(s1.deal!.label).toBe("Très intéressant");
+    // la 256 Go n'a aucun équivalent
+    expect(r.offers.find((o) => o.id === "x1")!.deal!.level).toBe("insufficient_data");
+    expect(r.missingCostSettings).toEqual([]);
+  });
+
+  it("sans paramètres de coûts : marge provisoire et paramètres manquants listés", async () => {
+    const { db: d, ctx } = db();
+    const r = await simpleSupplierSearch({ ...ctx, supabase: d.client } as never, "iphone 13", { live: vi.fn().mockResolvedValue({ sources: [] }) });
+    const s1 = r.offers.find((o) => o.id === "s1")!;
+    expect(s1.deal!.provisional).toBe(true);
+    expect(s1.deal!.level).not.toBe("very_good");
+    expect(r.missingCostSettings).toContain("régime de TVA");
+  });
+});

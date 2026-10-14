@@ -1047,6 +1047,36 @@ export interface SimpleOfferDTO {
   quantity: number | null;
   url: string | null;
   seenAt: string | null;
+  /** analyse « bonne affaire » (montants dans la devise de l'organisation) ; null si non calculée */
+  deal?: SimpleDealDTO | null;
+}
+
+/**
+ * Cette offre vaut-elle la peine d'être achetée pour la revente ? Comparaison uniquement avec des
+ * produits équivalents (même modèle, type, qualité, capacité, état, grade). Montants en devise de
+ * l'organisation ; null = inconnu (jamais inventé).
+ */
+export interface SimpleDealDTO {
+  level: "very_good" | "good" | "average" | "not_competitive" | "insufficient_data";
+  label: string;
+  comparable: boolean;
+  supplierPrice: number | null;
+  marketPrice: number | null;
+  /** « marketplace » : annonces de revente (eBay) ; « suppliers » : autres fournisseurs (prix de gros) */
+  marketBasis: "marketplace" | "suppliers" | null;
+  marketCount: number;
+  discountPercent: number | null;
+  totalCost: number | null;
+  resalePrice: number | null;
+  resaleBasis: "own_sales" | "own_price" | "marketplace_low" | null;
+  margin: number | null;
+  marginPercent: number | null;
+  /** marge calculée avec les seuls coûts connus */
+  provisional: boolean;
+  missingCosts: string[];
+  uncertainties: string[];
+  score: number | null;
+  summary: string;
 }
 
 /** Offre dans la liste « du moins cher au plus cher », tous fournisseurs confondus. */
@@ -1076,5 +1106,7 @@ export interface SimpleSearchDTO {
   /** la recherche en direct n'a pas fini à temps : résultats déjà enregistrés uniquement */
   partial: boolean;
   durationMs: number;
+  /** paramètres de coûts non renseignés (les marges sont alors provisoires) */
+  missingCostSettings?: string[];
 }
 

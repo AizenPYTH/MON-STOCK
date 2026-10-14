@@ -4308,6 +4308,117 @@ var init_registry = __esm({
   }
 });
 
+// src/services/sourcing/adapter-runtime.ts
+function configObject(config) {
+  return config && typeof config === "object" && !Array.isArray(config) ? config : {};
+}
+function adapterKeyOf(config) {
+  const c = configObject(config);
+  return typeof c.adapter === "string" && c.adapter.trim() ? c.adapter.trim() : null;
+}
+function adapterConfigFromSource(row2) {
+  const settings = { ...configObject(row2.config) };
+  if (typeof settings.max_pages === "string") {
+    const n = Number(settings.max_pages);
+    if (Number.isFinite(n)) settings.max_pages = n;
+  }
+  return {
+    baseUrl: row2.base_url ? row2.base_url.replace(/\/+$/, "") : null,
+    settings,
+    defaultCurrency: row2.default_currency,
+    defaultTaxType: row2.default_tax_type,
+    defaultCountry: row2.country
+  };
+}
+function boundedPayload(raw) {
+  if (raw === void 0 || raw === null) return null;
+  try {
+    const json2 = JSON.stringify(raw);
+    if (json2.length <= MAX_PAYLOAD_JSON) return raw;
+    return { truncated: true, excerpt: json2.slice(0, MAX_PAYLOAD_JSON) };
+  } catch {
+    return null;
+  }
+}
+function withProvenance(offer, p) {
+  const requestUrl = p.requestUrl ?? (offer.raw && typeof offer.raw === "object" && typeof offer.raw.request_url === "string" ? offer.raw.request_url : null);
+  return {
+    ...offer,
+    url: offer.url ?? p.sourceUrl ?? null,
+    raw: {
+      provenance: { adapter: p.adapterKey, adapter_key: p.adapterKey, method: p.method, retrieved_at: p.retrievedAt, request_url: requestUrl, source_url: offer.url ?? p.sourceUrl ?? null },
+      payload: boundedPayload(offer.raw)
+    }
+  };
+}
+function parseStoredProvenance(raw) {
+  const r = configObject(raw);
+  const p = configObject(r.provenance ?? r._provenance);
+  if (Object.keys(p).length === 0) return null;
+  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2 : null;
+  const method = str3(p.method);
+  const adapterKey = str3(p.adapter_key) ?? str3(p.adapterKey) ?? str3(p.adapter);
+  if (!method && !adapterKey) return null;
+  return { method: method && METHODS.has(method) ? method : null, adapterKey, retrievedAt: str3(p.retrieved_at) ?? str3(p.retrievedAt), requestUrl: str3(p.request_url) ?? str3(p.requestUrl) };
+}
+function hostOf(url) {
+  if (!url) return null;
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+var MAX_PAYLOAD_JSON, METHODS, defaultSleep2, HostScheduler;
+var init_adapter_runtime = __esm({
+  "src/services/sourcing/adapter-runtime.ts"() {
+    "use strict";
+    MAX_PAYLOAD_JSON = 8e3;
+    METHODS = /* @__PURE__ */ new Set(["public_html", "public_json", "public_feed", "official_api", "supplier_account", "manual"]);
+    defaultSleep2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    HostScheduler = class {
+      constructor(minDelayMs, sleep3 = defaultSleep2, clock = () => Date.now()) {
+        this.minDelayMs = minDelayMs;
+        this.sleep = sleep3;
+        this.clock = clock;
+      }
+      minDelayMs;
+      sleep;
+      clock;
+      chains = /* @__PURE__ */ new Map();
+      lastAt = /* @__PURE__ */ new Map();
+      async run(host, fn) {
+        const previous = this.chains.get(host) ?? Promise.resolve();
+        let release;
+        const gate = new Promise((resolve) => {
+          release = resolve;
+        });
+        this.chains.set(host, previous.then(() => gate));
+        await previous;
+        try {
+          const last = this.lastAt.get(host);
+          if (last !== void 0) {
+            const wait = this.minDelayMs - (this.clock() - last);
+            if (wait > 0) await this.sleep(wait);
+          }
+          this.lastAt.set(host, this.clock());
+          return await fn();
+        } finally {
+          release();
+        }
+      }
+      /** fetch sérialisé par hôte (passé aux adaptateurs via ctx.fetchImpl). */
+      wrapFetch(fetchImpl = fetch) {
+        const wrapped = (input, init) => {
+          const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+          return this.run(hostOf(url) ?? "unknown", () => fetchImpl(input, init));
+        };
+        return wrapped;
+      }
+    };
+  }
+});
+
 // src/domain/sourcing/validation.ts
 function median(values) {
   if (values.length === 0) return null;
@@ -6368,6 +6479,632 @@ var init_registry2 = __esm({
     ebay = null;
     amazon = null;
     shopify = null;
+  }
+});
+
+// src/integrations/suppliers/core.ts
+function accessConditionsOf(adapter) {
+  return `Acc\xE8s r\xE9serv\xE9 aux titulaires d'un compte ${adapter.label.replace(/\s*\(.*\)$/, "")} : identifiants fournis par le vendeur, chiffr\xE9s c\xF4t\xE9 serveur, utilis\xE9s uniquement pour l'API officielle (${adapter.method === "official_api" ? "API officielle" : "compte fournisseur"}). ${adapter.verification === "fixtures" ? "Connecteur impl\xE9ment\xE9 d'apr\xE8s la documentation publique et v\xE9rifi\xE9 sur fixtures uniquement : non exerc\xE9 en conditions r\xE9elles depuis cet environnement." : ""}`.trim();
+}
+function createConnector(adapter, config, base) {
+  let credentials = null;
+  const ctx = () => ({ userAgent: base.userAgent ?? "MonStockBot/0.1", ...base, credentials: credentials ?? void 0 });
+  return {
+    key: adapter.key,
+    async connect(creds) {
+      credentials = creds;
+    },
+    async testConnection() {
+      if (!credentials) return { ok: false, message: "Connexion non initialis\xE9e (identifiants absents)." };
+      return adapter.testConnection(config, ctx());
+    },
+    async fetchCatalog(options = {}) {
+      if (!credentials) throw new Error("Connexion non initialis\xE9e (identifiants absents).");
+      if (!adapter.fetchCatalog) return { offers: [], nextCursor: null };
+      const page2 = await adapter.fetchCatalog(config, options.cursor ?? null, ctx());
+      return { offers: options.limit ? page2.offers.slice(0, options.limit) : page2.offers, nextCursor: page2.nextCursor };
+    },
+    async fetchOffers(query) {
+      if (!credentials) throw new Error("Connexion non initialis\xE9e (identifiants absents).");
+      if (!query?.trim()) return [];
+      const result = await adapter.search(config, parseQuery(query), query, ctx());
+      return result.offers;
+    },
+    async getAccountInfo() {
+      return { accountId: null, name: null, currency: null };
+    }
+  };
+}
+function toDescriptor(adapter) {
+  return {
+    key: adapter.key,
+    label: adapter.label,
+    description: adapter.description,
+    accessConditions: accessConditionsOf(adapter),
+    credentialFields: adapter.credentialFields,
+    configFields: adapter.configFields,
+    verification: adapter.verification,
+    adapter,
+    create: (config = DEFAULT_CONFIG, ctx = {}) => createConnector(adapter, config, ctx)
+  };
+}
+function getConnectorDescriptor(key2) {
+  return SUPPLIER_CONNECTORS.find((c) => c.key === key2) ?? null;
+}
+var DEFAULT_CONFIG, SUPPLIER_CONNECTORS, NO_CONNECTOR_MESSAGE;
+var init_core = __esm({
+  "src/integrations/suppliers/core.ts"() {
+    "use strict";
+    init_query_parser();
+    init_registry();
+    DEFAULT_CONFIG = { baseUrl: null, settings: {}, defaultCurrency: null, defaultTaxType: "unknown", defaultCountry: null };
+    SUPPLIER_CONNECTORS = listAccountAdapters().map(toDescriptor);
+    NO_CONNECTOR_MESSAGE = "Aucun connecteur fournisseur disponible pour l'instant.";
+  }
+});
+
+// src/integrations/suppliers/partner-feed.ts
+var init_partner_feed = __esm({
+  "src/integrations/suppliers/partner-feed.ts"() {
+    "use strict";
+  }
+});
+
+// src/services/sourcing/supplier-connectors.ts
+async function loadConnectionCredentials(connectionId) {
+  const admin = createAdminSupabaseClient();
+  const { data } = await admin.from("supplier_connection_secrets").select("credentials_enc").eq("connection_id", connectionId).maybeSingle();
+  if (!data?.credentials_enc) return null;
+  return JSON.parse(decryptSecret(data.credentials_enc));
+}
+async function loadConnection(admin, connectionId) {
+  const { data } = await admin.from("supplier_connections").select("id, organization_id, supplier_id, source_id, connector_key, config, supplier:suppliers(name, currency)").eq("id", connectionId).maybeSingle();
+  return data ?? null;
+}
+async function ensureConnectionSource(admin, connection, descriptor) {
+  if (connection.source_id) {
+    const { data: data2 } = await admin.from("supplier_sources").select("*").eq("id", connection.source_id).maybeSingle();
+    if (data2) return data2;
+  }
+  const connConfig = connection.config && typeof connection.config === "object" && !Array.isArray(connection.config) ? connection.config : {};
+  const { data, error } = await admin.from("supplier_sources").insert({
+    organization_id: connection.organization_id,
+    supplier_id: connection.supplier_id,
+    name: descriptor.label,
+    source_type: "SUPPLIER_ACCOUNT",
+    automated_access_confirmed: true,
+    access_conditions: descriptor.accessConditions,
+    status: "active",
+    sync_frequency: "manual",
+    default_currency: typeof connConfig.default_currency === "string" ? connConfig.default_currency : connection.supplier?.currency ?? null,
+    config: { adapter: descriptor.key, ...connConfig }
+  }).select("*").single();
+  if (error || !data) throw new AppError("INTERNAL", `Source du compte fournisseur non cr\xE9\xE9e : ${error?.message ?? "inconnu"}`);
+  await admin.from("supplier_connections").update({ source_id: data.id }).eq("id", connection.id);
+  return data;
+}
+function runContext(credentials, options) {
+  const scheduler = new HostScheduler(CONNECTION_MIN_DELAY_MS, options.sleep);
+  return { userAgent: serverEnv().SOURCING_USER_AGENT, credentials, fetchImpl: scheduler.wrapFetch(options.fetchImpl), sleep: options.sleep, resolver: options.resolver, minDelayMs: CONNECTION_MIN_DELAY_MS, timeoutMs: options.timeoutMs };
+}
+async function syncSupplierConnection(connectionId, options = {}) {
+  const admin = options.admin ?? createAdminSupabaseClient();
+  const base = { connectionId, sourceId: null, runId: null, pages: 0, found: 0, stored: 0, rejected: 0, expired: 0 };
+  const connection = await loadConnection(admin, connectionId);
+  if (!connection) return { ...base, status: "failed", message: "Connexion introuvable." };
+  const descriptor = getConnectorDescriptor(connection.connector_key);
+  if (!descriptor) return { ...base, status: "refused", message: `Connecteur \xAB ${connection.connector_key} \xBB indisponible : ${NO_CONNECTOR_MESSAGE}` };
+  if (!descriptor.adapter.fetchCatalog) return { ...base, status: "refused", message: `Le connecteur \xAB ${descriptor.label} \xBB ne propose pas de parcours de catalogue.` };
+  const credentials = await loadConnectionCredentials(connection.id);
+  if (!credentials) return { ...base, status: "refused", message: "Identifiants introuvables : reconnectez le compte fournisseur." };
+  const source = await ensureConnectionSource(admin, connection, descriptor);
+  const { data: org } = await admin.from("organizations").select("default_currency").eq("id", connection.organization_id).maybeSingle();
+  const run = await startSyncRun(admin, { organizationId: connection.organization_id, sourceKind: "supplier_connection", sourceRef: connection.id, provider: descriptor.key, trigger: options.trigger ?? "manual", createdBy: options.createdBy ?? null });
+  const errors = [];
+  const config = adapterConfigFromSource(source);
+  const ctx = runContext(credentials, { fetchImpl: options.fetchImpl, sleep: options.sleep, resolver: options.resolver });
+  const storage = { supabase: admin, organizationId: connection.organization_id, organizationCurrency: org?.default_currency ?? "EUR", supplierId: connection.supplier_id, sourceId: source.id, sourceType: source.source_type, defaultCurrency: source.default_currency, defaultTaxType: source.default_tax_type, defaultCountry: source.country, createdBy: options.createdBy ?? null, now: run.startedAt };
+  const maxPages = Math.min(options.maxPages ?? MAX_CONNECTION_CATALOG_PAGES, 200);
+  let pages = 0;
+  let found = 0;
+  let stored = 0;
+  let rejected = 0;
+  let expired2 = 0;
+  const requests = [];
+  try {
+    let cursor = null;
+    let truncated = false;
+    for (; ; ) {
+      if (pages >= maxPages) {
+        truncated = true;
+        errors.push({ code: "CATALOG_TRUNCATED", message: `Limite de ${maxPages} page(s) atteinte : le reste du catalogue sera lu \xE0 la prochaine synchronisation.`, entityType: "connection", entityRef: connection.id });
+        break;
+      }
+      const page2 = await descriptor.adapter.fetchCatalog(config, cursor, ctx);
+      pages++;
+      for (const q of page2.requests) {
+        requests.push({ url: q.url, status: q.status, durationMs: q.durationMs, offers: q.offers, error: q.error });
+        if (q.error) errors.push({ code: "PAGE_FAILED", message: q.error, entityType: "page", entityRef: q.url });
+      }
+      found += page2.offers.length;
+      const retrievedAt = (/* @__PURE__ */ new Date()).toISOString();
+      const requestUrl = page2.requests.find((q) => q.offers > 0)?.url ?? page2.requests[0]?.url ?? null;
+      for (const offer of page2.offers) {
+        const traced = withProvenance(offer, { adapterKey: descriptor.key, method: page2.method, retrievedAt, requestUrl, sourceUrl: offer.url ?? null });
+        try {
+          const r = await storeOffer(storage, traced);
+          if (r.outcome === "stored") stored++;
+          else {
+            rejected++;
+            errors.push({ code: "OFFER_REJECTED", message: r.validation.anomalies.map((a) => a.message).join(" ; "), entityType: "offer", entityRef: offer.externalOfferId });
+          }
+        } catch (e) {
+          rejected++;
+          errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: offer.externalOfferId });
+        }
+      }
+      if (!page2.nextCursor) break;
+      cursor = page2.nextCursor;
+    }
+    if (stored > 0 && !truncated) expired2 = await expireUnseenOffers(storage, run.startedAt);
+    const pageErrors = errors.filter((e) => e.code === "PAGE_FAILED").length;
+    const status = found === 0 && pageErrors > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
+    const message = found === 0 && pageErrors === 0 ? "Le catalogue ne contient aucune offre lisible." : `${pages} page(s) lue(s), ${found} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s), ${expired2} expir\xE9e(s).`;
+    await recordSyncErrors(admin, run, errors);
+    await finishSyncRun(admin, run, { status, recordsProcessed: found, errorCount: errors.length, stats: { pages, found, stored, rejected, expired: expired2, truncated, requests: requests.slice(0, 100), adapter: descriptor.key }, errorSummary: status === "failed" ? message : null });
+    await admin.from("supplier_connections").update({ status: status === "failed" ? "error" : "connected", last_sync_at: run.startedAt.toISOString(), last_error: status === "failed" ? message : null, connected_at: status === "failed" ? null : (/* @__PURE__ */ new Date()).toISOString() }).eq("id", connection.id);
+    await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source.id);
+    return { connectionId, sourceId: source.id, runId: run.id, status, pages, found, stored, rejected, expired: expired2, message };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Erreur inconnue.";
+    log13.error("connection sync failed", { connectionId, error: message });
+    await recordSyncErrors(admin, run, [...errors, { code: "SYNC_FAILED", message }]);
+    await finishSyncRun(admin, run, { status: "failed", recordsProcessed: found, errorCount: errors.length + 1, errorSummary: message });
+    await admin.from("supplier_connections").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", connection.id);
+    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
+    return { connectionId, sourceId: source.id, runId: run.id, status: "failed", pages, found, stored, rejected, expired: expired2, message };
+  }
+}
+var log13, MAX_CONNECTION_CATALOG_PAGES, CONNECTION_MIN_DELAY_MS;
+var init_supplier_connectors = __esm({
+  "src/services/sourcing/supplier-connectors.ts"() {
+    "use strict";
+    init_empty();
+    init_admin();
+    init_crypto();
+    init_env();
+    init_errors();
+    init_logger();
+    init_core();
+    init_partner_feed();
+    init_adapter_runtime();
+    init_offer_storage();
+    init_sync_runs();
+    log13 = createLogger("SUPPLIER_CONNECTORS");
+    MAX_CONNECTION_CATALOG_PAGES = 20;
+    CONNECTION_MIN_DELAY_MS = 500;
+  }
+});
+
+// src/services/sourcing/live-search.ts
+function liveSearchVariants(input, max = LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const text3 of [...input.variants ?? [], ...input.variants && input.variants.length > 0 ? [] : [input.rawQuery]]) {
+    const t = text3.replace(/\s+/g, " ").trim();
+    const key2 = normalizeText(t);
+    if (!t || seen.has(key2)) continue;
+    seen.add(key2);
+    out.push({ text: t, parsed: t === input.rawQuery.trim() ? input.parsed : parseQuery(t) });
+    if (out.length >= Math.max(1, max)) break;
+  }
+  if (out.length === 0) out.push({ text: input.rawQuery, parsed: input.parsed });
+  return out;
+}
+function liveSearchCacheKey(sourceId, rawQuery) {
+  return `${sourceId}|${normalizeText(rawQuery)}`;
+}
+function attestationRequired(method) {
+  return method === "public_html" || method === "public_json";
+}
+function report(c, status, message, extra = {}, now = /* @__PURE__ */ new Date()) {
+  return {
+    sourceId: c.sourceId,
+    sourceName: c.sourceName,
+    supplierId: c.supplierId,
+    supplierName: c.supplierName,
+    adapterKey: c.adapterKey,
+    method: c.adapter?.method ?? null,
+    status,
+    message,
+    found: 0,
+    stored: 0,
+    rejected: 0,
+    durationMs: 0,
+    requests: [],
+    queries: [],
+    checkedAt: now.toISOString(),
+    ...extra
+  };
+}
+function withTimeout(promise, ms) {
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+function preflight(c) {
+  if (!c.adapter) return { ok: false, status: "no_search", message: "Aucun adaptateur associ\xE9 \xE0 cette source : elle n'est pas interrogeable en direct (synchronisation de flux / crawl uniquement)." };
+  if (!c.adapter.capabilities.search) return { ok: false, status: "no_search", message: `L'adaptateur \xAB ${c.adapter.label} \xBB ne propose pas de recherche en direct (catalogue synchronis\xE9 uniquement).` };
+  if (c.adapter.access === "public" && attestationRequired(c.adapter.method) && !c.attested) return { ok: false, status: "not_attested", message: "Acc\xE8s automatis\xE9 non attest\xE9 : confirmez que les conditions d'utilisation du site autorisent la lecture automatis\xE9e." };
+  if (c.adapter.access === "account" && !c.connectionId) return { ok: false, status: "account_required", message: "Compte fournisseur requis : connectez vos identifiants pour interroger cette source." };
+  return { ok: true };
+}
+async function querySource(c, input, rt, scheduler) {
+  const startedAt = rt.now();
+  const t0 = Date.now();
+  const pre = preflight(c);
+  if (!pre.ok) return report(c, pre.status, pre.message, {}, startedAt);
+  const adapter = c.adapter;
+  const key2 = liveSearchCacheKey(c.sourceId, input.rawQuery);
+  const cached2 = rt.cache.get(key2);
+  if (cached2 && startedAt.getTime() - cached2.at < LIVE_SEARCH_CACHE_TTL_MS) {
+    return { ...cached2.report, status: "cached", message: `R\xE9sultat r\xE9cent r\xE9utilis\xE9 (interrog\xE9e il y a ${Math.round((startedAt.getTime() - cached2.at) / 1e3)} s).`, durationMs: 0, checkedAt: startedAt.toISOString() };
+  }
+  const variants = liveSearchVariants(input);
+  let disallowedUrls = [];
+  if (adapter.access === "public" && attestationRequired(adapter.method)) {
+    const urls = Array.from(new Set(variants.flatMap((v2) => adapter.urlsForQuery?.(c.config, v2.parsed, v2.text) ?? [])));
+    if (urls.length === 0) return report(c, "no_search", "Aucune URL de recherche configur\xE9e pour cette source : recherche en direct impossible.", {}, startedAt);
+    const robots = await rt.checkRobots(c, urls);
+    if (rt.recordRobots) await rt.recordRobots(c, robots).catch((e) => log14.warn("robots status not recorded", { sourceId: c.sourceId, error: e instanceof Error ? e.message : String(e) }));
+    if (!robots.allowed) return report(c, "robots_disallowed", `robots.txt : ${robots.details}`, { durationMs: Date.now() - t0 }, startedAt);
+    disallowedUrls = robots.disallowedUrls;
+  }
+  let credentials;
+  if (adapter.access === "account") {
+    const creds = await rt.loadCredentials(c.connectionId);
+    if (!creds || Object.keys(creds).length === 0) return report(c, "account_required", "Identifiants du compte fournisseur introuvables : reconnectez le compte.", {}, startedAt);
+    credentials = creds;
+  }
+  const fetchImpl = scheduler.wrapFetch(rt.fetchImpl);
+  const budgetMs = Math.max(rt.perSourceTimeoutMs, adapter.searchBudgetMs ?? 0);
+  const deadline = t0 + budgetMs;
+  const minVariantBudget = Math.min(LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, budgetMs / 4);
+  const collected = [];
+  const seenOfferIds = /* @__PURE__ */ new Set();
+  const requests = [];
+  const errors = [];
+  const sent = [];
+  let method = adapter.method;
+  let truncated = false;
+  let firstVariantFailed = false;
+  for (const [i, v2] of variants.entries()) {
+    const remaining = deadline - Date.now();
+    if (i > 0) {
+      if (firstVariantFailed) break;
+      if (remaining < minVariantBudget) {
+        truncated = true;
+        break;
+      }
+    }
+    sent.push(v2.text);
+    const ctx = {
+      userAgent: rt.userAgent,
+      fetchImpl,
+      resolver: rt.resolver,
+      sleep: rt.sleep,
+      credentials,
+      minDelayMs: adapter.access === "public" ? rt.publicMinDelayMs : rt.accountMinDelayMs,
+      timeoutMs: Math.max(1, remaining),
+      disallowedUrls,
+      now: rt.now
+    };
+    let result;
+    try {
+      result = await withTimeout(adapter.search(c.config, v2.parsed, v2.text, ctx), Math.max(1, remaining) + 500);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (i === 0) {
+        const r3 = report(c, "error", message, { durationMs: Date.now() - t0, queries: sent }, startedAt);
+        await rt.recordRun(c, r3, startedAt);
+        return r3;
+      }
+      errors.push(`reformulation \xAB ${v2.text} \xBB : ${message}`);
+      break;
+    }
+    if (result === "timeout") {
+      if (i === 0) {
+        const r3 = report(c, "timeout", `D\xE9lai d\xE9pass\xE9 (${Math.round(budgetMs / 1e3)} s) : la source n'a pas r\xE9pondu \xE0 temps.`, { durationMs: Date.now() - t0, queries: sent }, startedAt);
+        await rt.recordRun(c, r3, startedAt);
+        return r3;
+      }
+      truncated = true;
+      errors.push(`reformulation \xAB ${v2.text} \xBB interrompue : budget de ${Math.round(budgetMs / 1e3)} s atteint`);
+      break;
+    }
+    method = result.method;
+    requests.push(...result.requests);
+    truncated = truncated || result.truncated;
+    if (result.error) {
+      errors.push(result.error);
+      if (i === 0 && result.offers.length === 0) firstVariantFailed = true;
+    }
+    const requestUrl = result.requests.find((q) => q.offers > 0)?.url ?? result.requests[0]?.url ?? null;
+    for (const o of result.offers) {
+      if (seenOfferIds.has(o.externalOfferId)) continue;
+      seenOfferIds.add(o.externalOfferId);
+      collected.push({ offer: o, requestUrl });
+    }
+  }
+  if (firstVariantFailed && collected.length === 0) {
+    const r3 = report(c, "error", errors.join(" \xB7 "), { durationMs: Date.now() - t0, requests, queries: sent }, startedAt);
+    await rt.recordRun(c, r3, startedAt);
+    return r3;
+  }
+  const retrievedAt = rt.now();
+  const traced = collected.map(({ offer: o, requestUrl }) => withProvenance(o, { adapterKey: adapter.key, method, retrievedAt: retrievedAt.toISOString(), requestUrl, sourceUrl: o.url ?? null }));
+  let stored = 0;
+  let rejected = 0;
+  let offerIds = [];
+  let storeError = null;
+  try {
+    const s = await rt.storeOffers(c, traced, retrievedAt);
+    stored = s.stored;
+    rejected = s.rejected;
+    offerIds = s.offerIds;
+  } catch (e) {
+    storeError = e instanceof Error ? e.message : String(e);
+  }
+  const messageParts = [`${collected.length} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s)`];
+  if (sent.length > 1) messageParts.push(`${sent.length} reformulations`);
+  if (truncated) messageParts.push("r\xE9sultat partiel (limite de pages ou de temps atteinte)");
+  for (const err of errors) messageParts.push(err);
+  if (storeError) messageParts.push(`enregistrement : ${storeError}`);
+  const r = report(c, storeError && stored === 0 ? "error" : "ok", `${messageParts.join(" \xB7 ")}.`, { found: collected.length, stored, rejected, durationMs: Date.now() - t0, requests, queries: sent }, startedAt);
+  await rt.recordRun(c, r, startedAt);
+  rt.cache.set(key2, { at: retrievedAt.getTime(), report: r, offerIds });
+  return r;
+}
+async function executeLiveSearch(candidates, input, rt) {
+  const startedAt = rt.now();
+  const scheduler = new HostScheduler(rt.publicMinDelayMs, rt.sleep);
+  const reports = new Array(candidates.length);
+  const offerIds = /* @__PURE__ */ new Set();
+  const maxSources = Math.max(0, input.maxSources ?? rt.maxSources);
+  const queue = candidates.map((c, index) => ({ c, index }));
+  const runOne = async ({ c, index }) => {
+    const pre = preflight(c);
+    if (!pre.ok) {
+      reports[index] = report(c, pre.status, pre.message, {}, rt.now());
+      return;
+    }
+    if (index >= maxSources) {
+      reports[index] = report(c, "skipped", `Hors budget : au plus ${maxSources} source(s) interrog\xE9e(s) par recherche.`, {}, rt.now());
+      return;
+    }
+    try {
+      reports[index] = await querySource(c, input, rt, scheduler);
+    } catch (e) {
+      reports[index] = report(c, "error", e instanceof Error ? e.message : String(e), {}, rt.now());
+    }
+    const entry = rt.cache.get(liveSearchCacheKey(c.sourceId, input.rawQuery));
+    if (entry && (reports[index].status === "ok" || reports[index].status === "cached")) for (const id of entry.offerIds) offerIds.add(id);
+  };
+  const workers = Array.from({ length: Math.max(1, Math.min(rt.parallelism, queue.length)) }, async () => {
+    for (; ; ) {
+      const next = queue.shift();
+      if (!next) return;
+      await runOne(next);
+    }
+  });
+  await Promise.all(workers);
+  const finishedAt = rt.now();
+  const queried = reports.filter((r) => r.status === "ok" || r.status === "error" || r.status === "timeout").length;
+  return {
+    query: input.rawQuery,
+    startedAt: startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
+    sources: reports,
+    queried,
+    found: reports.reduce((a, r) => a + r.found, 0),
+    stored: reports.reduce((a, r) => a + r.stored, 0),
+    offerIds: Array.from(offerIds)
+  };
+}
+function resolveContext(ctx) {
+  if ("organization" in ctx) return { organizationId: ctx.organization.id, admin: createAdminSupabaseClient(), userId: ctx.user.id };
+  return { organizationId: ctx.organizationId, admin: ctx.admin, userId: ctx.userId ?? null };
+}
+async function ensureConnectionSource2(admin, organizationId, connection, adapterLabel) {
+  if (connection.source_id) return connection.source_id;
+  const { data, error } = await admin.from("supplier_sources").insert({ organization_id: organizationId, supplier_id: connection.supplier_id, name: adapterLabel, source_type: "SUPPLIER_ACCOUNT", automated_access_confirmed: true, access_conditions: "Compte fournisseur connect\xE9 par le vendeur (API officielle, identifiants chiffr\xE9s).", status: "active", sync_frequency: "manual", config: { adapter: connection.connector_key } }).select("id").single();
+  if (error || !data) {
+    log14.warn("connection source not created", { connectionId: connection.id, error: error?.message });
+    return null;
+  }
+  await admin.from("supplier_connections").update({ source_id: data.id }).eq("id", connection.id);
+  return data.id;
+}
+async function loadCandidates(admin, organizationId) {
+  const [{ data: org }, { data: sources }, { data: connections }] = await Promise.all([
+    admin.from("organizations").select("default_currency").eq("id", organizationId).maybeSingle(),
+    admin.from("supplier_sources").select("*, supplier:suppliers(id, name, is_archived)").eq("organization_id", organizationId).neq("status", "paused").in("source_type", [...LIVE_SEARCH_SOURCE_TYPES]).order("created_at").limit(100),
+    admin.from("supplier_connections").select("id, supplier_id, source_id, connector_key, status").eq("organization_id", organizationId).neq("status", "disconnected").limit(50)
+  ]);
+  const organizationCurrency = org?.default_currency ?? "EUR";
+  const bySource = new Map((sources ?? []).map((s) => [s.id, s]));
+  const connectionBySource = /* @__PURE__ */ new Map();
+  const out = [];
+  for (const conn of connections ?? []) {
+    const adapter = getSourceAdapter(conn.connector_key);
+    if (!adapter || adapter.access !== "account") continue;
+    let sourceId = conn.source_id && bySource.has(conn.source_id) ? conn.source_id : null;
+    if (!sourceId) {
+      sourceId = await ensureConnectionSource2(admin, organizationId, { ...conn, source_id: conn.source_id && bySource.has(conn.source_id) ? conn.source_id : null }, adapter.label);
+      if (!sourceId) continue;
+      if (!bySource.has(sourceId)) {
+        const { data: created } = await admin.from("supplier_sources").select("*, supplier:suppliers(id, name, is_archived)").eq("id", sourceId).maybeSingle();
+        if (created) bySource.set(created.id, created);
+      }
+    }
+    connectionBySource.set(sourceId, { id: conn.id, connector_key: conn.connector_key });
+  }
+  for (const s of bySource.values()) {
+    if (s.supplier?.is_archived) continue;
+    if (isUnvalidatedDiscovered(s.config, s.automated_access_confirmed)) continue;
+    const connection = connectionBySource.get(s.id) ?? null;
+    const adapterKey = connection?.connector_key ?? adapterKeyOf(s.config);
+    const adapter = getSourceAdapter(adapterKey);
+    out.push({
+      candidate: {
+        sourceId: s.id,
+        sourceName: s.name,
+        supplierId: s.supplier_id,
+        supplierName: s.supplier?.name ?? "Fournisseur",
+        sourceType: s.source_type,
+        adapter,
+        adapterKey: adapter ? adapter.key : adapterKey,
+        config: adapterConfigFromSource({ base_url: s.base_url, config: s.config, default_currency: s.default_currency, default_tax_type: s.default_tax_type, country: s.country }),
+        attested: s.automated_access_confirmed,
+        connectionId: connection?.id ?? null
+      },
+      organizationCurrency,
+      defaultCurrency: s.default_currency,
+      defaultTaxType: s.default_tax_type,
+      defaultCountry: s.country,
+      robotsAllowed: s.robots_allowed,
+      robotsCheckedAt: s.robots_checked_at
+    });
+  }
+  return out;
+}
+function isUnvalidatedDiscovered(config, attested) {
+  const c = config && typeof config === "object" && !Array.isArray(config) ? config : {};
+  return c.discovered === true && !attested;
+}
+async function runLiveSearch(ctx, input, overrides = {}) {
+  const { admin, organizationId, userId } = resolveContext(ctx);
+  const userAgent = serverEnv().SOURCING_USER_AGENT;
+  const now = overrides.now ?? (() => /* @__PURE__ */ new Date());
+  const loaded = await loadCandidates(admin, organizationId);
+  const bySourceId = new Map(loaded.map((l) => [l.candidate.sourceId, l]));
+  const fetchImpl = overrides.fetchImpl ?? fetch;
+  const runtime = {
+    userAgent,
+    now,
+    fetchImpl,
+    resolver: overrides.resolver,
+    sleep: overrides.sleep,
+    cache: overrides.cache ?? liveSearchCache,
+    perSourceTimeoutMs: input.timeoutMs ?? LIVE_SEARCH_DEFAULT_TIMEOUT_MS,
+    maxSources: input.maxSources ?? LIVE_SEARCH_MAX_SOURCES,
+    parallelism: LIVE_SEARCH_PARALLELISM,
+    publicMinDelayMs: LIVE_SEARCH_PUBLIC_MIN_DELAY_MS,
+    accountMinDelayMs: LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS,
+    checkRobots: (c, urls) => checkRobotsForUrls(c.config.baseUrl ?? urls[0], urls, userAgent, fetchImpl),
+    recordRobots: async (c, robots) => {
+      await admin.from("supplier_sources").update({ robots_checked_at: now().toISOString(), robots_allowed: robots.allowed, ...robots.crawlDelay !== null ? { crawl_delay_seconds: Math.ceil(robots.crawlDelay) } : {} }).eq("id", c.sourceId);
+    },
+    loadCredentials: (connectionId) => loadConnectionCredentials(connectionId),
+    storeOffers: async (c, offers, retrievedAt) => {
+      const l = bySourceId.get(c.sourceId);
+      const storage = {
+        supabase: admin,
+        organizationId,
+        organizationCurrency: l?.organizationCurrency ?? "EUR",
+        supplierId: c.supplierId,
+        sourceId: c.sourceId,
+        sourceType: c.sourceType,
+        defaultCurrency: l?.defaultCurrency ?? c.config.defaultCurrency,
+        defaultTaxType: l?.defaultTaxType ?? c.config.defaultTaxType,
+        defaultCountry: l?.defaultCountry ?? c.config.defaultCountry,
+        createdBy: userId,
+        now: retrievedAt
+      };
+      const offerIds = [];
+      let stored = 0;
+      let rejected = 0;
+      const queue = [...offers];
+      const storeNext = async () => {
+        for (let offer = queue.shift(); offer; offer = queue.shift()) {
+          try {
+            const r = await storeOffer(storage, offer);
+            if (r.outcome === "stored" && r.offerId) {
+              stored++;
+              offerIds.push(r.offerId);
+            } else rejected++;
+          } catch (e) {
+            rejected++;
+            log14.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(LIVE_SEARCH_STORE_CONCURRENCY, queue.length) }, storeNext));
+      if (stored > 0) await admin.from("supplier_sources").update({ status: "active", last_sync_at: retrievedAt.toISOString(), last_successful_sync_at: now().toISOString(), last_error: null }).eq("id", c.sourceId);
+      return { offerIds, stored, rejected };
+    },
+    recordRun: async (c, r, startedAt) => {
+      const status = r.status === "ok" ? r.rejected > 0 || r.requests.some((q) => q.error) ? "partial" : "success" : "failed";
+      await recordCompletedSyncRun(admin, {
+        organizationId,
+        sourceKind: c.connectionId ? "supplier_connection" : "supplier_source",
+        sourceRef: c.connectionId ?? c.sourceId,
+        provider: c.adapterKey ?? "live_search",
+        trigger: "manual",
+        status,
+        startedAt,
+        finishedAt: now(),
+        recordsProcessed: r.found,
+        errorCount: r.status === "ok" ? r.rejected + r.requests.filter((q) => q.error).length : 1,
+        stats: { kind: "live_search", query: input.rawQuery, skuId: input.skuId ?? null, status: r.status, found: r.found, stored: r.stored, rejected: r.rejected, requests: r.requests, method: r.method, adapter: r.adapterKey },
+        errorSummary: r.status === "ok" ? null : r.message,
+        createdBy: userId
+      });
+      if (r.status !== "ok" && r.status !== "cached") await admin.from("supplier_sources").update({ last_sync_at: startedAt.toISOString(), last_error: r.message }).eq("id", c.sourceId);
+      if (c.connectionId) await admin.from("supplier_connections").update({ last_sync_at: startedAt.toISOString(), last_error: r.status === "ok" ? null : r.message, ...r.status === "ok" ? { status: "connected" } : {} }).eq("id", c.connectionId);
+    }
+  };
+  const summary = await executeLiveSearch(
+    loaded.map((l) => l.candidate),
+    input,
+    runtime
+  );
+  log14.info("live search finished", { organizationId, query: input.rawQuery, queried: summary.queried, found: summary.found, stored: summary.stored, durationMs: summary.durationMs });
+  return summary;
+}
+var log14, LIVE_SEARCH_SOURCE_TYPES, LIVE_SEARCH_CACHE_TTL_MS, LIVE_SEARCH_DEFAULT_TIMEOUT_MS, LIVE_SEARCH_MAX_SOURCES, LIVE_SEARCH_PARALLELISM, LIVE_SEARCH_STORE_CONCURRENCY, LIVE_SEARCH_PUBLIC_MIN_DELAY_MS, LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS, LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE, LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, liveSearchCache;
+var init_live_search = __esm({
+  "src/services/sourcing/live-search.ts"() {
+    "use strict";
+    init_empty();
+    init_admin();
+    init_env();
+    init_logger();
+    init_query_parser();
+    init_normalizer();
+    init_registry();
+    init_robots();
+    init_adapter_runtime();
+    init_offer_storage();
+    init_supplier_connectors();
+    init_sync_runs();
+    log14 = createLogger("LIVE_SEARCH");
+    LIVE_SEARCH_SOURCE_TYPES = ["PUBLIC_WEB", "API", "JSON", "XML", "CSV", "SUPPLIER_ACCOUNT"];
+    LIVE_SEARCH_CACHE_TTL_MS = 10 * 6e4;
+    LIVE_SEARCH_DEFAULT_TIMEOUT_MS = 8e3;
+    LIVE_SEARCH_MAX_SOURCES = 10;
+    LIVE_SEARCH_PARALLELISM = 10;
+    LIVE_SEARCH_STORE_CONCURRENCY = 8;
+    LIVE_SEARCH_PUBLIC_MIN_DELAY_MS = 2e3;
+    LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS = 500;
+    LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE = 2;
+    LIVE_SEARCH_MIN_VARIANT_BUDGET_MS = 1e3;
+    liveSearchCache = /* @__PURE__ */ new Map();
   }
 });
 
@@ -8762,7 +9499,7 @@ async function buildRadarOffer(ctx, offerId, extraQuantities = [], now = /* @__P
   const { data: sku } = await ctx.supabase.from("v_stock_overview").select("avg_sale_price_30d, sale_price").eq("organization_id", ctx.organization.id).eq("sku_id", item.sku.id).maybeSingle();
   const sale = sku?.avg_sale_price_30d ?? sku?.sale_price ?? null;
   const country = item.offer.supplierCountry?.toUpperCase() ?? null;
-  const EU2 = /* @__PURE__ */ new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
+  const EU3 = /* @__PURE__ */ new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
   const scenarios = quantityScenarios(
     {
       salePrice: sale,
@@ -8773,7 +9510,7 @@ async function buildRadarOffer(ctx, offerId, extraQuantities = [], now = /* @__P
       moq: item.offer.moq,
       orderMultiple: item.details.orderMultiple,
       availableQuantity: item.offer.availableQuantity,
-      supplierOrigin: country ? EU2.has(country) ? "eu" : "non_eu" : "unknown",
+      supplierOrigin: country ? EU3.has(country) ? "eu" : "non_eu" : "unknown",
       originLabel: country
     },
     radar.settings,
@@ -15608,6 +16345,582 @@ var init_supplier_directory2 = __esm({
   }
 });
 
+// src/domain/sourcing/deal-analysis.ts
+function kindOfNormalized(t) {
+  for (const { kind, re } of KIND_RES) if (re.test(t)) return kind;
+  return "device";
+}
+function qualityOfNormalized(t) {
+  const found = /* @__PURE__ */ new Set();
+  for (const { key: key2, re } of QUALITY_RES) if (re.test(t)) found.add(key2);
+  if (found.has("soft_oled") || found.has("hard_oled")) found.delete("oled");
+  return [...found].sort();
+}
+function descriptorsOf(title, sig) {
+  const words = normalizeText(title).split(/[\s/]+/);
+  const modelWords = new Set((sig.model ?? "").split(/\s+/));
+  const kindWords = new Set((KIND_WORDS.find((k) => k.kind === sig.kind)?.words ?? []).flatMap((w2) => normalizeText(w2).split(" ")));
+  const out = /* @__PURE__ */ new Set();
+  for (const w2 of words) {
+    if (w2.length < 2 || /^\d+([.,]\d+)?$/.test(w2) || /^\d+(gb|go|tb|mah)$/.test(w2)) continue;
+    if (FILLER.has(w2) || modelWords.has(w2) || kindWords.has(w2)) continue;
+    out.add(w2);
+  }
+  return [...out].sort();
+}
+function overlap(a, b) {
+  if (a.length === 0 && b.length === 0) return 1;
+  const sb = new Set(b);
+  const inter = a.filter((w2) => sb.has(w2)).length;
+  return inter / (a.length + b.length - inter);
+}
+function productSignature(o) {
+  const stored = Boolean(o.brand && o.model);
+  const n = stored ? null : normalizeProduct(o.title, { brand: o.brand ?? null, model: o.model ?? null, storage: o.storage ?? null, grade: o.grade ?? null, condition: o.condition ?? null });
+  const brand = o.brand ?? n?.brand ?? null;
+  const model = o.model ?? n?.model ?? null;
+  const condRaw = o.condition && o.condition !== "unknown" ? o.condition : n?.condition ?? o.condition ?? "unknown";
+  const condition = condRaw === "new" || condRaw === "refurbished" || condRaw === "used" ? condRaw : "unknown";
+  const t = ` ${normalizeText(o.title).replace(/\d{2,3}\s?%?\s?(battery|batterie|bateria|batteria|baterie|akku)( health| sante)?|(battery|batterie|bateria|batteria|baterie|akku)( health| sante)?\s?\d{2,3}(?![0-9])(?!\s?mah)\s?%?/g, " ")} `;
+  const storage = (o.storage ?? n?.storage)?.toLowerCase() ?? null;
+  let kind = kindOfNormalized(t);
+  if (storage && kind !== "board" && kind !== "lot" && kind !== "device" && !PART_WITH_STORAGE.has(kind)) kind = "device";
+  const mixed = /(^|[^a-z0-9])([a-d][+]?)\s?\/\s?([a-d][+]?)(\s?\/\s?[a-d][+]?)*(?![a-z0-9])/i.exec(o.title.replace(/\d+\s?(gb|go|tb)\s?\//gi, " "));
+  const grade = mixed ? `mix:${mixed[0].trim().toLowerCase().replace(/\s/g, "")}` : (o.grade ?? n?.grade)?.toLowerCase() ?? null;
+  const modelKey = model ? model.toLowerCase() : null;
+  return {
+    brand: brand ? brand.toLowerCase() : null,
+    model: modelKey,
+    storage,
+    condition,
+    grade,
+    kind,
+    quality: kind === "device" ? [] : qualityOfNormalized(t),
+    descriptors: LOOSE_KINDS.has(kind) ? descriptorsOf(o.title, { model: modelKey, kind }) : [],
+    identified: Boolean(brand && model) && kind !== "lot"
+  };
+}
+function isEquivalent(a, b) {
+  if (!a.identified || !b.identified) return false;
+  if (a.brand !== b.brand || a.model !== b.model || a.kind !== b.kind) return false;
+  if (a.kind === "lot") return false;
+  if (a.quality.join(",") !== b.quality.join(",")) return false;
+  if (a.kind === "device") {
+    if (!a.storage || a.storage !== b.storage) return false;
+    if (a.condition === "unknown" || a.condition !== b.condition) return false;
+    if ((a.condition !== "new" || b.condition !== "new") && (a.grade ?? "") !== (b.grade ?? "")) return false;
+    return true;
+  }
+  const fresh = (c) => c === "new" || c === "unknown";
+  if (fresh(a.condition) !== fresh(b.condition)) return false;
+  if (!fresh(a.condition) && (a.condition !== b.condition || (a.grade ?? "") !== (b.grade ?? ""))) return false;
+  if ((a.storage ?? "") !== (b.storage ?? "")) return false;
+  if (LOOSE_KINDS.has(a.kind) && overlap(a.descriptors, b.descriptors) < DESCRIPTOR_OVERLAP_MIN) return false;
+  return true;
+}
+function quantile(values, q) {
+  const s = values.filter((v2) => Number.isFinite(v2) && v2 > 0).sort((a, b) => a - b);
+  if (s.length === 0) return null;
+  const pos = (s.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return r22(s[lo] + (s[hi] - s[lo]) * (pos - lo));
+}
+function trimOutliers(values) {
+  const med = quantile(values, 0.5);
+  if (med === null) return [];
+  return values.filter((v2) => v2 >= med * 0.3 && v2 <= med * 3);
+}
+function analyzeDeal(offer, comparables, settings, own = null, now = /* @__PURE__ */ new Date()) {
+  const sig = offer.signature ?? productSignature(offer);
+  const uncertainties = [];
+  const base = { level: "insufficient_data", comparable: false, supplierPrice: offer.price, marketPrice: null, marketBasis: null, marketCount: 0, discountPercent: null, totalCost: null, resalePrice: null, resaleBasis: null, margin: null, marginPercent: null, provisional: false, missingCosts: [], uncertainties, score: null, summary: "" };
+  if (offer.taxType === "unknown") uncertainties.push("Prix HT ou TTC non pr\xE9cis\xE9 par le fournisseur.");
+  if (offer.stockStatus === "unknown" && offer.availableQuantity === null) uncertainties.push("Stock non communiqu\xE9.");
+  if (offer.stockStatus === "out_of_stock" || offer.availableQuantity === 0) uncertainties.push("En rupture chez le fournisseur.");
+  if (sig.condition === "used" || sig.condition === "refurbished") uncertainties.push(sig.grade ? `Produit d'occasion / reconditionn\xE9 (grade ${sig.grade.toUpperCase()}) : \xE9tat \xE0 v\xE9rifier.` : "Produit d'occasion / reconditionn\xE9 sans grade pr\xE9cis\xE9.");
+  if (sig.kind === "lot") uncertainties.push("Prix de lot : non comparable \xE0 un prix unitaire.");
+  if (offer.originalCurrency && offer.originalCurrency.toUpperCase() !== offer.orgCurrency.toUpperCase()) uncertainties.push(`Prix converti depuis ${offer.originalCurrency.toUpperCase()} (taux BCE) : frais de change possibles.`);
+  const { freshness: freshness2, ageDays } = freshnessOf(offer.lastSeenAt, now);
+  if (freshness2 === "stale") uncertainties.push(`Prix relev\xE9 il y a ${ageDays} jours : \xE0 rev\xE9rifier.`);
+  if (offer.marketplace) uncertainties.push("Annonce de place de march\xE9 (vendeur particulier ou professionnel) : garantie et facture \xE0 v\xE9rifier.");
+  if (offer.price === null || offer.price <= 0) return { ...base, summary: "Prix fournisseur absent." };
+  if (!sig.identified) {
+    return { ...base, summary: sig.kind === "lot" ? "Lot : pas de comparaison \xE0 l'unit\xE9 possible." : "Produit pas assez identifi\xE9 (marque ou mod\xE8le) pour une comparaison fiable." };
+  }
+  const equivalents = comparables.filter((c) => c.offerId !== offer.offerId && c.price !== null && c.price > 0 && isEquivalent(sig, c.signature ?? productSignature(c)));
+  const marketPrices = trimOutliers(equivalents.filter((c) => c.marketplace).map((c) => c.price));
+  const supplierPrices = trimOutliers(equivalents.filter((c) => !c.marketplace && c.supplierId !== offer.supplierId).map((c) => c.price));
+  let marketPrice = null;
+  let marketBasis = null;
+  let marketCount = 0;
+  if (marketPrices.length >= MIN_MARKETPLACE_COMPARABLES) {
+    marketPrice = quantile(marketPrices, 0.5);
+    marketBasis = "marketplace";
+    marketCount = marketPrices.length;
+  } else if (supplierPrices.length >= MIN_SUPPLIER_COMPARABLES) {
+    marketPrice = quantile(supplierPrices, 0.5);
+    marketBasis = "suppliers";
+    marketCount = supplierPrices.length;
+    uncertainties.push(`Prix de march\xE9 estim\xE9 sur ${supplierPrices.length} autres fournisseurs (prix de gros), sans annonce de revente comparable.`);
+  }
+  let resalePrice = null;
+  let resaleBasis = null;
+  if (own?.avgSalePrice30d) {
+    resalePrice = own.avgSalePrice30d;
+    resaleBasis = "own_sales";
+  } else if (own?.salePrice) {
+    resalePrice = own.salePrice;
+    resaleBasis = "own_price";
+  } else if (marketPrices.length >= MIN_MARKETPLACE_COMPARABLES) {
+    resalePrice = quantile(marketPrices, 0.25);
+    resaleBasis = "marketplace_low";
+  }
+  const country = offer.supplierCountry?.toUpperCase() ?? null;
+  const origin = country ? EU2.has(country) ? "eu" : "non_eu" : "unknown";
+  const eco = computeUnitEconomics(
+    { salePrice: resalePrice, saleLabel: "Prix de revente estim\xE9", purchasePrice: offer.price, purchaseTaxType: offer.taxType, supplierShipping: offer.shippingCost, moq: offer.moq, supplierOrigin: origin, originLabel: country },
+    settings
+  );
+  const totalCost = eco.landedCost ?? (eco.missing.includes("prix de vente") ? landedOnly(offer, settings, origin, country) : null);
+  const missingCosts = eco.missing.filter((m) => m !== "prix de vente");
+  for (const c of eco.cautions) uncertainties.push(c);
+  const compared = marketBasis === "suppliers" ? offer.price : totalCost;
+  const discountPercent = marketPrice && compared !== null ? r22((marketPrice - compared) / marketPrice * 100) : null;
+  if (marketPrice === null || resalePrice === null || eco.estimatedProfit === null) {
+    const why = marketPrice === null ? `pas assez d'offres \xE9quivalentes (${equivalents.length} trouv\xE9e${equivalents.length > 1 ? "s" : ""})` : "pas de prix de revente fiable (aucune vente ni annonce de revente comparable)";
+    return { ...base, comparable: marketPrice !== null, marketPrice, marketBasis, marketCount, discountPercent, totalCost, resalePrice, resaleBasis, missingCosts, summary: `Comparaison impossible : ${why}.` };
+  }
+  const margin = eco.estimatedProfit;
+  const marginPercent = eco.marginPercent;
+  const provisional = missingCosts.length > 0;
+  const reliable = offer.stockStatus !== "out_of_stock" && offer.availableQuantity !== 0 && freshness2 !== "stale" && freshness2 !== "unknown";
+  let level;
+  if (margin <= 0 || discountPercent !== null && discountPercent <= 0) level = "not_competitive";
+  else if ((marginPercent ?? 0) >= 20 && (discountPercent ?? 0) >= 20 && reliable && offer.taxType !== "unknown") level = "very_good";
+  else if ((marginPercent ?? 0) >= 10 && (discountPercent ?? 0) >= 8) level = "good";
+  else level = "average";
+  if (provisional && level === "very_good") level = "good";
+  if (!reliable && level === "very_good") level = "good";
+  let score = 0;
+  score += Math.min(35, Math.max(0, marginPercent ?? 0) * (35 / 40));
+  score += Math.min(25, Math.max(0, discountPercent ?? 0) * (25 / 40));
+  score += (freshness2 === "fresh" ? 8 : freshness2 === "recent" ? 5 : 0) + (offer.taxType !== "unknown" ? 4 : 0) + (offer.stockStatus !== "unknown" || offer.availableQuantity !== null ? 4 : 0) + (offer.publicPrice ? 2 : 4) - (provisional ? 4 : 0);
+  score += offer.availableQuantity !== null && offer.availableQuantity > 0 ? 20 : offer.stockStatus === "in_stock" ? 18 : offer.stockStatus === "low" ? 12 : offer.stockStatus === "unknown" ? 6 : 0;
+  if (marketBasis === "suppliers") score -= 5;
+  score = Math.round(Math.max(0, Math.min(100, score)));
+  const summary = level === "not_competitive" ? discountPercent !== null && discountPercent <= 0 ? `${marketBasis === "suppliers" ? "Prix" : "Co\xFBt total"} ${Math.abs(discountPercent)} % au-dessus du march\xE9.` : "Marge nulle ou n\xE9gative apr\xE8s les co\xFBts." : `${discountPercent !== null ? `${discountPercent} % sous le march\xE9` : "Sous le march\xE9"}, marge ${margin.toFixed(2)} (${marginPercent} %)${provisional ? " \u2014 provisoire, co\xFBts \xE0 compl\xE9ter" : ""}.`;
+  return { level, comparable: true, supplierPrice: offer.price, marketPrice, marketBasis, marketCount, discountPercent, totalCost, resalePrice, resaleBasis, margin, marginPercent, provisional, missingCosts, uncertainties, score, summary };
+}
+function landedOnly(offer, settings, origin, country) {
+  const eco = computeUnitEconomics({ salePrice: 1, saleLabel: "", purchasePrice: offer.price, purchaseTaxType: offer.taxType, supplierShipping: offer.shippingCost, moq: offer.moq, supplierOrigin: origin, originLabel: country }, settings);
+  return eco.landedCost;
+}
+function comparableBucket(sig) {
+  return sig.identified ? `${sig.brand}|${sig.model}|${sig.kind}` : null;
+}
+var KIND_WORDS, QUALITY_WORDS, escapeRe, wordsRegex, KIND_RES, QUALITY_RES, LOOSE_KINDS, DESCRIPTOR_OVERLAP_MIN, PART_WITH_STORAGE, FILLER, DEAL_LEVEL_LABEL, EU2, r22, MIN_MARKETPLACE_COMPARABLES, MIN_SUPPLIER_COMPARABLES;
+var init_deal_analysis = __esm({
+  "src/domain/sourcing/deal-analysis.ts"() {
+    "use strict";
+    init_normalizer();
+    init_radar();
+    KIND_WORDS = [
+      { kind: "lot", words: ["lot de", "lote", "lotes", "palette", "paleta", "palety", "pallet", "job lot", "joblot", "caja", "bundle", "stock lot", "mix lot", "retourenpalette", "retouren paletten"] },
+      { kind: "screen_protector", words: ["verre trempe", "tempered glass", "protection ecran", "protector de pantalla", "protector pantalla", "screen protector", "ochranne sklo", "tvrzene sklo", "pellicola", "panzerglas", "privacy glass", "privacy tempered", "cristal templado", "protector de cristal", "vetro temperato", "folie"] },
+      { kind: "back_glass", words: ["vitre arriere", "back glass", "rear glass", "back cover", "coque arriere", "tapa trasera", "scocca posteriore", "zadni kryt", "klapka", "achterkant", "backcover", "battery cover", "rear housing"] },
+      { kind: "screen", words: ["ecran", "display", "lcd", "oled", "pantalla", "schermo", "wyswietlacz", "displej", "scherm", "bildschirm", "digitizer", "touch screen", "vitre tactile", "vitre simple", "front glass"] },
+      { kind: "battery", words: ["batterie", "battery", "bateria", "batteria", "baterie", "akku", "accu", "bateri"] },
+      { kind: "frame", words: ["chassis", "frame", "marco", "telaio", "ram ", "carcasa", "middle frame", "housing", "behuizing", "topcase", "top case", "bottom case"] },
+      { kind: "camera", words: ["camera", "camara", "fotocamera", "kamera", "objectif", "lens", "lentille"] },
+      { kind: "speaker", words: ["haut parleur", "haut-parleur", "speaker", "altavoz", "altoparlante", "reproduktor", "buzzer", "glosnik", "luidspreker", "ecouteur interne", "earpiece"] },
+      { kind: "charging_port", words: ["connecteur de charge", "port de charge", "charging port", "conector de carga", "dock", "gniazdo", "konektor", "laadpoort", "lightning port"] },
+      { kind: "flex", words: ["nappe", "flex", "cable flex", "kabel", "nastro"] },
+      { kind: "button", words: ["bouton", "button", "boton", "tasto", "tlacitko", "power button", "volume button"] },
+      { kind: "adhesive", words: ["adhesif", "adhesive", "adhesivo", "pegatina", "lepeni", "joint", "sticker", "colle"] },
+      { kind: "case", words: ["coque", "etui", "funda", "custodia", "pouzdro", "hoesje", "case "] },
+      { kind: "charger_cable", words: ["chargeur", "charger", "cargador", "caricabatterie", "nabijecka", "ladegerat", "cable usb", "cable lightning", "cable usb-c", "adaptateur secteur", "power adapter", "usb-c to", "usb-a to"] },
+      { kind: "tool", words: ["tournevis", "screwdriver", "outil", "tool", "tweezer", "pince", "spudger", "destornillador", "kit d'outils", "toolkit", "ventouse"] },
+      { kind: "sim_tray", words: ["rack sim", "tiroir sim", "tiroir carte sim", "sim tray", "bandeja sim", "slot sim", "porta sim", "suplik na sim", "suplik sim", "sim card tray", "tiroir nano sim"] },
+      { kind: "other_part", words: ["blindaje", "shield", "blindage", "plaque metal", "vis ", "screws", "tornillos", "joint etancheite", "mesh", "grille", "nfc", "antena", "antenna", "antenne", "vibreur", "vibrator", "motor vibr", "taptic", "face id", "touch id", "capteur", "sensor", "micro ", "microphone", "microfono", "ic chip", "puce"] },
+      { kind: "board", words: ["carte mere", "motherboard", "logic board", "placa base", "scheda madre", "carte fille", "daughter board", "moederbord"] },
+      { kind: "keyboard", words: ["clavier", "keyboard", "teclado", "tastiera", "klavesnice", "toetsenbord", "trackpad"] }
+    ];
+    QUALITY_WORDS = [
+      { key: "soft_oled", words: ["soft oled"] },
+      { key: "hard_oled", words: ["hard oled"] },
+      { key: "oled", words: ["oled", "amoled"] },
+      { key: "incell", words: ["incell", "in-cell", "in cell"] },
+      { key: "tft", words: ["tft"] },
+      { key: "original", words: ["original", "origine", "originale", "oryginalny", "originalni", "genuine", "oem", "service pack", "pulled", "recupere", "refurbished original"] },
+      { key: "compatible", words: ["compatible", "aftermarket", "zamiennik", "copy", "replacement", "remplacement", "repart"] },
+      { key: "high_capacity", words: ["capacidad aumentada", "haute capacite", "high capacity", "grande capacite", "zvysena kapacita", "capacita maggiorata"] }
+    ];
+    escapeRe = (w2) => w2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    wordsRegex = (words) => new RegExp(`(^|[^a-z0-9])(${words.map((w2) => escapeRe(normalizeText(w2) + (/\s$/.test(w2) ? " " : ""))).join("|")})`);
+    KIND_RES = KIND_WORDS.map(({ kind, words }) => ({ kind, re: wordsRegex(words) }));
+    QUALITY_RES = QUALITY_WORDS.map(({ key: key2, words }) => ({ key: key2, re: wordsRegex(words) }));
+    LOOSE_KINDS = /* @__PURE__ */ new Set(["flex", "camera", "speaker", "button", "adhesive", "case", "charger_cable", "tool", "sim_tray", "board", "keyboard", "charging_port", "frame", "other_part"]);
+    DESCRIPTOR_OVERLAP_MIN = 0.5;
+    PART_WITH_STORAGE = /* @__PURE__ */ new Set(["board"]);
+    FILLER = /* @__PURE__ */ new Set([
+      "para",
+      "pour",
+      "for",
+      "per",
+      "pro",
+      "max",
+      "mini",
+      "plus",
+      "de",
+      "du",
+      "des",
+      "la",
+      "le",
+      "les",
+      "el",
+      "los",
+      "las",
+      "di",
+      "del",
+      "con",
+      "avec",
+      "with",
+      "and",
+      "et",
+      "y",
+      "e",
+      "en",
+      "in",
+      "na",
+      "do",
+      "pre",
+      "z",
+      "w",
+      "the",
+      "a",
+      "an",
+      "un",
+      "une",
+      "+",
+      "noir",
+      "black",
+      "negro",
+      "nero",
+      "cerny",
+      "blanc",
+      "white",
+      "blanco",
+      "bianco",
+      "bily",
+      "bleu",
+      "blue",
+      "azul",
+      "rouge",
+      "red",
+      "rojo",
+      "vert",
+      "green",
+      "verde",
+      "rose",
+      "pink",
+      "gold",
+      "or",
+      "dore",
+      "silver",
+      "argent",
+      "plata",
+      "gris",
+      "grey",
+      "gray",
+      "purple",
+      "violet",
+      "midnight",
+      "starlight",
+      "graphite",
+      "sierra",
+      "apple",
+      "samsung",
+      "xiaomi",
+      "huawei",
+      "google",
+      "oneplus",
+      "oppo",
+      "iphone",
+      "ipad",
+      "galaxy",
+      "pixel",
+      "redmi",
+      "neuf",
+      "new",
+      "nuevo",
+      "nuovo",
+      "novy",
+      "oem",
+      "original",
+      "originale",
+      "compatible",
+      "qualite",
+      "quality",
+      "premium",
+      "piece",
+      "pieza",
+      "part",
+      "replacement",
+      "remplacement",
+      "repuesto",
+      "nahradni",
+      "ricambio"
+    ]);
+    DEAL_LEVEL_LABEL = {
+      very_good: "Tr\xE8s int\xE9ressant",
+      good: "Int\xE9ressant",
+      average: "Moyen",
+      not_competitive: "Non comp\xE9titif",
+      insufficient_data: "Donn\xE9es insuffisantes"
+    };
+    EU2 = /* @__PURE__ */ new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
+    r22 = (n) => Math.round(n * 100) / 100;
+    MIN_MARKETPLACE_COMPARABLES = 3;
+    MIN_SUPPLIER_COMPARABLES = 2;
+  }
+});
+
+// src/services/sourcing/simple-search.ts
+var simple_search_exports = {};
+__export(simple_search_exports, {
+  SIMPLE_SEARCH_LIVE_BUDGET_MS: () => SIMPLE_SEARCH_LIVE_BUDGET_MS,
+  SIMPLE_SEARCH_MAX_OFFERS: () => SIMPLE_SEARCH_MAX_OFFERS,
+  SIMPLE_SEARCH_PER_SUPPLIER: () => SIMPLE_SEARCH_PER_SUPPLIER,
+  byPrice: () => byPrice,
+  computeDeals: () => computeDeals,
+  groupBySupplier: () => groupBySupplier,
+  ilikePattern: () => ilikePattern,
+  isMarketplaceSource: () => isMarketplaceSource,
+  matchesQuery: () => matchesQuery2,
+  queryTokens: () => queryTokens2,
+  simpleSupplierSearch: () => simpleSupplierSearch,
+  toDealDTO: () => toDealDTO
+});
+function queryTokens2(q) {
+  const stop = /* @__PURE__ */ new Set(["de", "du", "la", "le", "les", "des", "un", "une", "pour", "et", "the", "for"]);
+  return Array.from(new Set(fold(q).split(/[^a-z0-9+]+/).filter((t) => t.length > 0 && !stop.has(t) && (t.length >= 2 || /\d/.test(t)))));
+}
+function matchesQuery2(title, tokens) {
+  const t = fold(title);
+  return tokens.every((tok) => {
+    const esc = tok.replace(/[+]/g, "\\+");
+    const re = /^\d+$/.test(tok) ? new RegExp(`(^|[^0-9])${esc}(?![0-9])`) : new RegExp(`(^|[^a-z0-9])${esc}`);
+    return re.test(t);
+  });
+}
+function groupBySupplier(rows, perSupplier = SIMPLE_SEARCH_PER_SUPPLIER, deals) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const g = groups.get(r.supplier_id) ?? { supplierName: r.supplier?.name ?? "Fournisseur", country: r.supplier?.country ?? null, offers: [] };
+    const stock = r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown";
+    g.offers.push({
+      id: r.id,
+      title: r.title_original,
+      price: num(r.original_price),
+      currency: r.original_currency,
+      priceConverted: num(r.normalized_price),
+      taxType: r.tax_type === "ht" || r.tax_type === "ttc" ? r.tax_type : "unknown",
+      stock,
+      quantity: r.available_quantity,
+      url: r.source_url,
+      seenAt: r.last_seen_at,
+      deal: deals?.get(r.id) ?? null
+    });
+    groups.set(r.supplier_id, g);
+  }
+  const key2 = (o) => (o.stock === "out_of_stock" ? 1e12 : 0) + (o.priceConverted ?? o.price ?? 1e11);
+  const out = Array.from(groups.entries()).map(([supplierId, g]) => {
+    const sorted = g.offers.sort((a, b) => key2(a) - key2(b));
+    return { supplierId, supplierName: g.supplierName, country: g.country, total: sorted.length, offers: sorted.slice(0, perSupplier) };
+  });
+  return out.sort((a, b) => key2(a.offers[0]) - key2(b.offers[0]) || a.supplierName.localeCompare(b.supplierName));
+}
+function ilikePattern(token) {
+  return `%${token.replace(/[^a-z0-9+]/g, "").replace(/[aeiouyc]/g, "_")}%`;
+}
+function byPrice(rows, max = SIMPLE_SEARCH_MAX_OFFERS, deals) {
+  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER, deals).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
+  const key2 = (o) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
+  return all.sort((a, b) => key2(a) - key2(b) || a.title.localeCompare(b.title)).slice(0, max);
+}
+function isMarketplaceSource(config) {
+  const c = config ?? {};
+  return c.adapter === "ebay-browse" || c.kind === "marketplace";
+}
+function orgPrice(r, orgCurrency) {
+  const cur = (r.normalized_currency ?? (r.original_currency?.toUpperCase() === orgCurrency.toUpperCase() ? orgCurrency : null))?.toUpperCase();
+  if (cur !== orgCurrency.toUpperCase()) return null;
+  return num(r.normalized_price) ?? (r.original_currency?.toUpperCase() === orgCurrency.toUpperCase() ? num(r.original_price) : null);
+}
+function orgShipping(r, orgCurrency) {
+  const ship = num(r.shipping_cost ?? null);
+  if (ship === null) return null;
+  const cur = (r.shipping_currency ?? r.original_currency ?? "").toUpperCase();
+  if (cur === orgCurrency.toUpperCase()) return ship;
+  const fx = num(r.fx_rate ?? null);
+  if (r.original_currency && cur === r.original_currency.toUpperCase() && fx) return Math.round(ship * fx * 100) / 100;
+  return null;
+}
+function toDealDTO(d) {
+  return { ...d, label: DEAL_LEVEL_LABEL[d.level] };
+}
+function computeDeals(targets, pool, input) {
+  const sigs = /* @__PURE__ */ new Map();
+  const sigOf = (r) => {
+    let sg = sigs.get(r.id);
+    if (!sg) {
+      sg = productSignature({ title: r.title_original, brand: r.brand, model: r.model, storage: r.storage, condition: r.condition, grade: r.grade });
+      sigs.set(r.id, sg);
+    }
+    return sg;
+  };
+  const buckets = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Set();
+  for (const r of [...targets, ...pool]) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    const sg = sigOf(r);
+    const key2 = comparableBucket(sg);
+    if (!key2) continue;
+    const list = buckets.get(key2) ?? [];
+    list.push({ offerId: r.id, supplierId: r.supplier_id, title: r.title_original, price: orgPrice(r, input.orgCurrency), marketplace: isMarketplaceSource(r.source?.config), stockStatus: r.stock_status, signature: sg });
+    buckets.set(key2, list);
+  }
+  const out = /* @__PURE__ */ new Map();
+  for (const r of targets) {
+    const sg = sigOf(r);
+    const key2 = comparableBucket(sg);
+    const tax = r.tax_type === "ht" || r.tax_type === "ttc" ? r.tax_type : "unknown";
+    const stock = r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown";
+    const offer = {
+      offerId: r.id,
+      supplierId: r.supplier_id,
+      title: r.title_original,
+      price: orgPrice(r, input.orgCurrency),
+      originalCurrency: r.original_currency,
+      orgCurrency: input.orgCurrency,
+      taxType: tax,
+      shippingCost: orgShipping(r, input.orgCurrency),
+      moq: r.moq ?? null,
+      supplierCountry: r.ship_from_country ?? r.supplier?.country ?? null,
+      stockStatus: stock,
+      availableQuantity: r.available_quantity,
+      lastSeenAt: r.last_seen_at,
+      marketplace: isMarketplaceSource(r.source?.config),
+      publicPrice: (r.source_type ?? "PUBLIC_WEB") === "PUBLIC_WEB",
+      signature: sg
+    };
+    const own = r.sku_id ? input.own.get(r.sku_id) ?? null : null;
+    out.set(r.id, toDealDTO(analyzeDeal(offer, key2 ? buckets.get(key2) ?? [] : [], input.settings, own, input.now)));
+  }
+  return out;
+}
+async function withBudget(p, ms) {
+  let timer;
+  try {
+    return await Promise.race([p, new Promise((resolve) => timer = setTimeout(() => resolve("timeout"), ms))]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+async function simpleSupplierSearch(ctx, q, deps = {}) {
+  const now = deps.now ?? Date.now;
+  const t0 = now();
+  const query = q.trim().slice(0, 120);
+  const tokens = queryTokens2(query);
+  if (tokens.length === 0) throw new AppError("VALIDATION", "Tapez ce que vous cherchez, par exemple \xAB iPhone 13 \xBB ou \xAB batterie trottinette \xBB.");
+  const live = deps.live ?? ((c, text3) => runLiveSearch(c, { rawQuery: text3, parsed: parseQuery(text3) }));
+  let summary = null;
+  let partial = false;
+  try {
+    const r = await withBudget(live(ctx, query), deps.budgetMs ?? SIMPLE_SEARCH_LIVE_BUDGET_MS);
+    if (r === "timeout") partial = true;
+    else summary = r;
+  } catch (e) {
+    partial = true;
+    log26.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+  }
+  let offersQuery = ctx.supabase.from("sourcing_offers").select(OFFER_COLUMNS).eq("organization_id", ctx.organization.id).eq("status", "active");
+  for (const tok of tokens) offersQuery = offersQuery.ilike("title_original", ilikePattern(tok));
+  const { data, error } = await offersQuery.order("normalized_price", { ascending: true, nullsFirst: false }).limit(SCAN_LIMIT);
+  if (error) throw fromPostgrestError(error);
+  const rows = (data ?? []).filter((r) => r.title_original && matchesQuery2(r.title_original, tokens));
+  let deals;
+  let missingCostSettings;
+  try {
+    const r = await loadDeals(ctx, rows, new Date(now()));
+    deals = r.deals;
+    missingCostSettings = r.missing;
+  } catch (e) {
+    log26.warn("deal analysis failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+  }
+  const suppliers = groupBySupplier(rows, SIMPLE_SEARCH_PER_SUPPLIER, deals);
+  const offers = byPrice(rows, SIMPLE_SEARCH_MAX_OFFERS, deals);
+  return {
+    query,
+    currency: ctx.organization.default_currency,
+    total: rows.length,
+    offers,
+    suppliers,
+    checked: (summary?.sources ?? []).map((s) => ({ supplierName: s.supplierName, ok: s.status === "ok" || s.status === "cached", found: s.found, message: s.status === "ok" || s.status === "cached" ? null : s.message })),
+    partial,
+    durationMs: now() - t0,
+    ...missingCostSettings ? { missingCostSettings } : {}
+  };
+}
+async function loadDeals(ctx, rows, now) {
+  const orgId = ctx.organization.id;
+  const shown = /* @__PURE__ */ new Set([...byPrice(rows).map((o) => o.id), ...groupBySupplier(rows).flatMap((g) => g.offers.map((o) => o.id))]);
+  const targets = rows.filter((r) => shown.has(r.id));
+  const models = Array.from(new Set(targets.map((r) => r.model).filter((m) => Boolean(m)))).slice(0, 40);
+  const skuIds = Array.from(new Set(targets.map((r) => r.sku_id).filter((v2) => Boolean(v2)))).slice(0, 500);
+  const [poolRes, channelsRes, stockRes] = await Promise.all([
+    models.length ? ctx.supabase.from("sourcing_offers").select(OFFER_COLUMNS).eq("organization_id", orgId).eq("status", "active").in("model", models).limit(DEAL_POOL_LIMIT) : Promise.resolve({ data: [], error: null }),
+    ctx.supabase.from("sales_channels").select("provider, fee_percent, payment_fee_percent, payment_fee_fixed, default_shipping_cost, is_active").eq("organization_id", orgId),
+    skuIds.length ? ctx.supabase.from("v_stock_overview").select("sku_id, avg_sale_price_30d, sale_price, currency").eq("organization_id", orgId).in("sku_id", skuIds) : Promise.resolve({ data: [], error: null })
+  ]);
+  for (const r of [poolRes, channelsRes, stockRes]) if (r.error) throw fromPostgrestError(r.error);
+  const channels = channelsRes.data ?? [];
+  const channel = channels.find((c) => c.provider === "ebay") ?? channels.find((c) => c.provider !== "manual") ?? channels[0] ?? null;
+  const { settings } = readCostSettings(ctx.organization.settings, channel);
+  const orgCurrency = ctx.organization.default_currency;
+  const own = /* @__PURE__ */ new Map();
+  for (const s of stockRes.data ?? []) {
+    if (s.sku_id && (!s.currency || s.currency.toUpperCase() === orgCurrency.toUpperCase())) own.set(s.sku_id, { avgSalePrice30d: s.avg_sale_price_30d, salePrice: s.sale_price });
+  }
+  const deals = computeDeals(targets, poolRes.data ?? [], { orgCurrency, settings, own, now });
+  return { deals, missing: missingSettings(settings) };
+}
+var log26, SIMPLE_SEARCH_LIVE_BUDGET_MS, SIMPLE_SEARCH_PER_SUPPLIER, SCAN_LIMIT, fold, num, SIMPLE_SEARCH_MAX_OFFERS, DEAL_POOL_LIMIT, OFFER_COLUMNS;
+var init_simple_search = __esm({
+  "src/services/sourcing/simple-search.ts"() {
+    "use strict";
+    init_empty();
+    init_errors();
+    init_logger();
+    init_query_parser();
+    init_live_search();
+    init_deal_analysis();
+    init_radar();
+    init_radar_settings();
+    log26 = createLogger("SUPPLIER_SEARCH");
+    SIMPLE_SEARCH_LIVE_BUDGET_MS = 35e3;
+    SIMPLE_SEARCH_PER_SUPPLIER = 30;
+    SCAN_LIMIT = 3e3;
+    fold = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    num = (v2) => v2 === null || v2 === void 0 || v2 === "" ? null : Number.isFinite(Number(v2)) ? Number(v2) : null;
+    SIMPLE_SEARCH_MAX_OFFERS = 400;
+    DEAL_POOL_LIMIT = 3e3;
+    OFFER_COLUMNS = "id, title_original, original_price, original_currency, normalized_price, normalized_currency, fx_rate, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, brand, model, storage, condition, grade, shipping_cost, shipping_currency, moq, ship_from_country, sku_id, source_type, supplier:suppliers(name, country), source:supplier_sources(config)";
+  }
+});
+
 // server/edge/api.ts
 init_errors();
 init_logger();
@@ -15621,113 +16934,7 @@ init_admin();
 init_env();
 init_logger();
 init_registry();
-
-// src/services/sourcing/adapter-runtime.ts
-function configObject(config) {
-  return config && typeof config === "object" && !Array.isArray(config) ? config : {};
-}
-function adapterKeyOf(config) {
-  const c = configObject(config);
-  return typeof c.adapter === "string" && c.adapter.trim() ? c.adapter.trim() : null;
-}
-function adapterConfigFromSource(row2) {
-  const settings = { ...configObject(row2.config) };
-  if (typeof settings.max_pages === "string") {
-    const n = Number(settings.max_pages);
-    if (Number.isFinite(n)) settings.max_pages = n;
-  }
-  return {
-    baseUrl: row2.base_url ? row2.base_url.replace(/\/+$/, "") : null,
-    settings,
-    defaultCurrency: row2.default_currency,
-    defaultTaxType: row2.default_tax_type,
-    defaultCountry: row2.country
-  };
-}
-var MAX_PAYLOAD_JSON = 8e3;
-function boundedPayload(raw) {
-  if (raw === void 0 || raw === null) return null;
-  try {
-    const json2 = JSON.stringify(raw);
-    if (json2.length <= MAX_PAYLOAD_JSON) return raw;
-    return { truncated: true, excerpt: json2.slice(0, MAX_PAYLOAD_JSON) };
-  } catch {
-    return null;
-  }
-}
-function withProvenance(offer, p) {
-  const requestUrl = p.requestUrl ?? (offer.raw && typeof offer.raw === "object" && typeof offer.raw.request_url === "string" ? offer.raw.request_url : null);
-  return {
-    ...offer,
-    url: offer.url ?? p.sourceUrl ?? null,
-    raw: {
-      provenance: { adapter: p.adapterKey, adapter_key: p.adapterKey, method: p.method, retrieved_at: p.retrievedAt, request_url: requestUrl, source_url: offer.url ?? p.sourceUrl ?? null },
-      payload: boundedPayload(offer.raw)
-    }
-  };
-}
-var METHODS = /* @__PURE__ */ new Set(["public_html", "public_json", "public_feed", "official_api", "supplier_account", "manual"]);
-function parseStoredProvenance(raw) {
-  const r = configObject(raw);
-  const p = configObject(r.provenance ?? r._provenance);
-  if (Object.keys(p).length === 0) return null;
-  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2 : null;
-  const method = str3(p.method);
-  const adapterKey = str3(p.adapter_key) ?? str3(p.adapterKey) ?? str3(p.adapter);
-  if (!method && !adapterKey) return null;
-  return { method: method && METHODS.has(method) ? method : null, adapterKey, retrievedAt: str3(p.retrieved_at) ?? str3(p.retrievedAt), requestUrl: str3(p.request_url) ?? str3(p.requestUrl) };
-}
-function hostOf(url) {
-  if (!url) return null;
-  try {
-    return new URL(url).host.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-var defaultSleep2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-var HostScheduler = class {
-  constructor(minDelayMs, sleep3 = defaultSleep2, clock = () => Date.now()) {
-    this.minDelayMs = minDelayMs;
-    this.sleep = sleep3;
-    this.clock = clock;
-  }
-  minDelayMs;
-  sleep;
-  clock;
-  chains = /* @__PURE__ */ new Map();
-  lastAt = /* @__PURE__ */ new Map();
-  async run(host, fn) {
-    const previous = this.chains.get(host) ?? Promise.resolve();
-    let release;
-    const gate = new Promise((resolve) => {
-      release = resolve;
-    });
-    this.chains.set(host, previous.then(() => gate));
-    await previous;
-    try {
-      const last = this.lastAt.get(host);
-      if (last !== void 0) {
-        const wait = this.minDelayMs - (this.clock() - last);
-        if (wait > 0) await this.sleep(wait);
-      }
-      this.lastAt.set(host, this.clock());
-      return await fn();
-    } finally {
-      release();
-    }
-  }
-  /** fetch sérialisé par hôte (passé aux adaptateurs via ctx.fetchImpl). */
-  wrapFetch(fetchImpl = fetch) {
-    const wrapped = (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      return this.run(hostOf(url) ?? "unknown", () => fetchImpl(input, init));
-    };
-    return wrapped;
-  }
-};
-
-// src/services/sourcing/crawler/crawler-manager.ts
+init_adapter_runtime();
 init_robots();
 
 // src/services/sourcing/crawler/parsers/registry.ts
@@ -15939,8 +17146,9 @@ init_empty();
 init_admin();
 init_logger();
 init_registry();
-import { z as z13 } from "npm:zod@4.6.5";
+init_adapter_runtime();
 init_robots();
+import { z as z13 } from "npm:zod@4.6.5";
 init_offer_storage();
 
 // src/services/sourcing/source-health.ts
@@ -18311,6 +19519,7 @@ function listCatalogSources() {
 
 // src/features/sourcing/status-queries.ts
 init_registry();
+init_adapter_runtime();
 
 // src/services/sourcing/status-summary.ts
 var FEED_TYPES = /* @__PURE__ */ new Set(["CSV", "XML", "JSON"]);
@@ -18599,607 +19808,9 @@ function dedupeOffers(items) {
   return { kept, collapsed };
 }
 
-// src/services/sourcing/live-search.ts
-init_empty();
-init_admin();
-init_env();
-init_logger();
-init_query_parser();
-init_normalizer();
-init_registry();
-init_robots();
-init_offer_storage();
-
-// src/services/sourcing/supplier-connectors.ts
-init_empty();
-init_admin();
-init_crypto();
-init_env();
-init_errors();
-init_logger();
-
-// src/integrations/suppliers/core.ts
-init_query_parser();
-init_registry();
-var DEFAULT_CONFIG = { baseUrl: null, settings: {}, defaultCurrency: null, defaultTaxType: "unknown", defaultCountry: null };
-function accessConditionsOf(adapter) {
-  return `Acc\xE8s r\xE9serv\xE9 aux titulaires d'un compte ${adapter.label.replace(/\s*\(.*\)$/, "")} : identifiants fournis par le vendeur, chiffr\xE9s c\xF4t\xE9 serveur, utilis\xE9s uniquement pour l'API officielle (${adapter.method === "official_api" ? "API officielle" : "compte fournisseur"}). ${adapter.verification === "fixtures" ? "Connecteur impl\xE9ment\xE9 d'apr\xE8s la documentation publique et v\xE9rifi\xE9 sur fixtures uniquement : non exerc\xE9 en conditions r\xE9elles depuis cet environnement." : ""}`.trim();
-}
-function createConnector(adapter, config, base) {
-  let credentials = null;
-  const ctx = () => ({ userAgent: base.userAgent ?? "MonStockBot/0.1", ...base, credentials: credentials ?? void 0 });
-  return {
-    key: adapter.key,
-    async connect(creds) {
-      credentials = creds;
-    },
-    async testConnection() {
-      if (!credentials) return { ok: false, message: "Connexion non initialis\xE9e (identifiants absents)." };
-      return adapter.testConnection(config, ctx());
-    },
-    async fetchCatalog(options = {}) {
-      if (!credentials) throw new Error("Connexion non initialis\xE9e (identifiants absents).");
-      if (!adapter.fetchCatalog) return { offers: [], nextCursor: null };
-      const page2 = await adapter.fetchCatalog(config, options.cursor ?? null, ctx());
-      return { offers: options.limit ? page2.offers.slice(0, options.limit) : page2.offers, nextCursor: page2.nextCursor };
-    },
-    async fetchOffers(query) {
-      if (!credentials) throw new Error("Connexion non initialis\xE9e (identifiants absents).");
-      if (!query?.trim()) return [];
-      const result = await adapter.search(config, parseQuery(query), query, ctx());
-      return result.offers;
-    },
-    async getAccountInfo() {
-      return { accountId: null, name: null, currency: null };
-    }
-  };
-}
-function toDescriptor(adapter) {
-  return {
-    key: adapter.key,
-    label: adapter.label,
-    description: adapter.description,
-    accessConditions: accessConditionsOf(adapter),
-    credentialFields: adapter.credentialFields,
-    configFields: adapter.configFields,
-    verification: adapter.verification,
-    adapter,
-    create: (config = DEFAULT_CONFIG, ctx = {}) => createConnector(adapter, config, ctx)
-  };
-}
-var SUPPLIER_CONNECTORS = listAccountAdapters().map(toDescriptor);
-var NO_CONNECTOR_MESSAGE = "Aucun connecteur fournisseur disponible pour l'instant.";
-function getConnectorDescriptor(key2) {
-  return SUPPLIER_CONNECTORS.find((c) => c.key === key2) ?? null;
-}
-
-// src/services/sourcing/supplier-connectors.ts
-init_offer_storage();
-init_sync_runs();
-var log13 = createLogger("SUPPLIER_CONNECTORS");
-var MAX_CONNECTION_CATALOG_PAGES = 20;
-var CONNECTION_MIN_DELAY_MS = 500;
-async function loadConnectionCredentials(connectionId) {
-  const admin = createAdminSupabaseClient();
-  const { data } = await admin.from("supplier_connection_secrets").select("credentials_enc").eq("connection_id", connectionId).maybeSingle();
-  if (!data?.credentials_enc) return null;
-  return JSON.parse(decryptSecret(data.credentials_enc));
-}
-async function loadConnection(admin, connectionId) {
-  const { data } = await admin.from("supplier_connections").select("id, organization_id, supplier_id, source_id, connector_key, config, supplier:suppliers(name, currency)").eq("id", connectionId).maybeSingle();
-  return data ?? null;
-}
-async function ensureConnectionSource(admin, connection, descriptor) {
-  if (connection.source_id) {
-    const { data: data2 } = await admin.from("supplier_sources").select("*").eq("id", connection.source_id).maybeSingle();
-    if (data2) return data2;
-  }
-  const connConfig = connection.config && typeof connection.config === "object" && !Array.isArray(connection.config) ? connection.config : {};
-  const { data, error } = await admin.from("supplier_sources").insert({
-    organization_id: connection.organization_id,
-    supplier_id: connection.supplier_id,
-    name: descriptor.label,
-    source_type: "SUPPLIER_ACCOUNT",
-    automated_access_confirmed: true,
-    access_conditions: descriptor.accessConditions,
-    status: "active",
-    sync_frequency: "manual",
-    default_currency: typeof connConfig.default_currency === "string" ? connConfig.default_currency : connection.supplier?.currency ?? null,
-    config: { adapter: descriptor.key, ...connConfig }
-  }).select("*").single();
-  if (error || !data) throw new AppError("INTERNAL", `Source du compte fournisseur non cr\xE9\xE9e : ${error?.message ?? "inconnu"}`);
-  await admin.from("supplier_connections").update({ source_id: data.id }).eq("id", connection.id);
-  return data;
-}
-function runContext(credentials, options) {
-  const scheduler = new HostScheduler(CONNECTION_MIN_DELAY_MS, options.sleep);
-  return { userAgent: serverEnv().SOURCING_USER_AGENT, credentials, fetchImpl: scheduler.wrapFetch(options.fetchImpl), sleep: options.sleep, resolver: options.resolver, minDelayMs: CONNECTION_MIN_DELAY_MS, timeoutMs: options.timeoutMs };
-}
-async function syncSupplierConnection(connectionId, options = {}) {
-  const admin = options.admin ?? createAdminSupabaseClient();
-  const base = { connectionId, sourceId: null, runId: null, pages: 0, found: 0, stored: 0, rejected: 0, expired: 0 };
-  const connection = await loadConnection(admin, connectionId);
-  if (!connection) return { ...base, status: "failed", message: "Connexion introuvable." };
-  const descriptor = getConnectorDescriptor(connection.connector_key);
-  if (!descriptor) return { ...base, status: "refused", message: `Connecteur \xAB ${connection.connector_key} \xBB indisponible : ${NO_CONNECTOR_MESSAGE}` };
-  if (!descriptor.adapter.fetchCatalog) return { ...base, status: "refused", message: `Le connecteur \xAB ${descriptor.label} \xBB ne propose pas de parcours de catalogue.` };
-  const credentials = await loadConnectionCredentials(connection.id);
-  if (!credentials) return { ...base, status: "refused", message: "Identifiants introuvables : reconnectez le compte fournisseur." };
-  const source = await ensureConnectionSource(admin, connection, descriptor);
-  const { data: org } = await admin.from("organizations").select("default_currency").eq("id", connection.organization_id).maybeSingle();
-  const run = await startSyncRun(admin, { organizationId: connection.organization_id, sourceKind: "supplier_connection", sourceRef: connection.id, provider: descriptor.key, trigger: options.trigger ?? "manual", createdBy: options.createdBy ?? null });
-  const errors = [];
-  const config = adapterConfigFromSource(source);
-  const ctx = runContext(credentials, { fetchImpl: options.fetchImpl, sleep: options.sleep, resolver: options.resolver });
-  const storage = { supabase: admin, organizationId: connection.organization_id, organizationCurrency: org?.default_currency ?? "EUR", supplierId: connection.supplier_id, sourceId: source.id, sourceType: source.source_type, defaultCurrency: source.default_currency, defaultTaxType: source.default_tax_type, defaultCountry: source.country, createdBy: options.createdBy ?? null, now: run.startedAt };
-  const maxPages = Math.min(options.maxPages ?? MAX_CONNECTION_CATALOG_PAGES, 200);
-  let pages = 0;
-  let found = 0;
-  let stored = 0;
-  let rejected = 0;
-  let expired2 = 0;
-  const requests = [];
-  try {
-    let cursor = null;
-    let truncated = false;
-    for (; ; ) {
-      if (pages >= maxPages) {
-        truncated = true;
-        errors.push({ code: "CATALOG_TRUNCATED", message: `Limite de ${maxPages} page(s) atteinte : le reste du catalogue sera lu \xE0 la prochaine synchronisation.`, entityType: "connection", entityRef: connection.id });
-        break;
-      }
-      const page2 = await descriptor.adapter.fetchCatalog(config, cursor, ctx);
-      pages++;
-      for (const q of page2.requests) {
-        requests.push({ url: q.url, status: q.status, durationMs: q.durationMs, offers: q.offers, error: q.error });
-        if (q.error) errors.push({ code: "PAGE_FAILED", message: q.error, entityType: "page", entityRef: q.url });
-      }
-      found += page2.offers.length;
-      const retrievedAt = (/* @__PURE__ */ new Date()).toISOString();
-      const requestUrl = page2.requests.find((q) => q.offers > 0)?.url ?? page2.requests[0]?.url ?? null;
-      for (const offer of page2.offers) {
-        const traced = withProvenance(offer, { adapterKey: descriptor.key, method: page2.method, retrievedAt, requestUrl, sourceUrl: offer.url ?? null });
-        try {
-          const r = await storeOffer(storage, traced);
-          if (r.outcome === "stored") stored++;
-          else {
-            rejected++;
-            errors.push({ code: "OFFER_REJECTED", message: r.validation.anomalies.map((a) => a.message).join(" ; "), entityType: "offer", entityRef: offer.externalOfferId });
-          }
-        } catch (e) {
-          rejected++;
-          errors.push({ code: "OFFER_STORE_FAILED", message: e instanceof Error ? e.message : String(e), entityType: "offer", entityRef: offer.externalOfferId });
-        }
-      }
-      if (!page2.nextCursor) break;
-      cursor = page2.nextCursor;
-    }
-    if (stored > 0 && !truncated) expired2 = await expireUnseenOffers(storage, run.startedAt);
-    const pageErrors = errors.filter((e) => e.code === "PAGE_FAILED").length;
-    const status = found === 0 && pageErrors > 0 ? "failed" : errors.length > 0 ? "partial" : "success";
-    const message = found === 0 && pageErrors === 0 ? "Le catalogue ne contient aucune offre lisible." : `${pages} page(s) lue(s), ${found} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s), ${expired2} expir\xE9e(s).`;
-    await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: found, errorCount: errors.length, stats: { pages, found, stored, rejected, expired: expired2, truncated, requests: requests.slice(0, 100), adapter: descriptor.key }, errorSummary: status === "failed" ? message : null });
-    await admin.from("supplier_connections").update({ status: status === "failed" ? "error" : "connected", last_sync_at: run.startedAt.toISOString(), last_error: status === "failed" ? message : null, connected_at: status === "failed" ? null : (/* @__PURE__ */ new Date()).toISOString() }).eq("id", connection.id);
-    await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source.id);
-    return { connectionId, sourceId: source.id, runId: run.id, status, pages, found, stored, rejected, expired: expired2, message };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Erreur inconnue.";
-    log13.error("connection sync failed", { connectionId, error: message });
-    await recordSyncErrors(admin, run, [...errors, { code: "SYNC_FAILED", message }]);
-    await finishSyncRun(admin, run, { status: "failed", recordsProcessed: found, errorCount: errors.length + 1, errorSummary: message });
-    await admin.from("supplier_connections").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", connection.id);
-    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
-    return { connectionId, sourceId: source.id, runId: run.id, status: "failed", pages, found, stored, rejected, expired: expired2, message };
-  }
-}
-
-// src/services/sourcing/live-search.ts
-init_sync_runs();
-var log14 = createLogger("LIVE_SEARCH");
-var LIVE_SEARCH_SOURCE_TYPES = ["PUBLIC_WEB", "API", "JSON", "XML", "CSV", "SUPPLIER_ACCOUNT"];
-var LIVE_SEARCH_CACHE_TTL_MS = 10 * 6e4;
-var LIVE_SEARCH_DEFAULT_TIMEOUT_MS = 8e3;
-var LIVE_SEARCH_MAX_SOURCES = 10;
-var LIVE_SEARCH_PARALLELISM = 10;
-var LIVE_SEARCH_STORE_CONCURRENCY = 8;
-var LIVE_SEARCH_PUBLIC_MIN_DELAY_MS = 2e3;
-var LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS = 500;
-var LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE = 2;
-var LIVE_SEARCH_MIN_VARIANT_BUDGET_MS = 1e3;
-function liveSearchVariants(input, max = LIVE_SEARCH_MAX_VARIANTS_PER_SOURCE) {
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const text3 of [...input.variants ?? [], ...input.variants && input.variants.length > 0 ? [] : [input.rawQuery]]) {
-    const t = text3.replace(/\s+/g, " ").trim();
-    const key2 = normalizeText(t);
-    if (!t || seen.has(key2)) continue;
-    seen.add(key2);
-    out.push({ text: t, parsed: t === input.rawQuery.trim() ? input.parsed : parseQuery(t) });
-    if (out.length >= Math.max(1, max)) break;
-  }
-  if (out.length === 0) out.push({ text: input.rawQuery, parsed: input.parsed });
-  return out;
-}
-var liveSearchCache = /* @__PURE__ */ new Map();
-function liveSearchCacheKey(sourceId, rawQuery) {
-  return `${sourceId}|${normalizeText(rawQuery)}`;
-}
-function attestationRequired(method) {
-  return method === "public_html" || method === "public_json";
-}
-function report(c, status, message, extra = {}, now = /* @__PURE__ */ new Date()) {
-  return {
-    sourceId: c.sourceId,
-    sourceName: c.sourceName,
-    supplierId: c.supplierId,
-    supplierName: c.supplierName,
-    adapterKey: c.adapterKey,
-    method: c.adapter?.method ?? null,
-    status,
-    message,
-    found: 0,
-    stored: 0,
-    rejected: 0,
-    durationMs: 0,
-    requests: [],
-    queries: [],
-    checkedAt: now.toISOString(),
-    ...extra
-  };
-}
-function withTimeout(promise, ms) {
-  let timer = null;
-  const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-}
-function preflight(c) {
-  if (!c.adapter) return { ok: false, status: "no_search", message: "Aucun adaptateur associ\xE9 \xE0 cette source : elle n'est pas interrogeable en direct (synchronisation de flux / crawl uniquement)." };
-  if (!c.adapter.capabilities.search) return { ok: false, status: "no_search", message: `L'adaptateur \xAB ${c.adapter.label} \xBB ne propose pas de recherche en direct (catalogue synchronis\xE9 uniquement).` };
-  if (c.adapter.access === "public" && attestationRequired(c.adapter.method) && !c.attested) return { ok: false, status: "not_attested", message: "Acc\xE8s automatis\xE9 non attest\xE9 : confirmez que les conditions d'utilisation du site autorisent la lecture automatis\xE9e." };
-  if (c.adapter.access === "account" && !c.connectionId) return { ok: false, status: "account_required", message: "Compte fournisseur requis : connectez vos identifiants pour interroger cette source." };
-  return { ok: true };
-}
-async function querySource(c, input, rt, scheduler) {
-  const startedAt = rt.now();
-  const t0 = Date.now();
-  const pre = preflight(c);
-  if (!pre.ok) return report(c, pre.status, pre.message, {}, startedAt);
-  const adapter = c.adapter;
-  const key2 = liveSearchCacheKey(c.sourceId, input.rawQuery);
-  const cached2 = rt.cache.get(key2);
-  if (cached2 && startedAt.getTime() - cached2.at < LIVE_SEARCH_CACHE_TTL_MS) {
-    return { ...cached2.report, status: "cached", message: `R\xE9sultat r\xE9cent r\xE9utilis\xE9 (interrog\xE9e il y a ${Math.round((startedAt.getTime() - cached2.at) / 1e3)} s).`, durationMs: 0, checkedAt: startedAt.toISOString() };
-  }
-  const variants = liveSearchVariants(input);
-  let disallowedUrls = [];
-  if (adapter.access === "public" && attestationRequired(adapter.method)) {
-    const urls = Array.from(new Set(variants.flatMap((v2) => adapter.urlsForQuery?.(c.config, v2.parsed, v2.text) ?? [])));
-    if (urls.length === 0) return report(c, "no_search", "Aucune URL de recherche configur\xE9e pour cette source : recherche en direct impossible.", {}, startedAt);
-    const robots = await rt.checkRobots(c, urls);
-    if (rt.recordRobots) await rt.recordRobots(c, robots).catch((e) => log14.warn("robots status not recorded", { sourceId: c.sourceId, error: e instanceof Error ? e.message : String(e) }));
-    if (!robots.allowed) return report(c, "robots_disallowed", `robots.txt : ${robots.details}`, { durationMs: Date.now() - t0 }, startedAt);
-    disallowedUrls = robots.disallowedUrls;
-  }
-  let credentials;
-  if (adapter.access === "account") {
-    const creds = await rt.loadCredentials(c.connectionId);
-    if (!creds || Object.keys(creds).length === 0) return report(c, "account_required", "Identifiants du compte fournisseur introuvables : reconnectez le compte.", {}, startedAt);
-    credentials = creds;
-  }
-  const fetchImpl = scheduler.wrapFetch(rt.fetchImpl);
-  const budgetMs = Math.max(rt.perSourceTimeoutMs, adapter.searchBudgetMs ?? 0);
-  const deadline = t0 + budgetMs;
-  const minVariantBudget = Math.min(LIVE_SEARCH_MIN_VARIANT_BUDGET_MS, budgetMs / 4);
-  const collected = [];
-  const seenOfferIds = /* @__PURE__ */ new Set();
-  const requests = [];
-  const errors = [];
-  const sent = [];
-  let method = adapter.method;
-  let truncated = false;
-  let firstVariantFailed = false;
-  for (const [i, v2] of variants.entries()) {
-    const remaining = deadline - Date.now();
-    if (i > 0) {
-      if (firstVariantFailed) break;
-      if (remaining < minVariantBudget) {
-        truncated = true;
-        break;
-      }
-    }
-    sent.push(v2.text);
-    const ctx = {
-      userAgent: rt.userAgent,
-      fetchImpl,
-      resolver: rt.resolver,
-      sleep: rt.sleep,
-      credentials,
-      minDelayMs: adapter.access === "public" ? rt.publicMinDelayMs : rt.accountMinDelayMs,
-      timeoutMs: Math.max(1, remaining),
-      disallowedUrls,
-      now: rt.now
-    };
-    let result;
-    try {
-      result = await withTimeout(adapter.search(c.config, v2.parsed, v2.text, ctx), Math.max(1, remaining) + 500);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (i === 0) {
-        const r3 = report(c, "error", message, { durationMs: Date.now() - t0, queries: sent }, startedAt);
-        await rt.recordRun(c, r3, startedAt);
-        return r3;
-      }
-      errors.push(`reformulation \xAB ${v2.text} \xBB : ${message}`);
-      break;
-    }
-    if (result === "timeout") {
-      if (i === 0) {
-        const r3 = report(c, "timeout", `D\xE9lai d\xE9pass\xE9 (${Math.round(budgetMs / 1e3)} s) : la source n'a pas r\xE9pondu \xE0 temps.`, { durationMs: Date.now() - t0, queries: sent }, startedAt);
-        await rt.recordRun(c, r3, startedAt);
-        return r3;
-      }
-      truncated = true;
-      errors.push(`reformulation \xAB ${v2.text} \xBB interrompue : budget de ${Math.round(budgetMs / 1e3)} s atteint`);
-      break;
-    }
-    method = result.method;
-    requests.push(...result.requests);
-    truncated = truncated || result.truncated;
-    if (result.error) {
-      errors.push(result.error);
-      if (i === 0 && result.offers.length === 0) firstVariantFailed = true;
-    }
-    const requestUrl = result.requests.find((q) => q.offers > 0)?.url ?? result.requests[0]?.url ?? null;
-    for (const o of result.offers) {
-      if (seenOfferIds.has(o.externalOfferId)) continue;
-      seenOfferIds.add(o.externalOfferId);
-      collected.push({ offer: o, requestUrl });
-    }
-  }
-  if (firstVariantFailed && collected.length === 0) {
-    const r3 = report(c, "error", errors.join(" \xB7 "), { durationMs: Date.now() - t0, requests, queries: sent }, startedAt);
-    await rt.recordRun(c, r3, startedAt);
-    return r3;
-  }
-  const retrievedAt = rt.now();
-  const traced = collected.map(({ offer: o, requestUrl }) => withProvenance(o, { adapterKey: adapter.key, method, retrievedAt: retrievedAt.toISOString(), requestUrl, sourceUrl: o.url ?? null }));
-  let stored = 0;
-  let rejected = 0;
-  let offerIds = [];
-  let storeError = null;
-  try {
-    const s = await rt.storeOffers(c, traced, retrievedAt);
-    stored = s.stored;
-    rejected = s.rejected;
-    offerIds = s.offerIds;
-  } catch (e) {
-    storeError = e instanceof Error ? e.message : String(e);
-  }
-  const messageParts = [`${collected.length} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s)`];
-  if (sent.length > 1) messageParts.push(`${sent.length} reformulations`);
-  if (truncated) messageParts.push("r\xE9sultat partiel (limite de pages ou de temps atteinte)");
-  for (const err of errors) messageParts.push(err);
-  if (storeError) messageParts.push(`enregistrement : ${storeError}`);
-  const r = report(c, storeError && stored === 0 ? "error" : "ok", `${messageParts.join(" \xB7 ")}.`, { found: collected.length, stored, rejected, durationMs: Date.now() - t0, requests, queries: sent }, startedAt);
-  await rt.recordRun(c, r, startedAt);
-  rt.cache.set(key2, { at: retrievedAt.getTime(), report: r, offerIds });
-  return r;
-}
-async function executeLiveSearch(candidates, input, rt) {
-  const startedAt = rt.now();
-  const scheduler = new HostScheduler(rt.publicMinDelayMs, rt.sleep);
-  const reports = new Array(candidates.length);
-  const offerIds = /* @__PURE__ */ new Set();
-  const maxSources = Math.max(0, input.maxSources ?? rt.maxSources);
-  const queue = candidates.map((c, index) => ({ c, index }));
-  const runOne = async ({ c, index }) => {
-    const pre = preflight(c);
-    if (!pre.ok) {
-      reports[index] = report(c, pre.status, pre.message, {}, rt.now());
-      return;
-    }
-    if (index >= maxSources) {
-      reports[index] = report(c, "skipped", `Hors budget : au plus ${maxSources} source(s) interrog\xE9e(s) par recherche.`, {}, rt.now());
-      return;
-    }
-    try {
-      reports[index] = await querySource(c, input, rt, scheduler);
-    } catch (e) {
-      reports[index] = report(c, "error", e instanceof Error ? e.message : String(e), {}, rt.now());
-    }
-    const entry = rt.cache.get(liveSearchCacheKey(c.sourceId, input.rawQuery));
-    if (entry && (reports[index].status === "ok" || reports[index].status === "cached")) for (const id of entry.offerIds) offerIds.add(id);
-  };
-  const workers = Array.from({ length: Math.max(1, Math.min(rt.parallelism, queue.length)) }, async () => {
-    for (; ; ) {
-      const next = queue.shift();
-      if (!next) return;
-      await runOne(next);
-    }
-  });
-  await Promise.all(workers);
-  const finishedAt = rt.now();
-  const queried = reports.filter((r) => r.status === "ok" || r.status === "error" || r.status === "timeout").length;
-  return {
-    query: input.rawQuery,
-    startedAt: startedAt.toISOString(),
-    finishedAt: finishedAt.toISOString(),
-    durationMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
-    sources: reports,
-    queried,
-    found: reports.reduce((a, r) => a + r.found, 0),
-    stored: reports.reduce((a, r) => a + r.stored, 0),
-    offerIds: Array.from(offerIds)
-  };
-}
-function resolveContext(ctx) {
-  if ("organization" in ctx) return { organizationId: ctx.organization.id, admin: createAdminSupabaseClient(), userId: ctx.user.id };
-  return { organizationId: ctx.organizationId, admin: ctx.admin, userId: ctx.userId ?? null };
-}
-async function ensureConnectionSource2(admin, organizationId, connection, adapterLabel) {
-  if (connection.source_id) return connection.source_id;
-  const { data, error } = await admin.from("supplier_sources").insert({ organization_id: organizationId, supplier_id: connection.supplier_id, name: adapterLabel, source_type: "SUPPLIER_ACCOUNT", automated_access_confirmed: true, access_conditions: "Compte fournisseur connect\xE9 par le vendeur (API officielle, identifiants chiffr\xE9s).", status: "active", sync_frequency: "manual", config: { adapter: connection.connector_key } }).select("id").single();
-  if (error || !data) {
-    log14.warn("connection source not created", { connectionId: connection.id, error: error?.message });
-    return null;
-  }
-  await admin.from("supplier_connections").update({ source_id: data.id }).eq("id", connection.id);
-  return data.id;
-}
-async function loadCandidates(admin, organizationId) {
-  const [{ data: org }, { data: sources }, { data: connections }] = await Promise.all([
-    admin.from("organizations").select("default_currency").eq("id", organizationId).maybeSingle(),
-    admin.from("supplier_sources").select("*, supplier:suppliers(id, name, is_archived)").eq("organization_id", organizationId).neq("status", "paused").in("source_type", [...LIVE_SEARCH_SOURCE_TYPES]).order("created_at").limit(100),
-    admin.from("supplier_connections").select("id, supplier_id, source_id, connector_key, status").eq("organization_id", organizationId).neq("status", "disconnected").limit(50)
-  ]);
-  const organizationCurrency = org?.default_currency ?? "EUR";
-  const bySource = new Map((sources ?? []).map((s) => [s.id, s]));
-  const connectionBySource = /* @__PURE__ */ new Map();
-  const out = [];
-  for (const conn of connections ?? []) {
-    const adapter = getSourceAdapter(conn.connector_key);
-    if (!adapter || adapter.access !== "account") continue;
-    let sourceId = conn.source_id && bySource.has(conn.source_id) ? conn.source_id : null;
-    if (!sourceId) {
-      sourceId = await ensureConnectionSource2(admin, organizationId, { ...conn, source_id: conn.source_id && bySource.has(conn.source_id) ? conn.source_id : null }, adapter.label);
-      if (!sourceId) continue;
-      if (!bySource.has(sourceId)) {
-        const { data: created } = await admin.from("supplier_sources").select("*, supplier:suppliers(id, name, is_archived)").eq("id", sourceId).maybeSingle();
-        if (created) bySource.set(created.id, created);
-      }
-    }
-    connectionBySource.set(sourceId, { id: conn.id, connector_key: conn.connector_key });
-  }
-  for (const s of bySource.values()) {
-    if (s.supplier?.is_archived) continue;
-    if (isUnvalidatedDiscovered(s.config, s.automated_access_confirmed)) continue;
-    const connection = connectionBySource.get(s.id) ?? null;
-    const adapterKey = connection?.connector_key ?? adapterKeyOf(s.config);
-    const adapter = getSourceAdapter(adapterKey);
-    out.push({
-      candidate: {
-        sourceId: s.id,
-        sourceName: s.name,
-        supplierId: s.supplier_id,
-        supplierName: s.supplier?.name ?? "Fournisseur",
-        sourceType: s.source_type,
-        adapter,
-        adapterKey: adapter ? adapter.key : adapterKey,
-        config: adapterConfigFromSource({ base_url: s.base_url, config: s.config, default_currency: s.default_currency, default_tax_type: s.default_tax_type, country: s.country }),
-        attested: s.automated_access_confirmed,
-        connectionId: connection?.id ?? null
-      },
-      organizationCurrency,
-      defaultCurrency: s.default_currency,
-      defaultTaxType: s.default_tax_type,
-      defaultCountry: s.country,
-      robotsAllowed: s.robots_allowed,
-      robotsCheckedAt: s.robots_checked_at
-    });
-  }
-  return out;
-}
-function isUnvalidatedDiscovered(config, attested) {
-  const c = config && typeof config === "object" && !Array.isArray(config) ? config : {};
-  return c.discovered === true && !attested;
-}
-async function runLiveSearch(ctx, input, overrides = {}) {
-  const { admin, organizationId, userId } = resolveContext(ctx);
-  const userAgent = serverEnv().SOURCING_USER_AGENT;
-  const now = overrides.now ?? (() => /* @__PURE__ */ new Date());
-  const loaded = await loadCandidates(admin, organizationId);
-  const bySourceId = new Map(loaded.map((l) => [l.candidate.sourceId, l]));
-  const fetchImpl = overrides.fetchImpl ?? fetch;
-  const runtime = {
-    userAgent,
-    now,
-    fetchImpl,
-    resolver: overrides.resolver,
-    sleep: overrides.sleep,
-    cache: overrides.cache ?? liveSearchCache,
-    perSourceTimeoutMs: input.timeoutMs ?? LIVE_SEARCH_DEFAULT_TIMEOUT_MS,
-    maxSources: input.maxSources ?? LIVE_SEARCH_MAX_SOURCES,
-    parallelism: LIVE_SEARCH_PARALLELISM,
-    publicMinDelayMs: LIVE_SEARCH_PUBLIC_MIN_DELAY_MS,
-    accountMinDelayMs: LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS,
-    checkRobots: (c, urls) => checkRobotsForUrls(c.config.baseUrl ?? urls[0], urls, userAgent, fetchImpl),
-    recordRobots: async (c, robots) => {
-      await admin.from("supplier_sources").update({ robots_checked_at: now().toISOString(), robots_allowed: robots.allowed, ...robots.crawlDelay !== null ? { crawl_delay_seconds: Math.ceil(robots.crawlDelay) } : {} }).eq("id", c.sourceId);
-    },
-    loadCredentials: (connectionId) => loadConnectionCredentials(connectionId),
-    storeOffers: async (c, offers, retrievedAt) => {
-      const l = bySourceId.get(c.sourceId);
-      const storage = {
-        supabase: admin,
-        organizationId,
-        organizationCurrency: l?.organizationCurrency ?? "EUR",
-        supplierId: c.supplierId,
-        sourceId: c.sourceId,
-        sourceType: c.sourceType,
-        defaultCurrency: l?.defaultCurrency ?? c.config.defaultCurrency,
-        defaultTaxType: l?.defaultTaxType ?? c.config.defaultTaxType,
-        defaultCountry: l?.defaultCountry ?? c.config.defaultCountry,
-        createdBy: userId,
-        now: retrievedAt
-      };
-      const offerIds = [];
-      let stored = 0;
-      let rejected = 0;
-      const queue = [...offers];
-      const storeNext = async () => {
-        for (let offer = queue.shift(); offer; offer = queue.shift()) {
-          try {
-            const r = await storeOffer(storage, offer);
-            if (r.outcome === "stored" && r.offerId) {
-              stored++;
-              offerIds.push(r.offerId);
-            } else rejected++;
-          } catch (e) {
-            rejected++;
-            log14.warn("live offer not stored", { sourceId: c.sourceId, externalOfferId: offer.externalOfferId, error: e instanceof Error ? e.message : String(e) });
-          }
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(LIVE_SEARCH_STORE_CONCURRENCY, queue.length) }, storeNext));
-      if (stored > 0) await admin.from("supplier_sources").update({ status: "active", last_sync_at: retrievedAt.toISOString(), last_successful_sync_at: now().toISOString(), last_error: null }).eq("id", c.sourceId);
-      return { offerIds, stored, rejected };
-    },
-    recordRun: async (c, r, startedAt) => {
-      const status = r.status === "ok" ? r.rejected > 0 || r.requests.some((q) => q.error) ? "partial" : "success" : "failed";
-      await recordCompletedSyncRun(admin, {
-        organizationId,
-        sourceKind: c.connectionId ? "supplier_connection" : "supplier_source",
-        sourceRef: c.connectionId ?? c.sourceId,
-        provider: c.adapterKey ?? "live_search",
-        trigger: "manual",
-        status,
-        startedAt,
-        finishedAt: now(),
-        recordsProcessed: r.found,
-        errorCount: r.status === "ok" ? r.rejected + r.requests.filter((q) => q.error).length : 1,
-        stats: { kind: "live_search", query: input.rawQuery, skuId: input.skuId ?? null, status: r.status, found: r.found, stored: r.stored, rejected: r.rejected, requests: r.requests, method: r.method, adapter: r.adapterKey },
-        errorSummary: r.status === "ok" ? null : r.message,
-        createdBy: userId
-      });
-      if (r.status !== "ok" && r.status !== "cached") await admin.from("supplier_sources").update({ last_sync_at: startedAt.toISOString(), last_error: r.message }).eq("id", c.sourceId);
-      if (c.connectionId) await admin.from("supplier_connections").update({ last_sync_at: startedAt.toISOString(), last_error: r.status === "ok" ? null : r.message, ...r.status === "ok" ? { status: "connected" } : {} }).eq("id", c.connectionId);
-    }
-  };
-  const summary = await executeLiveSearch(
-    loaded.map((l) => l.candidate),
-    input,
-    runtime
-  );
-  log14.info("live search finished", { organizationId, query: input.rawQuery, queried: summary.queried, found: summary.found, stored: summary.stored, durationMs: summary.durationMs });
-  return summary;
-}
-
 // src/services/sourcing/search.ts
+init_adapter_runtime();
+init_live_search();
 init_logger();
 
 // src/domain/sourcing/query-expansion.ts
@@ -22718,7 +23329,9 @@ init_errors();
 init_logger();
 import { z as z30 } from "npm:zod@4.6.5";
 init_feed_ingestion();
+init_supplier_connectors();
 init_catalog_import();
+init_adapter_runtime();
 init_registry();
 var log22 = createLogger("SOURCE_SYNC");
 var MANUAL_SYNC_COOLDOWN_MS = 2 * 6e4;
@@ -23352,108 +23965,7 @@ init_offer_linking();
 init_radar2();
 init_supplier_directory2();
 init_catalog_import();
-
-// src/services/sourcing/simple-search.ts
-init_empty();
-init_errors();
-init_logger();
-init_query_parser();
-var log26 = createLogger("SUPPLIER_SEARCH");
-var SIMPLE_SEARCH_LIVE_BUDGET_MS = 35e3;
-var SIMPLE_SEARCH_PER_SUPPLIER = 30;
-var SCAN_LIMIT = 3e3;
-var fold = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-function queryTokens2(q) {
-  const stop = /* @__PURE__ */ new Set(["de", "du", "la", "le", "les", "des", "un", "une", "pour", "et", "the", "for"]);
-  return Array.from(new Set(fold(q).split(/[^a-z0-9+]+/).filter((t) => t.length > 0 && !stop.has(t) && (t.length >= 2 || /\d/.test(t)))));
-}
-function matchesQuery2(title, tokens) {
-  const t = fold(title);
-  return tokens.every((tok) => {
-    const esc = tok.replace(/[+]/g, "\\+");
-    const re = /^\d+$/.test(tok) ? new RegExp(`(^|[^0-9])${esc}(?![0-9])`) : new RegExp(`(^|[^a-z0-9])${esc}`);
-    return re.test(t);
-  });
-}
-var num = (v2) => v2 === null || v2 === void 0 || v2 === "" ? null : Number.isFinite(Number(v2)) ? Number(v2) : null;
-function groupBySupplier(rows, perSupplier = SIMPLE_SEARCH_PER_SUPPLIER) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    const g = groups.get(r.supplier_id) ?? { supplierName: r.supplier?.name ?? "Fournisseur", country: r.supplier?.country ?? null, offers: [] };
-    const stock = r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown";
-    g.offers.push({
-      id: r.id,
-      title: r.title_original,
-      price: num(r.original_price),
-      currency: r.original_currency,
-      priceConverted: num(r.normalized_price),
-      taxType: r.tax_type === "ht" || r.tax_type === "ttc" ? r.tax_type : "unknown",
-      stock,
-      quantity: r.available_quantity,
-      url: r.source_url,
-      seenAt: r.last_seen_at
-    });
-    groups.set(r.supplier_id, g);
-  }
-  const key2 = (o) => (o.stock === "out_of_stock" ? 1e12 : 0) + (o.priceConverted ?? o.price ?? 1e11);
-  const out = Array.from(groups.entries()).map(([supplierId, g]) => {
-    const sorted = g.offers.sort((a, b) => key2(a) - key2(b));
-    return { supplierId, supplierName: g.supplierName, country: g.country, total: sorted.length, offers: sorted.slice(0, perSupplier) };
-  });
-  return out.sort((a, b) => key2(a.offers[0]) - key2(b.offers[0]) || a.supplierName.localeCompare(b.supplierName));
-}
-function ilikePattern(token) {
-  return `%${token.replace(/[^a-z0-9+]/g, "").replace(/[aeiouyc]/g, "_")}%`;
-}
-var SIMPLE_SEARCH_MAX_OFFERS = 400;
-function byPrice(rows, max = SIMPLE_SEARCH_MAX_OFFERS) {
-  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
-  const key2 = (o) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
-  return all.sort((a, b) => key2(a) - key2(b) || a.title.localeCompare(b.title)).slice(0, max);
-}
-async function withBudget(p, ms) {
-  let timer;
-  try {
-    return await Promise.race([p, new Promise((resolve) => timer = setTimeout(() => resolve("timeout"), ms))]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-async function simpleSupplierSearch(ctx, q, deps = {}) {
-  const now = deps.now ?? Date.now;
-  const t0 = now();
-  const query = q.trim().slice(0, 120);
-  const tokens = queryTokens2(query);
-  if (tokens.length === 0) throw new AppError("VALIDATION", "Tapez ce que vous cherchez, par exemple \xAB iPhone 13 \xBB ou \xAB batterie trottinette \xBB.");
-  const live = deps.live ?? ((c, text3) => runLiveSearch(c, { rawQuery: text3, parsed: parseQuery(text3) }));
-  let summary = null;
-  let partial = false;
-  try {
-    const r = await withBudget(live(ctx, query), deps.budgetMs ?? SIMPLE_SEARCH_LIVE_BUDGET_MS);
-    if (r === "timeout") partial = true;
-    else summary = r;
-  } catch (e) {
-    partial = true;
-    log26.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
-  }
-  let offersQuery = ctx.supabase.from("sourcing_offers").select("id, title_original, original_price, original_currency, normalized_price, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, supplier:suppliers(name, country)").eq("organization_id", ctx.organization.id).eq("status", "active");
-  for (const tok of tokens) offersQuery = offersQuery.ilike("title_original", ilikePattern(tok));
-  const { data, error } = await offersQuery.order("normalized_price", { ascending: true, nullsFirst: false }).limit(SCAN_LIMIT);
-  if (error) throw fromPostgrestError(error);
-  const rows = (data ?? []).filter((r) => r.title_original && matchesQuery2(r.title_original, tokens));
-  const suppliers = groupBySupplier(rows);
-  const offers = byPrice(rows);
-  return {
-    query,
-    currency: ctx.organization.default_currency,
-    total: rows.length,
-    offers,
-    suppliers,
-    checked: (summary?.sources ?? []).map((s) => ({ supplierName: s.supplierName, ok: s.status === "ok" || s.status === "cached", found: s.found, message: s.status === "ok" || s.status === "cached" ? null : s.message })),
-    partial,
-    durationMs: now() - t0
-  };
-}
+init_simple_search();
 
 // src/services/sourcing/adapter-probe.ts
 init_empty();
@@ -26194,6 +26706,25 @@ async function checkReadOnlyRoutes(organizationId) {
   }
   return { organization: org.id, checks };
 }
+async function checkDealAnalysis(input) {
+  const admin = createAdminSupabaseClient();
+  const { data: org } = await admin.from("organizations").select("*").eq("id", input.organizationId).maybeSingle();
+  if (!org) return { organization: null };
+  const { data: member } = await admin.from("organization_members").select("role").eq("organization_id", org.id).eq("user_id", input.userId).maybeSingle();
+  if (!member) return { organization: org.id, error: "utilisateur non membre de l'organisation" };
+  const ctx = { supabase: admin, organization: org, user: { id: input.userId }, role: member.role, profile: null, memberships: [] };
+  const { simpleSupplierSearch: simpleSupplierSearch2 } = await Promise.resolve().then(() => (init_simple_search(), simple_search_exports));
+  const r = await simpleSupplierSearch2(ctx, input.query, input.live ? {} : { live: async () => ({ sources: [] }) });
+  const levels = {};
+  const basis = {};
+  for (const o of r.offers) {
+    levels[o.deal?.level ?? "none"] = (levels[o.deal?.level ?? "none"] ?? 0) + 1;
+    basis[o.deal?.marketBasis ?? "none"] = (basis[o.deal?.marketBasis ?? "none"] ?? 0) + 1;
+  }
+  const order = { very_good: 0, good: 1, average: 2, not_competitive: 3, insufficient_data: 4 };
+  const top = [...r.offers].filter((o) => o.deal && o.deal.level !== "insufficient_data").sort((a, b) => order[a.deal.level] - order[b.deal.level] || (b.deal.score ?? 0) - (a.deal.score ?? 0)).slice(0, 15).map((o) => ({ title: o.title.slice(0, 90), supplier: o.supplierName, level: o.deal.level, supplierPrice: o.deal.supplierPrice, marketPrice: o.deal.marketPrice, marketBasis: o.deal.marketBasis, marketCount: o.deal.marketCount, totalCost: o.deal.totalCost, resalePrice: o.deal.resalePrice, margin: o.deal.margin, marginPercent: o.deal.marginPercent, provisional: o.deal.provisional, uncertainties: o.deal.uncertainties.length }));
+  return { organization: org.id, query: r.query, total: r.total, offers: r.offers.length, partial: r.partial, durationMs: r.durationMs, checked: r.checked, levels, basis, missingCostSettings: r.missingCostSettings ?? null, top };
+}
 
 // server/edge/ebay-callback.ts
 var EBAY_APP_CALLBACK = "monstock://ebay/callback";
@@ -26902,6 +27433,9 @@ async function route(request) {
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
         return handle(async () => checkReadOnlyRoutes((await parseBody(request, z49.object({ organizationId: uuidParam.optional() }))).organizationId));
+      }
+      if (m === "POST" && path === "/cron/deal-check") {
+        return handle(async () => checkDealAnalysis(await parseBody(request, z49.object({ organizationId: uuidParam, userId: uuidParam, query: z49.string().trim().min(2).max(120), live: z49.boolean().default(false) }))));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {

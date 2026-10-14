@@ -78,3 +78,32 @@ it("rien trouvé : message clair, sans écran compliqué", async () => {
   await waitFor(() => expect(screen.getByText(/Rien trouvé pour « batterie trottinette »/)).toBeTruthy());
   expect(screen.getByText(/Fournisseurs consultés : Brico-phone/)).toBeTruthy();
 });
+
+it("chaque offre affiche son analyse ; « Meilleures affaires » classe les offres rentables d'abord", async () => {
+  const deal = (level: string, label: string, over: Record<string, unknown> = {}) => ({ level, label, comparable: true, supplierPrice: 250, marketPrice: 420, marketBasis: "marketplace", marketCount: 3, discountPercent: 40.48, totalCost: 250, resalePrice: 410, resaleBasis: "marketplace_low", margin: 86.33, marginPercent: 21.06, provisional: false, missingCosts: [], uncertainties: ["Prix HT ou TTC non précisé par le fournisseur."], score: 82, summary: "40.48 % sous le marché, marge 86.33 (21.06 %).", ...over });
+  const insufficient = { level: "insufficient_data", label: "Données insuffisantes", comparable: false, supplierPrice: 90, marketPrice: null, marketBasis: null, marketCount: 0, discountPercent: null, totalCost: 90, resalePrice: null, resaleBasis: null, margin: null, marginPercent: null, provisional: false, missingCosts: [], uncertainties: [], score: null, summary: "Comparaison impossible : pas assez d'offres équivalentes (0 trouvée)." };
+  const offers = [
+    { ...o("a", "Batterie iPhone 13", 90, { deal: insufficient }), supplierId: "b", supplierName: "Brico-phone", country: "FR" },
+    { ...o("b", "iPhone 13 128GB Grade A reconditionné", 250, { deal: deal("very_good", "Très intéressant") }), supplierId: "r", supplierName: "Refreshed Apples", country: "NL" },
+    { ...o("c", "iPhone 13 128GB Grade A", 450, { deal: deal("not_competitive", "Non compétitif", { margin: -40, marginPercent: -9.76, summary: "Marge nulle ou négative après les coûts.", score: 10 }) }), supplierId: "r", supplierName: "Refreshed Apples", country: "NL" },
+  ];
+  mockCallApi.mockResolvedValue({ query: "iPhone 13", currency: "EUR", total: 3, partial: false, durationMs: 1000, checked: [], offers, suppliers: [{ supplierId: "r", supplierName: "Refreshed Apples", country: "NL", total: 3, offers }], missingCostSettings: ["régime de TVA", "commission marketplace"] });
+  const Screen = jest.requireActual("~/app/(app)/(tabs)/sourcing").default;
+  render(wrap(<Screen />));
+  fireEvent.press(screen.getByText("iPhone 13"));
+  await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
+  expect(screen.getByText("Très intéressant")).toBeTruthy();
+  expect(screen.getByText("Non compétitif")).toBeTruthy();
+  expect(screen.getByText("Données insuffisantes")).toBeTruthy();
+  expect(screen.getAllByText(/Marché ≈ 420,00/).length).toBe(2);
+  expect(screen.getAllByText(/Coût total ≈ 250,00/).length).toBe(2);
+  expect(screen.getByText(/Marge ≈ 86,33/)).toBeTruthy();
+  expect(screen.getAllByText(/À vérifier : Prix HT ou TTC/).length).toBe(2);
+  expect(screen.getByText(/Marges provisoires : coûts à compléter \(régime de TVA, commission marketplace\)/)).toBeTruthy();
+  fireEvent.press(screen.getByText("Meilleures affaires"));
+  const order = screen.getAllByText(/^(Très intéressant|Non compétitif|Données insuffisantes)$/).map((n) => n.props.children);
+  expect(order).toEqual(["Très intéressant", "Non compétitif", "Données insuffisantes"]);
+  fireEvent.press(screen.getByText(/Marges provisoires/));
+  const { router } = jest.requireMock("expo-router");
+  expect(router.push).toHaveBeenCalledWith("/radar/settings");
+});

@@ -97,7 +97,7 @@ import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
 import { advisorNdjsonStream, runAdvisorTurn } from "@/services/ai/advisor";
 import { decideAdvisorAction } from "@/services/ai/advisor-actions";
 import { AI_LIMITS } from "@/services/ai/quota";
-import { checkAssistantTools, checkReadOnlyRoutes } from "@/services/ai/tools-check";
+import { checkAssistantTools, checkDealAnalysis, checkReadOnlyRoutes } from "@/services/ai/tools-check";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
 import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
 import { quoteShipping, shippingProvidersStatus } from "@/services/shipping/quotes";
@@ -325,6 +325,9 @@ export async function route(request: Request): Promise<Response> {
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
         return handle(async () => checkReadOnlyRoutes((await parseBody(request, z.object({ organizationId: uuidParam.optional() }))).organizationId));
+      }
+      if (m === "POST" && path === "/cron/deal-check") {
+        return handle(async () => checkDealAnalysis(await parseBody(request, z.object({ organizationId: uuidParam, userId: uuidParam, query: z.string().trim().min(2).max(120), live: z.boolean().default(false) }))));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
