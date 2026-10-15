@@ -17,6 +17,10 @@
  *   GET  /api/radar/offer?id=&quantity=   détail d'une offre : appréciation, scénarios de quantité, offres concurrentes
  *   POST /api/radar/settings              paramètres de coûts (TVA, frais, emballage, retours, douane) — administrateur
  *   GET  /api/sourcing/directory          annuaire de fournisseurs qualifiés (statuts prouvés, e-mails de demande d'accès)
+ *   GET  /api/sourcing/accounts           « Connectez vos comptes » : comptes pro prioritaires (statut réel) + sources publiques
+ *   POST /api/sourcing/accounts/connect   connexion API d'un compte (identifiants chiffrés côté serveur, test réel) — rédacteur
+ *   POST /api/sourcing/accounts/sync      synchronisation du catalogue d'un compte connecté — rédacteur
+ *   POST /api/sourcing/accounts/disconnect déconnexion (identifiants supprimés) — administrateur
  *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
  *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
  *   GET  /api/sourcing/sources            sources : statut affiché, offres exploitables, dernier succès, prochain passage
@@ -84,6 +88,7 @@ import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listi
 import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/services/sourcing/offer-linking";
 import { buildRadar, buildRadarOffer, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
+import { connectProAccount, disconnectProAccount, proAccountsHub, syncProAccount } from "@/services/sourcing/pro-accounts";
 import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
 import { listSourcesForOrg, setSourceSchedule, sourceScheduleSchema, syncSourceNow } from "@/services/sourcing/source-sync";
 import { simpleSupplierSearch } from "@/services/sourcing/simple-search";
@@ -400,6 +405,26 @@ export async function route(request: Request): Promise<Response> {
       });
     }
     if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request)));
+    if (m === "GET" && path === "/sourcing/accounts") return handle(async () => proAccountsHub(await requireMobileOrgContext(request)));
+    if (m === "POST" && path === "/sourcing/accounts/connect") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, z.object({ key: z.string().min(1).max(80), credentials: z.record(z.string().max(80), z.string().max(2000)) }));
+        return connectProAccount(ctx, body);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/accounts/sync") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return syncProAccount(ctx, (await parseBody(request, z.object({ connectionId: uuidParam }))).connectionId);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/accounts/disconnect") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { admin: true });
+        return disconnectProAccount(ctx, (await parseBody(request, z.object({ connectionId: uuidParam }))).connectionId);
+      });
+    }
     if (m === "POST" && path === "/sourcing/import/preview") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });

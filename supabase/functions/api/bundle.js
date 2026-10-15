@@ -6551,6 +6551,20 @@ var init_partner_feed = __esm({
 });
 
 // src/services/sourcing/supplier-connectors.ts
+async function createSupplierConnection(input) {
+  const descriptor = getConnectorDescriptor(input.connectorKey);
+  if (!descriptor) throw new AppError("NOT_IMPLEMENTED", NO_CONNECTOR_MESSAGE);
+  const admin = createAdminSupabaseClient();
+  const { data, error } = await admin.from("supplier_connections").insert({ organization_id: input.organizationId, supplier_id: input.supplierId, source_id: input.sourceId ?? null, connector_key: input.connectorKey, status: "pending", config: input.config ?? {} }).select("id").single();
+  if (error || !data) throw new AppError("INTERNAL", `Connexion non cr\xE9\xE9e : ${error?.message ?? "inconnu"}`);
+  await storeConnectionCredentials(data.id, input.credentials);
+  return data.id;
+}
+async function storeConnectionCredentials(connectionId, credentials) {
+  const admin = createAdminSupabaseClient();
+  const { error } = await admin.from("supplier_connection_secrets").upsert({ connection_id: connectionId, credentials_enc: encryptSecret(JSON.stringify(credentials)), key_version: 1, updated_at: (/* @__PURE__ */ new Date()).toISOString() });
+  if (error) throw new AppError("INTERNAL", `Identifiants non enregistr\xE9s : ${error.message}`);
+}
 async function loadConnectionCredentials(connectionId) {
   const admin = createAdminSupabaseClient();
   const { data } = await admin.from("supplier_connection_secrets").select("credentials_enc").eq("connection_id", connectionId).maybeSingle();
@@ -6586,6 +6600,20 @@ async function ensureConnectionSource(admin, connection, descriptor) {
 function runContext(credentials, options) {
   const scheduler = new HostScheduler(CONNECTION_MIN_DELAY_MS, options.sleep);
   return { userAgent: serverEnv().SOURCING_USER_AGENT, credentials, fetchImpl: scheduler.wrapFetch(options.fetchImpl), sleep: options.sleep, resolver: options.resolver, minDelayMs: CONNECTION_MIN_DELAY_MS, timeoutMs: options.timeoutMs };
+}
+async function testSupplierConnection(connectionId, options = {}) {
+  const admin = options.admin ?? createAdminSupabaseClient();
+  const connection = await loadConnection(admin, connectionId);
+  if (!connection) return { ok: false, message: "Connexion introuvable." };
+  const descriptor = getConnectorDescriptor(connection.connector_key);
+  if (!descriptor) return { ok: false, message: `Connecteur \xAB ${connection.connector_key} \xBB indisponible.` };
+  const credentials = await loadConnectionCredentials(connection.id);
+  if (!credentials) return { ok: false, message: "Identifiants introuvables : reconnectez le compte." };
+  const source = await ensureConnectionSource(admin, connection, descriptor);
+  const config = adapterConfigFromSource(source);
+  const result = await descriptor.adapter.testConnection(config, runContext(credentials, { fetchImpl: options.fetchImpl, resolver: options.resolver, timeoutMs: 2e4 }));
+  await admin.from("supplier_connections").update({ status: result.ok ? "connected" : "error", connected_at: result.ok ? (/* @__PURE__ */ new Date()).toISOString() : null, last_error: result.ok ? null : result.message }).eq("id", connection.id);
+  return result;
 }
 async function syncSupplierConnection(connectionId, options = {}) {
   const admin = options.admin ?? createAdminSupabaseClient();
@@ -16345,6 +16373,120 @@ var init_supplier_directory2 = __esm({
   }
 });
 
+// src/domain/sourcing/pro-accounts.ts
+function offerAccessOf(sourceType, sourceConfig) {
+  const adapter = sourceConfig?.adapter;
+  if (adapter === "ebay-browse" || sourceConfig?.kind === "marketplace") return "marketplace";
+  if (!sourceType || sourceType === "PUBLIC_WEB") return "public";
+  return "account";
+}
+function domainOf(url) {
+  if (!url) return null;
+  try {
+    const host = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase();
+    return host.replace(/^www\./, "") || null;
+  } catch {
+    return null;
+  }
+}
+var PRO_ACCOUNTS;
+var init_pro_accounts = __esm({
+  "src/domain/sourcing/pro-accounts.ts"() {
+    "use strict";
+    PRO_ACCOUNTS = [
+      {
+        key: "foxway",
+        benefit: "iPhone, tablettes et portables reconditionn\xE9s, grad\xE9s appareil par appareil ; prix HT ; stock en temps r\xE9el exportable (Excel) ; ench\xE8res hebdomadaires.",
+        requirements: "Compte revendeur valid\xE9 (Kbis, n\xB0 de TVA). Commande minimale annonc\xE9e \u2248 2 000 \u20AC. API \xAB personnalis\xE9e \xBB sur demande.",
+        methods: ["file", "feed"],
+        signupUrl: "https://resellers.foxway.com/"
+      },
+      {
+        key: "callisto-alchemy",
+        benefit: "Place de march\xE9 B2B multi-vendeurs : t\xE9l\xE9phones, portables et tablettes d'occasion aux grades standard (A, B, C\u2026, lots W), paiement sous s\xE9questre.",
+        requirements: "Inscription acheteur gratuite apr\xE8s contr\xF4le (n\xB0 d'entreprise, n\xB0 fiscal et n\xB0 de TVA). Commission : \xE0 confirmer.",
+        methods: ["file", "manual"],
+        signupUrl: "https://callisto.tech",
+        caution: "Aucun flux automatique annonc\xE9 : demandez s'ils proposent un export."
+      },
+      {
+        key: "foneday",
+        benefit: "Pi\xE8ces d\xE9tach\xE9es (plus de 15 000 annonc\xE9es) et appareils reconditionn\xE9s ; prix d'achat et stock par r\xE9f\xE9rence.",
+        requirements: "Compte professionnel. Une API par cl\xE9 client existe mais n'est pas document\xE9e publiquement : demandez-la \xE0 support@foneday.com.",
+        methods: ["file", "feed"],
+        signupUrl: "https://www.foneday.shop"
+      },
+      {
+        key: "mobilesentrix-eu",
+        benefit: "Pi\xE8ces Apple et Android (\xE9crans par qualit\xE9, batteries\u2026), entrep\xF4t europ\xE9en.",
+        requirements: "Compte B2B valid\xE9 sur justificatifs (n\xB0 de TVA) ; prix visibles apr\xE8s validation. API r\xE9serv\xE9e \xE0 des logiciels partenaires.",
+        methods: ["file", "manual"],
+        signupUrl: "https://www.mobilesentrix.eu"
+      },
+      {
+        key: "mobileparts-shop",
+        benefit: "Distributeur officiel des pi\xE8ces Samsung (Service Packs), liste de stock grossiste sur demande.",
+        requirements: "Compte professionnel ; liste de stock \xE0 demander \xE0 sales@2service.nl.",
+        methods: ["file"],
+        signupUrl: "https://www.mobileparts.shop"
+      },
+      {
+        key: "mobilax",
+        benefit: "Grossiste fran\xE7ais de pi\xE8ces d\xE9tach\xE9es et accessoires pour r\xE9parateurs.",
+        requirements: "Compte professionnel (Kbis). Export du catalogue : \xE0 demander.",
+        methods: ["file"],
+        signupUrl: "https://www.mobilax.fr"
+      },
+      {
+        key: "distrihub",
+        benefit: "Agr\xE9gateur de fournisseurs (plus de 400 annonc\xE9s) avec flux CSV / XML / JSON : produits neufs.",
+        requirements: "Compte acheteur valid\xE9 ; commande minimale annonc\xE9e 300 \u20AC. Identit\xE9 de la plateforme \xE0 confirmer (distrihub.eu, Varle).",
+        methods: ["feed", "file"],
+        signupUrl: "https://distrihub.eu/"
+      },
+      {
+        key: "thephonehub",
+        benefit: "Distributeur de smartphones neufs avec liste de stock CSV partenaire et API annonc\xE9es.",
+        requirements: "Compte partenaire ; lien CSV ou cl\xE9s API fournis par l'\xE9quipe commerciale.",
+        methods: ["feed", "file"],
+        signupUrl: "https://www.thephonehub.eu/"
+      },
+      {
+        key: "ingram-micro-fr",
+        benefit: "Distributeur informatique : prix et stock de VOTRE compte par l'API officielle (Mac, iPad, PC, \xE9lectronique neufs).",
+        requirements: "Compte revendeur Ingram Micro actif, puis application cr\xE9\xE9e sur le portail d\xE9veloppeur (Client ID / Secret).",
+        methods: ["api", "file"],
+        connectorKey: "ingram-micro",
+        signupUrl: "https://fr.ingrammicro.eu/"
+      },
+      {
+        key: "bigbuy",
+        benefit: "Grossiste g\xE9n\xE9raliste (\xE9lectronique, accessoires) avec API officielle et bac \xE0 sable.",
+        requirements: "Abonnement BigBuy avec acc\xE8s API (cl\xE9 g\xE9n\xE9r\xE9e dans votre espace).",
+        methods: ["api", "file"],
+        connectorKey: "bigbuy",
+        signupUrl: "https://www.bigbuy.eu/fr/"
+      },
+      {
+        key: "merkandi",
+        benefit: "Annuaire europ\xE9en de lots et d\xE9stockages, dont smartphones grad\xE9s A/B/C.",
+        requirements: "Abonnement annuel payant pour contacter les vendeurs ; aucun flux acheteur.",
+        methods: ["manual"],
+        signupUrl: "https://merkandi.fr/",
+        caution: "Pas d'acc\xE8s automatis\xE9 sans accord \xE9crit de Merkandi : consultation sur leur site."
+      },
+      {
+        key: "gsmexchange",
+        benefit: "Plateforme de n\xE9goce entre grossistes de t\xE9l\xE9phones (offres et demandes en temps r\xE9el).",
+        requirements: "Adh\xE9sion contr\xF4l\xE9e : deux r\xE9f\xE9rences de grossistes et un volume minimum.",
+        methods: ["manual"],
+        signupUrl: "https://www.gsmexchange.com/",
+        caution: "Aucune API : consultation sur leur site, \xE0 r\xE9server quand vous aurez des r\xE9f\xE9rences."
+      }
+    ];
+  }
+});
+
 // src/domain/sourcing/deal-analysis.ts
 function kindOfNormalized(t) {
   for (const { kind, re } of KIND_RES) if (re.test(t)) return kind;
@@ -16787,7 +16929,9 @@ function matchesQuery2(title, tokens) {
 function groupBySupplier(rows, perSupplier = SIMPLE_SEARCH_PER_SUPPLIER, deals) {
   const groups = /* @__PURE__ */ new Map();
   for (const r of rows) {
-    const g = groups.get(r.supplier_id) ?? { supplierName: r.supplier?.name ?? "Fournisseur", country: r.supplier?.country ?? null, offers: [] };
+    const access = offerAccessOf(r.source_type, r.source?.config);
+    const g = groups.get(r.supplier_id) ?? { supplierName: r.supplier?.name ?? "Fournisseur", country: r.supplier?.country ?? null, domain: domainOf(r.supplier?.website ?? r.source_url), access, offers: [] };
+    if (access === "account") g.access = "account";
     const stock = r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown";
     g.offers.push({
       id: r.id,
@@ -16800,14 +16944,15 @@ function groupBySupplier(rows, perSupplier = SIMPLE_SEARCH_PER_SUPPLIER, deals) 
       quantity: r.available_quantity,
       url: r.source_url,
       seenAt: r.last_seen_at,
-      deal: deals?.get(r.id) ?? null
+      deal: deals?.get(r.id) ?? null,
+      access
     });
     groups.set(r.supplier_id, g);
   }
   const key2 = (o) => (o.stock === "out_of_stock" ? 1e12 : 0) + (o.priceConverted ?? o.price ?? 1e11);
   const out = Array.from(groups.entries()).map(([supplierId, g]) => {
     const sorted = g.offers.sort((a, b) => key2(a) - key2(b));
-    return { supplierId, supplierName: g.supplierName, country: g.country, total: sorted.length, offers: sorted.slice(0, perSupplier) };
+    return { supplierId, supplierName: g.supplierName, country: g.country, domain: g.domain, access: g.access, total: sorted.length, offers: sorted.slice(0, perSupplier) };
   });
   return out.sort((a, b) => key2(a.offers[0]) - key2(b.offers[0]) || a.supplierName.localeCompare(b.supplierName));
 }
@@ -16815,7 +16960,7 @@ function ilikePattern(token) {
   return `%${token.replace(/[^a-z0-9+]/g, "").replace(/[aeiouyc]/g, "_")}%`;
 }
 function byPrice(rows, max = SIMPLE_SEARCH_MAX_OFFERS, deals) {
-  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER, deals).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
+  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER, deals).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country, domain: g.domain })));
   const key2 = (o) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
   return all.sort((a, b) => key2(a) - key2(b) || a.title.localeCompare(b.title)).slice(0, max);
 }
@@ -16914,7 +17059,7 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
     else summary = r;
   } catch (e) {
     partial = true;
-    log26.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+    log27.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
   }
   let offersQuery = ctx.supabase.from("sourcing_offers").select(OFFER_COLUMNS).eq("organization_id", ctx.organization.id).eq("status", "active");
   for (const tok of tokens) offersQuery = offersQuery.ilike("title_original", ilikePattern(tok));
@@ -16928,7 +17073,7 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
     deals = r.deals;
     missingCostSettings = r.missing;
   } catch (e) {
-    log26.warn("deal analysis failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+    log27.warn("deal analysis failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
   }
   const suppliers = groupBySupplier(rows, SIMPLE_SEARCH_PER_SUPPLIER, deals);
   const offers = byPrice(rows, SIMPLE_SEARCH_MAX_OFFERS, deals);
@@ -16967,7 +17112,7 @@ async function loadDeals(ctx, rows, now) {
   const deals = computeDeals(targets, poolRes.data ?? [], { orgCurrency, settings, own, now });
   return { deals, missing: missingSettings(settings) };
 }
-var log26, SIMPLE_SEARCH_LIVE_BUDGET_MS, SIMPLE_SEARCH_PER_SUPPLIER, SCAN_LIMIT, fold, num, SIMPLE_SEARCH_MAX_OFFERS, DEAL_POOL_LIMIT, OFFER_COLUMNS;
+var log27, SIMPLE_SEARCH_LIVE_BUDGET_MS, SIMPLE_SEARCH_PER_SUPPLIER, SCAN_LIMIT, fold, num, SIMPLE_SEARCH_MAX_OFFERS, DEAL_POOL_LIMIT, OFFER_COLUMNS;
 var init_simple_search = __esm({
   "src/services/sourcing/simple-search.ts"() {
     "use strict";
@@ -16979,7 +17124,8 @@ var init_simple_search = __esm({
     init_deal_analysis();
     init_radar();
     init_radar_settings();
-    log26 = createLogger("SUPPLIER_SEARCH");
+    init_pro_accounts();
+    log27 = createLogger("SUPPLIER_SEARCH");
     SIMPLE_SEARCH_LIVE_BUDGET_MS = 35e3;
     SIMPLE_SEARCH_PER_SUPPLIER = 30;
     SCAN_LIMIT = 3e3;
@@ -16987,7 +17133,7 @@ var init_simple_search = __esm({
     num = (v2) => v2 === null || v2 === void 0 || v2 === "" ? null : Number.isFinite(Number(v2)) ? Number(v2) : null;
     SIMPLE_SEARCH_MAX_OFFERS = 400;
     DEAL_POOL_LIMIT = 3e3;
-    OFFER_COLUMNS = "id, title_original, original_price, original_currency, normalized_price, normalized_currency, fx_rate, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, brand, model, storage, condition, grade, shipping_cost, shipping_currency, moq, ship_from_country, sku_id, source_type, supplier:suppliers(name, country), source:supplier_sources(config)";
+    OFFER_COLUMNS = "id, title_original, original_price, original_currency, normalized_price, normalized_currency, fx_rate, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, brand, model, storage, condition, grade, shipping_cost, shipping_currency, moq, ship_from_country, sku_id, source_type, supplier:suppliers(name, country, website), source:supplier_sources(config)";
   }
 });
 
@@ -22306,7 +22452,7 @@ function emptyListingsResult() {
   return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
 }
 async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log36 } = ctx;
+  const { admin, log: log37 } = ctx;
   const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   const seen = /* @__PURE__ */ new Set();
   let truncated = false;
@@ -22314,7 +22460,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     result.fetched += page2.listings.length;
     result.invalid += page2.invalid.length;
     for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log36.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+    for (const w2 of page2.warnings) log37.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
@@ -22327,7 +22473,7 @@ async function syncListings(ctx, result = emptyListingsResult()) {
   result.complete = !truncated;
   if (truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log36.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log37.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
   const active = result.complete ? await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
@@ -24034,6 +24180,160 @@ init_ebay_listing_service();
 init_offer_linking();
 init_radar2();
 init_supplier_directory2();
+
+// src/services/sourcing/pro-accounts.ts
+init_empty();
+init_errors();
+init_admin();
+init_logger();
+init_pro_accounts();
+init_supplier_directory2();
+init_core();
+init_supplier_connectors();
+var log26 = createLogger("PRO_ACCOUNTS");
+function directoryKeyForSupplier(s) {
+  const domain = domainOf(s.website);
+  if (domain) {
+    const hit = SUPPLIER_DIRECTORY.find((e) => {
+      const d = domainOf(e.website);
+      return d !== null && (d === domain || d.endsWith(`.${domain}`) || domain.endsWith(`.${d}`));
+    });
+    if (hit) return hit.key;
+  }
+  return directoryKeyForSupplierName(s.name);
+}
+function proStatusOf(input) {
+  if (input.connection?.status === "connected" || input.accountOffers > 0) return "connected";
+  if (input.connection?.status === "error" || input.connection?.status === "expired") return "error";
+  if (input.connection?.status === "pending") return "pending";
+  return "not_connected";
+}
+async function proAccountsHub(ctx) {
+  const orgId = ctx.organization.id;
+  const [suppliersRes, sourcesRes, connectionsRes, offersRes] = await Promise.all([
+    ctx.supabase.from("suppliers").select("id, name, website").eq("organization_id", orgId).eq("is_archived", false).limit(1e3),
+    ctx.supabase.from("supplier_sources").select("id, supplier_id, source_type, status, config, last_successful_sync_at, last_error").eq("organization_id", orgId).limit(1e3),
+    ctx.supabase.from("supplier_connections").select("id, supplier_id, connector_key, status, last_sync_at, last_error").eq("organization_id", orgId).neq("status", "disconnected").limit(200),
+    // compte des offres actives par source (au plus 20 000 lignes lues, colonnes minimales)
+    ctx.supabase.from("sourcing_offers").select("source_id").eq("organization_id", orgId).eq("status", "active").limit(2e4)
+  ]);
+  for (const r of [suppliersRes, sourcesRes, connectionsRes, offersRes]) if (r.error) throw fromPostgrestError(r.error);
+  const suppliers = suppliersRes.data ?? [];
+  const sources = sourcesRes.data ?? [];
+  const connections = connectionsRes.data ?? [];
+  const offersBySource = /* @__PURE__ */ new Map();
+  for (const o of offersRes.data ?? []) offersBySource.set(o.source_id, (offersBySource.get(o.source_id) ?? 0) + 1);
+  const supplierById = new Map(suppliers.map((s) => [s.id, s]));
+  const supplierByKey = /* @__PURE__ */ new Map();
+  for (const s of suppliers) {
+    const k = directoryKeyForSupplier(s);
+    if (k && !supplierByKey.has(k)) supplierByKey.set(k, s);
+  }
+  const totals2 = { account: 0, public: 0, marketplace: 0 };
+  const accountOffersBySupplier = /* @__PURE__ */ new Map();
+  const publicSources = [];
+  for (const src of sources) {
+    const n = offersBySource.get(src.id) ?? 0;
+    const access = offerAccessOf(src.source_type, src.config);
+    totals2[access] += n;
+    if (access === "account") {
+      const cur = accountOffersBySupplier.get(src.supplier_id) ?? { offers: 0, lastSuccessAt: null, lastError: null };
+      cur.offers += n;
+      if (src.last_successful_sync_at && (!cur.lastSuccessAt || src.last_successful_sync_at > cur.lastSuccessAt)) cur.lastSuccessAt = src.last_successful_sync_at;
+      cur.lastError = cur.lastError ?? src.last_error;
+      accountOffersBySupplier.set(src.supplier_id, cur);
+    } else if (src.status === "active") {
+      const sup = supplierById.get(src.supplier_id);
+      publicSources.push({ sourceId: src.id, supplierName: sup?.name ?? "Fournisseur", domain: domainOf(sup?.website), country: null, offers: n, lastSuccessAt: src.last_successful_sync_at });
+    }
+  }
+  publicSources.sort((a, b) => b.offers - a.offers || a.supplierName.localeCompare(b.supplierName));
+  const org = { name: ctx.organization.name, country: ctx.organization.country };
+  const accounts = [];
+  for (const spec of PRO_ACCOUNTS) {
+    const entry = SUPPLIER_DIRECTORY.find((e) => e.key === spec.key);
+    if (!entry) continue;
+    const supplier = supplierByKey.get(spec.key) ?? null;
+    const connection = (spec.connectorKey ? connections.find((c) => c.connector_key === spec.connectorKey && (!supplier || c.supplier_id === supplier.id)) : null) ?? null;
+    const own = supplier ? accountOffersBySupplier.get(supplier.id) : void 0;
+    const descriptor = spec.connectorKey ? getConnectorDescriptor(spec.connectorKey) : null;
+    accounts.push({
+      key: spec.key,
+      name: entry.name,
+      segment: entry.segment,
+      country: entry.country,
+      website: entry.website,
+      domain: domainOf(entry.website),
+      categories: entry.categories,
+      benefit: spec.benefit,
+      requirements: spec.requirements,
+      caution: spec.caution ?? null,
+      methods: spec.methods,
+      signupUrl: spec.signupUrl,
+      status: proStatusOf({ connection, accountOffers: own?.offers ?? 0 }),
+      offers: own?.offers ?? 0,
+      lastSyncAt: connection?.last_sync_at ?? own?.lastSuccessAt ?? null,
+      lastError: connection?.last_error ?? own?.lastError ?? null,
+      connectionId: connection?.id ?? null,
+      supplierId: supplier?.id ?? connection?.supplier_id ?? null,
+      connector: descriptor ? { key: descriptor.key, label: descriptor.label, fields: descriptor.credentialFields.map((f) => ({ name: f.name, label: f.label, secret: f.secret, placeholder: f.placeholder ?? null })) } : null,
+      email: { fr: accessRequestEmail(entry, "fr", org), en: accessRequestEmail(entry, "en", org) }
+    });
+  }
+  const rank = { connected: 0, pending: 1, error: 1, not_connected: 2 };
+  accounts.sort((a, b) => rank[a.status] - rank[b.status]);
+  return { accounts, publicSources, totals: totals2 };
+}
+async function ensureSupplierFor(ctx, key2) {
+  const entry = SUPPLIER_DIRECTORY.find((e) => e.key === key2);
+  if (!entry) throw new AppError("NOT_FOUND", "Fournisseur inconnu.");
+  const { data: rows, error } = await ctx.supabase.from("suppliers").select("id, name, website").eq("organization_id", ctx.organization.id).eq("is_archived", false).limit(1e3);
+  if (error) throw fromPostgrestError(error);
+  const hit = (rows ?? []).find((s) => directoryKeyForSupplier(s) === key2);
+  if (hit) return hit.id;
+  const { data, error: insErr } = await ctx.supabase.from("suppliers").insert({ organization_id: ctx.organization.id, name: entry.name, website: entry.website, country: entry.country && entry.country.length === 2 ? entry.country : null, ...entry.currency ? { currency: entry.currency } : {} }).select("id").single();
+  if (insErr || !data) throw insErr ? fromPostgrestError(insErr) : new AppError("INTERNAL", "Fournisseur non cr\xE9\xE9.");
+  return data.id;
+}
+async function connectProAccount(ctx, input) {
+  const spec = PRO_ACCOUNTS.find((s) => s.key === input.key);
+  if (!spec?.connectorKey) throw new AppError("VALIDATION", "Ce fournisseur ne propose pas de connexion API dans MON STOCK : importez sa liste de stock ou ajoutez son flux.");
+  const descriptor = getConnectorDescriptor(spec.connectorKey);
+  if (!descriptor) throw new AppError("NOT_IMPLEMENTED", "Connecteur indisponible.");
+  const credentials = {};
+  for (const f of descriptor.credentialFields) {
+    const v2 = (input.credentials[f.name] ?? "").trim();
+    if (!v2) throw new AppError("VALIDATION", `${f.label} : champ requis.`);
+    credentials[f.name] = v2.slice(0, 2e3);
+  }
+  const supplierId = await ensureSupplierFor(ctx, spec.key);
+  const connectionId = await createSupplierConnection({ organizationId: ctx.organization.id, supplierId, connectorKey: descriptor.key, credentials });
+  log26.info("pro account connected", { orgId: ctx.organization.id, key: spec.key, connectionId });
+  const test = await testSupplierConnection(connectionId);
+  return { connectionId, ok: test.ok, message: test.ok ? `${test.message} Lancez une synchronisation pour r\xE9cup\xE9rer vos prix.` : test.message };
+}
+async function assertOrgConnection(ctx, connectionId) {
+  const { data, error } = await ctx.supabase.from("supplier_connections").select("id").eq("organization_id", ctx.organization.id).eq("id", connectionId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!data) throw new AppError("NOT_FOUND", "Connexion introuvable.");
+}
+async function syncProAccount(ctx, connectionId) {
+  await assertOrgConnection(ctx, connectionId);
+  const r = await syncSupplierConnection(connectionId, { trigger: "manual", createdBy: ctx.user.id });
+  return { status: r.status, message: r.message };
+}
+async function disconnectProAccount(ctx, connectionId) {
+  await assertOrgConnection(ctx, connectionId);
+  const admin = createAdminSupabaseClient();
+  const { error: delErr } = await admin.from("supplier_connection_secrets").delete().eq("connection_id", connectionId);
+  if (delErr) throw fromPostgrestError(delErr);
+  const { error } = await admin.from("supplier_connections").update({ status: "disconnected", last_error: null }).eq("id", connectionId).eq("organization_id", ctx.organization.id);
+  if (error) throw fromPostgrestError(error);
+  log26.info("pro account disconnected", { orgId: ctx.organization.id, connectionId });
+  return { message: "Compte d\xE9connect\xE9 : identifiants supprim\xE9s. Les offres d\xE9j\xE0 re\xE7ues restent dans l'historique." };
+}
+
+// server/edge/api.ts
 init_catalog_import();
 init_simple_search();
 
@@ -24244,7 +24544,7 @@ init_empty();
 init_errors();
 init_logger();
 import OpenAI from "npm:openai@7.23.0";
-var log27 = createLogger("AI_LLM");
+var log28 = createLogger("AI_LLM");
 var DEFAULT_AI_MODEL = "gpt-5.4-mini";
 function aiModel(env = process.env) {
   const m = env.OPENAI_MODEL?.trim();
@@ -24315,7 +24615,7 @@ function rejectedParam(e) {
   return null;
 }
 function logApiError(e, model, withTools) {
-  if (e instanceof OpenAI.APIError) log27.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
+  if (e instanceof OpenAI.APIError) log28.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
 }
 function openAILlm(sdk2, model) {
   return {
@@ -24401,7 +24701,7 @@ function speakableText(raw, max = MAX_SPOKEN_CHARS) {
 // src/services/ai/speech.ts
 init_errors();
 init_logger();
-var log28 = createLogger("AI_SPEECH");
+var log29 = createLogger("AI_SPEECH");
 var TTS_DEFAULT_MODEL = "gpt-4o-mini-tts";
 var TTS_CHOICES = ["marin", "cedar"];
 var TTS_DEFAULT_VOICE = "marin";
@@ -24444,8 +24744,8 @@ async function synthesize(input, voice, deps, what) {
     return await res.arrayBuffer();
   } catch (e) {
     logApiError(e, model, false);
-    if (e instanceof AppError) log28.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
-    else log28.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+    if (e instanceof AppError) log29.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
+    else log29.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
     throw aiError(e);
   }
 }
@@ -24992,7 +25292,7 @@ async function runAssistantTool(ctx, name, input) {
 }
 
 // src/services/ai/assistant.ts
-var log29 = createLogger("AI_ASSISTANT");
+var log30 = createLogger("AI_ASSISTANT");
 var assistantRequestSchema = z41.object({
   messages: z41.array(z41.object({ role: z41.enum(["user", "assistant"]), content: z41.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
@@ -25047,7 +25347,7 @@ async function askAssistant(ctx, request, deps = {}) {
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
-          if (r.isError) log29.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log30.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -25635,7 +25935,7 @@ async function sendcloudQuotes(req, env = process.env, now = /* @__PURE__ */ new
 
 // src/services/shipping/quotes.ts
 init_logger();
-var log30 = createLogger("SHIPPING");
+var log31 = createLogger("SHIPPING");
 var PROVIDERS = [
   { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: async (req, env, now) => ({ quotes: await packlinkQuotes(req, env, now), excluded: 0 }) },
   { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: async (req, env, now) => ({ quotes: await boxtalQuotes(req, env, now), excluded: 0 }) },
@@ -25666,7 +25966,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
         return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message, count: quotes.length }, quotes };
       } catch (e) {
         const message = isConnectorError(e) ? e.message : "Erreur inattendue.";
-        log30.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
+        log31.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
         return { status: { id: p.id, label: p.label, state: "error", message, count: 0 }, quotes: [] };
       }
     })
@@ -25729,7 +26029,7 @@ function stockErrorMessage(e) {
 }
 
 // src/features/stock/movement-service.ts
-var log31 = createLogger("STOCK");
+var log32 = createLogger("STOCK");
 async function applyManualMovement(ctx, d) {
   const signed = signedMovementQuantity(d);
   const { data, error } = await ctx.supabase.rpc("apply_inventory_movement", {
@@ -25744,7 +26044,7 @@ async function applyManualMovement(ctx, d) {
   });
   if (error) throw new AppError("VALIDATION", stockErrorMessage(error));
   const { data: sku } = await ctx.supabase.from("skus").select("code").eq("id", d.sku_id).eq("organization_id", ctx.organization.id).maybeSingle();
-  log31.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
+  log32.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
   return { quantityAfter: data?.quantity_after ?? null, skuCode: sku?.code ?? null };
 }
 
@@ -25752,7 +26052,7 @@ async function applyManualMovement(ctx, d) {
 init_errors();
 init_logger();
 init_admin();
-var log32 = createLogger("AI_ADVISOR_ACTIONS");
+var log33 = createLogger("AI_ADVISOR_ACTIONS");
 var ACTION_TTL_MS = 10 * 6e4;
 var ACTION_COLUMNS = "id, organization_id, user_id, conversation_id, kind, sku_id, payload, summary, amount, currency, status, expires_at, result, error";
 function actionToDTO(r) {
@@ -25833,13 +26133,13 @@ async function decideAdvisorAction(ctx, actionId, decision, deps = {}) {
   try {
     const done = await execute(ctx, claimed);
     const final = await finish(admin, row2.id, "executed", { result: { message: done.message, ...done.result } }, now);
-    log32.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
+    log33.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e et ex\xE9cut\xE9e : ${done.message}`);
     return { action: actionToDTO(final), message: done.message };
   } catch (e) {
     const message = e instanceof AppError ? e.message : "Ex\xE9cution impossible : rien n'a \xE9t\xE9 modifi\xE9.";
     const final = await finish(admin, row2.id, "failed", { error: message }, now);
-    log32.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
+    log33.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e mais non ex\xE9cut\xE9e : ${message}`);
     return { action: actionToDTO(final), message };
   }
@@ -26508,7 +26808,7 @@ async function runAdvisorTool(ctx, name, input) {
 }
 
 // src/services/ai/advisor.ts
-var log33 = createLogger("AI_ADVISOR");
+var log34 = createLogger("AI_ADVISOR");
 var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 6, maxTokens: 2500, deadlineMs: 1e5 };
 var ADVISOR_SYSTEM_STABLE = [
   "Tu es le conseiller e-commerce personnel de l'utilisateur dans MON STOCK (gestion de stock et de ventes d'un revendeur d'appareils \xE9lectroniques, principalement sur eBay). Tu es son employ\xE9 : tu analyses SES donn\xE9es, tu recommandes, tu pr\xE9pares des actions.",
@@ -26559,7 +26859,7 @@ function supabaseAdvisorStore(ctx) {
     async addMessage(conversationId, m) {
       const { data, error } = await ctx.supabase.from("advisor_messages").insert({ organization_id: org, conversation_id: conversationId, user_id: ctx.user.id, role: m.role, content: m.content.slice(0, 12e3), cards: (m.cards ?? []).slice(0, 12), sources: (m.sources ?? []).slice(0, 20), interrupted: m.interrupted ?? false }).select("id").single();
       if (error) {
-        log33.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
+        log34.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
         return null;
       }
       await ctx.supabase.from("advisor_conversations").update({ last_message_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", conversationId);
@@ -26653,7 +26953,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
               emit2({ type: "card", card: c });
             }
           }
-          if (r.isError) log33.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log34.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -27206,7 +27506,7 @@ init_errors();
 init_logger();
 init_admin();
 init_alerts();
-var log34 = createLogger("TRACKING");
+var log35 = createLogger("TRACKING");
 function trackingProviders(env = process.env) {
   return { laposte: laPosteConfigured(env), ship24: ship24Configured(env), dhl: dhlConfigured(env) };
 }
@@ -27224,7 +27524,7 @@ async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), en
     snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : provider === "dhl" ? await track.dhl(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
   } catch (e) {
     const message = isConnectorError(e) ? e.message : "Erreur inattendue lors du suivi.";
-    log34.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
+    log35.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
     const retry = new Date(now.getTime() + 6 * 36e5).toISOString();
     await admin.from("tracked_parcels").update({ last_error: message.slice(0, 500), last_checked_at: now.toISOString(), next_check_at: retry, check_count: parcel.check_count + 1 }).eq("id", parcel.id);
     return { parcelId: parcel.id, status: parcel.status, provider, checked: false, message };
@@ -27274,7 +27574,7 @@ async function runDueTracking(now = /* @__PURE__ */ new Date(), admin = createAd
       else failed++;
     } catch (e) {
       failed++;
-      log34.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
+      log35.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
     }
   }
   return { checked, failed, skipped };
@@ -27310,7 +27610,7 @@ async function probeToolConnectors(fetchImpl = fetch) {
 }
 
 // server/edge/api.ts
-var log35 = createLogger("EDGE_API");
+var log36 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
@@ -27351,7 +27651,7 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log35.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
+  log36.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
   return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
 }
 async function finalizeEbayConnect(request) {
@@ -27362,7 +27662,7 @@ async function finalizeEbayConnect(request) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row2) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row2.created_by !== ctx.user.id || row2.organization_id !== ctx.organization.id) {
-    log35.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log36.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row2.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -27373,11 +27673,11 @@ async function finalizeEbayConnect(request) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
-    log35.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log36.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log35.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log36.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
@@ -27578,6 +27878,26 @@ async function route(request) {
       });
     }
     if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request)));
+    if (m === "GET" && path === "/sourcing/accounts") return handle(async () => proAccountsHub(await requireMobileOrgContext(request)));
+    if (m === "POST" && path === "/sourcing/accounts/connect") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        const body = await parseBody(request, z49.object({ key: z49.string().min(1).max(80), credentials: z49.record(z49.string().max(80), z49.string().max(2e3)) }));
+        return connectProAccount(ctx, body);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/accounts/sync") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return syncProAccount(ctx, (await parseBody(request, z49.object({ connectionId: uuidParam }))).connectionId);
+      });
+    }
+    if (m === "POST" && path === "/sourcing/accounts/disconnect") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { admin: true });
+        return disconnectProAccount(ctx, (await parseBody(request, z49.object({ connectionId: uuidParam }))).connectionId);
+      });
+    }
     if (m === "POST" && path === "/sourcing/import/preview") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
@@ -27742,7 +28062,7 @@ async function route(request) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log35.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log36.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;

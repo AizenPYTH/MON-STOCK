@@ -1049,6 +1049,8 @@ export interface SimpleOfferDTO {
   seenAt: string | null;
   /** analyse « bonne affaire » (montants dans la devise de l'organisation) ; null si non calculée */
   deal?: SimpleDealDTO | null;
+  /** prix de VOTRE compte fournisseur (fichier, flux, API), d'une source publique ou d'une place de marché */
+  access?: "account" | "public" | "marketplace";
 }
 
 /**
@@ -1079,17 +1081,67 @@ export interface SimpleDealDTO {
   summary: string;
 }
 
+/** « Connectez vos comptes » : fournisseurs professionnels à brancher, puis sources publiques. */
+export interface ProAccountDTO {
+  key: string;
+  name: string;
+  segment: string;
+  country: string | null;
+  website: string | null;
+  /** domaine du site (logo d'identification : favicon publié par le fournisseur) */
+  domain: string | null;
+  categories: string[];
+  benefit: string;
+  requirements: string;
+  caution: string | null;
+  methods: ("api" | "file" | "feed" | "manual")[];
+  signupUrl: string;
+  status: "connected" | "pending" | "error" | "not_connected";
+  /** offres actives issues de votre compte (fichier, flux ou API) */
+  offers: number;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  /** connexion API existante */
+  connectionId: string | null;
+  /** fournisseur de l'organisation rattaché (import de fichier, flux) */
+  supplierId: string | null;
+  /** connecteur API MON STOCK : champs d'identifiants à saisir (chiffrés côté serveur) */
+  connector: { key: string; label: string; fields: { name: string; label: string; secret: boolean; placeholder: string | null }[] } | null;
+  /** e-mail de demande d'accès prêt à envoyer (aucun envoi automatique) */
+  email: { fr: { subject: string; body: string }; en: { subject: string; body: string } };
+}
+
+export interface PublicSourceDTO {
+  sourceId: string;
+  supplierName: string;
+  domain: string | null;
+  country: string | null;
+  offers: number;
+  lastSuccessAt: string | null;
+}
+
+export interface ProAccountsHubDTO {
+  accounts: ProAccountDTO[];
+  publicSources: PublicSourceDTO[];
+  /** offres actives : vos comptes / sources publiques / places de marché */
+  totals: { account: number; public: number; marketplace: number };
+}
+
 /** Offre dans la liste « du moins cher au plus cher », tous fournisseurs confondus. */
 export interface SimpleRankedOfferDTO extends SimpleOfferDTO {
   supplierId: string;
   supplierName: string;
   country: string | null;
+  /** domaine du site du fournisseur (logo) */
+  domain?: string | null;
 }
 
 export interface SimpleSupplierResultDTO {
   supplierId: string;
   supplierName: string;
   country: string | null;
+  domain?: string | null;
+  access?: "account" | "public" | "marketplace";
   total: number;
   offers: SimpleOfferDTO[];
 }

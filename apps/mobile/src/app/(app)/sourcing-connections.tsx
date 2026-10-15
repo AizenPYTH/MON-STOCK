@@ -51,6 +51,7 @@ export default function SourcingConnectionsScreen() {
           <Button label="Ajouter un flux autorisé" compact variant="secondary" onPress={() => router.push("/sourcing-feed-new")} style={{ flex: 1 }} testID="sources-add-feed" />
         </View>
       ) : null}
+      <Button label="Mes comptes fournisseurs (prix pro)" variant="secondary" compact onPress={() => router.push("/pro-accounts")} testID="sources-pro-accounts" />
       <Button label="Historique des imports" variant="ghost" compact onPress={() => router.push("/sourcing-imports")} testID="sources-history" />
     </>
   );

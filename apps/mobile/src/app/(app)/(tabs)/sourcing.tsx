@@ -2,14 +2,15 @@ import { useState } from "react";
 import { Pressable, RefreshControl, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { ExternalLink, Search, Truck } from "lucide-react-native";
+import { ChevronRight, ExternalLink, KeyRound, Search, Truck } from "lucide-react-native";
 import { useSupplierSearch } from "~/data/hooks";
 import { STOCK_TEXT, type SimpleDealDTO, type SimpleOfferDTO, type SimpleRankedOfferDTO, type SimpleSearchDTO, type SimpleSupplierResultDTO } from "~/data/supplier-search";
 import { fontFamily } from "~/theme/typography";
 import { userMessage } from "~/lib/errors";
 import { formatMoney, formatNumber } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
-import { AlertBanner, Button, Card, EmptyState, ErrorState, FilterChip, Screen, Skeleton, StatusChip, TabHeader, Txt, type ChipTone } from "~/components/ui";
+import { SupplierLogo } from "~/components/supplier-logo";
+import { AlertBanner, Button, Card, EmptyState, ErrorState, FilterChip, Screen, SectionHeader, Skeleton, StatusChip, TabHeader, Txt, type ChipTone } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 const EXAMPLES = ["iPhone 13", "iPhone 15 Pro", "Écran iPhone 12", "Batterie iPhone 11"];
@@ -30,6 +31,11 @@ const DEAL_TONE: Record<SimpleDealDTO["level"], ChipTone> = { very_good: "succes
 export function bestDeals(offers: SimpleRankedOfferDTO[]): SimpleRankedOfferDTO[] {
   const lvl = (o: SimpleRankedOfferDTO) => (o.deal ? DEAL_ORDER[o.deal.level] : 5);
   return [...offers].sort((a, b) => lvl(a) - lvl(b) || (b.deal?.score ?? -1) - (a.deal?.score ?? -1) || (b.deal?.margin ?? -Infinity) - (a.deal?.margin ?? -Infinity));
+}
+
+/** Vos comptes fournisseurs d'abord (prix pro), puis sources publiques et places de marché ; ordre conservé dans chaque groupe. Pur. */
+export function splitByAccess(offers: SimpleRankedOfferDTO[]): { account: SimpleRankedOfferDTO[]; other: SimpleRankedOfferDTO[] } {
+  return { account: offers.filter((o) => o.access === "account"), other: offers.filter((o) => o.access !== "account") };
 }
 
 /**
@@ -81,6 +87,8 @@ export default function SuppliersScreen() {
         <Button label="Chercher" compact disabled={draft.trim().length < 2} loading={search.isFetching} onPress={() => run(draft)} testID="supplier-search" />
       </View>
 
+      <ConnectAccountsCta />
+
       {!submitted ? (
         <View style={{ gap: space[3] }}>
           <Txt variant="bodyRegular">Tapez un produit : on regarde chez vos fournisseurs et on affiche ce qu'ils ont, avec leurs prix.</Txt>
@@ -121,7 +129,11 @@ export default function SuppliersScreen() {
             <Txt variant="label">Une offre n'est « intéressante » que si elle est comparée à des produits équivalents (même modèle, capacité, état, grade, type de pièce) et que la marge reste positive après les coûts.</Txt>
           ) : null}
           {view === "price" || view === "deals" ? (
-            <PriceList offers={view === "deals" ? bestDeals(rankedOffers(search.data)) : rankedOffers(search.data)} orgCurrency={search.data.currency} shown={shown} onMore={() => setShown((n) => n + PAGE)} />
+            view === "deals" ? (
+              <PriceList offers={bestDeals(rankedOffers(search.data))} orgCurrency={search.data.currency} shown={shown} onMore={() => setShown((n) => n + PAGE)} />
+            ) : (
+              <AccessSections offers={rankedOffers(search.data)} orgCurrency={search.data.currency} shown={shown} onMore={() => setShown((n) => n + PAGE)} />
+            )
           ) : (
             search.data.suppliers.map((s) => <SupplierBlock key={s.supplierId} supplier={s} orgCurrency={search.data.currency} />)
           )}
@@ -134,13 +146,49 @@ export default function SuppliersScreen() {
   );
 }
 
-function PriceList({ offers, orgCurrency, shown, onMore }: { offers: SimpleRankedOfferDTO[]; orgCurrency: string; shown: number; onMore: () => void }) {
+function ConnectAccountsCta() {
+  return (
+    <Pressable onPress={() => router.push("/pro-accounts")} accessibilityRole="button" accessibilityLabel="Connectez vos comptes fournisseurs" testID="connect-accounts-cta" style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+      <Card padded style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+        <View style={{ width: 36, height: 36, borderRadius: radius.md, backgroundColor: color.brandSoft, alignItems: "center", justifyContent: "center" }}>
+          <KeyRound size={18} color={color.ink} />
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt variant="body" style={{ fontFamily: fontFamily[700] }}>
+            Connectez vos comptes fournisseurs
+          </Txt>
+          <Txt variant="label">Foxway, Foneday, MobileSentrix… : vos prix pro passent en premier.</Txt>
+        </View>
+        <ChevronRight size={18} color={color.ink3} />
+      </Card>
+    </Pressable>
+  );
+}
+
+/** Liste « du moins cher au plus cher » en deux blocs : vos comptes, puis sources publiques et places de marché. */
+function AccessSections({ offers, orgCurrency, shown, onMore }: { offers: SimpleRankedOfferDTO[]; orgCurrency: string; shown: number; onMore: () => void }) {
+  const { account, other } = splitByAccess(offers);
+  return (
+    <>
+      <SectionHeader title={`Vos comptes fournisseurs (${account.length})`} />
+      {account.length > 0 ? (
+        <PriceList offers={account} orgCurrency={orgCurrency} shown={shown} onMore={onMore} testID="price-list-account" />
+      ) : (
+        <AlertBanner text="Aucun de vos comptes ne propose ce produit pour l'instant. Toucher pour connecter vos comptes et voir vos prix pro." onPress={() => router.push("/pro-accounts")} />
+      )}
+      <SectionHeader title={`Sources publiques et places de marché (${other.length})`} />
+      {other.length > 0 ? <PriceList offers={other} orgCurrency={orgCurrency} shown={shown} onMore={onMore} testID="price-list-public" /> : <Txt variant="label">Aucune offre publique pour ce produit.</Txt>}
+    </>
+  );
+}
+
+function PriceList({ offers, orgCurrency, shown, onMore, testID }: { offers: SimpleRankedOfferDTO[]; orgCurrency: string; shown: number; onMore: () => void; testID?: string }) {
   return (
     <Card padded style={{ gap: space[2] }} accessibilityLabel={`${offers.length} résultats du moins cher au plus cher`}>
       {offers.slice(0, shown).map((o, i) => (
-        <OfferRow key={o.id} offer={o} orgCurrency={orgCurrency} first={i === 0} supplierName={o.supplierName} />
+        <OfferRow key={o.id} offer={o} orgCurrency={orgCurrency} first={i === 0} supplierName={o.supplierName} domain={o.domain ?? null} />
       ))}
-      {offers.length > shown ? <Button label={`Afficher ${Math.min(PAGE, offers.length - shown)} de plus (${offers.length - shown} restant${offers.length - shown > 1 ? "s" : ""})`} variant="ghost" compact onPress={onMore} testID="price-list-more" /> : null}
+      {offers.length > shown ? <Button label={`Afficher ${Math.min(PAGE, offers.length - shown)} de plus (${offers.length - shown} restant${offers.length - shown > 1 ? "s" : ""})`} variant="ghost" compact onPress={onMore} testID={testID ? `${testID}-more` : "price-list-more"} /> : null}
     </Card>
   );
 }
@@ -148,7 +196,8 @@ function PriceList({ offers, orgCurrency, shown, onMore }: { offers: SimpleRanke
 function SupplierBlock({ supplier: s, orgCurrency }: { supplier: SimpleSupplierResultDTO; orgCurrency: string }) {
   return (
     <Card padded style={{ gap: space[2] }} accessibilityLabel={`Chez ${s.supplierName}, ${s.total} résultat${s.total > 1 ? "s" : ""}`}>
-      <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: space[2] }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] }}>
+        <SupplierLogo domain={s.domain} name={s.supplierName} size={32} />
         <Txt variant="headline" style={{ flex: 1 }} numberOfLines={2}>
           Chez {s.supplierName}
         </Txt>
@@ -165,7 +214,7 @@ function SupplierBlock({ supplier: s, orgCurrency }: { supplier: SimpleSupplierR
   );
 }
 
-function OfferRow({ offer: o, orgCurrency, first, supplierName }: { offer: SimpleOfferDTO; orgCurrency: string; first: boolean; supplierName?: string }) {
+function OfferRow({ offer: o, orgCurrency, first, supplierName, domain }: { offer: SimpleOfferDTO; orgCurrency: string; first: boolean; supplierName?: string; domain?: string | null }) {
   const link = safeExternalUrl(o.url);
   const price = o.price !== null && o.currency ? formatMoney(o.price, o.currency) : "Prix non indiqué";
   const converted = o.currency && o.currency !== orgCurrency && o.priceConverted !== null ? `≈ ${formatMoney(o.priceConverted, orgCurrency)}` : null;
@@ -178,6 +227,7 @@ function OfferRow({ offer: o, orgCurrency, first, supplierName }: { offer: Simpl
       accessibilityLabel={`${o.title}, ${price}${supplierName ? `, chez ${supplierName}` : ""}`}
       style={{ flexDirection: "row", gap: space[3], paddingTop: first ? 0 : space[2], borderTopWidth: first ? 0 : 1, borderTopColor: color.line }}
     >
+      {supplierName ? <SupplierLogo domain={domain} name={supplierName} size={32} /> : null}
       <View style={{ flex: 1, gap: 2 }}>
         <Txt variant="body" numberOfLines={2}>
           {o.title}
@@ -185,6 +235,7 @@ function OfferRow({ offer: o, orgCurrency, first, supplierName }: { offer: Simpl
         {supplierName ? (
           <Txt variant="label" numberOfLines={1} style={{ fontFamily: fontFamily[700] }}>
             Chez {supplierName}
+            {o.access === "account" ? "  ·  Votre compte" : o.access === "marketplace" ? "  ·  Place de marché" : ""}
           </Txt>
         ) : null}
         <Txt variant="label" color={o.stock === "out_of_stock" ? color.dangerInk : o.stock === "in_stock" ? color.success : color.ink2}>

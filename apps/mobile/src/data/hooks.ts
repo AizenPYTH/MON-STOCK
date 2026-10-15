@@ -31,6 +31,7 @@ import {
   type SkuEditInput,
 } from "~/data/products";
 import { searchSuppliers } from "~/data/supplier-search";
+import { connectProAccount, disconnectProAccount, fetchProAccounts, syncProAccount } from "~/data/pro-accounts";
 import { createRemoteFeed, fetchImportJob, fetchImportJobs, fetchSources, previewRemoteFeed, scheduleSource, syncSource } from "~/data/sourcing-b2b";
 
 /** Toutes les clés commencent par l'organisation : changer d'organisation ne mélange jamais les données. */
@@ -315,6 +316,29 @@ export function useImportPreview() {
 }
 
 /* ───────── Sourcing B2B : sources, flux distants, historique des imports ───────── */
+
+export function useProAccounts() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "sourcing", "accounts"], queryFn: () => fetchProAccounts(orgId), staleTime: 30_000 });
+}
+
+function useProAccountMutation<TInput, TOut>(fn: (orgId: string, input: TInput) => Promise<TOut>) {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TInput) => fn(orgId, input),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "accounts"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "sources"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "supplier-search"] }),
+      ]),
+  });
+}
+
+export const useConnectProAccount = () => useProAccountMutation(connectProAccount);
+export const useSyncProAccount = () => useProAccountMutation(syncProAccount);
+export const useDisconnectProAccount = () => useProAccountMutation(disconnectProAccount);
 
 export function useSources() {
   const orgId = useOrgId();

@@ -9,6 +9,7 @@ import type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchD
 import { analyzeDeal, comparableBucket, DEAL_LEVEL_LABEL, productSignature, type DealAnalysis, type DealComparable, type DealOfferInput, type DealOwnProduct, type ProductSignature } from "@/domain/sourcing/deal-analysis";
 import { missingSettings, type RadarCostSettings } from "@/domain/sourcing/radar";
 import { readCostSettings } from "@/domain/sourcing/radar-settings";
+import { domainOf, offerAccessOf } from "@/domain/sourcing/pro-accounts";
 
 export type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO };
 
@@ -58,7 +59,7 @@ interface OfferRow {
   source_url: string | null;
   last_seen_at: string | null;
   supplier_id: string;
-  supplier: { name: string; country: string | null } | null;
+  supplier: { name: string; country: string | null; website?: string | null } | null;
   // champs utiles à l'analyse « bonne affaire » (absents des anciens appels de test)
   normalized_currency?: string | null;
   fx_rate?: number | string | null;
@@ -80,9 +81,12 @@ const num = (v: number | string | null): number | null => (v === null || v === u
 
 /** Regroupe par fournisseur ; offres du moins cher au plus cher (prix inconnu en dernier), fournisseurs par meilleur prix. Pur. */
 export function groupBySupplier(rows: OfferRow[], perSupplier = SIMPLE_SEARCH_PER_SUPPLIER, deals?: Map<string, SimpleDealDTO>): SimpleSupplierResultDTO[] {
-  const groups = new Map<string, { supplierName: string; country: string | null; offers: SimpleOfferDTO[] }>();
+  const groups = new Map<string, { supplierName: string; country: string | null; domain: string | null; access: SimpleOfferDTO["access"]; offers: SimpleOfferDTO[] }>();
   for (const r of rows) {
-    const g = groups.get(r.supplier_id) ?? { supplierName: r.supplier?.name ?? "Fournisseur", country: r.supplier?.country ?? null, offers: [] };
+    const access = offerAccessOf(r.source_type, r.source?.config);
+    const g = groups.get(r.supplier_id) ?? { supplierName: r.supplier?.name ?? "Fournisseur", country: r.supplier?.country ?? null, domain: domainOf(r.supplier?.website ?? r.source_url), access, offers: [] };
+    // un fournisseur dont au moins une offre vient de votre compte est classé « vos comptes »
+    if (access === "account") g.access = "account";
     const stock = r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown";
     g.offers.push({
       id: r.id,
@@ -96,13 +100,14 @@ export function groupBySupplier(rows: OfferRow[], perSupplier = SIMPLE_SEARCH_PE
       url: r.source_url,
       seenAt: r.last_seen_at,
       deal: deals?.get(r.id) ?? null,
+      access,
     });
     groups.set(r.supplier_id, g);
   }
   const key = (o: SimpleOfferDTO) => (o.stock === "out_of_stock" ? 1e12 : 0) + (o.priceConverted ?? o.price ?? 1e11);
   const out = Array.from(groups.entries()).map(([supplierId, g]) => {
     const sorted = g.offers.sort((a, b) => key(a) - key(b));
-    return { supplierId, supplierName: g.supplierName, country: g.country, total: sorted.length, offers: sorted.slice(0, perSupplier) };
+    return { supplierId, supplierName: g.supplierName, country: g.country, domain: g.domain, access: g.access, total: sorted.length, offers: sorted.slice(0, perSupplier) };
   });
   return out.sort((a, b) => key(a.offers[0]!) - key(b.offers[0]!) || a.supplierName.localeCompare(b.supplierName));
 }
@@ -119,7 +124,7 @@ export const SIMPLE_SEARCH_MAX_OFFERS = 400;
 
 /** Toutes les offres, du moins cher au plus cher (prix converti dans la devise de l'organisation ; prix inconnu en dernier). Pur. */
 export function byPrice(rows: OfferRow[], max = SIMPLE_SEARCH_MAX_OFFERS, deals?: Map<string, SimpleDealDTO>): SimpleRankedOfferDTO[] {
-  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER, deals).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country })));
+  const all = groupBySupplier(rows, Number.MAX_SAFE_INTEGER, deals).flatMap((g) => g.offers.map((o) => ({ ...o, supplierId: g.supplierId, supplierName: g.supplierName, country: g.country, domain: g.domain })));
   const key = (o: SimpleOfferDTO) => o.priceConverted ?? o.price ?? Number.POSITIVE_INFINITY;
   return all.sort((a, b) => key(a) - key(b) || a.title.localeCompare(b.title)).slice(0, max);
 }
@@ -217,7 +222,7 @@ export function computeDeals(
 
 const DEAL_POOL_LIMIT = 3000;
 const OFFER_COLUMNS =
-  "id, title_original, original_price, original_currency, normalized_price, normalized_currency, fx_rate, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, brand, model, storage, condition, grade, shipping_cost, shipping_currency, moq, ship_from_country, sku_id, source_type, supplier:suppliers(name, country), source:supplier_sources(config)";
+  "id, title_original, original_price, original_currency, normalized_price, normalized_currency, fx_rate, tax_type, available_quantity, stock_status, source_url, last_seen_at, supplier_id, brand, model, storage, condition, grade, shipping_cost, shipping_currency, moq, ship_from_country, sku_id, source_type, supplier:suppliers(name, country, website), source:supplier_sources(config)";
 
 async function withBudget<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
   let timer: ReturnType<typeof setTimeout> | undefined;
