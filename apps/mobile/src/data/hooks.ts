@@ -31,7 +31,7 @@ import {
   type SkuEditInput,
 } from "~/data/products";
 import { searchSuppliers } from "~/data/supplier-search";
-import { connectProAccount, disconnectProAccount, fetchProAccounts, syncProAccount } from "~/data/pro-accounts";
+import { connectProAccount, disconnectProAccount, fetchProAccounts, fetchSupplierOffers, syncProAccount } from "~/data/pro-accounts";
 import { createRemoteFeed, fetchImportJob, fetchImportJobs, fetchSources, previewRemoteFeed, scheduleSource, syncSource } from "~/data/sourcing-b2b";
 
 /** Toutes les clés commencent par l'organisation : changer d'organisation ne mélange jamais les données. */
@@ -330,10 +330,17 @@ function useProAccountMutation<TInput, TOut>(fn: (orgId: string, input: TInput) 
     onSettled: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "accounts"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "supplier-directory"] }),
+        queryClient.invalidateQueries({ queryKey: [orgId, "supplier-offers"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "sources"] }),
         queryClient.invalidateQueries({ queryKey: [orgId, "supplier-search"] }),
       ]),
   });
+}
+
+export function useSupplierOffers(supplierId: string | null) {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "supplier-offers", supplierId], queryFn: () => fetchSupplierOffers(orgId, supplierId!), enabled: Boolean(supplierId), staleTime: 60_000 });
 }
 
 export const useConnectProAccount = () => useProAccountMutation(connectProAccount);

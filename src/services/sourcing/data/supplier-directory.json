@@ -6018,5 +6018,3511 @@
    "https://shop.smartchoice.ee/"
   ],
   "checkedAt": "2026-10-12"
+ },
+ {
+  "key": "pcs-wireless",
+  "name": "PCS Wireless (PCSDirect)",
+  "segment": "A_refurb",
+  "country": "US",
+  "deliveryZones": [
+   "EU",
+   "GB",
+   "WORLD"
+  ],
+  "website": "https://pcsww.com/",
+  "catalogUrl": "https://pcsdirect.pcsww.com/",
+  "categories": [
+   "smartphones",
+   "tablets",
+   "laptops",
+   "wearables",
+   "accessories",
+   "lots"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new",
+   "refurbished",
+   "used",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Compte acheteur professionnel ; achats directs via un commercial PCS, sinon enchères PCSDirect. Documents exigés à confirmer auprès du fournisseur",
+  "accessModes": [
+   "marketplace",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": "RMA à la discrétion de PCS, seulement si plus de 5 % d'un lot est défectueux ou verrouillé (FAQ/Terms PCSDirect)",
+  "partQuality": null,
+  "whyUseful": "Grossiste mondial du reconditionné (plus de 85 pays, bureaux UK & EMEA) qui vend des lots gradés A+ à D, utile pour s'approvisionner en volume en iPhone et Samsung.",
+  "howToGetCatalog": "Enchères en ligne sur PCSDirect (lots T3/T5/TMX). Pour un achat direct ou une liste de stock, passer par le formulaire de contact pour être mis en relation avec un commercial.",
+  "verified": "Extraits des pages officielles pcsww.com (partenaires revendeurs/grossistes, produits, plus de 85 pays) et pcsdirect.pcsww.com (enchères uniquement, Grading, FAQ, Terms). Profil IFA Berlin : bureaux UK & EMEA. Pages non ouvertes directement (proxy).",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://pcsww.com/",
+   "https://pcsww.com/partners/resellers/",
+   "https://pcsww.com/pcsdirect-auction-platform-landing-page/",
+   "https://pcsdirect.pcsww.com/Grading",
+   "https://pcsdirect.pcsww.com/FAQs",
+   "https://pcsdirect.pcsww.com/Terms",
+   "https://ifa-berlin.com/exhibitors/pcs-wireless"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "hubx",
+  "name": "HUBX",
+  "segment": "D_distributor",
+  "country": "US",
+  "deliveryZones": [
+   "WORLD"
+  ],
+  "website": "https://hubx.com/",
+  "catalogUrl": "https://hubx.com/buyer/home",
+  "categories": [
+   "smartphones",
+   "laptops",
+   "tablets",
+   "gaming",
+   "audio"
+  ],
+  "brands": [
+   "Samsung",
+   "Dell",
+   "Lenovo"
+  ],
+  "productTypes": [
+   "new",
+   "refurbished"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "L'acheteur doit attester être un acheteur grossiste (pas de vente aux particuliers). Documents d'inscription à confirmer auprès du fournisseur",
+  "accessModes": [
+   "marketplace",
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Marketplace B2B de surstocks et de fins de série neufs ou reconditionnés usine (téléphones, PC, consoles), avec des offres quotidiennes au prix de gros ou en dessous.",
+  "howToGetCatalog": "Le portail acheteur montre les « Daily Deals » (valables 24 h) aux visiteurs ; les prix et la commande passent par un compte acheteur. Aucune API publique trouvée.",
+  "verified": "Extraits du portail officiel hubx.com/buyer/home (attestation grossiste, pas de vente aux particuliers, neuf scellé usine ou reconditionné usine, Daily Deals). Le chiffre de plus de 100 pays et les fournisseurs (Dell, Lenovo, Samsung) viennent de CB Insights. La livraison vers la France reste à confirmer.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://hubx.com/buyer/home",
+   "https://portal.hubx.com/",
+   "https://www.cbinsights.com/company/hubx-1"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "herweck",
+  "name": "Herweck AG",
+  "segment": "D_distributor",
+  "country": "DE",
+  "deliveryZones": [
+   "DE"
+  ],
+  "website": "https://herweck.de/",
+  "catalogUrl": "https://shop.herweck.de/",
+  "categories": [
+   "smartphones",
+   "accessories",
+   "networking",
+   "shop_fittings"
+  ],
+  "brands": [
+   "Zyxel"
+  ],
+  "productTypes": [
+   "new",
+   "used"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Inscription partenaire avec Gewerbeanmeldung (§14/§55 GewO) et/ou extrait Handelsregister (JPG/PDF) ; le partenaire doit être le gérant ; validation par e-mail.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur télécom et IT allemand qui fournit environ 10 000 revendeurs spécialisés en smartphones et accessoires, et qui se développe aussi sur le matériel d'occasion.",
+  "howToGetCatalog": "S'inscrire sur partnerwerden.herweck.de puis commander dans la boutique B2B shop.herweck.de. La livraison hors d'Allemagne, et donc vers la France, est à confirmer.",
+  "verified": "Extraits officiels de partnerwerden.herweck.de (documents d'inscription), herweck.de (pages À propos et Ouvrir une boutique mobile) et shop.herweck.de. Articles ChannelPartner : environ 10 000 revendeurs, boutique en ligne, matériel d'occasion et DaaS.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://partnerwerden.herweck.de/",
+   "https://herweck.de/ueber-uns/",
+   "https://herweck.de/handyladen-eroeffnen/",
+   "https://shop.herweck.de/page/cms/019731ff78a072ecbae6cab624ce26fa",
+   "https://www.channelpartner.de/article/4166416/herweck-vertreibt-jetzt-zyxel.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "inrego",
+  "name": "Inrego (Stocklists)",
+  "segment": "A_refurb",
+  "country": "SE",
+  "deliveryZones": [
+   "EU",
+   "WORLD"
+  ],
+  "website": "https://inrego.com/",
+  "catalogUrl": "https://stocklists.inrego.com/",
+  "categories": [
+   "smartphones",
+   "tablets",
+   "laptops",
+   "desktops",
+   "monitors",
+   "servers"
+  ],
+  "brands": [],
+  "productTypes": [
+   "refurbished",
+   "used"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Inscription à la liste de stock (formulaire, choix des catégories). Inrego vend seulement aux entreprises qui traitent les déchets électroniques selon la réglementation UE ; pas de vente vers les pays sous embargo ou réputés « e-waste hotspots ».",
+  "accessModes": [
+   "email_pricelist",
+   "manual_download"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": "Garantie et SAV mentionnés (profil UE Circular Economy) ; durée à confirmer auprès du fournisseur",
+  "partQuality": null,
+  "whyUseful": "Reconditionneur suédois de grande taille (plus de 25 000 produits vendus par mois revendiqués) qui envoie des listes de stock gradées, dont une liste « Mobiles & Tablets » téléchargeable.",
+  "howToGetCatalog": "S'inscrire sur stocklists.inrego.com/sign-up en cochant « Mobile phones » pour recevoir les offres quotidiennes par e-mail, ou télécharger la liste « Mobiles & Tablets » ; contacter le service export.",
+  "verified": "Extraits officiels de stocklists.inrego.com (vente aux grossistes, liste Mobiles & Tablets, formulaire d'inscription, conditions de conformité) et d'inrego.com. Profil sur la plateforme UE Circular Economy.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://stocklists.inrego.com/",
+   "https://stocklists.inrego.com/sign-up",
+   "https://stocklists.inrego.com/contact",
+   "https://inrego.com/",
+   "https://circulareconomy.europa.eu/platform/en/good-practices/inrego-keeping-it-devices-circulating"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "hk-refurbished-stock",
+  "name": "HK Refurbished Stock",
+  "segment": "A_refurb",
+  "country": "HK",
+  "deliveryZones": [
+   "WORLD",
+   "EU"
+  ],
+  "website": "https://hk-refurbished-stock.com/",
+  "catalogUrl": null,
+  "categories": [
+   "smartphones",
+   "tablets",
+   "accessories"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "refurbished"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": "Programme « Mini Wholesale » à partir de 5 appareils (communiqué de juin 2025, à confirmer)",
+  "shipping": "Tarif forfaitaire mondial ; entrepôts revendiqués à Hong Kong, dans l'UE et à Miami (communiqués, à confirmer)",
+  "warranty": "Sources contradictoires (3 à 6 mois ou 12 mois) ; à confirmer auprès du fournisseur",
+  "partQuality": null,
+  "whyUseful": "Grossiste d'iPhone reconditionnés avec un minimum de commande très bas (5 unités), adapté aux petits revendeurs qui veulent tester un modèle.",
+  "howToGetCatalog": "Demander la liste de stock et les prix via le site ; conditions du programme Mini Wholesale à faire confirmer.",
+  "verified": "Communiqués EIN Presswire et Barchart (2025–2026) et Trustpilot (5 avis seulement). Les extraits se contredisent sur la garantie et l'inspection. Domaine tiré de l'URL Trustpilot, site non ouvert. Grade A+++ autoproclamé : prudence.",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.einpresswire.com/article/817917480/hk-refurbished-stock-introduces-low-minimum-mini-wholesale-program-for-renewed-iphones",
+   "https://www.barchart.com/story/news/218899/hk-refurbished-stock-launches-lowminimum-mini-wholesale-program-empowering-small-resellers-with-access-to-refurbished-phones",
+   "https://nl.trustpilot.com/review/hk-refurbished-stock.com"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "gsm-world-wholesale",
+  "name": "GSM World",
+  "segment": "A_refurb",
+  "country": "DE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://gsmworld-wholesale.com/",
+  "catalogUrl": "https://gsmworld-wholesale.com/online-shop/",
+  "categories": [
+   "smartphones",
+   "tablets",
+   "laptops",
+   "consoles"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung",
+   "Huawei"
+  ],
+  "productTypes": [
+   "new",
+   "refurbished",
+   "used"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": "Livraison annoncée en 48 h dans l'UE",
+  "warranty": "Jusqu'à 3 mois (selon le site)",
+  "partQuality": null,
+  "whyUseful": "Grossiste basé à Berlin et Larnaca (depuis 2017) qui vend des iPhone et Samsung gradés A+ à C, avec livraison UE en 48 h : utile pour du réassort rapide.",
+  "howToGetCatalog": "Consulter la boutique en ligne (accès aux prix à confirmer) ou demander la liste de stock par les coordonnées de la page Contact.",
+  "verified": "Extraits officiels de gsmworld-wholesale.com : accueil (plus de 20 pays, plus de 2 000 unités par mois), Grading (A+/A/B/C), Online Shop et Contact (adresse à Berlin). Aucun avis indépendant ni extrait de registre trouvé.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://gsmworld-wholesale.com/",
+   "https://gsmworld-wholesale.com/grading/",
+   "https://gsmworld-wholesale.com/online-shop/",
+   "https://gsmworld-wholesale.com/contact/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "repargsm",
+  "name": "ReparGSM",
+  "segment": "E_specialist",
+  "country": "FR",
+  "deliveryZones": [
+   "FR",
+   "EU",
+   "WORLD"
+  ],
+  "website": "https://repargsm.com/",
+  "catalogUrl": "https://repargsm.com/fr/2404-smartphones-neufs",
+  "categories": [
+   "smartphones",
+   "tablets",
+   "smartwatches",
+   "laptops",
+   "parts"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung",
+   "Xiaomi"
+  ],
+  "productTypes": [
+   "new",
+   "refurbished"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Espace réservé aux professionnels (revendeurs, boutiques, réparateurs) ; justificatifs à confirmer auprès du fournisseur",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": null,
+  "moq": "Pas de minimum d'achat annoncé (texte promotionnel, à confirmer)",
+  "shipping": "Livraison en France le lendemain annoncée (à confirmer)",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste B2B qui réunit pièces détachées et smartphones neufs scellés ou reconditionnés (iPhone, Samsung), avec quantités affichées en temps réel : un seul fournisseur pour les boutiques-ateliers.",
+  "howToGetCatalog": "Ouvrir un compte pro sur repargsm.com pour voir les prix B2B dégressifs et le stock en temps réel des catégories Smartphones neufs et iPhone neufs/reconditionnés.",
+  "verified": "Extraits officiels de repargsm.com (catégories smartphones neufs, iPhone, appareils mobiles : prix B2B, stock en temps réel, prix dégressifs, plus de 25 ans d'activité). Certaines fiches portent la mention « Non EU » (versions hors UE). Pays FR déduit des textes du site, à confirmer.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://repargsm.com/",
+   "https://repargsm.com/fr/2404-smartphones-neufs",
+   "https://repargsm.com/fr/3252-iphone-neufs-reconditionnes",
+   "https://repargsm.com/fr/96-appareils-mobiles"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "elite-mobile",
+  "name": "Elite Mobile",
+  "segment": "D_distributor",
+  "country": "GB",
+  "deliveryZones": [
+   "GB",
+   "WORLD"
+  ],
+  "website": "https://www.elitemobile.com/",
+  "catalogUrl": null,
+  "categories": [
+   "smartphones",
+   "accessories",
+   "sim_cards"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur britannique de téléphones, accessoires et cartes SIM qui sert revendeurs indépendants et chaînes, au Royaume-Uni et à l'étranger.",
+  "howToGetCatalog": "Demander l'ouverture d'un compte pro et une liste de prix par le site. Prévoir la douane et la TVA à l'import (hors UE).",
+  "verified": "Extraits officiels d'elitemobile.com (accueil et page About Us : distributeur pour indépendants et chaînes, au Royaume-Uni et au-delà). Conditions du compte pro non trouvées.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://elitemobile.com/",
+   "https://www.elitemobile.com/about-us.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "mobiles-wholesale-uk",
+  "name": "Mobiles Wholesale",
+  "segment": "D_distributor",
+  "country": "GB",
+  "deliveryZones": [
+   "GB"
+  ],
+  "website": "https://mobileswholesale.co.uk/",
+  "catalogUrl": null,
+  "categories": [
+   "smartphones"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Formulaire « Trade Application » sur le site ; pièces demandées à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste britannique de téléphones neufs sans SIM, bloqués ou débloqués, pour revendeurs indépendants.",
+  "howToGetCatalog": "Remplir la Trade Application, puis demander la liste de prix. Livraison vers l'UE, douane et TVA à confirmer.",
+  "verified": "Extrait officiel de mobileswholesale.co.uk/about-us (vente en gros de téléphones neufs sans SIM, clients revendeurs indépendants, page Trade Application).",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://mobileswholesale.co.uk/about-us/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "refurbly-wholesale",
+  "name": "Refurbly (Wholesale)",
+  "segment": "A_refurb",
+  "country": "SE",
+  "deliveryZones": [
+   "SE",
+   "EU"
+  ],
+  "website": "https://www.refurbly.se/",
+  "catalogUrl": "https://www.refurbly.se/en/pages/wholesale",
+  "categories": [
+   "smartphones",
+   "tablets"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "used",
+   "refurbished"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": null,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": "30 jours (page Wholesale)",
+  "partQuality": null,
+  "whyUseful": "Revendeur suédois Apple et Samsung (Örebro) avec une offre de gros sur appareils d'occasion, en complément des grossistes nordiques.",
+  "howToGetCatalog": "Faire une demande de stock et de prix depuis la page Wholesale.",
+  "verified": "Extrait de la page officielle refurbly.se/en/pages/wholesale (appareils d'occasion à prix de gros, garantie 30 jours, Apple et Samsung). Livraison vers la France non confirmée.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.refurbly.se/en/pages/wholesale"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "telefabryka",
+  "name": "Telefabryka (Telefactory)",
+  "segment": "A_refurb",
+  "country": "PL",
+  "deliveryZones": [
+   "PL"
+  ],
+  "website": "https://telefabryka.com/",
+  "catalogUrl": "https://telefabryka.com/hurtownia.html",
+  "categories": [
+   "smartphones"
+  ],
+  "brands": [],
+  "productTypes": [
+   "used",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste polonais de téléphones d'occasion depuis 2006, pour revendeurs et ateliers, qui répond aux demandes par modèle et quantité.",
+  "howToGetCatalog": "Envoyer par e-mail les modèles, quantités et états recherchés (procédure de la page Hurtownia). Livraison vers la France à confirmer.",
+  "verified": "Extrait de la page officielle telefabryka.com/hurtownia.html (vente en gros de téléphones d'occasion depuis 2006 pour entreprises, revendeurs et ateliers GSM en Pologne, demandes par e-mail).",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://telefabryka.com/hurtownia.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "telforceone",
+  "name": "TelForceOne S.A.",
+  "segment": "E_specialist",
+  "country": "PL",
+  "deliveryZones": [
+   "PL",
+   "EU"
+  ],
+  "website": "https://www.telforceone.pl/",
+  "catalogUrl": null,
+  "categories": [
+   "accessories",
+   "smartphones",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Fabricant et distributeur polonais d'accessoires GSM, de smartphones et d'électronique grand public, avec une plateforme B2B.",
+  "howToGetCatalog": "Demander un accès à la plateforme B2B ; ouverture de compte et livraison vers la France à confirmer.",
+  "verified": "Extrait de l'accueil officiel telforceone.pl (« Dystrybutor akcesoriów GSM », fabricant de smartphones et d'accessoires, distributeur de marques mondiales, plateforme B2B). Détails non vus.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.telforceone.pl/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "koopjemobiel",
+  "name": "Koopjemobiel.nl",
+  "segment": "A_refurb",
+  "country": "NL",
+  "deliveryZones": [
+   "NL",
+   "EU"
+  ],
+  "website": "https://koopjemobiel.nl/",
+  "catalogUrl": null,
+  "categories": [
+   "smartphones",
+   "accessories",
+   "smart_home",
+   "audio"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new",
+   "refurbished",
+   "used"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste néerlandais (Hengelo) de smartphones neufs, reconditionnés et d'occasion, et d'accessoires.",
+  "howToGetCatalog": "Demander une liste de stock et les conditions pro par contact direct.",
+  "verified": "Fiche annuaire Europages seulement. Domaine déduit du nom commercial « Koopjemobiel.nl », non vérifié sur le site. Également basé à Hengelo comme Mobistock : vérifier qu'il n'y a pas de lien entre les deux.",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.europages.co.uk/companies/netherlands/smartphones.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "b2b-mobile-wholesalers",
+  "name": "B2B Mobile Wholesalers",
+  "segment": "A_refurb",
+  "country": null,
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.b2bmobilewholesalers.com/",
+  "catalogUrl": null,
+  "categories": [
+   "smartphones",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new",
+   "refurbished",
+   "used"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "à confirmer auprès du fournisseur",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste européen de stock neuf, reconditionné, gradé et « 14 jours retour » pour acheteurs professionnels.",
+  "howToGetCatalog": "Demander la liste de stock via le site.",
+  "verified": "Titre et extrait de l'accueil officiel b2bmobilewholesalers.com. Pays et société non identifiés. Le texte ressemble beaucoup à celui de Mobile Depot Europe (déjà dans l'annuaire) : vérifier qu'il ne s'agit pas de la même société avant import.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.b2bmobilewholesalers.com/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "lcd-phone",
+  "name": "LCD-Phone",
+  "segment": "B_parts",
+  "country": "FR",
+  "deliveryZones": [
+   "FR",
+   "DOM",
+   "EU"
+  ],
+  "website": "https://lcd-phone.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "accessories",
+   "tools"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new",
+   "refurbished"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Compte professionnel gratuit ; Kbis, SIRET et n° de TVA demandés, validation sous ~24 h ouvrées ; le vendeur peut refuser un compte. Paiement à 30 jours possible via Billie (sous réserve d'acceptation).",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": "France, DOM et Europe via Chronopost, UPS, FedEx ; express 24 h annoncé sur certains modèles ; délais indicatifs (CGV)",
+  "warranty": null,
+  "partQuality": "Original reconditionné, Service Pack, In-cell, OLED (selon modèles)",
+  "whyUseful": "Grossiste parisien 100 % pro (écrans iPhone/Samsung par qualité, batteries, vitres arrière, connecteurs, pièces MacBook) livrant FR et UE.",
+  "howToGetCatalog": "Créer un compte pro gratuit sur lcd-phone.com (page 'Professional account creation') pour voir les prix ; catalogue réservé aux professionnels.",
+  "verified": "Snippets des pages officielles lcd-phone.com : création de compte pro (Kbis/SIRET/TVA, validation ~24 h), page Livraison (FR/DOM/Europe, Chronopost/UPS/FedEx), pages produits listant qualités original/service pack/in-cell/OLED, pièce MacBook Pro 14″. Prix HT déduit de 'prix réservés aux pros' : à confirmer.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://lcd-phone.com/en/",
+   "https://lcd-phone.com/en/professional-account-creation?back=my-account",
+   "https://lcd-phone.com/fr/content/1-livraison",
+   "https://lcd-phone.com/en/1040-iphone-12-pro",
+   "https://rocketreach.co/lcd-phone-profile_b7d72892c0eca3de"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "new-aspect",
+  "name": "New Aspect B.V.",
+  "segment": "E_specialist",
+  "country": "NL",
+  "deliveryZones": [
+   "NL",
+   "BE",
+   "EU"
+  ],
+  "website": "https://www.newaspect.nl/",
+  "catalogUrl": null,
+  "categories": [
+   "accessories"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Demande de compte revendeur via formulaire 'dealer-aanvraag' (réponse sous 24 h ouvrées annoncée) ; conditions commerciales à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "pro_portal",
+   "feed_xml",
+   "feed_csv",
+   "api",
+   "edi"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur Benelux d'accessoires smartphone/tablette (~12 500 références) qui fournit des flux XML/CSV produit-prix-stock et un web service de commande.",
+  "howToGetCatalog": "Demander un login revendeur sur newaspect.nl/dealer-aanvraag ; ensuite demander l'accès aux flux XML/CSV (produits, prix, stock) et au web service.",
+  "verified": "Snippets officiels newaspect.nl : page Services mentionnant flux XML et CSV (produits, prix, stock), commande via web service, plug-ins Shopify/Lightspeed/WooCommerce/CCV, lien Onetrail TPN et Vendit ; formulaire dealer. Pas de doc API publique vue.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.newaspect.nl/en",
+   "https://www.newaspect.nl/en/services",
+   "https://www.newaspect.nl/dealer-aanvraag/",
+   "https://www.newaspect.nl/over-ons"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "repair-outlet",
+  "name": "Repair Outlet (Cellcom Ltd)",
+  "segment": "B_parts",
+  "country": "GB",
+  "deliveryZones": [
+   "GB"
+  ],
+  "website": "https://repairoutlet.co.uk/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "tools"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": null,
+  "accessConditions": "Prix trade (HT/ex VAT) affichés sur une collection 'Trade discount products' ; procédure d'ouverture de compte trade à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "public_catalog",
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "GBP",
+  "moq": null,
+  "shipping": "Commandes avant 15 h lun-ven expédiées le jour même au Royaume-Uni ; envoi UE à confirmer auprès du fournisseur",
+  "warranty": "Garantie à vie annoncée sur les achats trade (page iPhone 7 parts) — conditions à confirmer",
+  "partQuality": null,
+  "whyUseful": "Fournisseur UK de pièces (né trade-only en 2015) avec prix trade visibles en ligne, price match et service de sourcing de pièces introuvables.",
+  "howToGetCatalog": "Catalogue public sur repairoutlet.co.uk (collection 'trade-discount-products') ; contacter le 0800 970 9427 pour un compte trade.",
+  "verified": "Snippets officiels repairoutlet.co.uk : About Us (Cellcom Ltd, trade-only depuis 2015, Calverton), collection trade avec prix ex VAT, mention price match et garantie à vie trade, expédition jour même UK. Livraison UE non vérifiée.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://repairoutlet.co.uk/pages/about-us",
+   "https://repairoutlet.co.uk/collections/trade-discount-products",
+   "https://repairoutlet.co.uk/collections/apple-iphone-7-parts",
+   "https://open.endole.co.uk/insight/brand/313780-repair-outlet"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "etradesupply",
+  "name": "ETrade Supply",
+  "segment": "B_parts",
+  "country": "CN",
+  "deliveryZones": [
+   "WW",
+   "EU",
+   "US"
+  ],
+  "website": "https://www.etradesupply.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "tools",
+   "accessories"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung",
+   "Huawei",
+   "Xiaomi"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Commande en ligne ouverte ; page 'Wholesales' et 'Business Services' pour volumes — conditions à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "public_catalog",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "USD",
+  "moq": null,
+  "shipping": "Entrepôt Hong Kong : DHL International (min. ~17,80 USD, 4-7 j ouvrés selon le site) ; entrepôt US réservé aux USA. Droits/TVA import UE à la charge de l'acheteur probable — à confirmer",
+  "warranty": "Retour sous 30 jours annoncé (pièce dans l'état d'origine)",
+  "partQuality": null,
+  "whyUseful": "Grossiste chinois historique de pièces détachées (siège Chine, filiale Dallas) expédiant mondialement depuis Hong Kong, utile pour références rares.",
+  "howToGetCatalog": "Catalogue public sur etradesupply.com ; demande de tarifs volume via la page Wholesales / service@etradesupply.com.",
+  "verified": "Snippets officiels etradesupply.com (About, Shipping, Wholesales) ; certaines pages datées (footer 2006-2017), délais actuels à vérifier.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.etradesupply.com/wholesales.html",
+   "https://www.etradesupply.com/shipping.html/",
+   "https://www.etradesupply.com/about-us",
+   "https://www.etradesupply.com/business-services"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "fonefunshop",
+  "name": "FoneFunShop Ltd",
+  "segment": "B_parts",
+  "country": "GB",
+  "deliveryZones": [
+   "GB",
+   "WW"
+  ],
+  "website": "https://www.fonefunshop.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "tools",
+   "accessories"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Compte trade documenté pour les codes de désimlockage (API possible) ; pas de conditions trade publiées pour pièces/outils — à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "public_catalog",
+   "marketplace",
+   "api"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": null,
+  "moq": null,
+  "shipping": "Expédition UK et internationale (listings eBay : Royal Mail International Tracked) — tarifs à confirmer",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Spécialiste UK (Sheffield) de l'outillage de réparation pro (microscopes, stations, programmateurs, JTAG/flash) et de pièces, IRSP Apple.",
+  "howToGetCatalog": "Catalogue public sur fonefunshop.com (et boutique eBay fonefunshop) ; demander les remises volume par e-mail (sales@fonefunshop.com indiqué sur eBay).",
+  "verified": "Snippets officiels fonefunshop.com (accueil, About, Unlock-Code-Trade-Account mentionnant API pour codes d'unlock uniquement) + profil eBay. L'API concerne l'unlock, pas les pièces.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.fonefunshop.com/",
+   "https://www.fonefunshop.com/pages/about-us",
+   "https://www.fonefunshop.com/Unlock-Code-Trade-Account.html",
+   "https://www.ebay.com/usr/fonefunshop"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "ms-gsm",
+  "name": "MS GSM GmbH",
+  "segment": "B_parts",
+  "country": "DE",
+  "deliveryZones": [
+   "DE",
+   "EU"
+  ],
+  "website": "https://ms-gsm.de/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "tools",
+   "accessories"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": null,
+  "accessConditions": "Grossiste pour ateliers/boutiques sur contact ('kontaktieren Sie uns für Großhandel') ; conditions à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "public_catalog",
+   "email_quote",
+   "marketplace"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": "Original et compatible ('B-Ware') selon pièces ; écrans OLED 'OEM' listés",
+  "whyUseful": "Webshop allemand (Gronau) de pièces smartphone/tablette et outils (>5 000 références en stock annoncées) avec offre grossiste pour réparateurs.",
+  "howToGetCatalog": "Consulter ms-gsm.de / boutique eBay ; contacter info@ms-gsm.de pour un tarif grossiste.",
+  "verified": "Snippets ms-gsm.de (Impressum HRB 18413 Coesfeld, page produit décrivant 'MS GSM International GmbH' comme grossiste pour réparateurs) + profil eBay ; pages anciennes (2-4 ans), activité grossiste actuelle à confirmer.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://ms-gsm.de/",
+   "https://ms-gsm.de/impressum/",
+   "https://www.ms-gsm.de/apple-iphone-XS-lcd-display-333.html?language=en"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "4smarts",
+  "name": "4smarts",
+  "segment": "E_specialist",
+  "country": "DE",
+  "deliveryZones": [
+   "DE",
+   "EU"
+  ],
+  "website": "https://4smarts.com/",
+  "catalogUrl": "https://b2b.4smarts.eu/",
+  "categories": [
+   "accessories"
+  ],
+  "brands": [
+   "4smarts",
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Portail revendeurs b2b.4smarts.eu ; minimum de commande 500 € par commande (page B2B) ; inscription à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": "500 € par commande (portail B2B)",
+  "shipping": "Expédition quotidienne depuis l'entrepôt de Gersthofen (DE)",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Marque/fabricant allemand d'accessoires smartphone (protections, chargeurs, hubs, supports) avec portail B2B et marges revendeur.",
+  "howToGetCatalog": "Demander un accès revendeur sur b2b.4smarts.eu.",
+  "verified": "Snippets officiels b2b.4smarts.eu (MOV 500 €, expédition Gersthofen, catégories) et 4smarts.com/pages/ueber-uns.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://b2b.4smarts.eu/?lang=eng",
+   "https://4smarts.com/pages/ueber-uns"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "powerbookmedic",
+  "name": "PowerbookMedic",
+  "segment": "E_specialist",
+  "country": "US",
+  "deliveryZones": [
+   "US",
+   "WW"
+  ],
+  "website": "https://www.powerbookmedic.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries"
+  ],
+  "brands": [
+   "Apple"
+  ],
+  "productTypes": [
+   "new",
+   "pulled"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Vente en ligne ; tarifs grossiste non publiés — à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "public_catalog",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "USD",
+  "moq": null,
+  "shipping": "International disponible après connexion, coût réel ; droits d'import à la charge de l'acheteur",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Spécialiste US des pièces Mac (MacBook/MacBook Pro par modèle : cartes mères, dalles, claviers) avec commande spéciale de pièces hors stock.",
+  "howToGetCatalog": "Recherche par modèle (A-number) sur powerbookmedic.com/parts ; volumes via support@powerbookmedic.com.",
+  "verified": "Snippets officiels powerbookmedic.com (International Shipping, catégories MacBook, pages parts). Statut 'pulled' supposé pour cartes mères : à confirmer.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "http://www.powerbookmedic.com/International-Shipping-p-23.html",
+   "http://www.powerbookmedic.com/MacBook--Macbook-Pro-Parts-and-Repair-p-1-c-446.html",
+   "http://www.powerbookmedic.com/parts/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "repairs-universe",
+  "name": "Repairs Universe",
+  "segment": "B_parts",
+  "country": "US",
+  "deliveryZones": [
+   "US",
+   "WW"
+  ],
+  "website": "https://www.repairsuniverse.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "tools",
+   "accessories"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung",
+   "Huawei",
+   "LG"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": null,
+  "accessConditions": "Compte wholesale sur demande (lien 'Wholesale Orders') ; conditions à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "public_catalog",
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "USD",
+  "moq": null,
+  "shipping": "USPS International (4-14 j) ou checkout international via GlobalShopEx (5-28 j ouvrés) ; coût affiché au checkout",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Fournisseur US de pièces et outils avec compte wholesale et livraison internationale, source de secours pour références rares.",
+  "howToGetCatalog": "Catalogue public repairsuniverse.com ; demander un compte wholesale via la page Wholesale Orders.",
+  "verified": "Snippets officiels repairsuniverse.com (Shipping Policy, FAQ, pages produits invitant à demander un compte wholesale).",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.repairsuniverse.com/pages/shipping-policy",
+   "https://www.repairsuniverse.com/pages/faq",
+   "https://www.repairsuniverse.com/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "bigben-connected",
+  "name": "Bigben Connected (groupe Bigben / Nacon)",
+  "segment": "E_specialist",
+  "country": "FR",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.bigben-connected.com/",
+  "catalogUrl": null,
+  "categories": [
+   "accessories"
+  ],
+  "brands": [
+   "Force Glass",
+   "Force Power",
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Distribution aux enseignes/points de vente (VMI proposée) ; aucun portail revendeur public vu — à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": "Garantie à vie sur les gammes FORCE (depuis 2016, selon sources tierces)",
+  "partQuality": null,
+  "whyUseful": "Acteur français majeur de l'accessoire mobile (3 500+ réf., 30 marques, entrepôt automatisé Hauts-de-France) pour s'approvisionner en accessoires de marque.",
+  "howToGetCatalog": "Contacter le service commercial via le site bigben-connected.com pour ouvrir un compte revendeur.",
+  "verified": "Sources tierces uniquement (IFA Berlin exhibitor, Boulanger, presse) ; domaine officiel bigben-connected.com non ouvert (fetch bloqué) — à vérifier avant import du logo.",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.ifa-berlin.com/exhibitors/bigben-connected",
+   "https://www.solutions-numeriques.com/?p=51737",
+   "https://www.lagazettefrance.fr/article/bigben-connected-30-ans-d-innovation-a-lille"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "cellularline",
+  "name": "Cellularline S.p.A.",
+  "segment": "E_specialist",
+  "country": "IT",
+  "deliveryZones": [
+   "IT",
+   "FR",
+   "ES",
+   "CH",
+   "EU"
+  ],
+  "website": "https://www.cellularline.com/",
+  "catalogUrl": null,
+  "categories": [
+   "accessories"
+  ],
+  "brands": [
+   "Cellularline",
+   "Apple",
+   "Samsung",
+   "Huawei"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": true,
+  "accessConditions": "Section revendeurs avec formulaire d'inscription société (selon source tierce) ; à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Leader italien de l'accessoire smartphone (présence directe FR/ES/CH, ~60 pays) avec services magasin (découpe de films, coques personnalisées).",
+  "howToGetCatalog": "Demander l'ouverture d'un compte revendeur via la section rivenditori du site officiel ou la filiale France.",
+  "verified": "Sources tierces (assistenza-clienti.it, communiqués de presse) ; portail revendeur et domaine non vérifiés directement.",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.assistenza-clienti.it/cellular-line/",
+   "https://italia-informa.com/public/italiainforma/ComunicatiStampa/Cellular_Line_Group/CELLULARLINE_22_LUGLIO_25.pdf",
+   "https://www.finanzaonline.com/notizie/cellularline-punta-a-crescere-allestero-si-rafforza-in-italia-con-huawei-e-samsung"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "distriphone",
+  "name": "Distriphone",
+  "segment": "B_parts",
+  "country": "FR",
+  "deliveryZones": [
+   "FR"
+  ],
+  "website": "https://www.distriphone.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "accessories"
+  ],
+  "brands": [
+   "Samsung",
+   "Apple",
+   "Huawei",
+   "Motorola"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Dédié aux professionnels, réparateurs et boutiques ; prix négociables selon quantités — à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "marketplace",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste/déstockeur de pièces et accessoires smartphone-tablette (Clermont-Ferrand) pour lots en volume.",
+  "howToGetCatalog": "Annonces sur destockplus.com ; contacter Distriphone (site distriphone.com/fr cité dans les annonces).",
+  "verified": "Uniquement des annonces Destockplus datant de 2020 ; activité actuelle et domaine officiel non vérifiés.",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.destockplus.com/acheter/c-892830-ecran-de-remplacement-pour-motorola.html",
+   "https://www.destockplus.com/acheter/recherche-fournisseur-6-detachee.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "teknikdelar",
+  "name": "Teknikdelar (Spares Nordic, groupe Clas Ohlson)",
+  "segment": "B_parts",
+  "country": "SE",
+  "deliveryZones": [
+   "SE",
+   "NO",
+   "FI",
+   "DK"
+  ],
+  "website": "https://www.teknikdelar.se/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "accessories",
+   "tools"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": null,
+  "accessConditions": "Assortiment adapté aux particuliers et aux réparateurs professionnels ; offre B2B/compte entreprise à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "SEK",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Un des principaux fournisseurs nordiques de pièces (écrans, batteries) et accessoires mobiles, avec déclinaisons NO/FI.",
+  "howToGetCatalog": "Catalogue public teknikdelar.se (teknikkdeler.no, tekniikkaosat.fi) ; demander conditions pro.",
+  "verified": "Snippets clasohlson.com (pages marque Teknikdelar) et cbinsights (Batteriexperten/Spares Nordic) ; site teknikdelar.se non consulté directement.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.clasohlson.com/se/teknikdelar",
+   "https://www.cbinsights.com/company/batteriexperten",
+   "https://www.mynewsdesk.com/se/teknikdelar-se/latest_news"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "alibaba-com",
+  "name": "Alibaba.com",
+  "segment": "E_specialist",
+  "country": "CN",
+  "deliveryZones": [
+   "WW",
+   "EU"
+  ],
+  "website": "https://www.alibaba.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "tools",
+   "accessories"
+  ],
+  "brands": [
+   "Apple",
+   "Samsung",
+   "Huawei",
+   "Xiaomi"
+  ],
+  "productTypes": [
+   "new",
+   "refurbished"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": false,
+  "accessConditions": "Marketplace B2B ; MOQ, qualité et garanties propres à chaque usine — à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "marketplace",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "USD",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Accès direct aux usines chinoises d'écrans (LCD/Incell/OLED), batteries, outils et accessoires pour volumes importants.",
+  "howToGetCatalog": "Rechercher par catégorie sur alibaba.com et demander devis (RFQ) aux fournisseurs vérifiés.",
+  "verified": "Pages catégories alibaba.com (fournisseurs LCD/écrans) vues en résultats de recherche ; données vendeurs non vérifiées.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.alibaba.com/front-panel-lcd-suppliers.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "global-sources",
+  "name": "Global Sources",
+  "segment": "E_specialist",
+  "country": "HK",
+  "deliveryZones": [
+   "WW",
+   "EU"
+  ],
+  "website": "https://www.globalsources.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens",
+   "batteries",
+   "accessories"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Plateforme de sourcing B2B ; conditions par fabricant — à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "marketplace",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "USD",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Annuaire/plateforme de fabricants asiatiques de composants mobiles (digitizers, LCD) exportant vers l'Europe.",
+  "howToGetCatalog": "Catégories 'mobile phone LCDs' / 'digitizers' sur globalsources.com, puis demande de devis.",
+  "verified": "Pages catégories globalsources.com vues en résultats de recherche.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.globalsources.com/category/mobile-phone-lcds-manufacturer-supplier_23960/?pageNum=2",
+   "https://www.globalsources.com/category/digitizers-for-iphone-manufacturer-supplier_37605/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "made-in-china",
+  "name": "Made-in-China.com",
+  "segment": "E_specialist",
+  "country": "CN",
+  "deliveryZones": [
+   "WW",
+   "EU"
+  ],
+  "website": "https://www.made-in-china.com/",
+  "catalogUrl": null,
+  "categories": [
+   "parts",
+   "screens"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Marketplace B2B ; conditions par usine — à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "marketplace",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "USD",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Autre annuaire B2B d'usines chinoises (assemblages d'écrans de remplacement), version FR disponible.",
+  "howToGetCatalog": "Index d'usines fr.made-in-china.com (ex. 'mobile replacement assembly'), puis demande de devis.",
+  "verified": "Pages index d'usines fr.made-in-china.com vues en résultats de recherche.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://fr.made-in-china.com/factory/mobile-replacement-assembly.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "we-connect",
+  "name": "WE.CONNECT",
+  "segment": "D_distributor",
+  "country": "FR",
+  "deliveryZones": [
+   "FR"
+  ],
+  "website": "https://www.connect-we.fr/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "electronics",
+   "accessories"
+  ],
+  "brands": [
+   "HP",
+   "Acer",
+   "Lenovo",
+   "Samsung",
+   "WE",
+   "D2 Diffusion",
+   "Heden"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Grossiste IT coté (Euronext Growth ALWEC) vendant aux revendeurs IT, GSS et e-commerçants ; a finalisé en sept. 2025 le rachat d'Exertis France et Exertis Iberia (renommée Ezratis Iberia). Ouverture de compte, conditions et éventuels flux : à confirmer auprès du fournisseur. Aucune API publique trouvée.",
+  "accessModes": [
+   "pro_portal",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste français (PC HP/Acer/Lenovo/Samsung, accessoires marques WE/D2/Heden) devenu propriétaire d'Exertis France : nouvel interlocuteur pour les revendeurs.",
+  "howToGetCatalog": "Contacter le service commercial via connect-we.fr pour demander l'ouverture d'un compte revendeur et la grille tarifaire.",
+  "verified": "Communiqués Business Wire (avr. et sept. 2025) sur l'acquisition d'Exertis France/Iberia ; domaine connect-we.fr cité par Yahoo Finance/Munich Startup, pas ouvert directement.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.businesswire.com/news/home/20250901110121/fr",
+   "https://www.optionfinance.fr/info-financiere-en-continu/d/2025-04-22-weconnect-negocie-pour-soffrir-exertis-france.html",
+   "https://www.alimarket.es/electro/noticia_amp/418689/exertis-iberia-cambia-a-ezratis-iberia-en-su-nueva-etapa-en-el-grupo-we-connect",
+   "https://fr.finance.yahoo.com/quote/ALWEC.PA/profile"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "siewert-kau",
+  "name": "Siewert & Kau Technologies Vertriebs GmbH",
+  "segment": "D_distributor",
+  "country": "DE",
+  "deliveryZones": [
+   "DE",
+   "EU"
+  ],
+  "website": "https://www.siewert-kau.de/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "smartphones",
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Distributeur IT pour revendeurs et intégrateurs (boutique B2B). ATTENTION : insolvabilité mai 2025, redémarrage août 2025 via asset deal sous Siewert & Kau Technologies Vertriebs GmbH. Conditions pour un revendeur français : à confirmer auprès du fournisseur. Aucune API publique trouvée.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur allemand généraliste (PC, mobile, téléphonie, composants), qui fait aussi du sourcing open market : utile pour comparer les prix.",
+  "howToGetCatalog": "Demander un compte revendeur via le site siewert-kau.de (boutique B2B) ; vérifier d'abord la livraison vers la France.",
+  "verified": "Presse spécialisée (ChannelPartner, borncity, IFA) : insolvabilité 2025, relance août 2025, activité stabilisée selon un article d'août 2026 ; domaine siewert-kau.de donné par les annuaires, pas ouvert.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.channelpartner.de/article/4037385/die-neue-siewert-kau-geht-an-den-start.html",
+   "https://borncity.com/blog/?p=311215",
+   "https://www.channelpartner.de/article/4208994/siewert-kau-spricht-von-auserst-positiver-entwicklung.html",
+   "https://www.ifa-berlin.com/exhibitors/siewert-kau-technologies-operations"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "api-computerhandels",
+  "name": "api Computerhandels GmbH",
+  "segment": "D_distributor",
+  "country": "DE",
+  "deliveryZones": [
+   "DE"
+  ],
+  "website": "https://www.api.de/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "components",
+   "electronics",
+   "accessories"
+  ],
+  "brands": [
+   "Antec",
+   "Microsoft",
+   "FRITZ!",
+   "EnGenius"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Distributeur DACH réservé aux revendeurs (Fachhandel) et au retail. Ouverture de compte et livraison France : à confirmer auprès du fournisseur. Aucune API publique trouvée.",
+  "accessModes": [
+   "pro_portal",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur allemand de composants/périphériques (exclusivité DACH Antec, distributeur Microsoft hardware, FRITZ!) : source alternative pour accessoires et composants PC.",
+  "howToGetCatalog": "Contacter api (Baesweiler, +49 241 9170-0) via api.de pour demander un compte revendeur.",
+  "verified": "Articles ChannelPartner ; www.api.de cité comme site officiel par les listes de revendeurs Hauppauge et Fractal Design. Site non ouvert.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.channelpartner.de/article/3892063/api-setzt-auf-den-retail.html",
+   "https://hauppauge.de/site/buy/wtb.html",
+   "https://www.fractal-design.com/de/where-to-buy/",
+   "https://de.kompass.com/c/api-gmbh/de680100/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "elko-group",
+  "name": "ELKO Group",
+  "segment": "D_distributor",
+  "country": "LV",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://elkogroup.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "smartphones",
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Réservé aux revendeurs, intégrateurs et assembleurs locaux (plus de 10 000 clients) ; e-shop B2B 'eCom' avec inscription par pays/filiale. Éligibilité d'un revendeur français : à confirmer auprès du fournisseur. Aucune API publique trouvée.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grand distributeur IT/électronique grand public d'Europe de l'Est et Baltes (350 constructeurs, 40 000 références) avec un e-shop B2B.",
+  "howToGetCatalog": "S'inscrire sur l'e-shop eCom via le lien 'become a partner' du pays concerné sur elkogroup.com, ou contacter les ventes.",
+  "verified": "Pages elkogroup.com (accueil, solutions, products) vues dans les extraits de recherche : chiffres de 350 constructeurs, 40 000 produits et e-shop eCom.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://elkogroup.com/",
+   "https://www.elkogroup.com/solutions/",
+   "https://www.elkogroup.com/products/",
+   "https://www.westech.eu/become-a-partner/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "asbis",
+  "name": "ASBIS Group",
+  "segment": "D_distributor",
+  "country": "CY",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.asbis.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "smartphones",
+   "components",
+   "apple",
+   "electronics"
+  ],
+  "brands": [
+   "Apple",
+   "Intel"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Distributeur B2B (environ 20 000 clients dans 60 pays) ; page 'Become ASBIS Partner' et marketplaces B2B par pays. Présence en Europe de l'Ouest et livraison France : à confirmer auprès du fournisseur. Aucune API publique trouvée.",
+  "accessModes": [
+   "pro_portal",
+   "marketplace"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur Apple agréé dans 25 pays et grossiste en composants et électronique, surtout en Europe de l'Est, CEI et Afrique.",
+  "howToGetCatalog": "Remplir 'Become ASBIS Partner' sur asbis.com pour le pays concerné, ou contacter l'agence locale.",
+  "verified": "Communiqués investor.asbis.com (25 pays Apple, juin 2026) et menu de asbis.com vus dans les extraits ; pas de process d'inscription détaillé.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://investor.asbis.com/news/investor-news/asbis-authorized-apple-distributor-in-14-more-countries",
+   "https://asbis.com/asbis-armenia",
+   "https://news.asbis.com/news/press/asbis-opens-website-turkey/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "littlebit-technology",
+  "name": "Littlebit Technology AG",
+  "segment": "D_distributor",
+  "country": "CH",
+  "deliveryZones": [
+   "CH",
+   "DE"
+  ],
+  "website": "https://www.littlebit.ch/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Grossiste IT réservé aux revendeurs (Suisse, filiale allemande Actionit), raccordé à ITscope en EDI avec prix et stock en temps réel. Hors UE (droits et TVA à prévoir) ; conditions : à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "pro_portal",
+   "edi"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "CHF",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur suisse et DACH (composants, périphériques, marques D-Link, Gigabyte, DDC) visible aussi dans ITscope.",
+  "howToGetCatalog": "Demander un compte revendeur via littlebit.ch, ou consulter ses offres via ITscope.",
+  "verified": "IT Reseller.ch et ChannelPartner (articles jusqu'en 2025), fiche business-monitor.ch (société active) ; site non ouvert.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.itreseller.ch/Artikel/87487/Littlebit_am_Bestellsystem_von_Itscope_angebunden.html",
+   "https://business-monitor.ch/de/companies/131712-littlebit-technology-ag",
+   "https://www.itreseller.ch/Unternehmen/235/Littlebit.html"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "eet-group",
+  "name": "EET Group (EET Europarts)",
+  "segment": "E_specialist",
+  "country": "DK",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.eetgroup.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "components",
+   "laptops",
+   "accessories",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Distributeur B2B en ligne pour revendeurs (24 marchés, filiale française EET Europarts à Clichy) ; présent sur Stock in the Channel. Conditions d'ouverture : à confirmer auprès du fournisseur. Aucune API publique trouvée.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Pièces détachées IT (PC, portables, serveurs, imprimantes), mémoire, accessoires et pièces téléphones : complément direct pour les ateliers de réparation.",
+  "howToGetCatalog": "Ouvrir un compte revendeur via le site pays eetgroup.com (fr-fr), ou contacter EET Europarts France.",
+  "verified": "Le Monde Informatique (rachat d'Europarts), profils Nalka/craft.co, listes de revendeurs Matrox avec pages pays eetgroup.com ; site non ouvert.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.lemondeinformatique.fr/actualites/lire-pieces-detachees-europarts-rachete-par-eet-49325.html",
+   "https://www.nalka.com/case/eet-europarts",
+   "https://video.matrox.com/de/where-to-buy?page=2",
+   "https://craft.co/eet-group"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "bluestar-europe",
+  "name": "BlueStar Europe Distribution BV",
+  "segment": "E_specialist",
+  "country": "NL",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.bluestarinc.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "electronics"
+  ],
+  "brands": [
+   "Honeywell",
+   "Zebra",
+   "NCR"
+  ],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Vend exclusivement à des VAR (intégrateurs) ; inscription via le formulaire 'Become a Reseller' ; contact UE : ask.blue@eu.bluestarinc.com. Éligibilité d'un petit revendeur : à confirmer auprès du fournisseur. Aucune API publique trouvée.",
+  "accessModes": [
+   "pro_portal",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur à valeur ajoutée pour l'encaissement, les codes-barres, la mobilité durcie et la RFID (centre logistique à Eindhoven) ; pertinent seulement pour des projets pro.",
+  "howToGetCatalog": "Remplir le formulaire 'Become a Reseller' sur bluestarinc.com ou écrire à l'adresse UE.",
+  "verified": "Pages 'about the company' de bluestarinc.com et annuaire partenaires Honeywell vus dans les extraits.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://bluestarinc.com/en-us/about-the-company",
+   "https://productivity.honeywell.com/partners/english/directory/partner/1001429/bluestar-europe-distribution-bv"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "mouser",
+  "name": "Mouser Electronics",
+  "segment": "E_specialist",
+  "country": "US",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.mouser.fr/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "API Mouser Search : clé API gratuite obtenue avec un compte My Mouser via un formulaire (clé affichée puis envoyée par e-mail), passée en paramètre de requête ; limites de débit, hausse sur demande au support. Site FR : prix en EUR en DDP (droits et taxes inclus selon le mode d'expédition), seuil de port gratuit de 50 ou 75 € selon les pages.",
+  "accessModes": [
+   "api",
+   "public_catalog"
+  ],
+  "apiDocsUrl": "https://www.mouser.com/api-search/",
+  "pricesTax": "TTC",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Catalogue de composants très large avec stock en temps réel interrogeable par API gratuite.",
+  "howToGetCatalog": "Créer un compte My Mouser, demander une clé Search API sur mouser.com/api-search, puis interroger la recherche par mot-clé ou par référence.",
+  "verified": "Pages mouser.fr (DDP, EUR) vues dans les extraits ; fonctionnement de l'API décrit par des tiers (aide Luminovo, guides MCP) ; page officielle de l'API non ouverte (DNS bloqué).",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.mouser.fr/manufacturer/odu/resources-support",
+   "https://help.luminovo.com/en/articles/122496-mouser-electronics-search-api",
+   "https://skills.sh/aklofas/kicad-happy/mouser"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "digikey",
+  "name": "DigiKey",
+  "segment": "E_specialist",
+  "country": "US",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.digikey.fr/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "API DigiKey (Product Information v4, etc.) en OAuth 2.0 : client credentials (2-legged) ou authorization code (3-legged), sandbox et production, quotas par paliers ; gratuité de la production non confirmée (à confirmer auprès du fournisseur). Livraison France gratuite dès 50 € (sinon 18 €), DDP avec UPS.",
+  "accessModes": [
+   "api",
+   "public_catalog"
+  ],
+  "apiDocsUrl": "https://developer.digikey.com/documentation",
+  "pricesTax": "TTC",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Stock et prix de composants électroniques, câbles et outillage interrogeables par API OAuth2.",
+  "howToGetCatalog": "S'inscrire sur developer.digikey.com, créer une app sandbox puis production, et utiliser ProductSearch ou ProductDetails.",
+  "verified": "Documentation developer.digikey.com (OAuth2, sandbox, endpoints v4) et pages digikey.fr (livraison) vues dans les extraits.",
+  "verificationLevel": "official_docs_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://developer.digikey.com/documentation",
+   "https://developer.digikey.com/products/product-information-v4/productsearch/pricingoptionsbyquantity",
+   "https://www.digikey.fr/fr/maker/search-results?pn=9644295"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "farnell",
+  "name": "Farnell (element14 / Avnet)",
+  "segment": "E_specialist",
+  "country": "GB",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://fr.farnell.com/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics",
+   "it"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": false,
+  "accessConditions": "Product Search API element14 (REST, SOAP en bêta) : clé API de 24 caractères à demander sur le portail partenaires ; niveau STANDARD (prix publics) et CONTRACT (prix négociés, signature et customer ID en plus). Gratuité indiquée par des tiers seulement.",
+  "accessModes": [
+   "api",
+   "public_catalog",
+   "email_quote"
+  ],
+  "apiDocsUrl": "https://partner.element14.com/docs",
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Composants, outillage et équipement d'atelier avec une API de recherche publique documentée.",
+  "howToGetCatalog": "S'inscrire sur partner.element14.com pour la clé API ; ouvrir un compte client sur fr.farnell.com pour les prix contractuels.",
+  "verified": "Documentation officielle partner.element14.com vue dans les extraits ; conditions de compte pro FR non trouvées.",
+  "verificationLevel": "official_docs_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://partner.element14.com/docs",
+   "https://partner.element14.com/Search_API",
+   "https://pyfarnell.readthedocs.io/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "rs-components",
+  "name": "RS (RS Components France)",
+  "segment": "E_specialist",
+  "country": "FR",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://fr.rs-online.com/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics",
+   "it"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": false,
+  "accessConditions": "Environ 72 000 clients pros en France (2022), prix affichés HT, livraison 24/48 h selon les sources. Aucune API publique officielle trouvée (à confirmer auprès du fournisseur) ; services d'e-procurement mentionnés sur le site.",
+  "accessModes": [
+   "public_catalog",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grand distributeur industriel et électronique (plus de 600 000 références) avec une filiale française à Beauvais.",
+  "howToGetCatalog": "Créer un compte pro sur fr.rs-online.com ; demander un devis ou l'e-procurement au service client (09 69 32 22 34).",
+  "verified": "Page d'aide fr.rs-online.com (prix HT) et rapport RSE 2022 RS France vus dans les extraits ; forum EEVblog indiquant l'absence d'API publique.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://fr.rs-online.com/web/content/accueil/aide",
+   "https://uk.rs-online.com/euro/img/task-requests/360850/rapport-rse-2022-12102022.pdf",
+   "https://www.eevblog.com/forum/eda/rs-components-api/msg3833753/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "distrelec",
+  "name": "Distrelec (groupe RS)",
+  "segment": "E_specialist",
+  "country": "CH",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.distrelec.ch/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": false,
+  "accessConditions": "Fait partie de RS Group depuis 2023, avec une intégration pays par pays (Italie fusionnée dans RS en février 2025, pays nordiques et Pologne en cours). Pas de site FR confirmé. Aucune API publique trouvée (à confirmer auprès du fournisseur).",
+  "accessModes": [
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Composants, automatisme et mesure (marque propre RND) ; à suivre surtout via RS en France.",
+  "howToGetCatalog": "Commander sur le site Distrelec du pays concerné, ou passer par RS France.",
+  "verified": "Pages distrelec.ch (avis d'intégration RS, profil société) et communiqué RS de 2023 vus dans les extraits.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.distrelec.ch/en/cms/rs-information-notice",
+   "https://de.rs-online.com/web/content/presse-center/presse-center-inhalte/230703-rs-distrelec",
+   "https://it.rs-online.com/web/mb/distrelec"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "conrad-business",
+  "name": "Conrad Electronic (Conrad Business / Sourcing Platform)",
+  "segment": "E_specialist",
+  "country": "DE",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.conrad.fr/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics",
+   "it",
+   "accessories"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Clients pros : CGV professionnelles (prix HT), e-procurement OCI/PunchOut/EDI gratuit, Smart Procure pour les PME. Pas d'API catalogue documentée pour les acheteurs (les API Mirakl concernent les vendeurs de la marketplace) ; portail developer.conrad.com cité mais non vérifié (à confirmer auprès du fournisseur).",
+  "accessModes": [
+   "public_catalog",
+   "edi",
+   "marketplace"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Plateforme B2B de plusieurs millions de références (électronique, IT, outillage), livrée en 24/48 h en Europe.",
+  "howToGetCatalog": "Créer un compte professionnel sur conrad.fr ; pour l'e-procurement, contacter le service B2B.",
+  "verified": "Page 'À propos' de conrad.fr, pages e-procurement conrad.ch/conrad.com et CGU marketplace vues dans les extraits.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.conrad.fr/fr/a-propos-de-conrad.html",
+   "https://www.conrad.com/en/service/eprocurement.html",
+   "https://asset.conrad.com/media10/ada/160267/c1/-/de/Virtuell_Seller_Day_Presentatin_Conrad_APIs_in_a_nutshell?direct"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "tme",
+  "name": "TME (Transfer Multisort Elektronik)",
+  "segment": "E_specialist",
+  "country": "PL",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.tme.eu/fr/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "API TME (produits, stock, prix multi-devises) : app créée sur developers.tme.eu à partir d'un jeton temporaire du compte client, ce qui donne un App Token et un App Secret (ancienne signature HMAC-SHA1) ; les apps créées après le 14/05/2026 n'utilisent que la nouvelle version de l'API ; sandbox disponible. Gratuité : à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "api",
+   "public_catalog",
+   "edi"
+  ],
+  "apiDocsUrl": "https://developers.tme.eu/",
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur polonais de composants (plus de 1,5 million de références) avec API, EDI, PunchOut et flux de données.",
+  "howToGetCatalog": "Ouvrir un compte client sur tme.eu, générer un jeton temporaire, puis créer la clé sur developers.tme.eu.",
+  "verified": "Portail developers.tme.eu et page 'about us' tme.eu vus dans les extraits ; procédure de clé décrite par Luminovo (tiers).",
+  "verificationLevel": "official_docs_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://developers.tme.eu/",
+   "https://www.tme.eu/fr/en/about-us/",
+   "https://help.luminovo.com/en/articles/122498-tme",
+   "https://pypi.org/project/tme-eu/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "reichelt",
+  "name": "reichelt elektronik",
+  "segment": "E_specialist",
+  "country": "DE",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.reichelt.com/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics",
+   "it",
+   "accessories"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Clients pros, écoles et administrations acceptés ; flux CSV produits réservé aux affiliés Awin. Aucune API B2B officielle trouvée (à confirmer auprès du fournisseur) ; ne pas utiliser l'ancien endpoint non documenté.",
+  "accessModes": [
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "E-commerçant allemand de composants, IT et accessoires, avec une boutique et un service en français.",
+  "howToGetCatalog": "Commander sur reichelt.com (version FR) avec un compte pro ; demander les conditions B2B à info@reichelt.com.",
+  "verified": "Pages reichelt.com/magazin/fr et profil Awin vus dans les extraits ; storefront FR et conditions TVA non confirmés.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.reichelt.com/magazin/fr/actualites/12/",
+   "https://ui.awin.com/merchant-profile-terms/14954",
+   "https://www.mikrocontroller.net/topic/480379"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "arrow",
+  "name": "Arrow Electronics",
+  "segment": "D_distributor",
+  "country": "US",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.arrow.com/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": false,
+  "accessConditions": "API Arrow (prix et disponibilité, commandes Arrow.com/Verical) : clé API sur demande ('Request API Key' ou commercial), gratuite selon la FAQ Arrow ; 50 requêtes/s ; API premium MyArrow (prix spéciaux) avec clé séparée, 3 requêtes/s.",
+  "accessModes": [
+   "api",
+   "public_catalog"
+  ],
+  "apiDocsUrl": "https://developers.arrow.com/",
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grand distributeur mondial de composants avec une API de prix et stock gratuite.",
+  "howToGetCatalog": "Demander une clé sur developers.arrow.com, ou à api@arrow.com.",
+  "verified": "Pages officielles developers.arrow.com, arrow.com/resources/api-solutions et my.arrow.com/more/open-apis vues dans les extraits.",
+  "verificationLevel": "official_docs_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://developers.arrow.com/",
+   "https://www.arrow.com/en/resources/api-solutions.html",
+   "https://my.arrow.com/more/open-apis/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "avnet-emea",
+  "name": "Avnet EMEA (Avnet Abacus / Silica / EBV)",
+  "segment": "D_distributor",
+  "country": "US",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://my.avnet.com/emea/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Portail API Avnet (lancé en juin 2025) : abonnement validé par produit API et par société (Abacus, Silica, EBV), clé d'abonnement plus OAuth2 (client ID et secret), restriction d'IP ; environ 100 lignes/min et 1 000 appels/jour ; 5 à 7 jours pour l'accès. Compte client obligatoire, pas d'offre gratuite publique.",
+  "accessModes": [
+   "api"
+  ],
+  "apiDocsUrl": "https://apiportal.avnet.com/",
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Prix et stock en temps réel chez les entités européennes d'Avnet, pour les clients sous contrat.",
+  "howToGetCatalog": "Devenir client Avnet EMEA, puis s'inscrire sur apiportal.avnet.com et souscrire aux API de chaque société.",
+  "verified": "Pages my.avnet.com/emea (API feed, FAQ) et accueil apiportal.avnet.com vus dans les extraits ; Luminovo et apis.io en complément.",
+  "verificationLevel": "official_docs_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://apiportal.avnet.com/",
+   "https://my.avnet.com/emea/resources/avnet-api/the-avnet-api-feed/",
+   "https://my.avnet.com/emea/resources/avnet-api/frequently-asked-questions/",
+   "https://help.luminovo.com/articles/122492"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "rutronik",
+  "name": "Rutronik (Rutronik24)",
+  "segment": "D_distributor",
+  "country": "DE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.rutronik24.com/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "API Rutronik24 (depuis 2016) : après connexion, télécharger le manuel API et demander une clé personnelle ; réponses XML/JSON (prix par paliers, stock, délai, MOQ). Prix catalogue uniquement, pas de prix contractuels (selon Luminovo). Gratuité : à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "api",
+   "public_catalog"
+  ],
+  "apiDocsUrl": "https://www.rutronik.com/article/api-interface-on-the-way-to-automated-procurement",
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur européen de composants (semi-conducteurs, passifs, électromécanique) avec boutique et API.",
+  "howToGetCatalog": "Créer un compte sur rutronik24.com, télécharger le manuel API et demander la clé.",
+  "verified": "Article officiel rutronik.com sur l'API vu dans l'extrait ; détails d'accès par Luminovo (tiers).",
+  "verificationLevel": "official_docs_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.rutronik.com/article/api-interface-on-the-way-to-automated-procurement",
+   "https://help.luminovo.com/en/articles/159511-rutronik"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "future-electronics",
+  "name": "Future Electronics",
+  "segment": "D_distributor",
+  "country": "CA",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.futureelectronics.com/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": false,
+  "accessConditions": "API gratuite pour les clients selon la FAQ officielle ; clé demandée via le formulaire API Solutions ou le commercial (délai de 1 à 3 semaines selon des tiers) ; prix catalogue et prix contractuels.",
+  "accessModes": [
+   "api",
+   "public_catalog"
+  ],
+  "apiDocsUrl": "https://www.futureelectronics.com/api-solutions",
+  "pricesTax": "HT",
+  "currency": null,
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Distributeur mondial de composants avec une API de stock et de prix gratuite.",
+  "howToGetCatalog": "Remplir le formulaire de clé sur futureelectronics.com/api-solutions.",
+  "verified": "Page FAQ officielle api-solutions vue dans les extraits, plus communiqués de presse.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.futureelectronics.com/api-solutions",
+   "https://www.mynewsdesk.com/ca/future-electronics/pressreleases/future-electronics-introduces-new-apis-to-offer-real-time-access-to-inventory-and-pricing-3043197",
+   "https://learncq.calcuquote.com/supplier-apis-how-to-connect-to-future"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "nexar-octopart",
+  "name": "Nexar (API Octopart)",
+  "segment": "E_specialist",
+  "country": "US",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://nexar.com/",
+  "catalogUrl": null,
+  "categories": [
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": false,
+  "accessConditions": "Agrégateur (pas un vendeur). API GraphQL Nexar, OAuth2 client credentials (client ID et secret échangés contre un jeton temporaire, scope supply). Offre Evaluation gratuite limitée à 100 pièces trouvées ; Standard 2 000, Pro 15 000, Enterprise sur devis. L'ancienne API REST Octopart v4 est fermée aux nouvelles inscriptions.",
+  "accessModes": [
+   "api"
+  ],
+  "apiDocsUrl": "https://support.nexar.com/support/solutions/articles/101000450648-introduction-to-nexar",
+  "pricesTax": "HT",
+  "currency": "USD",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Compare en une requête prix et stock de nombreux distributeurs (Mouser, DigiKey, Farnell, etc.).",
+  "howToGetCatalog": "Créer un compte gratuit sur nexar.com, une organisation et une app avec le scope supply, puis interroger l'API GraphQL.",
+  "verified": "Pages officielles nexar.com/compare-plans, support.nexar.com (glossaire, introduction) et octopart.com/api vues dans les extraits.",
+  "verificationLevel": "official_docs_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://nexar.com/compare-plans",
+   "https://support.nexar.com/support/solutions/articles/101000472520-the-nexar-glossary",
+   "https://www.octopart.com/api"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "stock-in-the-channel",
+  "name": "Stock in the Channel",
+  "segment": "E_specialist",
+  "country": "GB",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://fr.stockinthechannel.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Agrégateur (pas un vendeur) de stock et prix des distributeurs IT pour les revendeurs (plus de 600 distributeurs, 22 pays dont la France) ; prix visibles après accord de chaque distributeur ; stock mis à jour toutes les heures, prix tous les jours, API temps réel avec certains distributeurs. Tarif revendeur et API revendeur : à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Permet de comparer en un seul endroit le stock et les prix de plusieurs distributeurs IT, version FR comprise.",
+  "howToGetCatalog": "S'inscrire ou réserver une démo sur fr.stockinthechannel.com, puis demander l'accès aux prix de chaque distributeur.",
+  "verified": "FAQ et pages discover.stockinthechannel.com, pages fr.stockinthechannel.com vues dans les extraits.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://discover.stockinthechannel.com/frequently-asked-questions/",
+   "https://fr.stockinthechannel.com/Distributor/Ikonic/21",
+   "https://discover.stockinthechannel.com/blog"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "itscope",
+  "name": "ITscope (groupe weclapp)",
+  "segment": "E_specialist",
+  "country": "DE",
+  "deliveryZones": [
+   "DE",
+   "AT",
+   "CH"
+  ],
+  "website": "https://www.itscope.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "smartphones",
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Agrégateur pour revendeurs IT (environ 370 distributeurs, plus de 3 millions de produits) ; fonctions de base gratuites après inscription, licence Business payante ; API produits (XML/JSON/CSV) et API de commande EDI aux conditions négociées. Auth et documentation de l'API non trouvées (à confirmer auprès du fournisseur). Couvre surtout la zone DACH.",
+  "accessModes": [
+   "pro_portal",
+   "api",
+   "edi"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Comparateur prix et stock des distributeurs germanophones, avec commande EDI : utile pour sourcer en Allemagne.",
+  "howToGetCatalog": "S'inscrire comme revendeur sur itscope.com, puis activer les distributeurs et l'API dans le compte.",
+  "verified": "Articles ChannelPartner et IT Reseller (2017-2021) sur l'API et la gratuité de base ; documentation officielle non trouvée.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.channelpartner.de/article/3893307/itscope-integriert-littlebit-und-actionit-ins-bestellsystem.html",
+   "https://www.channelpartner.de/article/3899103/itscope-business-lizenz-kostenlos.html",
+   "https://www.channelpartner.de/a/weclapp-se-uebernimmt-itscope,3339657"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "compubase-easystock",
+  "name": "compuBase (compuBase.biz / EasyStock)",
+  "segment": "E_specialist",
+  "country": "FR",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.compubase.net/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "laptops",
+   "components",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "new"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Agrégateur (pas un vendeur) : EasyStock, intégré à la place de marché compuBase.biz, donne accès à 450 000 références et au stock des grands grossistes IT en France et en Europe ; adopté par la fédération FRP2I. Tarif et API : à confirmer auprès du fournisseur.",
+  "accessModes": [
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Outil français pour vérifier en un coup d'œil le stock des grossistes IT avant de commander.",
+  "howToGetCatalog": "Contacter compuBase (Les Ulis) pour un abonnement compuBase.biz/EasyStock.",
+  "verified": "Article Solutions Numériques et profil SlideShare compuBase vus dans les extraits ; site compubase.net non ouvert.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.solutions-numeriques.com/?p=106356",
+   "https://es.slideshare.net/compuBaseconsulting"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "bva-auctions",
+  "name": "BVA Auctions (TBAuctions Netherlands B.V.)",
+  "segment": "C_liquidation",
+  "country": "NL",
+  "deliveryZones": [
+   "NL",
+   "BE"
+  ],
+  "website": "https://www.bva-auctions.com/",
+  "catalogUrl": null,
+  "categories": [
+   "lots",
+   "electronics",
+   "smartphones",
+   "it"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "overstock",
+   "bankruptcy",
+   "lots"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Enchères en ligne ouvertes aux particuliers et aux pros (droit de rétractation consommateur sur certaines ventes, pas en compte pro selon témoignages). Descriptions rédigées par le vendeur. Groupe TBAuctions (comme Troostwijk, déjà en annuaire). Conditions pro exactes : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Ventes récurrentes 'retourgoederen' et électronique/smartphones (BVA Top Lots) issues de retours e-commerce, faillites et fins de stock.",
+  "howToGetCatalog": "Parcourir les ventes publiques (catégorie électronique / Top Lots) ; chaque lot a sa fiche, pas de manifeste global confirmé.",
+  "verified": "Snippets bva-auctions.com : homepage listant enchères 'electronics, gadgets', 'smartphones, network switches and monitors', 'BVA Top Lots' retours ; page carrières : plateforme d'enchères grand public, >146 000 lots/mois, retours de webshops ; CGV consommateurs = TBAuctions Netherlands B.V. Plusieurs pages anciennes (2013-2017).",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.bva-auctions.com/home/index",
+   "https://careers.bva-auctions.com/",
+   "https://www.bva-auctions.com/auction/index/28003",
+   "https://lawinsider.com/nl/contracts/faAS0lvbhJs"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "interencheres",
+  "name": "Interencheres",
+  "segment": "C_liquidation",
+  "country": "FR",
+  "deliveryZones": [
+   "FR"
+  ],
+  "website": "https://www.interencheres.com/",
+  "catalogUrl": null,
+  "categories": [
+   "lots",
+   "electronics",
+   "smartphones",
+   "it",
+   "computers"
+  ],
+  "brands": [],
+  "productTypes": [
+   "bankruptcy",
+   "lots",
+   "used"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Plateforme d'enchères des commissaires-priseurs/commissaires de justice ; ventes judiciaires (liquidations) ouvertes à tous ; frais acheteur (ex. 14,28 % TTC sur une vente) ; retrait sur place souvent obligatoire sous quelques jours ; vendu en l'état sans garantie. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": "Souvent retrait sur place uniquement (selon vente)",
+  "warranty": "Vendu en l'état, sans garantie (ventes judiciaires)",
+  "partQuality": null,
+  "whyUseful": "Source FR majeure de lots IT/téléphonie issus de liquidations judiciaires (ex. 77 portables Lenovo/HP, 22 mobiles), souvent en lots groupés pour pros.",
+  "howToGetCatalog": "Rubrique 'Informatique et téléphonie' (biens d'équipement) : catalogue de chaque vente avec photos/descriptions par lot ; pas de manifeste type stocklot.",
+  "verified": "Snippets interencheres.com : page catégorie 'Used computer equipment and telephones', ventes 'informatique et multimédia suite liquidation judiciaire' (La Rochelle, sept. 2026), Melesse fév. 2026 (77 laptops, 126 écrans, 22 mobiles), frais 14,28 % TTC sur une vente.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.interencheres.com/en-US/biens-equipement/informatique-et-telephonie/ventes",
+   "https://www.interencheres.com/biens-equipement/vente-informatique-et-multimedia-suite-liquidation-judiciaire-688264",
+   "https://www.interencheres.com/en-US/biens-equipement/informatique-telephonie-mobilier-672951"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "agorastore",
+  "name": "Agorastore",
+  "segment": "C_liquidation",
+  "country": "FR",
+  "deliveryZones": [
+   "FR"
+  ],
+  "website": "https://www.agorastore.fr/",
+  "catalogUrl": null,
+  "categories": [
+   "lots",
+   "electronics",
+   "it",
+   "computers",
+   "smartphones"
+  ],
+  "brands": [],
+  "productTypes": [
+   "used",
+   "surplus",
+   "lots"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": false,
+  "accessConditions": "Seuls les pros/collectivités vendent ; enchères ouvertes à tous, inscription gratuite ; vente par courtage (transaction directe vendeur-acheteur). Frais et modalités : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Surplus de collectivités et entreprises (ordinateurs, écrans, téléphonie) en enchères, utile pour lots IT d'occasion en France.",
+  "howToGetCatalog": "Catégories publiques 'multimedia' / informatique / téléphonie et pages vendeurs (ex. 'VENTES TPE - INFORMATIQUES').",
+  "verified": "Snippets agorastore.fr : page 'biens multimédia d'occasion aux enchères', page vendeur 'equipementsinformatiques' (~45 produits), aide : seuls les professionnels vendent, enchères ouvertes à tous, courtage aux enchères. Volume téléphonie faible (2-35 annonces selon snapshots).",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.agorastore.fr/ventes-occasions/multimedia",
+   "https://www.agorastore.fr/ventes-occasions/vendeur/equipementsinformatiques",
+   "https://support.agorastore.fr/hc/fr/articles/25405581903260-Quels-sont-les-types-de-vente-encadr%C3%A9s-par-Agorastore"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "onlineveilingmeester",
+  "name": "Onlineveilingmeester.nl",
+  "segment": "C_liquidation",
+  "country": "NL",
+  "deliveryZones": [
+   "NL"
+  ],
+  "website": "https://www.onlineveilingmeester.nl/",
+  "catalogUrl": null,
+  "categories": [
+   "lots",
+   "electronics",
+   "smartphones"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "lots",
+   "seized_goods"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": null,
+  "accessConditions": "Enchères en ligne (dont ventes 'Thuisbezorgveiling' de retours et ventes pour Domeinen Roerende Zaken). Conditions acheteurs pros / export : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Ventes de retours de marques (Apple, Samsung, OnePlus, Xiaomi…) et smartphones saisis, à l'unité ou par lots.",
+  "howToGetCatalog": "Liste publique des veilingen et kavels (fiches lot avec photos).",
+  "verified": "Snippets onlineveilingmeester.nl : 'Retourgoederenveiling met o.a. Apple, Philips & Samsung' (lots OnePlus 9, iPhone 11 Pro, Xiaomi 12 Pro, clôture 7/9/2025) ; vente smartphones/tablettes pour Domeinen Roerende Zaken (ancienne).",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.onlineveilingmeester.nl/nl/veilingen/8084/kavels",
+   "https://onlineveilingmeester.nl/nl/veilingen/5928/kavels",
+   "https://onlineveilingmeester.nl/nl/content/verkopen-bij-onlineveilingmeester"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "surplex",
+  "name": "Surplex (powered by TBAuctions)",
+  "segment": "C_liquidation",
+  "country": "DE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.surplex.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "computers",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "bankruptcy",
+   "used",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Enchères B2B principalement machines industrielles ; section IT (PC, notebooks, serveurs, imprimantes) issue de faillites/fermetures. Depuis fév. 2025 sur le système TBAuctions. Conditions acheteur : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Pertinent uniquement pour lots IT d'occasion (PC/portables HP, Dell, Apple, serveurs) issus de faillites ; pas de téléphonie confirmée.",
+  "howToGetCatalog": "Catégories publiques 'electronics/computer-tablets' et ventes 'IT, network and office equipment'.",
+  "verified": "Snippets surplex.com : catégories 'Buy used PCs, notebooks & servers' (~40 lots), 'IT, network and office equipment' (14 lots, la plupart clos), page 'Surplex powered by TBAuctions'. Focus principal machines industrielles.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.surplex.com/en/c/electronics/computer-tablets/desktops/5ee71235-d1fa-42d8-8757-ad63387bf2e7",
+   "https://www.surplex.com/en/a/it-network-and-office-equipment-%E2%80%93-server-technology-ups-systems-and-printers-A1-50473",
+   "https://www.surplex.com/en/surplex-powered-by-tbauctions"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "netbid",
+  "name": "NetBid",
+  "segment": "C_liquidation",
+  "country": "DE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.netbid.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "computers",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "bankruptcy",
+   "used",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Maison d'enchères en ligne d'insolvabilités industrielles depuis 1999 ; lots IT ponctuels (stocks de composants, retours de leasing IT). Alliance avec Ritchie Bros. (nov. 2025). Conditions : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Lots IT ponctuels issus d'insolvabilités (iMac, portables Dell, téléphones IP, stocks de composants) en DACH/PL/Ibérie.",
+  "howToGetCatalog": "Ventes publiques et archive ; fiches 'Posten IT-Hardware'.",
+  "verified": "Snippets netbid.com : vente #16925 (iMacs, Dell, téléphones IP, Mayence 2023, terminée), lot #16940-1063 'IT-Hardware', archive mentionnant stocks de composants et retours de leasing IT ; article alliance Ritchie Bros.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.netbid.com/en/archive",
+   "https://www.netbid.com/en/auctions/24713446-24713216-partial-liquidation-of-high-quality-office-equipment-and-hardware",
+   "https://www.netbid.com/en/magazine/ritchie-bros-and-netbid-forge-a-powerful-alliance-for-insolvency-and-distress-related-asset-disposition-in-europe"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "auctelia",
+  "name": "Auctelia",
+  "segment": "C_liquidation",
+  "country": "BE",
+  "deliveryZones": [
+   "BE",
+   "EU"
+  ],
+  "website": "https://www.auctelia.com/",
+  "catalogUrl": null,
+  "categories": [
+   "it",
+   "computers",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "bankruptcy",
+   "used",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Courtier/enchères en ligne d'équipements professionnels ; matériel destiné à un usage professionnel ; paiement via compte tiers ; valeur minimale de vente 500 € (côté vendeur). Plateforme sœur Clicpublic pour faillites/saisies. Conditions acheteur : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Ventes ponctuelles de matériel IT issues de faillites/déstockage en Belgique.",
+  "howToGetCatalog": "Recherche publique des ventes (ex. 'Bankruptcy IT equipment, furniture', 'Hardware').",
+  "verified": "Snippets auctelia.com : vente 'Bankruptcy it equipment, furniture' (terminée 16/11/2023), vente 'Hardware' (déstockage), page support vendeur ; aucune vente IT en cours confirmée.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.auctelia.com/en/auction/bankruptcy-it-equipment-furniture/GAL_-OASh5n7GyAwzsAKC",
+   "https://www.auctelia.com/en/auction/hardware/xJNQcbyiQS5-fA6q6v__c",
+   "https://welcome.auctelia.com/online-auction/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "eama-group",
+  "name": "EAMA Group Auctions",
+  "segment": "C_liquidation",
+  "country": "GB",
+  "deliveryZones": [
+   "GB"
+  ],
+  "website": "https://eama.group/",
+  "catalogUrl": null,
+  "categories": [
+   "lots",
+   "electronics",
+   "pallets"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Se présente comme intermédiaire (ne possède ni n'inspecte les lots) ; ventes 'trade sales' en l'état, sans garantie ; lots Argos retours non testés vus sur BidSpotter. Domaine officiel déduit de Trustpilot : à confirmer auprès du fournisseur. Post-Brexit : import UK→FR (douane/TVA) à prévoir. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "GBP",
+  "moq": null,
+  "shipping": null,
+  "warranty": "Aucune (trade sale, as-is)",
+  "partQuality": null,
+  "whyUseful": "Enchères trade de retours clients bruts (ex. retours Argos reçus directement) au Royaume-Uni.",
+  "howToGetCatalog": "Catalogues d'enchères (notamment via BidSpotter) ; fiches lot, pas de manifeste confirmé.",
+  "verified": "Snippets tiers uniquement : Trustpilot (réponses de l'entreprise : intermédiaire, trade sales as-is, 4,5/5 sur ~153 avis) et lot BidSpotter EAMA 'raw customer returns… received directly from Argos' (~3 ans). Site officiel non consulté.",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.trustpilot.com/review/eama.group?page=7",
+   "https://www.bidspotter.co.uk/en-gb/auction-catalogues/eamagroup/catalogue-id-eama-g10193/lot-0394028f-a884-431c-9c6f-b04d0113707b"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "bidspotter-uk",
+  "name": "BidSpotter (UK)",
+  "segment": "C_liquidation",
+  "country": "GB",
+  "deliveryZones": [
+   "GB"
+  ],
+  "website": "https://www.bidspotter.co.uk/",
+  "catalogUrl": null,
+  "categories": [
+   "lots",
+   "electronics",
+   "pallets",
+   "it"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "bankruptcy",
+   "lots"
+  ],
+  "sales": "B2B+B2C",
+  "proAccountRequired": null,
+  "accessConditions": "Agrégateur d'enchères en ligne de commissaires-priseurs (dont EAMA Group) ; conditions propres à chaque maison de vente : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "GBP",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Accès à de nombreuses ventes trade UK (retours, liquidations, IT) depuis un seul portail.",
+  "howToGetCatalog": "Catalogues publics par maison de vente, fiches lot.",
+  "verified": "Seul vu : snippet d'un lot EAMA sur bidspotter.co.uk (retours Argos non testés). Périmètre électronique global non vérifié.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.bidspotter.co.uk/en-gb/auction-catalogues/eamagroup/catalogue-id-eama-g10193/lot-0394028f-a884-431c-9c6f-b04d0113707b"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "stockseller-uk",
+  "name": "StockSeller (stockmarketplace.co.uk)",
+  "segment": "C_liquidation",
+  "country": "GB",
+  "deliveryZones": [
+   "GB"
+  ],
+  "website": "https://stockmarketplace.co.uk/",
+  "catalogUrl": null,
+  "categories": [
+   "pallets",
+   "lots",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "overstock",
+   "bankruptcy",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Se décrit comme marketplace 'trade-only' de vendeurs UK vérifiés (dont administrateurs judiciaires). Conditions d'inscription : à confirmer auprès du fournisseur. Import UK→FR (douane/TVA) à prévoir. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "GBP",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Palettes mixtes, retours clients et électronique de vendeurs UK vérifiés, dont administrateurs.",
+  "howToGetCatalog": "Annonces de palettes sur la marketplace (manifeste selon vendeur, à confirmer).",
+  "verified": "Un seul snippet de la page 'Liquidation Pallets UK — Nationwide Wholesale Pallet Marketplace' (stockmarketplace.co.uk). Société, ancienneté et CGU non vérifiées.",
+  "verificationLevel": "search_snippets",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://stockmarketplace.co.uk/liquidation-pallets"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "retouren-io",
+  "name": "Retouren.io",
+  "segment": "C_liquidation",
+  "country": "DE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.retouren.io/",
+  "catalogUrl": null,
+  "categories": [
+   "pallets",
+   "electronics",
+   "smartphones",
+   "computers",
+   "lots"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "b_stock",
+   "liquidation",
+   "pallets"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Strictement B2B : prix et achats réservés aux revendeurs enregistrés et vérifiés (inscription gratuite, n° TVA requis selon page suédoise). MOQ 1 palette. Pays du siège non vérifié (site en allemand, livraison Europe). CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": "1 palette",
+  "shipping": null,
+  "warranty": null,
+  "partQuality": "Grades A/B/C ; palettes triées vs mixtes",
+  "whyUseful": "Palettes de retours/B-Ware avec catégorie électronique (laptops, tablettes, smartphones, moniteurs), rapport d'inspection PDF et manifeste pour palettes triées.",
+  "howToGetCatalog": "Après validation du compte : fiches palettes ; palettes triées avec manifeste, palettes mixtes sans liste détaillée (catégorie + grade).",
+  "verified": "Snippets retouren.io : 'strictly B2B… registered, verified dealers', 'Registration is free', catégories Laptops/Tablets/Smartphones/Monitore, prix typiques 10-40 % du PVC, MOQ 1 palette, rapport d'inspection PDF (blog). Aucune source indépendante trouvée.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.retouren.io/en",
+   "https://www.retouren.io/en/pages/retouren-kaufen",
+   "https://www.retouren.io/en/pages/amazon-retouren",
+   "https://www.retouren.io/en/collections/all"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "retoure-paletten-elektronik-sale",
+  "name": "Elektronik Sale (retoure-paletten.de)",
+  "segment": "C_liquidation",
+  "country": "DE",
+  "deliveryZones": [
+   "DE",
+   "EU"
+  ],
+  "website": "https://retoure-paletten.de/",
+  "catalogUrl": null,
+  "categories": [
+   "pallets",
+   "electronics",
+   "it"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "pallets"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Vente aux revendeurs professionnels, prix nets ; marchandise non testée (A/B/C, possible défectueuse) ; seules les palettes publiées en stock sont achetables ; retrait à Pfakofen (près de Regensburg) ou transport (90 € net/palette indiqué). CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "public_catalog",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": "90 € HT/palette (indiqué) ou retrait",
+  "warranty": "Non testé, vendu en l'état",
+  "partQuality": null,
+  "whyUseful": "Palettes de retours Amazon électronique/multimédia/bureau avec liste d'articles et valeur estimée par palette.",
+  "howToGetCatalog": "Pages catégories (Elektronik & Multimedia, Drucker & Büro) ; liste d'articles par offre lorsque indiquée.",
+  "verified": "Snippets retoure-paletten.de : catégories électronique/multimédia, item lists avec quantités et valeur, marchandise non testée, frais 90 € net/palette, retrait Pfakofen. Mention 'ElectroPallets' associée ailleurs (technikretouren.de) – lien entre marques non éclairci.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://retoure-paletten.de/kategorien/elektronik-multimedia/",
+   "https://retoure-paletten.de/amazon-retoure-paletten/",
+   "https://retoure-paletten.de/retourenware-grosshandel/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "ac-grosshandel",
+  "name": "AC Großhandel",
+  "segment": "C_liquidation",
+  "country": "DE",
+  "deliveryZones": [
+   "DE",
+   "EU"
+  ],
+  "website": "https://www.acgrosshandel.de/",
+  "catalogUrl": null,
+  "categories": [
+   "pallets",
+   "lots",
+   "electronics",
+   "accessories"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "overstock",
+   "lots",
+   "pallets"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "B2B exclusivement, inscription gratuite comme revendeur ; prix nets HT ; minimum de commande indiqué de façon incohérente (210 € / 300 € / 500 € selon pages) ; export proposé ; livraison transporteur 4-7 jours ouvrés. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "pro_portal",
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": "210-500 € HT selon page (incohérent, à confirmer)",
+  "shipping": "Transporteur 4-7 jours ouvrés (DE)",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Grossiste de retours/restposten (Herne) avec boxes Amazon multimédia et accessoires smartphone/tablette, mix-palettes NL.",
+  "howToGetCatalog": "Boutique B2B shop.acgrosshandel.de après inscription (fiches produits par box/palette).",
+  "verified": "Snippets acgrosshandel.de : 'Retouren Grosshandel', boutique B2B réservée aux pros, MOQ 210 € net (autres pages 300/500 €), boxes Amazon 90/250 pièces multimédia & accessoires smartphone.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.acgrosshandel.de/",
+   "https://shop.acgrosshandel.de/retouren-paletten/",
+   "https://shop.acgrosshandel.de/restposten-grosshandel/",
+   "https://shop.acgrosshandel.de/product/amazon-boxen-restposten-90-teile-multimedia-smartphone-tablet-zubehoer-beauty/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "ats-trading",
+  "name": "ATS Trading GmbH",
+  "segment": "C_liquidation",
+  "country": "DE",
+  "deliveryZones": [
+   "DE",
+   "EU"
+  ],
+  "website": "https://atstrading.de/",
+  "catalogUrl": null,
+  "categories": [
+   "pallets",
+   "electronics",
+   "smartphones"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "b_stock",
+   "liquidation",
+   "pallets"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Grossiste B2B (Manching, Bavière) pour revendeurs/exportateurs Europe & MENA ; MOQ 1 europalette ; prix sur demande uniquement ; visite et retrait possibles ; paiement virement ou espèces ; pas de garantie par article en général. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": "1 europalette (~400-600 kg)",
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Palettes B-Ware/retours dont électronique (fourchettes indicatives smartphones/tablettes publiées dans ses guides, non contractuelles).",
+  "howToGetCatalog": "Demander offre et manifeste par contact direct ; pas de catalogue public confirmé.",
+  "verified": "Snippets atstrading.de (pages guides/blog) : siège Manching, MOQ 1 europalette, électronique parmi catégories, prix incohérents entre articles, offres sur demande. Pages incomplètes par endroits.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://atstrading.de/retouren-kaufen-b2b-leitfaden/",
+   "https://atstrading.de/paletten-kaufen-wiederverkaeufer/",
+   "https://atstrading.de/retourenware-kaufen-b2b-leitfaden/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "zentrada",
+  "name": "zentrada (zentrada.network)",
+  "segment": "C_liquidation",
+  "country": "DE",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://www.zentrada.de/",
+  "catalogUrl": null,
+  "categories": [
+   "electronics",
+   "consumer_electronics",
+   "it",
+   "lots"
+  ],
+  "brands": [],
+  "productTypes": [
+   "wholesale",
+   "overstock",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Marketplace de gros réservée aux revendeurs (commerce et industrie) ; adhésion gratuite pour revendeurs, prix visibles après inscription ; service Mix-Order (plusieurs fournisseurs, une facture/livraison) ; protection acheteur B2B. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace",
+   "pro_portal"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Marketplace B2B européenne de destockage/restposten avec catégorie Consumer Electronics et Computer & Télécom (nombre d'articles variable).",
+  "howToGetCatalog": "Recherche dans le catalogue après inscription gratuite ; offres par fournisseur.",
+  "verified": "Snippets zentrada.de / zentrada.com : 'exklusiv für Wiederverkäufer', 'Gratis Mitgliedschaft', catégories Consumer Electronics (~6 628 / 2 331 / 215 articles selon pages), Mix-Order, focus trend/discount/restposten.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.zentrada.de/",
+   "https://www.zentrada.com/de/category/06FB4AB99FCE1F03EA4BB32165DD6F45",
+   "http://www.zentrada.de/web/main_anbieteruebersicht.cfm/:var:MENUE:H03M2:FKT:AdHoc:ts:true:ATYP:1:PageNum:9"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "arll",
+  "name": "ARLL Group of Companies",
+  "segment": "C_liquidation",
+  "country": "RO",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://arll.eu/",
+  "catalogUrl": null,
+  "categories": [
+   "lots",
+   "pallets",
+   "electronics",
+   "smartphones",
+   "tv"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "overstock",
+   "end_of_line",
+   "lots"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Lots 'take all' au camion, palette ou unité ; prix HT et EXW Roumanie. Pages vues anciennes (450-1 160 jours) et nombreux lots épuisés ; immatriculation non vérifiée : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "public_catalog",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": "EXW Roumanie",
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Lots d'électronique (TV open-box, lots smartphones Samsung, camions de retours Amazon FBA) en EXW Roumanie.",
+  "howToGetCatalog": "Catalogue public par catégorie (Electronics) ; détails/manifeste sur demande.",
+  "verified": "Snippets arll.eu : catégorie Electronics, lots TV 24 unités à 5 226 €, camion 33 palettes retours Amazon FBA 34 650 €, mention 'Prices are ex-VAT and ex-works Romania'. Pages anciennes, disponibilité non confirmée.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://arll.eu/product-category/electronics/",
+   "https://arll.eu/buyer/",
+   "https://arll.eu/product-tag/job-lot-samsung-mobile-phones-wholesale/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "eany-io",
+  "name": "Eany.io (1ean, UAB)",
+  "segment": "C_liquidation",
+  "country": "LT",
+  "deliveryZones": [
+   "EU"
+  ],
+  "website": "https://eany.io/",
+  "catalogUrl": null,
+  "categories": [
+   "electronics",
+   "household",
+   "diy"
+  ],
+  "brands": [],
+  "productTypes": [
+   "overstock",
+   "surplus",
+   "wholesale"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": null,
+  "accessConditions": "Plateforme B2B agrégeant les surplus de fabricants/distributeurs/magasins pour revendeurs ; ~200 fournisseurs (2024). Conditions d'accès, frais et domaine exact : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "marketplace"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Surplus de marques électroniques/électroménager à prix de gros pour revendeurs européens.",
+  "howToGetCatalog": "Inscription acheteur sur la plateforme (modalités à confirmer).",
+  "verified": "Sources tierces uniquement (Practica Capital, Silicon Canals, Dealroom, 2024) : levée 2 M€, ~200 fournisseurs, ~9 M€ commandes, électronique/ménager/DIY. Site officiel non consulté ; domaine eany.io déduit du nom.",
+  "verificationLevel": "third_party_docs",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://practica.vc/en/news/lithuanian-startup-eanyio-secures-eur2m-in-seed-funding-to-revolutionize-b2b-wholesale",
+   "https://siliconcanals.com/eany-io-secures-2m",
+   "https://app.dealroom.co/companies/eany_io"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "grossiste-destockage-lots",
+  "name": "Grossiste Destockage Lots (Eurostocklots Ltd)",
+  "segment": "C_liquidation",
+  "country": "FR",
+  "deliveryZones": [
+   "FR",
+   "EU"
+  ],
+  "website": "https://www.grossiste-destockage-lots.fr/",
+  "catalogUrl": null,
+  "categories": [
+   "pallets",
+   "lots",
+   "electronics"
+  ],
+  "brands": [],
+  "productTypes": [
+   "returns",
+   "overstock",
+   "liquidation",
+   "pallets"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Réservé aux professionnels ; palettes retours Amazon électronique vendues au camion complet uniquement (minimum 30 palettes indiqué), produits non testés vendus en l'état. Prudence : coordonnées incohérentes entre pages, forme 'Ltd' inhabituelle avec RCS Saint-Brieuc – vérifier sur Infogreffe avant tout achat. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "public_catalog",
+   "email_quote"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": null,
+  "currency": "EUR",
+  "moq": "Camion complet (30 palettes min. indiqué)",
+  "shipping": null,
+  "warranty": "Non testé, vendu en l'état",
+  "partQuality": null,
+  "whyUseful": "Palettes retours Amazon électronique/high-tech au camion pour revendeurs FR ayant de la trésorerie.",
+  "howToGetCatalog": "Fiches lots publiques ; manifeste/liste à demander au vendeur.",
+  "verified": "Snippets grossiste-destockage-lots.fr : page 'Palette retours Amazon électronique… pour professionnels' (200-250 articles/palette, ≈90 % neufs annoncés, camion complet), mentions légales (Eurostocklots Ltd, Ploufragan, RCS Saint-Brieuc). Affirmations du vendeur non vérifiées.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.grossiste-destockage-lots.fr/lots-grossiste/palette-retours-amazon-electronique-destockage-high-tech-pour-professionnels/",
+   "https://www.grossiste-destockage-lots.fr/mentions-legales/",
+   "https://www.grossiste-destockage-lots.fr/a-propos/"
+  ],
+  "checkedAt": "2026-10-15"
+ },
+ {
+  "key": "my-destockage",
+  "name": "My Destockage",
+  "segment": "C_liquidation",
+  "country": "FR",
+  "deliveryZones": [
+   "FR"
+  ],
+  "website": "https://www.mydestockage.com/",
+  "catalogUrl": null,
+  "categories": [
+   "pallets",
+   "lots",
+   "small_appliances",
+   "power_tools"
+  ],
+  "brands": [],
+  "productTypes": [
+   "overstock",
+   "liquidation",
+   "pallets"
+  ],
+  "sales": "B2B",
+  "proAccountRequired": true,
+  "accessConditions": "Se présente comme site de déstockage réservé aux professionnels, vente en gros à la palette ; prix HT. Pas de palettes téléphonie/informatique confirmées. Société éditrice : à confirmer auprès du fournisseur. CGU/ToS non lues : clause anti-robots/scraping non vérifiée, à confirmer avant toute automatisation.",
+  "accessModes": [
+   "public_catalog"
+  ],
+  "apiDocsUrl": null,
+  "pricesTax": "HT",
+  "currency": "EUR",
+  "moq": null,
+  "shipping": null,
+  "warranty": null,
+  "partQuality": null,
+  "whyUseful": "Palettes petit électroménager et outillage électroportatif neufs (secondaire pour MON STOCK, pas de téléphonie confirmée).",
+  "howToGetCatalog": "Pages catégories publiques (Petit Electroménager, outils électroportatifs).",
+  "verified": "Snippets mydestockage.com : titre 'SITE DE DÉSTOCKAGE RÉSERVÉ AUX PROFESSIONNELS', palettes outils 24-25 articles dès 590 € HT, catégorie petit électroménager. Blog générique.",
+  "verificationLevel": "official_page_snippet",
+  "knownInApp": false,
+  "sourcesChecked": [
+   "https://www.mydestockage.com/",
+   "https://www.mydestockage.com/palettes-outils-electroportatifs/",
+   "https://www.mydestockage.com/petit-electromenager/"
+  ],
+  "checkedAt": "2026-10-15"
  }
 ]

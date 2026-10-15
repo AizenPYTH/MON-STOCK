@@ -38,16 +38,6 @@ export function domainOf(url: string | null | undefined): string | null {
   }
 }
 
-/**
- * Logo d'identification du fournisseur : l'icône publiée par son propre site (favicon), servie
- * par le service public d'icônes de Google. Aucun fichier de logo n'est copié dans l'application ;
- * à défaut d'icône, l'application affiche les initiales.
- */
-export function logoUrlFor(domain: string | null | undefined, size = 64): string | null {
-  if (!domain) return null;
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
-}
-
 /** Initiales de repli (« Foxway » → « FO », « MobileSentrix Europe » → « ME »). */
 export function initialsOf(name: string): string {
   const words = name.replace(/\(.*?\)/g, " ").split(/[^A-Za-zÀ-ÿ0-9]+/).filter(Boolean);

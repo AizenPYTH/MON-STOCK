@@ -7,7 +7,10 @@ import { serverEnv } from "@/lib/env";
 import { fetchText } from "@/services/sourcing/http";
 import { fetchRobots, evaluateRobots } from "@/services/sourcing/crawler/robots";
 import { AUTOMATION_LABEL, B2B_METHOD_LABEL, B2B_PROFILES } from "@/services/sourcing/data/b2b-profiles";
-import { getLibrarySource } from "@/services/sourcing/source-library";
+import { getLibrarySource, SOURCE_LIBRARY } from "@/services/sourcing/source-library";
+import { domainOf, offerAccessOf } from "@/domain/sourcing/pro-accounts";
+import { ABANDONED, accessMethodsOf, integrationStatusOf, primaryActionOf, priorityOf, reliabilityOf, type RegistryOrgFacts } from "@/domain/sourcing/supplier-registry";
+import { getConnectorDescriptor } from "@/integrations/suppliers/core";
 
 /**
  * ANNUAIRE DE FOURNISSEURS QUALIFIÉS — base de travail du sourcing professionnel.
@@ -303,23 +306,97 @@ export async function runDirectoryChecks(options: { keys?: string[]; fetchImpl?:
 // Annuaire pour une organisation (statuts calculés avec ses propres preuves)
 // ---------------------------------------------------------------------------
 
+/** Fiche de l'annuaire rattachée à un fournisseur de l'organisation : même domaine de site, sinon même nom. */
+export function directoryKeyForSupplier(s: { name: string; website: string | null }): string | null {
+  const domain = domainOf(s.website);
+  if (domain) {
+    const hit = SUPPLIER_DIRECTORY.find((e) => {
+      const d = domainOf(e.website);
+      return d !== null && (d === domain || d.endsWith(`.${domain}`) || domain.endsWith(`.${d}`));
+    });
+    if (hit) return hit.key;
+  }
+  return directoryKeyForSupplierName(s.name);
+}
+
+/** Source publique de la bibliothèque MON STOCK correspondant à une fiche (même domaine ou correspondance connue). */
+export function libraryKeyForDirectory(entry: Pick<DirectoryEntry, "key" | "website">): string | null {
+  const known = LIBRARY_BY_DIRECTORY_KEY[entry.key];
+  if (known && getLibrarySource(known)) return known;
+  const d = domainOf(entry.website);
+  if (!d) return null;
+  const hit = SOURCE_LIBRARY.find((l) => !l.blocked && domainOf(l.website) === d);
+  return hit?.key ?? null;
+}
+
+interface OrgSupplierFacts {
+  supplierId: string | null;
+  connection: { id: string; status: string; last_sync_at: string | null; last_error: string | null } | null;
+  accountOffers: number;
+  publicOffers: number;
+  publicActive: boolean;
+  lastSyncAt: string | null;
+  lastError: string | null;
+}
+
 export async function directoryForOrg(ctx: OrgContext): Promise<{ entries: DirectoryEntryDTO[]; researchDate: string; lastCheckAt: string | null }> {
   const orgId = ctx.organization.id;
-  const [checksRes, libRes, suppliersRes, runsRes, sourcesRes] = await Promise.all([
+  const [checksRes, libRes, suppliersRes, runsRes, sourcesRes, connectionsRes, offersRes] = await Promise.all([
     ctx.supabase.from("supplier_directory_checks").select("key, checked_at, reachable, http_status, robots_found, robots_disallow_all, sitemap_found, platform, message"),
     ctx.supabase.from("sourcing_library_checks").select("key, status"),
-    ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).limit(1000),
+    ctx.supabase.from("suppliers").select("id, name, website").eq("organization_id", orgId).eq("is_archived", false).limit(1000),
     ctx.supabase.from("sync_runs").select("source_ref, status").eq("organization_id", orgId).eq("source_kind", "supplier_feed").in("status", ["success", "partial"]).order("started_at", { ascending: false }).limit(500),
-    ctx.supabase.from("supplier_sources").select("supplier_id, status, config").eq("organization_id", orgId).limit(1000),
+    ctx.supabase.from("supplier_sources").select("id, supplier_id, source_type, status, config, last_successful_sync_at, last_error").eq("organization_id", orgId).limit(1000),
+    ctx.supabase.from("supplier_connections").select("id, supplier_id, connector_key, status, last_sync_at, last_error").eq("organization_id", orgId).neq("status", "disconnected").limit(200),
+    // comptage des offres actives par source (colonne minimale)
+    ctx.supabase.from("sourcing_offers").select("source_id").eq("organization_id", orgId).eq("status", "active").limit(50000),
   ]);
   const checks = new Map((checksRes.data ?? []).map((c) => [c.key, c as DirectoryCheckRow]));
   const libraryOk = new Set((libRes.data ?? []).filter((c) => c.status === "ok").map((c) => c.key));
 
-  // fournisseur de l'organisation → fiche (même nom)
+  // fournisseur de l'organisation → fiche (même site, sinon même nom)
   const supplierKey = new Map<string, string>();
-  for (const s of suppliersRes.data ?? []) {
-    const k = directoryKeyForSupplierName(s.name);
-    if (k) supplierKey.set(s.id, k);
+  const supplierByKey = new Map<string, string>();
+  for (const s of (suppliersRes.data ?? []) as { id: string; name: string; website: string | null }[]) {
+    const k = directoryKeyForSupplier(s);
+    if (k) {
+      supplierKey.set(s.id, k);
+      if (!supplierByKey.has(k)) supplierByKey.set(k, s.id);
+    }
+  }
+  const offersBySource = new Map<string, number>();
+  for (const o of (offersRes.data ?? []) as { source_id: string }[]) offersBySource.set(o.source_id, (offersBySource.get(o.source_id) ?? 0) + 1);
+  const orgFacts = new Map<string, OrgSupplierFacts>();
+  const factsFor = (key: string): OrgSupplierFacts => {
+    let f = orgFacts.get(key);
+    if (!f) {
+      f = { supplierId: supplierByKey.get(key) ?? null, connection: null, accountOffers: 0, publicOffers: 0, publicActive: false, lastSyncAt: null, lastError: null };
+      orgFacts.set(key, f);
+    }
+    return f;
+  };
+  const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : a > b ? a : b);
+  for (const src of (sourcesRes.data ?? []) as { id: string; supplier_id: string; source_type: string; status: string; config: unknown; last_successful_sync_at: string | null; last_error: string | null }[]) {
+    const key = supplierKey.get(src.supplier_id);
+    if (!key) continue;
+    const f = factsFor(key);
+    const n = offersBySource.get(src.id) ?? 0;
+    if (offerAccessOf(src.source_type, src.config) === "account") f.accountOffers += n;
+    else {
+      f.publicOffers += n;
+      if (src.status === "active") f.publicActive = true;
+    }
+    f.lastSyncAt = later(f.lastSyncAt, src.last_successful_sync_at);
+    f.lastError = f.lastError ?? src.last_error;
+  }
+  for (const c of (connectionsRes.data ?? []) as { id: string; supplier_id: string; connector_key: string; status: string; last_sync_at: string | null; last_error: string | null }[]) {
+    const key = supplierKey.get(c.supplier_id) ?? Object.entries(CONNECTOR_BY_DIRECTORY_KEY).find(([, v]) => v === c.connector_key)?.[0];
+    if (!key) continue;
+    const f = factsFor(key);
+    f.connection = c;
+    f.supplierId = f.supplierId ?? c.supplier_id;
+    f.lastSyncAt = later(f.lastSyncAt, c.last_sync_at);
+    f.lastError = c.last_error ?? f.lastError;
   }
   const importedKeys = new Set<string>();
   if ((runsRes.data ?? []).length) {
@@ -344,9 +421,44 @@ export async function directoryForOrg(ctx: OrgContext): Promise<{ entries: Direc
   const entries: DirectoryEntryDTO[] = SUPPLIER_DIRECTORY.map((e) => {
     const check = checks.get(e.key) ?? null;
     const stages = directoryStages(e, check, facts);
-    const activeInOrg = facts.activeKeys.has(e.key);
+    const of = orgFacts.get(e.key) ?? null;
+    const activeInOrg = facts.activeKeys.has(e.key) || Boolean(of && (of.publicActive || of.accountOffers > 0 || of.connection?.status === "connected"));
     const tier = directoryTier(e, stages, activeInOrg);
+    const libraryKey = libraryKeyForDirectory(e);
+    const registryFacts: RegistryOrgFacts = {
+      connectionOk: of?.connection?.status === "connected",
+      connectionPending: of?.connection ? of.connection.status !== "connected" : false,
+      imported: facts.importedKeys.has(e.key) || (of?.accountOffers ?? 0) > 0,
+      publicActive: facts.activeKeys.has(e.key) || Boolean(of?.publicActive),
+      publicAvailable: libraryKey !== null,
+    };
+    const methods = accessMethodsOf(e, registryFacts);
+    const integrationStatus = integrationStatusOf(e, methods, registryFacts);
+    const orgStatus: "connected" | "pending" | "error" | "not_connected" =
+      registryFacts.connectionOk || registryFacts.imported || registryFacts.publicActive ? "connected" : of?.connection?.status === "error" || of?.connection?.status === "expired" ? "error" : of?.connection ? "pending" : "not_connected";
+    const connectorKey = CONNECTOR_BY_DIRECTORY_KEY[e.key];
+    const descriptor = connectorKey ? getConnectorDescriptor(connectorKey) : null;
     return {
+      registry: {
+        accessMethods: methods,
+        integrationStatus,
+        priority: priorityOf(e),
+        reliability: reliabilityOf(e.verificationLevel),
+        abandonedReason: ABANDONED[e.key] ?? null,
+        primaryAction: primaryActionOf({ status: integrationStatus, methods, connected: orgStatus === "connected", hasConnection: Boolean(of?.connection) }),
+        domain: domainOf(e.website),
+        libraryKey,
+      },
+      org: {
+        status: orgStatus,
+        supplierId: of?.supplierId ?? null,
+        connectionId: of?.connection?.id ?? null,
+        accountOffers: of?.accountOffers ?? 0,
+        publicOffers: of?.publicOffers ?? 0,
+        lastSyncAt: of?.lastSyncAt ?? null,
+        lastError: of?.lastError ?? null,
+      },
+      connector: descriptor ? { key: descriptor.key, label: descriptor.label, fields: descriptor.credentialFields.map((f) => ({ name: f.name, label: f.label, secret: f.secret, placeholder: f.placeholder ?? null })) } : null,
       tier,
       nextAction: nextAction(e, tier, stages),
       key: e.key,

@@ -790,6 +790,30 @@ export interface ImportJobDetailDTO extends ImportJobDTO {
 export type DirectoryStage = "identified" | "verified" | "public_access" | "account_required" | "connector_ready" | "import_tested" | "unavailable";
 
 export interface DirectoryEntryDTO {
+  /** classification commune (src/domain/sourcing/supplier-registry.ts) */
+  registry: {
+    accessMethods: ("official_api" | "oauth" | "catalog_feed" | "portal_export" | "manual_import" | "custom_development" | "pro_account_first" | "not_automatable" | "public_integrated")[];
+    integrationStatus: "connected_tested" | "in_progress" | "public_available" | "api_to_integrate" | "feed_to_integrate" | "file_import" | "pro_account_required" | "commercial_access_needed" | "not_automatable" | "abandoned";
+    priority: { score: number; tier: "A" | "B" | "C"; reasons: string[] };
+    reliability: "confirmed" | "announced" | "inferred";
+    abandonedReason: string | null;
+    primaryAction: { kind: "sync" | "connect_api" | "add_feed" | "import_catalog" | "activate_public" | "get_pro_access" | "open_site" | "none"; label: string; outcome: string };
+    domain: string | null;
+    /** source publique de la bibliothèque MON STOCK correspondante (activable) */
+    libraryKey: string | null;
+  };
+  /** état réel dans VOTRE organisation */
+  org: {
+    status: "connected" | "pending" | "error" | "not_connected";
+    supplierId: string | null;
+    connectionId: string | null;
+    accountOffers: number;
+    publicOffers: number;
+    lastSyncAt: string | null;
+    lastError: string | null;
+  };
+  /** connecteur API MON STOCK (identifiants à saisir, chiffrés côté serveur) */
+  connector: { key: string; label: string; fields: { name: string; label: string; secret: boolean; placeholder: string | null }[] } | null;
   key: string;
   name: string;
   segment: "A_refurb" | "B_parts" | "C_liquidation" | "D_distributor" | "E_specialist";
@@ -1125,6 +1149,12 @@ export interface ProAccountsHubDTO {
   publicSources: PublicSourceDTO[];
   /** offres actives : vos comptes / sources publiques / places de marché */
   totals: { account: number; public: number; marketplace: number };
+}
+
+/** Produits récupérés pour un fournisseur (fiche fournisseur). */
+export interface SupplierOffersDTO {
+  total: number;
+  offers: SimpleOfferDTO[];
 }
 
 /** Offre dans la liste « du moins cher au plus cher », tous fournisseurs confondus. */

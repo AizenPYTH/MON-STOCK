@@ -23,3 +23,7 @@ export function syncProAccount(organizationId: string, connectionId: string): Pr
 export function disconnectProAccount(organizationId: string, connectionId: string): Promise<{ message: string }> {
   return callApi("/sourcing/accounts/disconnect", { method: "POST", organizationId, body: { connectionId } });
 }
+
+export function fetchSupplierOffers(organizationId: string, supplierId: string): Promise<import("@/features/mobile-api/contract").SupplierOffersDTO> {
+  return callApi("/sourcing/supplier-offers", { organizationId, query: { supplierId } });
+}

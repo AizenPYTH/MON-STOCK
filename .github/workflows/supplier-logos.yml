@@ -1,0 +1,30 @@
+name: Logos fournisseurs (sites officiels)
+
+# Récupère le logo officiel de chaque fournisseur de l'annuaire depuis SON site (icônes déclarées,
+# apple-touch-icon, favicon), le convertit en PNG 128×128 et commite le registre embarqué dans
+# l'application. Lancement manuel uniquement.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  logos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dépendances d'image (sans modifier package.json ni le lockfile)
+        run: npm install --no-save --no-audit --no-fund --ignore-scripts=false "sharp@^0.34" "sharp-ico@^0.1"
+      - name: Récupération des logos
+        run: node scripts/fetch-supplier-logos.mjs
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/mobile/assets/suppliers apps/mobile/src/data/supplier-logos.generated.ts docs/sourcing/supplier-logos-manifest.json
+          git diff --cached --quiet && echo "Aucun changement" || (git commit -m "Logos fournisseurs : récupération depuis les sites officiels" && git push)

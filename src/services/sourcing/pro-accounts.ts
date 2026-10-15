@@ -5,7 +5,9 @@ import { AppError, fromPostgrestError } from "@/lib/errors";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createLogger } from "@/lib/logger";
 import { domainOf, offerAccessOf, PRO_ACCOUNTS, type ProAccountStatus } from "@/domain/sourcing/pro-accounts";
-import { accessRequestEmail, directoryKeyForSupplierName, SUPPLIER_DIRECTORY } from "@/services/sourcing/supplier-directory";
+import { CONNECTOR_BY_KEY } from "@/domain/sourcing/supplier-registry";
+import type { SupplierOffersDTO } from "@/features/mobile-api/contract";
+import { accessRequestEmail, directoryKeyForSupplier, SUPPLIER_DIRECTORY } from "@/services/sourcing/supplier-directory";
 import { getConnectorDescriptor } from "@/integrations/suppliers/core";
 import { createSupplierConnection, syncSupplierConnection, testSupplierConnection } from "@/services/sourcing/supplier-connectors";
 
@@ -40,18 +42,7 @@ interface ConnectionRow {
   last_error: string | null;
 }
 
-/** Fiche de l'annuaire rattachée à un fournisseur de l'organisation : même domaine, sinon même nom. */
-export function directoryKeyForSupplier(s: Pick<SupplierRow, "name" | "website">): string | null {
-  const domain = domainOf(s.website);
-  if (domain) {
-    const hit = SUPPLIER_DIRECTORY.find((e) => {
-      const d = domainOf(e.website);
-      return d !== null && (d === domain || d.endsWith(`.${domain}`) || domain.endsWith(`.${d}`));
-    });
-    if (hit) return hit.key;
-  }
-  return directoryKeyForSupplierName(s.name);
-}
+export { directoryKeyForSupplier };
 
 /** Statut affiché : connecté seulement sur preuve (connexion testée ou offres réellement reçues). */
 export function proStatusOf(input: { connection: Pick<ConnectionRow, "status"> | null; accountOffers: number }): ProAccountStatus {
@@ -165,9 +156,10 @@ async function ensureSupplierFor(ctx: OrgContext, key: string): Promise<string> 
  * serveur, puis test réel auprès du fournisseur. Rien n'est présenté comme connecté avant ce test.
  */
 export async function connectProAccount(ctx: OrgContext, input: { key: string; credentials: Record<string, string> }): Promise<{ connectionId: string; ok: boolean; message: string }> {
-  const spec = PRO_ACCOUNTS.find((s) => s.key === input.key);
-  if (!spec?.connectorKey) throw new AppError("VALIDATION", "Ce fournisseur ne propose pas de connexion API dans MON STOCK : importez sa liste de stock ou ajoutez son flux.");
-  const descriptor = getConnectorDescriptor(spec.connectorKey);
+  const connectorKey = CONNECTOR_BY_KEY[input.key];
+  if (!connectorKey) throw new AppError("VALIDATION", "Ce fournisseur ne propose pas de connexion API dans MON STOCK : importez sa liste de stock ou ajoutez son flux.");
+  const spec = { key: input.key };
+  const descriptor = getConnectorDescriptor(connectorKey);
   if (!descriptor) throw new AppError("NOT_IMPLEMENTED", "Connecteur indisponible.");
   const credentials: Record<string, string> = {};
   for (const f of descriptor.credentialFields) {
@@ -204,4 +196,43 @@ export async function disconnectProAccount(ctx: OrgContext, connectionId: string
   if (error) throw fromPostgrestError(error);
   log.info("pro account disconnected", { orgId: ctx.organization.id, connectionId });
   return { message: "Compte déconnecté : identifiants supprimés. Les offres déjà reçues restent dans l'historique." };
+}
+
+/**
+ * Produits récupérés pour un fournisseur de l'organisation (fiche fournisseur) : offres actives les
+ * plus récemment vues, avec leur origine (votre compte / publique), sous la session de l'utilisateur.
+ */
+export async function supplierOffers(ctx: OrgContext, supplierId: string, limit = 30): Promise<SupplierOffersDTO> {
+  const orgId = ctx.organization.id;
+  const [offersRes, countRes] = await Promise.all([
+    ctx.supabase
+      .from("sourcing_offers")
+      .select("id, title_original, original_price, original_currency, normalized_price, tax_type, stock_status, available_quantity, source_url, last_seen_at, source_type, source:supplier_sources(config)")
+      .eq("organization_id", orgId)
+      .eq("supplier_id", supplierId)
+      .eq("status", "active")
+      .order("last_seen_at", { ascending: false })
+      .limit(Math.min(100, Math.max(1, limit))),
+    ctx.supabase.from("sourcing_offers").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("supplier_id", supplierId).eq("status", "active"),
+  ]);
+  if (offersRes.error) throw fromPostgrestError(offersRes.error);
+  if (countRes.error) throw fromPostgrestError(countRes.error);
+  const num = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  type Row = { id: string; title_original: string; original_price: unknown; original_currency: string | null; normalized_price: unknown; tax_type: string | null; stock_status: string | null; available_quantity: number | null; source_url: string | null; last_seen_at: string | null; source_type: string | null; source: { config: unknown } | null };
+  return {
+    total: countRes.count ?? 0,
+    offers: ((offersRes.data ?? []) as unknown as Row[]).map((r) => ({
+      id: r.id,
+      title: r.title_original,
+      price: num(r.original_price),
+      currency: r.original_currency,
+      priceConverted: num(r.normalized_price),
+      taxType: r.tax_type === "ht" || r.tax_type === "ttc" ? r.tax_type : "unknown",
+      stock: r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown",
+      quantity: r.available_quantity,
+      url: r.source_url,
+      seenAt: r.last_seen_at,
+      access: offerAccessOf(r.source_type, r.source?.config),
+    })),
+  };
 }

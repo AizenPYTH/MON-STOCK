@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { memoryDb } from "./helpers/memory-db";
-import { domainOf, initialsOf, logoUrlFor, offerAccessOf, PRO_ACCOUNTS } from "@/domain/sourcing/pro-accounts";
+import { domainOf, initialsOf, offerAccessOf, PRO_ACCOUNTS } from "@/domain/sourcing/pro-accounts";
 
 vi.mock("server-only", () => ({}));
 const connectors = vi.hoisted(() => ({
@@ -33,8 +33,6 @@ describe("comptes pro : règles pures", () => {
     expect(domainOf("https://www.foxway.com/en/buy-devices/")).toBe("foxway.com");
     expect(domainOf("callisto.tech")).toBe("callisto.tech");
     expect(domainOf(null)).toBeNull();
-    expect(logoUrlFor("foxway.com")).toBe("https://www.google.com/s2/favicons?domain=foxway.com&sz=64");
-    expect(logoUrlFor(null)).toBeNull();
     expect(initialsOf("Foxway (Reseller Portal / Wholesale)")).toBe("FO");
     expect(initialsOf("MobileSentrix Europe")).toBe("ME");
   });

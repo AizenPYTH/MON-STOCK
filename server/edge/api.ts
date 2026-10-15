@@ -21,6 +21,7 @@
  *   POST /api/sourcing/accounts/connect   connexion API d'un compte (identifiants chiffrés côté serveur, test réel) — rédacteur
  *   POST /api/sourcing/accounts/sync      synchronisation du catalogue d'un compte connecté — rédacteur
  *   POST /api/sourcing/accounts/disconnect déconnexion (identifiants supprimés) — administrateur
+ *   GET  /api/sourcing/supplier-offers?supplierId= produits récupérés pour un fournisseur (fiche fournisseur)
  *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
  *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
  *   GET  /api/sourcing/sources            sources : statut affiché, offres exploitables, dernier succès, prochain passage
@@ -88,7 +89,7 @@ import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listi
 import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/services/sourcing/offer-linking";
 import { buildRadar, buildRadarOffer, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
-import { connectProAccount, disconnectProAccount, proAccountsHub, syncProAccount } from "@/services/sourcing/pro-accounts";
+import { connectProAccount, disconnectProAccount, proAccountsHub, supplierOffers, syncProAccount } from "@/services/sourcing/pro-accounts";
 import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
 import { listSourcesForOrg, setSourceSchedule, sourceScheduleSchema, syncSourceNow } from "@/services/sourcing/source-sync";
 import { simpleSupplierSearch } from "@/services/sourcing/simple-search";
@@ -406,6 +407,12 @@ export async function route(request: Request): Promise<Response> {
     }
     if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request)));
     if (m === "GET" && path === "/sourcing/accounts") return handle(async () => proAccountsHub(await requireMobileOrgContext(request)));
+    if (m === "GET" && path === "/sourcing/supplier-offers") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request);
+        return supplierOffers(ctx, parseQuery(request, z.object({ supplierId: uuidParam })).supplierId);
+      });
+    }
     if (m === "POST" && path === "/sourcing/accounts/connect") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
