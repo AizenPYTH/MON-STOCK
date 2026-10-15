@@ -1,0 +1,2229 @@
+{
+  "generatedAt": "2026-10-15T17:35:04.065Z",
+  "total": 200,
+  "found": 143,
+  "entries": [
+    {
+      "domain": "2repair.parts",
+      "names": [
+        "2repair.parts — pièces smartphone (GBP)"
+      ],
+      "source": "https://2repair.parts/uploads/favicon_2repair_e0d2534357.png",
+      "originalWidth": 550,
+      "fetchedAt": "2026-10-15T17:34:49.580Z",
+      "status": "ok"
+    },
+    {
+      "domain": "4phones.eu",
+      "names": [
+        "4Phones"
+      ],
+      "source": "https://4phones.eu/cdn/shop/files/favicon.png?crop=center&height=32&v=1665691829&width=32",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:31.292Z",
+      "status": "ok"
+    },
+    {
+      "domain": "4smarts.com",
+      "names": [
+        "4smarts"
+      ],
+      "source": "https://b2b.4smarts.eu/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:06.875Z",
+      "status": "ok"
+    },
+    {
+      "domain": "ab.pl",
+      "names": [
+        "AB S.A."
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:41.075Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.ab.pl/wp-content/uploads/2019/06/favicon.ico: trop petit (16px)",
+        "https://www.ab.pl/apple-touch-icon.png: HTTP 404",
+        "https://www.ab.pl/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "acgrosshandel.de",
+      "names": [
+        "AC Großhandel"
+      ],
+      "source": "https://www.acgrosshandel.de/wp-content/uploads/2023/11/homepage_favicon.png",
+      "originalWidth": 135,
+      "fetchedAt": "2026-10-15T17:34:39.245Z",
+      "status": "ok"
+    },
+    {
+      "domain": "action.pl",
+      "names": [
+        "Action S.A."
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:39.960Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.action.pl/layout/img/favicon/favicon-action.ico: trop petit (16px)",
+        "https://www.action.pl/apple-touch-icon.png: HTTP 404",
+        "https://www.action.pl/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "agorastore.fr",
+      "names": [
+        "Agorastore"
+      ],
+      "source": "https://www.agorastore.fr/favicon.ico",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:34:32.469Z",
+      "status": "ok"
+    },
+    {
+      "domain": "alibaba.com",
+      "names": [
+        "Alibaba.com"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:08.928Z",
+      "status": "not_found",
+      "tried": [
+        "https://s.alicdn.com/favicon.ico: trop petit (16px)",
+        "https://www.alibaba.com/apple-touch-icon.png: Input buffer contains unsupported image format",
+        "https://www.alibaba.com/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "also.com",
+      "names": [
+        "ALSO France / ALSO Deutschland"
+      ],
+      "source": "https://www.also.com/ec/cms5/2000/img/common/apple_touch_icon_ipad_retina.png",
+      "originalWidth": 152,
+      "fetchedAt": "2026-10-15T17:33:36.674Z",
+      "status": "ok"
+    },
+    {
+      "domain": "api.de",
+      "names": [
+        "api Computerhandels GmbH"
+      ],
+      "source": "https://www.api.de/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:09.657Z",
+      "status": "ok"
+    },
+    {
+      "domain": "arll.eu",
+      "names": [
+        "ARLL Group of Companies"
+      ],
+      "source": "https://arll.eu/favicon.ico?favicon.0b3bf435.ico",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:34:41.192Z",
+      "status": "ok"
+    },
+    {
+      "domain": "arrow.com",
+      "names": [
+        "Arrow Electronics"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:35:01.090Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.arrow.com/: The operation was aborted due to timeout",
+        "https://www.arrow.com/apple-touch-icon.png: The operation was aborted due to timeout",
+        "https://www.arrow.com/favicon.ico: The operation was aborted due to timeout"
+      ]
+    },
+    {
+      "domain": "asbis.com",
+      "names": [
+        "ASBIS Group"
+      ],
+      "source": "https://prod-cdn.prod.asbis.io/s3/cms/image/18/d8/18d846ab6b366e783bc4809e5b7b5880/asbis_favicon.svg",
+      "originalWidth": 67,
+      "fetchedAt": "2026-10-15T17:34:10.889Z",
+      "status": "ok"
+    },
+    {
+      "domain": "atstrading.de",
+      "names": [
+        "ATS Trading GmbH"
+      ],
+      "source": "https://atstrading.de/wp-content/uploads/2021/04/favicon-96x96-1.png",
+      "originalWidth": 96,
+      "fetchedAt": "2026-10-15T17:34:40.417Z",
+      "status": "ok"
+    },
+    {
+      "domain": "auctelia.com",
+      "names": [
+        "Auctelia"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:35.151Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.auctelia.com/apple-touch-icon.png: HTTP 404",
+        "https://www.auctelia.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "avides.com",
+      "names": [
+        "AVIDES"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:26.488Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.avides.com/en/: fetch failed",
+        "https://www.avides.com/apple-touch-icon.png: fetch failed",
+        "https://www.avides.com/favicon.ico: fetch failed"
+      ]
+    },
+    {
+      "domain": "b2b.homescreen.pl",
+      "names": [
+        "Home Screen Distribution"
+      ],
+      "source": "https://cms.homescreen.pl/api/media/file/favicon.svg",
+      "originalWidth": 133,
+      "fetchedAt": "2026-10-15T17:33:52.668Z",
+      "status": "ok"
+    },
+    {
+      "domain": "b2bmobilewholesalers.com",
+      "names": [
+        "B2B Mobile Wholesalers"
+      ],
+      "source": "https://www.b2bmobilewholesalers.com/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:05.007Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bestellaptops.nl",
+      "names": [
+        "Bestellaptops.nl (Laptop Groothandel)"
+      ],
+      "source": "https://bestellaptops.nl/cdn/shop/files/Logo_bestellaptop.nl_Orgineel.png?crop=center&height=32&v=1773825986&width=32",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:50.830Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bidspotter.co.uk",
+      "names": [
+        "BidSpotter (UK)"
+      ],
+      "source": "https://www.bidspotter.co.uk/content/bs/images/icons/apple-icon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:36.514Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bigben-connected.com",
+      "names": [
+        "Bigben Connected (groupe Bigben / Nacon)"
+      ],
+      "source": "https://www.bigben-connected.com/favicon.png",
+      "originalWidth": 37,
+      "fetchedAt": "2026-10-15T17:34:07.281Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bigbranddepot.fr",
+      "names": [
+        "Big Brand Depot"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:50.669Z",
+      "status": "not_found",
+      "tried": [
+        "https://bigbranddepot.fr/: fetch failed",
+        "https://bigbranddepot.fr/apple-touch-icon.png: fetch failed",
+        "https://bigbranddepot.fr/favicon.ico: fetch failed"
+      ]
+    },
+    {
+      "domain": "bigbuy.eu",
+      "names": [
+        "BigBuy"
+      ],
+      "source": "https://www.bigbuy.eu/favicon.ico",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:33:40.753Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bitstockz.pl",
+      "names": [
+        "BitStockz"
+      ],
+      "source": "https://www.bitstockz.pl/files/logotypy/Projekt%20bez%20nazwy%20(12).png",
+      "originalWidth": 96,
+      "fetchedAt": "2026-10-15T17:33:56.124Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bluechip.de",
+      "names": [
+        "bluechip Computer AG"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:39.221Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.bluechip.de/media/8c/0f/4e/1690963998/favicon.png?ts=1690963998: trop petit (16px)",
+        "https://www.bluechip.de/apple-touch-icon.png: HTTP 404",
+        "https://www.bluechip.de/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "bluestarinc.com",
+      "names": [
+        "BlueStar Europe Distribution BV"
+      ],
+      "source": "https://www.bluestarinc.com/hubfs/favicon-bluestar.jpg",
+      "originalWidth": 144,
+      "fetchedAt": "2026-10-15T17:34:10.545Z",
+      "status": "ok"
+    },
+    {
+      "domain": "brico-phone.com",
+      "names": [
+        "Brico-phone"
+      ],
+      "source": "https://www.brico-phone.com/img/favicon.ico?1641379060",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:33:30.374Z",
+      "status": "ok"
+    },
+    {
+      "domain": "brodos.com",
+      "names": [
+        "Brodos AG"
+      ],
+      "source": "https://brodos.com/wp-content/uploads/2018/09/Favicon.png",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:33:36.842Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bstock.com",
+      "names": [
+        "B-Stock Europe (Amazon EU, Supply Europe…)"
+      ],
+      "source": "https://bstock.com/wp-content/themes/bstock2021/images/favico-144.png",
+      "originalWidth": 144,
+      "fetchedAt": "2026-10-15T17:33:32.571Z",
+      "status": "ok"
+    },
+    {
+      "domain": "business.refurbed.de",
+      "names": [
+        "refurbed Business"
+      ],
+      "source": "https://static.wixstatic.com/media/267477_c9db4da285bf487c8bc950ac039faad7%7Emv2.png/v1/fill/w_180%2Ch_180%2Clg_1%2Cusm_0.66_1.00_0.01/267477_c9db4da285bf487c8bc950ac039faad7%7Emv2.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:26.755Z",
+      "status": "ok"
+    },
+    {
+      "domain": "business.swappie.com",
+      "names": [
+        "Swappie for Business"
+      ],
+      "source": "https://assets.swappie.com/cdn-cgi/image/height=32,fit=contain,format=auto/favicon-swappie.png?v=a902ba7c",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:28.731Z",
+      "status": "ok"
+    },
+    {
+      "domain": "business.theioutlet.com",
+      "names": [
+        "iOutlet Business (The iOutlet, trade)"
+      ],
+      "source": "https://www.pulseos.io/images/pulse-logo-round.png",
+      "originalWidth": 305,
+      "fetchedAt": "2026-10-15T17:33:29.013Z",
+      "status": "ok"
+    },
+    {
+      "domain": "buymolano.com",
+      "names": [
+        "Molano B.V. (Buy Molano)"
+      ],
+      "source": "https://buymolano.com/apple-touch-icon.png?v=3",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:44.803Z",
+      "status": "ok"
+    },
+    {
+      "domain": "bva-auctions.com",
+      "names": [
+        "BVA Auctions (TBAuctions Netherlands B.V.)"
+      ],
+      "source": "https://www.troostwijkauctions.com/assets/favicons/favicon-192x192.png",
+      "originalWidth": 192,
+      "fetchedAt": "2026-10-15T17:34:31.453Z",
+      "status": "ok"
+    },
+    {
+      "domain": "callisto.tech",
+      "names": [
+        "Callisto (Alchemy) — marketplace B2B secondaire"
+      ],
+      "source": "https://callisto.tech/hubfs/2024%20Callisto%20Favicon%20-%20Dark%20blue%20(50x50).svg",
+      "originalWidth": 208,
+      "fetchedAt": "2026-10-15T17:33:27.728Z",
+      "status": "ok"
+    },
+    {
+      "domain": "cellularline.com",
+      "names": [
+        "Cellularline S.p.A."
+      ],
+      "source": "https://www.cellularline.com/_ui/responsive/theme-alpha/images/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:09.021Z",
+      "status": "ok"
+    },
+    {
+      "domain": "compubase.net",
+      "names": [
+        "compuBase (compuBase.biz / EasyStock)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:29.663Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.compubase.net/: fetch failed",
+        "https://www.compubase.net/apple-touch-icon.png: fetch failed",
+        "https://www.compubase.net/favicon.ico: fetch failed"
+      ]
+    },
+    {
+      "domain": "computerg.shop",
+      "names": [
+        "ComputerG — composants informatiques"
+      ],
+      "source": "https://www.computerg.shop/web/image/website/1/favicon?unique=0bca013",
+      "originalWidth": 67,
+      "fetchedAt": "2026-10-15T17:34:51.110Z",
+      "status": "ok"
+    },
+    {
+      "domain": "connect-we.fr",
+      "names": [
+        "WE.CONNECT"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:09.402Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.connect-we.fr/: fetch failed",
+        "https://www.connect-we.fr/apple-touch-icon.png: fetch failed",
+        "https://www.connect-we.fr/favicon.ico: fetch failed"
+      ]
+    },
+    {
+      "domain": "conrad.fr",
+      "names": [
+        "Conrad Electronic (Conrad Business / Sourcing Platform)"
+      ],
+      "source": "https://www.conrad.fr/favicon.ico",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:34:14.683Z",
+      "status": "ok"
+    },
+    {
+      "domain": "copaco.com",
+      "names": [
+        "Copaco (BE/NL)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:35.803Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.copaco.com: HTTP 403",
+        "https://www.copaco.com/apple-touch-icon.png: HTTP 403",
+        "https://www.copaco.com/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "da-pieces.com",
+      "names": [
+        "DA Pièces (FR) — pièces smartphone"
+      ],
+      "source": "https://da-pieces.com/cdn/shop/files/IMG_9892_e8f6e8cc-6051-44ff-885a-c707d634c035.jpg?crop=center&height=32&v=1662985223&width=32",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:48.287Z",
+      "status": "ok"
+    },
+    {
+      "domain": "destockplus.com",
+      "names": [
+        "Destockplus"
+      ],
+      "source": "https://www.destockplus.com/upload/favicon-7wCzWCSk.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:34.214Z",
+      "status": "ok"
+    },
+    {
+      "domain": "digikey.fr",
+      "names": [
+        "DigiKey"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:11.699Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.digikey.fr/: HTTP 403",
+        "https://www.digikey.fr/apple-touch-icon.png: HTTP 404",
+        "https://www.digikey.fr/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "distrelec.ch",
+      "names": [
+        "Distrelec (groupe RS)"
+      ],
+      "source": "https://www.distrelec.ch/assets/apple-touch-icon-precomposed.png",
+      "originalWidth": 144,
+      "fetchedAt": "2026-10-15T17:34:13.046Z",
+      "status": "ok"
+    },
+    {
+      "domain": "distrihub.eu",
+      "names": [
+        "DistriHUB (Varle)"
+      ],
+      "source": "https://distrihub.eu/icon.svg?9f2faec6cc8d2175",
+      "originalWidth": 2133,
+      "fetchedAt": "2026-10-15T17:34:00.466Z",
+      "status": "ok"
+    },
+    {
+      "domain": "distriphone.com",
+      "names": [
+        "Distriphone"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:08.311Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.distriphone.com/: fetch failed",
+        "https://www.distriphone.com/apple-touch-icon.png: fetch failed",
+        "https://www.distriphone.com/favicon.ico: fetch failed"
+      ]
+    },
+    {
+      "domain": "dmi.es",
+      "names": [
+        "DMI Computer"
+      ],
+      "source": "https://www.dmi.es/images/dmi/comun/apple-touch-icon-ipad-retina-152x152.png",
+      "originalWidth": 152,
+      "fetchedAt": "2026-10-15T17:33:43.108Z",
+      "status": "ok"
+    },
+    {
+      "domain": "dutchmobileparts.nl",
+      "names": [
+        "Dutch Mobile Parts B.V."
+      ],
+      "source": "https://dutchmobileparts.nl/wp-content/uploads/2026/05/cropped-dutch-mobile-parts-favicon-180x180.webp",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:47.401Z",
+      "status": "ok"
+    },
+    {
+      "domain": "dutchspares.com",
+      "names": [
+        "DutchSpares B.V."
+      ],
+      "source": "https://cdn.webshopapp.com/shops/62195/themes/50071/v/1860621/assets/favicon.ico?20230508123848",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:46.868Z",
+      "status": "ok"
+    },
+    {
+      "domain": "eama.group",
+      "names": [
+        "EAMA Group Auctions"
+      ],
+      "source": "https://eama.group/cdn/shop/files/EAMA_64390edd-5947-45fa-857a-79ae03cf6c79.png?crop=center&height=32&v=1733226976&width=32",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:35.084Z",
+      "status": "ok"
+    },
+    {
+      "domain": "eany.io",
+      "names": [
+        "Eany.io (1ean, UAB)"
+      ],
+      "source": "https://eany.io/assets/branding/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:42.863Z",
+      "status": "ok"
+    },
+    {
+      "domain": "easycash.fr",
+      "names": [
+        "Easycash"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:29.175Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.easycash.fr: HTTP 403",
+        "https://www.easycash.fr/apple-touch-icon.png: HTTP 404",
+        "https://www.easycash.fr/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "eb-tech.fr",
+      "names": [
+        "EB-TECH"
+      ],
+      "source": "https://eb-tech.fr/img/favicon.ico?1753185636",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:33:43.716Z",
+      "status": "ok"
+    },
+    {
+      "domain": "ebay.fr",
+      "names": [
+        "eBay (Buy Browse API)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:35.264Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.ebay.fr: HTTP 403",
+        "https://www.ebay.fr/apple-touch-icon.png: HTTP 404",
+        "https://www.ebay.fr/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "ecoportatil.es",
+      "names": [
+        "Ecoportátil"
+      ],
+      "source": "https://ecoportatil.es/apple-touch-icon.png?1788217431",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:49.033Z",
+      "status": "ok"
+    },
+    {
+      "domain": "eetgroup.com",
+      "names": [
+        "EET Group (EET Europarts)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:10.000Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.eetgroup.com/: HTTP 403",
+        "https://www.eetgroup.com/apple-touch-icon.png: HTTP 403",
+        "https://www.eetgroup.com/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "ekolow.fr",
+      "names": [
+        "Ekolow (FR) — pièces MacBook"
+      ],
+      "source": "https://89dfeaa2.delivery.rocketcdn.me/wp-content/uploads/2025/11/favicon-svg-ekolow.svg",
+      "originalWidth": 2133,
+      "fetchedAt": "2026-10-15T17:34:45.866Z",
+      "status": "ok"
+    },
+    {
+      "domain": "elitemobile.com",
+      "names": [
+        "Elite Mobile"
+      ],
+      "source": "https://www.elitemobile.com/favicon.png",
+      "originalWidth": 60,
+      "fetchedAt": "2026-10-15T17:34:02.223Z",
+      "status": "ok"
+    },
+    {
+      "domain": "elkogroup.com",
+      "names": [
+        "ELKO Group"
+      ],
+      "source": "https://www.elkogroup.com/wp-content/themes/elko_theme/dist/img/favicon/apple-icon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:10.917Z",
+      "status": "ok"
+    },
+    {
+      "domain": "esprinet.com",
+      "names": [
+        "Esprinet (espriCATALOG / espriREALTIME)"
+      ],
+      "source": "https://statics.esprinet.com/prod/2020/11/cropped-esprinet-1-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:39.673Z",
+      "status": "ok"
+    },
+    {
+      "domain": "etradesupply.com",
+      "names": [
+        "ETrade Supply"
+      ],
+      "source": "https://www.etradesupply.com/media/favicon/stores/1/logo.png",
+      "originalWidth": 2000,
+      "fetchedAt": "2026-10-15T17:34:05.903Z",
+      "status": "ok"
+    },
+    {
+      "domain": "eu-pro-store.ifixit.com",
+      "names": [
+        "iFixit Pro Store EU — pièces et outils"
+      ],
+      "source": "https://assets.cdn.ifixit.com/static/icons/ifixit/apple-touch-icon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:44.279Z",
+      "status": "ok"
+    },
+    {
+      "domain": "eu.certideal.com",
+      "names": [
+        "Certideal"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:29.251Z",
+      "status": "not_found",
+      "tried": [
+        "https://eu.certideal.com/img/favicon.ico?1685969271: trop petit (16px)",
+        "https://eu.certideal.com/apple-touch-icon.png: HTTP 404",
+        "https://eu.certideal.com/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "eurolots.com",
+      "names": [
+        "EuroLots"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:33.736Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.eurolots.com/en: HTTP 403",
+        "https://www.eurolots.com/apple-touch-icon.png: HTTP 404",
+        "https://www.eurolots.com/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "exertis.fr",
+      "names": [
+        "Exertis France (repris par WE.CONNECT)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:07.004Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.exertis.fr/: fetch failed",
+        "https://www.exertis.fr/apple-touch-icon.png: fetch failed",
+        "https://www.exertis.fr/favicon.ico: fetch failed"
+      ]
+    },
+    {
+      "domain": "fixez.com",
+      "names": [
+        "Fixez"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:32.404Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.fixez.com: HTTP 403",
+        "https://www.fixez.com/apple-touch-icon.png: HTTP 404",
+        "https://www.fixez.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "fixje.nl",
+      "names": [
+        "Fixje (FixjeZakelijk)"
+      ],
+      "source": "https://www.fixje.nl/favicon.ico?v=2",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:33:48.024Z",
+      "status": "ok"
+    },
+    {
+      "domain": "flashmac.com",
+      "names": [
+        "Flashmac B2B"
+      ],
+      "source": "https://www.flashmac.com/wp-content/uploads/2023/01/cropped-favicon_3-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:56.214Z",
+      "status": "ok"
+    },
+    {
+      "domain": "foneday.shop",
+      "names": [
+        "Foneday"
+      ],
+      "source": "https://foneday.shop/apple-touch-icon.png",
+      "originalWidth": 181,
+      "fetchedAt": "2026-10-15T17:33:29.475Z",
+      "status": "ok"
+    },
+    {
+      "domain": "fonefunshop.com",
+      "names": [
+        "FoneFunShop Ltd"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:05.749Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.fonefunshop.com/cdn/shop/files/favicon.jpg?crop=center&height=32&v=1711714561&width=32: trop petit (16px)",
+        "https://www.fonefunshop.com/apple-touch-icon.png: HTTP 404",
+        "https://www.fonefunshop.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "foxway.com",
+      "names": [
+        "Foxway (Reseller Portal / Wholesale)"
+      ],
+      "source": "https://www.foxway.com/wp-content/uploads/2025/05/cropped-expressive-rbg-180x180.webp",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:27.907Z",
+      "status": "ok"
+    },
+    {
+      "domain": "fr.farnell.com",
+      "names": [
+        "Farnell (element14 / Avnet)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:55.918Z",
+      "status": "not_found",
+      "tried": [
+        "https://fr.farnell.com/: The operation was aborted due to timeout",
+        "https://fr.farnell.com/apple-touch-icon.png: The operation was aborted due to timeout",
+        "https://fr.farnell.com/favicon.ico: The operation was aborted due to timeout"
+      ]
+    },
+    {
+      "domain": "fr.ingrammicro.eu",
+      "names": [
+        "Ingram Micro (France / Xvantage)"
+      ],
+      "source": "https://fr.ingrammicro.eu/1IMv2/ext/icons/144x144.png",
+      "originalWidth": 144,
+      "fetchedAt": "2026-10-15T17:33:35.127Z",
+      "status": "ok"
+    },
+    {
+      "domain": "fr.rs-online.com",
+      "names": [
+        "RS (RS Components France)"
+      ],
+      "source": "https://fr.rs-online.com/static/webassets/ico/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:17.697Z",
+      "status": "ok"
+    },
+    {
+      "domain": "fr.stockinthechannel.com",
+      "names": [
+        "Stock in the Channel"
+      ],
+      "source": "https://images.stockinthechannel.co.uk/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:26.538Z",
+      "status": "ok"
+    },
+    {
+      "domain": "fr.tdsynnex.com",
+      "names": [
+        "TD SYNNEX France"
+      ],
+      "source": "https://intouch.tdsynnex.com/images/icon-192x192.png",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:35.605Z",
+      "status": "ok"
+    },
+    {
+      "domain": "futureelectronics.com",
+      "names": [
+        "Future Electronics"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:35:04.057Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.futureelectronics.com/: The operation was aborted due to timeout",
+        "https://www.futureelectronics.com/apple-touch-icon.png: The operation was aborted due to timeout",
+        "https://www.futureelectronics.com/favicon.ico: The operation was aborted due to timeout"
+      ]
+    },
+    {
+      "domain": "globalsources.com",
+      "names": [
+        "Global Sources"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:07.697Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.globalsources.com/: HTTP 403",
+        "https://www.globalsources.com/apple-touch-icon.png: HTTP 403",
+        "https://www.globalsources.com/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "globomatik.com",
+      "names": [
+        "Globomatik"
+      ],
+      "source": "https://www.globomatik.com/skin/frontend/CompraAmiga/Globomatik/images/iconos/favicon144/apple-touch-icon3.png",
+      "originalWidth": 144,
+      "fetchedAt": "2026-10-15T17:33:42.110Z",
+      "status": "ok"
+    },
+    {
+      "domain": "grossiste-destockage-lots.fr",
+      "names": [
+        "Grossiste Destockage Lots (Eurostocklots Ltd)"
+      ],
+      "source": "https://www.grossiste-destockage-lots.fr/wp-content/uploads/2026/04/cropped-WhatsApp-Image-2026-04-09-at-17.56.34-180x180.jpeg",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:46.724Z",
+      "status": "ok"
+    },
+    {
+      "domain": "grossiste-telephone.com",
+      "names": [
+        "Prodealee (Wedealee SAS)"
+      ],
+      "source": "https://www.grossiste-telephone.com/wp-content/uploads/2020/01/cropped-Logo-prodealee-hexagone-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:44.962Z",
+      "status": "ok"
+    },
+    {
+      "domain": "gsmexchange.com",
+      "names": [
+        "gsmExchange"
+      ],
+      "source": "https://images.gsmexchange.com/v6/66DF43FD/apple-touch-icon-144x144-precomposed.png",
+      "originalWidth": 144,
+      "fetchedAt": "2026-10-15T17:33:28.296Z",
+      "status": "ok"
+    },
+    {
+      "domain": "gsmok.com",
+      "names": [
+        "GSMOK.com"
+      ],
+      "source": "https://gsmok.com/images/apple-touch-icon-152x152.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:54.338Z",
+      "status": "ok"
+    },
+    {
+      "domain": "gsmpartscenter.com",
+      "names": [
+        "GSM Parts Center (GPC Group Global B.V.)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:31.883Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.gsmpartscenter.com: HTTP 403",
+        "https://www.gsmpartscenter.com/apple-touch-icon.png: HTTP 404",
+        "https://www.gsmpartscenter.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "gsmworld-wholesale.com",
+      "names": [
+        "GSM World"
+      ],
+      "source": "https://framerusercontent.com/images/kym8OqVO1C6Bs8djrTtfa5LQwI.png",
+      "originalWidth": 258,
+      "fetchedAt": "2026-10-15T17:34:01.134Z",
+      "status": "ok"
+    },
+    {
+      "domain": "gspelectronics-grosshandel.de",
+      "names": [
+        "GSP Electronics Großhandel"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:59.880Z",
+      "status": "not_found",
+      "tried": [
+        "https://gspelectronics-grosshandel.de/: HTTP 500",
+        "https://gspelectronics-grosshandel.de/apple-touch-icon.png: HTTP 500",
+        "https://gspelectronics-grosshandel.de/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "handelot.com",
+      "names": [
+        "Handelot"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:28.756Z",
+      "status": "not_found",
+      "tried": [
+        "https://handelot.com/apple-touch-icon.png: Input buffer contains unsupported image format",
+        "https://handelot.com/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "herweck.de",
+      "names": [
+        "Herweck AG"
+      ],
+      "source": "https://herweck.de/wp-content/uploads/2026/06/cropped-hrw-favicon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:02.179Z",
+      "status": "ok"
+    },
+    {
+      "domain": "hk-refurbished-stock.com",
+      "names": [
+        "HK Refurbished Stock"
+      ],
+      "source": "https://hk-refurbished-stock.com/wp-content/uploads/2021/10/hk-refurbished-favicon-600x600.png",
+      "originalWidth": 600,
+      "fetchedAt": "2026-10-15T17:34:02.472Z",
+      "status": "ok"
+    },
+    {
+      "domain": "horepa.fr",
+      "names": [
+        "Horepa"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:43.648Z",
+      "status": "not_found",
+      "tried": [
+        "https://horepa.fr/fr/: HTTP 403",
+        "https://horepa.fr/apple-touch-icon.png: HTTP 404",
+        "https://horepa.fr/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "hubx.com",
+      "names": [
+        "HUBX"
+      ],
+      "source": "https://hubx.com/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:00.300Z",
+      "status": "ok"
+    },
+    {
+      "domain": "hurtel.com",
+      "names": [
+        "Hurtel"
+      ],
+      "source": "https://hurtel.com/gfx/pol/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:41.124Z",
+      "status": "ok"
+    },
+    {
+      "domain": "hurtowniagsm.pl",
+      "names": [
+        "hurtowniagsm.pl"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:59.006Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.hurtowniagsm.pl/apple-touch-icon.png: HTTP 404",
+        "https://www.hurtowniagsm.pl/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "ifixit.com",
+      "names": [
+        "iFixit Pro (EU)"
+      ],
+      "source": "https://assets.cdn.ifixit.com/static/icons/ifixit/apple-touch-icon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:29.866Z",
+      "status": "ok"
+    },
+    {
+      "domain": "incomgroup.pl",
+      "names": [
+        "Incom Group"
+      ],
+      "source": "https://www.incomgroup.pl/wp-content/uploads/2025/11/favicon.png",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:55.259Z",
+      "status": "ok"
+    },
+    {
+      "domain": "infortisa.com",
+      "names": [
+        "Infortisa"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:42.218Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.infortisa.com/: trop volumineux",
+        "https://www.infortisa.com/apple-touch-icon.png: HTTP 404",
+        "https://www.infortisa.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "ingrosmart.it",
+      "names": [
+        "Ingrosmart (Newmobi)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:53.798Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.ingrosmart.it/: HTTP 403",
+        "https://www.ingrosmart.it/apple-touch-icon.png: HTTP 403",
+        "https://www.ingrosmart.it/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "injuredgadgets.com",
+      "names": [
+        "Injured Gadgets"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:30.732Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.injuredgadgets.com: HTTP 403",
+        "https://www.injuredgadgets.com/apple-touch-icon.png: Input buffer has corrupt header: glib: XML parse error: Error domain 1 code 76 on line 257 column 77147 of data: Opening and ending tag mismatch: html line 1 and body",
+        "https://www.injuredgadgets.com/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "inrego.com",
+      "names": [
+        "Inrego (Stocklists)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:04.015Z",
+      "status": "not_found",
+      "tried": [
+        "https://inrego.com/apple-touch-icon.png: HTTP 404",
+        "https://inrego.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "interencheres.com",
+      "names": [
+        "Interencheres"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:30.113Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.interencheres.com/: HTTP 403",
+        "https://www.interencheres.com/apple-touch-icon.png: HTTP 403",
+        "https://www.interencheres.com/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "ipartspro.eu",
+      "names": [
+        "iPartsPro Europe Distribution"
+      ],
+      "source": "https://ipartspro.eu/apple-icon?b42ff415a3fa7ca7",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:46.765Z",
+      "status": "ok"
+    },
+    {
+      "domain": "itp-technologie.com",
+      "names": [
+        "ITP Technologie"
+      ],
+      "source": "https://www.itp-technologie.com/wp-content/uploads/2020/08/favicon-32x32.jpg",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:42.957Z",
+      "status": "ok"
+    },
+    {
+      "domain": "itscope.com",
+      "names": [
+        "ITscope (groupe weclapp)"
+      ],
+      "source": "https://www.itscope.com/wp-content/uploads/2021/09/ITscope-Icon.svg",
+      "originalWidth": 8333,
+      "fetchedAt": "2026-10-15T17:34:28.823Z",
+      "status": "ok"
+    },
+    {
+      "domain": "jarltech.com",
+      "names": [
+        "Jarltech"
+      ],
+      "source": "https://www.jarltech.com/themes/custom/general_base/img/favicon/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:38.190Z",
+      "status": "ok"
+    },
+    {
+      "domain": "jobalots.com",
+      "names": [
+        "Jobalots"
+      ],
+      "source": "https://jobalots.com/favicon.ico?favicon.3nzsqd864kol9.ico?dpl=17fd2900d7cf",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:33:34.028Z",
+      "status": "ok"
+    },
+    {
+      "domain": "komsa.com",
+      "names": [
+        "KOMSA"
+      ],
+      "source": "https://komsa.com/typo3conf/ext/mmkomsa/Resources/Public/images/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:36.949Z",
+      "status": "ok"
+    },
+    {
+      "domain": "koopjemobiel.nl",
+      "names": [
+        "Koopjemobiel.nl"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:03.558Z",
+      "status": "not_found",
+      "tried": [
+        "https://koopjemobiel.nl/: HTTP 403",
+        "https://koopjemobiel.nl/apple-touch-icon.png: HTTP 403",
+        "https://koopjemobiel.nl/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "kosatec.de",
+      "names": [
+        "Kosatec"
+      ],
+      "source": "https://shop.kosatec.de/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:40.176Z",
+      "status": "ok"
+    },
+    {
+      "domain": "largo.fr",
+      "names": [
+        "Largo (Largo Business / distributeurs)"
+      ],
+      "source": "https://www.largo.fr/img/favicon-1.ico?1698930323",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:33:27.307Z",
+      "status": "ok"
+    },
+    {
+      "domain": "lcd-phone.com",
+      "names": [
+        "LCD-Phone"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:04.000Z",
+      "status": "not_found",
+      "tried": [
+        "https://lcd-phone.com/: HTTP 403",
+        "https://lcd-phone.com/apple-touch-icon.png: HTTP 403",
+        "https://lcd-phone.com/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "ldlc.pro",
+      "names": [
+        "LDLC.pro"
+      ],
+      "source": "https://www.ldlc.pro/ldlcpro/build/img/common/favicon/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:40.222Z",
+      "status": "ok"
+    },
+    {
+      "domain": "life365.eu",
+      "names": [
+        "Life365"
+      ],
+      "source": "https://cdn.prod.website-files.com/681d615fbb11daaddbf0ed2d/687e0bfb9552a34683497323_6853df28a0ae6af2884246a8_life%20365%20logo%20copy.png",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:33:32.568Z",
+      "status": "ok"
+    },
+    {
+      "domain": "littlebit.ch",
+      "names": [
+        "Littlebit Technology AG"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:16.087Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.littlebit.ch/media/favicon/websites/1/favicon.ico: trop petit (16px)",
+        "https://www.littlebit.ch/apple-touch-icon.png: HTTP 404",
+        "https://www.littlebit.ch/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "made-in-china.com",
+      "names": [
+        "Made-in-China.com"
+      ],
+      "source": "https://www.made-in-china.com/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:08.264Z",
+      "status": "ok"
+    },
+    {
+      "domain": "megasur.es",
+      "names": [
+        "Megasur"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:41.421Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.megasur.es/: HTTP 403",
+        "https://www.megasur.es/apple-touch-icon.png: HTTP 403",
+        "https://www.megasur.es/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "merkandi.fr",
+      "names": [
+        "Merkandi"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:32.466Z",
+      "status": "not_found",
+      "tried": [
+        "https://merkandi.fr/: HTTP 403",
+        "https://merkandi.fr/apple-touch-icon.png: HTTP 403",
+        "https://merkandi.fr/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "michael-ag.de",
+      "names": [
+        "MICHAEL AG (Michael Telecom)"
+      ],
+      "source": "https://www.michael-ag.de/media/0/apple-touch-icon-180.webp",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:55.438Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobilax.fr",
+      "names": [
+        "Mobilax (ND Distribution)"
+      ],
+      "source": "https://www.mobilax.fr/_next/static/media/mobilax-home.85f17e22.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:31.796Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobiledepot.eu",
+      "names": [
+        "Mobile Depot Europe (Taqat BV / MJ Phone)"
+      ],
+      "source": "https://www.mobiledepot.eu/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:45.824Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobilepart.pl",
+      "names": [
+        "Mobilepart.pl"
+      ],
+      "source": "https://img.mobilepart.pl/img/favicon.ico?1723803758",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:33:57.662Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobileparts.shop",
+      "names": [
+        "Mobileparts.shop (2Service B.V.)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:29.727Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.mobileparts.shop: HTTP 403",
+        "https://www.mobileparts.shop/apple-touch-icon.png: Input buffer contains unsupported image format",
+        "https://www.mobileparts.shop/favicon.ico: Input buffer contains unsupported image format"
+      ]
+    },
+    {
+      "domain": "mobilesentrix.eu",
+      "names": [
+        "MobileSentrix Europe"
+      ],
+      "source": "https://static.mobilesentrix.eu/skin/frontend/msentrix2022/default/images/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:30.223Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobileswholesale.co.uk",
+      "names": [
+        "Mobiles Wholesale"
+      ],
+      "source": "https://mobileswholesale.co.uk/apple-touch-icon.png",
+      "originalWidth": 512,
+      "fetchedAt": "2026-10-15T17:34:02.722Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobileworld.at",
+      "names": [
+        "MobileWorld (Linz)"
+      ],
+      "source": "https://www.mobileworld.at/images/logos/favicon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:54.092Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobiltec24.de",
+      "names": [
+        "Mobiltec 24 GmbH"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:52.806Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.mobiltec24.de/favicon.ico: trop petit (16px)",
+        "https://www.mobiltec24.de/icon.gif: trop petit (16px)",
+        "https://www.mobiltec24.de/apple-touch-icon.png: HTTP 404"
+      ]
+    },
+    {
+      "domain": "mobinova.eu",
+      "names": [
+        "Mobinova — pièces iPhone"
+      ],
+      "source": "https://mobinova.eu/cdn/shop/files/parametres-des-engrenages.png?crop=center&height=32&v=1784659069&width=32",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:47.933Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobiparts.ro",
+      "names": [
+        "Mobiparts / GSMnet"
+      ],
+      "source": "https://www.mobiparts.ro/favicon.ico",
+      "originalWidth": 256,
+      "fetchedAt": "2026-10-15T17:33:32.085Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mobistock.nl",
+      "names": [
+        "Mobistock BV"
+      ],
+      "source": "https://cdn.webshopapp.com/shops/317537/themes/183608/v/2373422/assets/favicon.ico?20240716111021",
+      "originalWidth": 3251,
+      "fetchedAt": "2026-10-15T17:33:46.696Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mouser.fr",
+      "names": [
+        "Mouser Electronics"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:55.546Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.mouser.fr/: The operation was aborted due to timeout",
+        "https://www.mouser.fr/apple-touch-icon.png: The operation was aborted due to timeout",
+        "https://www.mouser.fr/favicon.ico: The operation was aborted due to timeout"
+      ]
+    },
+    {
+      "domain": "mpsmobile.de",
+      "names": [
+        "mpsmobile GmbH"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:52.367Z",
+      "status": "not_found",
+      "tried": [
+        "https://mpsmobile.de/favicon.ico: trop petit (16px)",
+        "https://mpsmobile.de/apple-touch-icon.png: HTTP 404"
+      ]
+    },
+    {
+      "domain": "ms-gsm.de",
+      "names": [
+        "MS GSM GmbH"
+      ],
+      "source": "https://ms-gsm.de/wp-content/uploads/2023/07/cropped-favicon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:05.927Z",
+      "status": "ok"
+    },
+    {
+      "domain": "my.avnet.com",
+      "names": [
+        "Avnet EMEA (Avnet Abacus / Silica / EBV)"
+      ],
+      "source": "https://my.avnet.com/contenthandler/!ut/p/digest!QjlIGVcE314rCbR8UCCrkQ/dav/fs-type1/themes/Avnet_Stores/css/images/favicon.ico",
+      "originalWidth": 64,
+      "fetchedAt": "2026-10-15T17:34:24.610Z",
+      "status": "ok"
+    },
+    {
+      "domain": "mydestockage.com",
+      "names": [
+        "My Destockage"
+      ],
+      "source": "https://www.mydestockage.com/wp-content/uploads/2023/07/cropped-logo-mydestockage-300x300.jpg",
+      "originalWidth": 300,
+      "fetchedAt": "2026-10-15T17:34:43.523Z",
+      "status": "ok"
+    },
+    {
+      "domain": "nedis.com",
+      "names": [
+        "Nedis (Nedis Connect)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:40.678Z",
+      "status": "not_found",
+      "tried": [
+        "https://nedis.com/en-us/business: HTTP 403",
+        "https://nedis.com/apple-touch-icon.png: HTTP 403",
+        "https://nedis.com/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "netbid.com",
+      "names": [
+        "NetBid"
+      ],
+      "source": "https://www.netbid.com/apple-touch-icon.png?v=1",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:34.359Z",
+      "status": "ok"
+    },
+    {
+      "domain": "newaspect.nl",
+      "names": [
+        "New Aspect B.V."
+      ],
+      "source": "https://www.newaspect.nl/favicon.svg",
+      "originalWidth": 342,
+      "fetchedAt": "2026-10-15T17:34:05.540Z",
+      "status": "ok"
+    },
+    {
+      "domain": "nexar.com",
+      "names": [
+        "Nexar (API Octopart)"
+      ],
+      "source": "https://nexar.com/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:24.914Z",
+      "status": "ok"
+    },
+    {
+      "domain": "nowacell.pl",
+      "names": [
+        "Nowacell"
+      ],
+      "source": "https://nowacell.pl/media/39/6e/39/1789551564/nowacell-share.png?ts=1789551564",
+      "originalWidth": 1200,
+      "fetchedAt": "2026-10-15T17:33:53.412Z",
+      "status": "ok"
+    },
+    {
+      "domain": "omnicomp.de",
+      "names": [
+        "Omnicomp"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:55.932Z",
+      "status": "not_found",
+      "tried": [
+        "https://omnicomp.de/: fetch failed",
+        "https://omnicomp.de/apple-touch-icon.png: fetch failed",
+        "https://omnicomp.de/favicon.ico: fetch failed"
+      ]
+    },
+    {
+      "domain": "onlineveilingmeester.nl",
+      "names": [
+        "Onlineveilingmeester.nl"
+      ],
+      "source": "https://onlineveilingmeester.nl/assets/img/icons/favicons/favicon.ico",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:34:34.019Z",
+      "status": "ok"
+    },
+    {
+      "domain": "partnertele.com",
+      "names": [
+        "Partner Tele.com"
+      ],
+      "source": "https://partnertele.com/favicon.svg",
+      "originalWidth": 600,
+      "fetchedAt": "2026-10-15T17:33:52.030Z",
+      "status": "ok"
+    },
+    {
+      "domain": "pc-portatil.com",
+      "names": [
+        "PC-Portátil (mayorista informática segunda mano)"
+      ],
+      "source": "https://www.pc-portatil.com/stupload/stthemeeditor/7e88692d557761a6a94950e9cc17470a.png?1752349251",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:50.066Z",
+      "status": "ok"
+    },
+    {
+      "domain": "pc-ricondizionati.com",
+      "names": [
+        "PC Ricondizionati"
+      ],
+      "source": "https://www.pc-ricondizionati.com/wp-content/uploads/2026/09/logo-pc-ricondizionati-leggero.png",
+      "originalWidth": 400,
+      "fetchedAt": "2026-10-15T17:33:59.761Z",
+      "status": "ok"
+    },
+    {
+      "domain": "pcsww.com",
+      "names": [
+        "PCS Wireless (PCSDirect)"
+      ],
+      "source": "https://pcsww.com/wp-content/uploads/2025/12/cropped-PCS-favicon-512-c-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:00.212Z",
+      "status": "ok"
+    },
+    {
+      "domain": "phonemadrid.com",
+      "names": [
+        "PhoneMad (Renova PhoneMadrid S.L.)"
+      ],
+      "source": "https://www.phonemad.com/img/favicon.ico",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:33:50.973Z",
+      "status": "ok"
+    },
+    {
+      "domain": "pieces2mobile.com",
+      "names": [
+        "Pieces2Mobile"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:46.493Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.pieces2mobile.com/static/version1786679679/frontend/Smartwave/porto_child/fr_FR/Magento_Theme/favicon.ico: trop petit (16px)",
+        "https://www.pieces2mobile.com/apple-touch-icon.png: HTTP 404",
+        "https://www.pieces2mobile.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "planetoutlet.es",
+      "names": [
+        "Planet Outlet"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:49.325Z",
+      "status": "not_found",
+      "tried": [
+        "https://planetoutlet.es/: HTTP 403",
+        "https://planetoutlet.es/apple-touch-icon.png: HTTP 403",
+        "https://planetoutlet.es/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "portal.wortmann.de",
+      "names": [
+        "Wortmann AG (TERRA)"
+      ],
+      "source": "https://portal.wortmann.de/favicon.ico",
+      "originalWidth": 64,
+      "fetchedAt": "2026-10-15T17:33:38.396Z",
+      "status": "ok"
+    },
+    {
+      "domain": "portatilmovil.com",
+      "names": [
+        "Portatilmovil"
+      ],
+      "source": "https://www.portatilmovil.com/apple-touch-icon.png?1755673681",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:00.043Z",
+      "status": "ok"
+    },
+    {
+      "domain": "powerbookmedic.com",
+      "names": [
+        "PowerbookMedic"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:06.508Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.powerbookmedic.com/favicon.gif: trop petit (16px)",
+        "https://www.powerbookmedic.com/apple-touch-icon.png: HTTP 404",
+        "https://www.powerbookmedic.com/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "pro.backmarket.fr",
+      "names": [
+        "Back Market Pro"
+      ],
+      "source": "https://cdn.shopify.com/oxygen-v2/28380/14495/29879/4732358/assets/favicon--MaUjrW9.svg",
+      "originalWidth": 133,
+      "fetchedAt": "2026-10-15T17:33:27.336Z",
+      "status": "ok"
+    },
+    {
+      "domain": "pulledmacparts.nl",
+      "names": [
+        "Pulled Mac Parts (NL) — pièces MacBook d'origine"
+      ],
+      "source": "https://cdn.shopify.com/s/files/1/0981/0929/2928/files/apple-touch-icon.png?v=1787130097",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:47.417Z",
+      "status": "ok"
+    },
+    {
+      "domain": "puntoingrosso.it",
+      "names": [
+        "Punto Ingrosso"
+      ],
+      "source": "https://www.puntoingrosso.it/wp-content/uploads/2017/07/cropped-Accenture-Marketplace-Rules-Icon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:57.124Z",
+      "status": "ok"
+    },
+    {
+      "domain": "recommerce-group.com",
+      "names": [
+        "Recommerce Group"
+      ],
+      "source": "https://framerusercontent.com/images/0IHViT4VB5ti366Xz4SGkCj6vmI.png",
+      "originalWidth": 384,
+      "fetchedAt": "2026-10-15T17:33:26.867Z",
+      "status": "ok"
+    },
+    {
+      "domain": "refreshedapples.com",
+      "names": [
+        "Refreshed Apples"
+      ],
+      "source": "https://www.refreshedapples.com/cdn/shop/files/favicon.png?crop=center&height=32&v=1658221331&width=32",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:44.506Z",
+      "status": "ok"
+    },
+    {
+      "domain": "refurbly.se",
+      "names": [
+        "Refurbly (Wholesale)"
+      ],
+      "source": "https://www.refurbly.se/cdn/shop/files/refurbly-round-symbol-700x700.svg?crop=center&height=32&v=1759052006&width=32",
+      "originalWidth": 2917,
+      "fetchedAt": "2026-10-15T17:34:03.217Z",
+      "status": "ok"
+    },
+    {
+      "domain": "reichelt.com",
+      "names": [
+        "reichelt elektronik"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:17.421Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.reichelt.com/: HTTP 503",
+        "https://www.reichelt.com/apple-touch-icon.png: HTTP 503",
+        "https://www.reichelt.com/favicon.ico: HTTP 503"
+      ]
+    },
+    {
+      "domain": "repairoutlet.co.uk",
+      "names": [
+        "Repair Outlet (Cellcom Ltd)"
+      ],
+      "source": "https://repairoutlet.co.uk/cdn/shop/files/Untitled-2_copy_c779777f-49bc-41ae-86c7-9e4a03e7c11e_32x32.png?v=1653493542",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:34:04.755Z",
+      "status": "ok"
+    },
+    {
+      "domain": "repairsuniverse.com",
+      "names": [
+        "Repairs Universe"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:06.817Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.repairsuniverse.com/cdn/shop/t/39/assets/favicon.ico?v=135921377001724258061786660164: trop petit (16px)",
+        "https://www.repairsuniverse.com/apple-touch-icon.png: HTTP 404",
+        "https://www.repairsuniverse.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "repargsm.com",
+      "names": [
+        "ReparGSM"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:01.504Z",
+      "status": "not_found",
+      "tried": [
+        "https://repargsm.com/: HTTP 403",
+        "https://repargsm.com/apple-touch-icon.png: HTTP 403",
+        "https://repargsm.com/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "replacebase.co.uk",
+      "names": [
+        "ReplaceBase"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:29.242Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.replacebase.co.uk: HTTP 405",
+        "https://www.replacebase.co.uk/apple-touch-icon.png: HTTP 405",
+        "https://www.replacebase.co.uk/favicon.ico: HTTP 405"
+      ]
+    },
+    {
+      "domain": "repuestosmovil.es",
+      "names": [
+        "RepuestosMovil"
+      ],
+      "source": "https://repuestosmovil.es/wp-content/uploads/2018/02/favi.png",
+      "originalWidth": 80,
+      "fetchedAt": "2026-10-15T17:33:47.967Z",
+      "status": "ok"
+    },
+    {
+      "domain": "restposten.de",
+      "names": [
+        "Restposten.de"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:36.571Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.restposten.de/img/favicon.ico: trop petit (16px)",
+        "https://www.restposten.de/apple-touch-icon.png: HTTP 404",
+        "https://www.restposten.de/favicon.ico: trop petit (16px)"
+      ]
+    },
+    {
+      "domain": "retoure-paletten.de",
+      "names": [
+        "Elektronik Sale (retoure-paletten.de)"
+      ],
+      "source": "https://retoure-paletten.de/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:37.706Z",
+      "status": "ok"
+    },
+    {
+      "domain": "retouren.io",
+      "names": [
+        "Retouren.io"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:37.818Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.retouren.io/apple-touch-icon.png: HTTP 404",
+        "https://www.retouren.io/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "retourendirekt.de",
+      "names": [
+        "RetourenDirekt (Auctum GmbH)"
+      ],
+      "source": "https://retourendirekt.de/apple-icon.png?42451020aa4606d5",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:56.289Z",
+      "status": "ok"
+    },
+    {
+      "domain": "rewa.tech",
+      "names": [
+        "REWA EU (avec GSM Parts Center)"
+      ],
+      "source": "https://1956e4a0.delivery.rocketcdn.me/wp-content/uploads/2023/08/android-chrome-512x512-1-300x300.png",
+      "originalWidth": 300,
+      "fetchedAt": "2026-10-15T17:33:29.751Z",
+      "status": "ok"
+    },
+    {
+      "domain": "rutronik24.com",
+      "names": [
+        "Rutronik (Rutronik24)"
+      ],
+      "source": "https://www.rutronik24.com/assets/default/images/apple-touch-icon.png",
+      "originalWidth": 140,
+      "fetchedAt": "2026-10-15T17:34:19.057Z",
+      "status": "ok"
+    },
+    {
+      "domain": "serviphone.net",
+      "names": [
+        "Mobilex (Serviphone)"
+      ],
+      "source": "https://mobilex.es/upload/stthemeeditor/832a973545e531e6de9d03da207888c5.png?1716905618",
+      "originalWidth": 500,
+      "fetchedAt": "2026-10-15T17:33:50.307Z",
+      "status": "ok"
+    },
+    {
+      "domain": "servisnidily.cz",
+      "names": [
+        "Servisní díly (servisnidily.cz)"
+      ],
+      "source": "https://i00.eu/img/510/192x192t/bti6k29q/27695.png",
+      "originalWidth": 192,
+      "fetchedAt": "2026-10-15T17:33:54.138Z",
+      "status": "ok"
+    },
+    {
+      "domain": "shop-technoworld.eu",
+      "names": [
+        "Technoworld Reseller (TW Reseller)"
+      ],
+      "source": "https://www.shop-technoworld.eu/img/favicon.ico?1767773594",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:33:54.744Z",
+      "status": "ok"
+    },
+    {
+      "domain": "shop.smartchoice.ee",
+      "names": [
+        "SmartChoice"
+      ],
+      "source": "https://shop.smartchoice.ee/apple-icon.png?0473d6f0f4bdcad6",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:00.634Z",
+      "status": "ok"
+    },
+    {
+      "domain": "siewert-kau.de",
+      "names": [
+        "Siewert & Kau Technologies Vertriebs GmbH"
+      ],
+      "source": "https://siewert-kau.de/wp-content/uploads/2025/08/siewert_kau_favicon.png",
+      "originalWidth": 250,
+      "fetchedAt": "2026-10-15T17:34:11.589Z",
+      "status": "ok"
+    },
+    {
+      "domain": "sifar.it",
+      "names": [
+        "Sifar Group (groupe Esprinet)"
+      ],
+      "source": "https://www.sifar.it/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:31.646Z",
+      "status": "ok"
+    },
+    {
+      "domain": "smaaart.fr",
+      "names": [
+        "Smaaart (groupe Econocom)"
+      ],
+      "source": "https://smaaart.fr/img/favicon.ico?1733477751",
+      "originalWidth": 144,
+      "fetchedAt": "2026-10-15T17:33:27.375Z",
+      "status": "ok"
+    },
+    {
+      "domain": "smartgrade.fr",
+      "names": [
+        "SmartGrade (Samsung Service Pack)"
+      ],
+      "source": "https://i0.wp.com/smartgrade.fr/wp-content/uploads/2023/07/cropped-smartgrade-favicon.png?fit=180%2C180&",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:33.784Z",
+      "status": "ok"
+    },
+    {
+      "domain": "smartpart4u.de",
+      "names": [
+        "smartpart4u (JH Internet GmbH)"
+      ],
+      "source": "https://www.smartpart4u.de/media/image/e6/4c/84/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:33.935Z",
+      "status": "ok"
+    },
+    {
+      "domain": "smartphoneitalia.it",
+      "names": [
+        "Smartphone Italia Srl"
+      ],
+      "source": "https://smartphoneitalia.it/img/favicon.ico?1767863305",
+      "originalWidth": 200,
+      "fetchedAt": "2026-10-15T17:33:57.366Z",
+      "status": "ok"
+    },
+    {
+      "domain": "sosav.fr",
+      "names": [
+        "SOSav Pro"
+      ],
+      "source": "https://www.sosav.fr/img/favicon.ico?1685545602",
+      "originalWidth": 128,
+      "fetchedAt": "2026-10-15T17:33:42.332Z",
+      "status": "ok"
+    },
+    {
+      "domain": "spainsellers.com",
+      "names": [
+        "Spainsellers (Microrepuestos S.L.U.)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:50.881Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.spainsellers.com/img/favicon.ico?1791994707: trop petit (16px)",
+        "https://www.spainsellers.com/apple-touch-icon.png: HTTP 404",
+        "https://www.spainsellers.com/favicon.ico: HTTP 404"
+      ]
+    },
+    {
+      "domain": "stocklear.fr",
+      "names": [
+        "Stocklear"
+      ],
+      "source": "https://stocklear.fr/wp-images/favicon/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:32.722Z",
+      "status": "ok"
+    },
+    {
+      "domain": "stockmarketplace.co.uk",
+      "names": [
+        "StockSeller (stockmarketplace.co.uk)"
+      ],
+      "source": "https://stockmarketplace.co.uk/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:34:35.803Z",
+      "status": "ok"
+    },
+    {
+      "domain": "subastalotes.com",
+      "names": [
+        "Subastalotes"
+      ],
+      "source": "https://subastalotes.com/wp-content/uploads/2025/04/favicon-devoluciones-de-amazon.png",
+      "originalWidth": 78,
+      "fetchedAt": "2026-10-15T17:33:50.412Z",
+      "status": "ok"
+    },
+    {
+      "domain": "surplex.com",
+      "names": [
+        "Surplex (powered by TBAuctions)"
+      ],
+      "source": "https://www.surplex.com/assets/favicons/favicon-192x192.png",
+      "originalWidth": 192,
+      "fetchedAt": "2026-10-15T17:34:33.200Z",
+      "status": "ok"
+    },
+    {
+      "domain": "tecnofixinformatica.com",
+      "names": [
+        "Tecnofix Informática (Alicante)"
+      ],
+      "source": "https://www.tecnofixinformatica.com/wp-content/uploads/2025/04/cropped-technofix_favicon-180x180.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:49.015Z",
+      "status": "ok"
+    },
+    {
+      "domain": "teknikdelar.se",
+      "names": [
+        "Teknikdelar (Spares Nordic, groupe Clas Ohlson)"
+      ],
+      "source": "https://www.teknikdelar.se/favicon.ico",
+      "originalWidth": 800,
+      "fetchedAt": "2026-10-15T17:34:08.768Z",
+      "status": "ok"
+    },
+    {
+      "domain": "telefabryka.com",
+      "names": [
+        "Telefabryka (Telefactory)"
+      ],
+      "source": "https://telefabryka.com/icon-192.png",
+      "originalWidth": 192,
+      "fetchedAt": "2026-10-15T17:34:03.653Z",
+      "status": "ok"
+    },
+    {
+      "domain": "telehurt.pl",
+      "names": [
+        "TELEHURT"
+      ],
+      "source": "https://telehurt.pl/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:58.565Z",
+      "status": "ok"
+    },
+    {
+      "domain": "telepart.com",
+      "names": [
+        "TelePart Distribution GmbH"
+      ],
+      "source": "https://www.telepart.com/assets/favicon.ico",
+      "originalWidth": 32,
+      "fetchedAt": "2026-10-15T17:33:52.384Z",
+      "status": "ok"
+    },
+    {
+      "domain": "telforceone.pl",
+      "names": [
+        "TelForceOne S.A."
+      ],
+      "source": "https://www.telforceone.pl/favicon.ico",
+      "originalWidth": 48,
+      "fetchedAt": "2026-10-15T17:34:04.280Z",
+      "status": "ok"
+    },
+    {
+      "domain": "thephonehub.eu",
+      "names": [
+        "ThePhoneHub"
+      ],
+      "source": "https://www.thephonehub.eu/assets/icon-512.png",
+      "originalWidth": 512,
+      "fetchedAt": "2026-10-15T17:33:59.294Z",
+      "status": "ok"
+    },
+    {
+      "domain": "tme.eu",
+      "names": [
+        "TME (Transfer Multisort Elektronik)"
+      ],
+      "source": "https://www.tme.eu/original/icon-192x192.png",
+      "originalWidth": 192,
+      "fetchedAt": "2026-10-15T17:34:16.028Z",
+      "status": "ok"
+    },
+    {
+      "domain": "tr-vertrieb.de",
+      "names": [
+        "TR Vertriebs GmbH"
+      ],
+      "source": "https://www.tr-vertrieb.de/apple-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:51.515Z",
+      "status": "ok"
+    },
+    {
+      "domain": "troostwijkauctions.com",
+      "names": [
+        "Troostwijk Auctions"
+      ],
+      "source": "https://www.troostwijkauctions.com/assets/favicons/favicon-192x192.png",
+      "originalWidth": 192,
+      "fetchedAt": "2026-10-15T17:33:35.542Z",
+      "status": "ok"
+    },
+    {
+      "domain": "utopya.fr",
+      "names": [
+        "Utopya"
+      ],
+      "source": "https://www.utopya.fr/apple-touch-icon.png",
+      "originalWidth": 180,
+      "fetchedAt": "2026-10-15T17:33:30.750Z",
+      "status": "ok"
+    },
+    {
+      "domain": "vavato.com",
+      "names": [
+        "Vavato"
+      ],
+      "source": "https://www.vavato.com/assets/favicons/favicon-192x192.png",
+      "originalWidth": 192,
+      "fetchedAt": "2026-10-15T17:33:35.843Z",
+      "status": "ok"
+    },
+    {
+      "domain": "westcoast.co.uk",
+      "names": [
+        "Westcoast"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:33:40.703Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.westcoast.co.uk/: HTTP 403",
+        "https://www.westcoast.co.uk/apple-touch-icon.png: HTTP 403",
+        "https://www.westcoast.co.uk/favicon.ico: HTTP 403"
+      ]
+    },
+    {
+      "domain": "wholesaleclearance.co.uk",
+      "names": [
+        "Wholesale Clearance UK"
+      ],
+      "source": "https://www.wholesaleclearance.co.uk/images/apple-touch-icon-114.png",
+      "originalWidth": 114,
+      "fetchedAt": "2026-10-15T17:33:34.641Z",
+      "status": "ok"
+    },
+    {
+      "domain": "zentrada.de",
+      "names": [
+        "zentrada (zentrada.network)"
+      ],
+      "source": null,
+      "fetchedAt": "2026-10-15T17:34:42.109Z",
+      "status": "not_found",
+      "tried": [
+        "https://www.zentrada.com/de/favicon.ico: trop petit (16px)",
+        "https://www.zentrada.com/apple-touch-icon.png: Input buffer contains unsupported image format",
+        "https://www.zentrada.com/favicon.ico: trop petit (16px)"
+      ]
+    }
+  ]
+}
