@@ -1,7 +1,7 @@
 {
   "generatedAt": "2026-10-15T17:35:04.065Z",
   "total": 200,
-  "found": 143,
+  "found": 139,
   "entries": [
     {
       "domain": "2repair.parts",
@@ -1163,7 +1163,8 @@
       "source": "https://www.itp-technologie.com/wp-content/uploads/2020/08/favicon-32x32.jpg",
       "originalWidth": 32,
       "fetchedAt": "2026-10-15T17:33:42.957Z",
-      "status": "ok"
+      "status": "rejected_quality",
+      "rejectedReason": "icône 32 px trop pixellisée"
     },
     {
       "domain": "itscope.com",
@@ -1363,7 +1364,8 @@
       "source": "https://img.mobilepart.pl/img/favicon.ico?1723803758",
       "originalWidth": 48,
       "fetchedAt": "2026-10-15T17:33:57.662Z",
-      "status": "ok"
+      "status": "rejected_quality",
+      "rejectedReason": "icône 32 px trop pixellisée"
     },
     {
       "domain": "mobileparts.shop",
@@ -1674,7 +1676,8 @@
       "source": "https://portal.wortmann.de/favicon.ico",
       "originalWidth": 64,
       "fetchedAt": "2026-10-15T17:33:38.396Z",
-      "status": "ok"
+      "status": "rejected_quality",
+      "rejectedReason": "icône générique du portail, pas la marque"
     },
     {
       "domain": "portatilmovil.com",
@@ -1858,7 +1861,8 @@
       "source": "https://retoure-paletten.de/apple-touch-icon.png",
       "originalWidth": 180,
       "fetchedAt": "2026-10-15T17:34:37.706Z",
-      "status": "ok"
+      "status": "rejected_quality",
+      "rejectedReason": "icône illisible"
     },
     {
       "domain": "retouren.io",

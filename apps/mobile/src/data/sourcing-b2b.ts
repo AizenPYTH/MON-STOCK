@@ -105,3 +105,14 @@ export const ISSUE_KIND_LABEL: Record<ImportJobDetailDTO["issues"][number]["kind
   unrecognized: "Produit non reconnu",
   warning: "Remarque",
 };
+
+/** Rapport d'erreurs d'un import, en CSV (séparateur « ; », guillemets échappés, BOM pour Excel). Pur. */
+export function issuesCsv(job: Pick<ImportJobDetailDTO, "issues" | "fileName" | "supplierName" | "startedAt">): string {
+  const esc = (v: unknown) => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const head = ["ligne", "type", "reference", "message"].join(";");
+  const lines = job.issues.map((i) => [i.line ?? "", ISSUE_KIND_LABEL[i.kind] ?? i.kind, i.reference ?? "", i.message].map(esc).join(";"));
+  return `﻿${head}\n${lines.join("\n")}\n`;
+}

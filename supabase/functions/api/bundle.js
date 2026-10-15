@@ -19715,13 +19715,14 @@ var init_pro_accounts = __esm({
 function accessMethodsOf(e, facts = NO_FACTS) {
   const out = [];
   if (ABANDONED[e.key]) return ["not_automatable"];
+  if (MANUAL_ONLY[e.key]) return e.proAccountRequired ? ["pro_account_first", "not_automatable"] : ["not_automatable"];
   if (CONNECTOR_BY_KEY[e.key]) out.push("official_api");
   if (e.key === "ebay-browse") out.push("oauth");
   if (facts.publicAvailable) out.push("public_integrated");
   if (has(e, "feed", "edi")) out.push("catalog_feed");
   if (has(e, "manual_download") || has(e, "pro_portal") && has(e, "manual_download")) out.push("portal_export");
   if (has(e, "manual_download", "email_pricelist", "pro_portal", "feed", "public_catalog") || e.proAccountRequired) out.push("manual_import");
-  if (has(e, "api") && !CONNECTOR_BY_KEY[e.key]) out.push("custom_development");
+  if (has(e, "api") && !CONNECTOR_BY_KEY[e.key] && e.key !== "ebay-browse") out.push("custom_development");
   if (e.proAccountRequired) out.push("pro_account_first");
   const automatable = out.some((m) => m !== "pro_account_first");
   if (!automatable) out.push("not_automatable");
@@ -19801,7 +19802,7 @@ function primaryActionOf(input) {
   if (status === "commercial_access_needed") return { kind: "get_pro_access", label: "Demander l'acc\xE8s", outcome: "E-mail de demande pr\xEAt : l'int\xE9gration sera possible apr\xE8s r\xE9ception des acc\xE8s." };
   return { kind: "open_site", label: "Ouvrir le site fournisseur", outcome: "Aucune int\xE9gration automatisable aujourd'hui : consultation sur leur site." };
 }
-var ABANDONED, CONNECTOR_BY_KEY, MAJOR_BRANDS, NO_FACTS, has;
+var ABANDONED, MANUAL_ONLY, CONNECTOR_BY_KEY, MAJOR_BRANDS, NO_FACTS, has;
 var init_supplier_registry = __esm({
   "src/domain/sourcing/supplier-registry.ts"() {
     "use strict";
@@ -19810,29 +19811,31 @@ var init_supplier_registry = __esm({
       "bstock-europe": "Conditions d'utilisation : robots, scrapers et extraction de donn\xE9es interdits.",
       "liquidity-services": "Conditions d'utilisation : robots, scrapers et extraction de donn\xE9es interdits."
     };
+    MANUAL_ONLY = {
+      gsmexchange: "Plateforme de n\xE9goce entre membres, sans API ni export : consultation sur leur site.",
+      merkandi: "Annuaire payant de lots, sans flux acheteur : accord \xE9crit requis avant toute automatisation."
+    };
     CONNECTOR_BY_KEY = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
     MAJOR_BRANDS = /* @__PURE__ */ new Set([
       "foxway",
       "thephonehub",
       "distrihub",
       "mobilax",
-      "mps-mobile",
+      "mpsmobile",
       "mobistock",
       "ingram-micro-fr",
       "bigbuy",
-      "td-synnex",
       "td-synnex-fr",
       "esprinet",
-      "exertis",
+      "exertis-fr",
       "komsa",
       "mobilesentrix-eu",
       "foneday",
       "callisto-alchemy",
-      "also",
-      "also-france",
+      "also-fr",
       "4phones",
       "lcd-phone",
-      "tr-vertrieb",
+      "tr-vertriebs-gmbh",
       "refreshed-apples",
       "gsmexchange",
       "merkandi"

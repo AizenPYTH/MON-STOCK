@@ -1,4 +1,3 @@
-/* eslint-disable */
 // FICHIER GÉNÉRÉ par scripts/fetch-supplier-logos.mjs — ne pas modifier à la main.
 // Logos récupérés sur le site officiel de chaque fournisseur (2026-10-15), usage d'identification uniquement.
 import type { ImageSourcePropType } from "react-native";
@@ -72,7 +71,6 @@ export const SUPPLIER_LOGOS: Readonly<Record<string, { image: ImageSourcePropTyp
   "ifixit.com": { image: require("../../assets/suppliers/ifixit.com.png"), source: "https://assets.cdn.ifixit.com/static/icons/ifixit/apple-touch-icon-180x180.png" },
   "incomgroup.pl": { image: require("../../assets/suppliers/incomgroup.pl.png"), source: "https://www.incomgroup.pl/wp-content/uploads/2025/11/favicon.png" },
   "ipartspro.eu": { image: require("../../assets/suppliers/ipartspro.eu.png"), source: "https://ipartspro.eu/apple-icon?b42ff415a3fa7ca7" },
-  "itp-technologie.com": { image: require("../../assets/suppliers/itp-technologie.com.png"), source: "https://www.itp-technologie.com/wp-content/uploads/2020/08/favicon-32x32.jpg" },
   "itscope.com": { image: require("../../assets/suppliers/itscope.com.png"), source: "https://www.itscope.com/wp-content/uploads/2021/09/ITscope-Icon.svg" },
   "jarltech.com": { image: require("../../assets/suppliers/jarltech.com.png"), source: "https://www.jarltech.com/themes/custom/general_base/img/favicon/apple-touch-icon.png" },
   "jobalots.com": { image: require("../../assets/suppliers/jobalots.com.png"), source: "https://jobalots.com/favicon.ico?favicon.3nzsqd864kol9.ico?dpl=17fd2900d7cf" },
@@ -85,7 +83,6 @@ export const SUPPLIER_LOGOS: Readonly<Record<string, { image: ImageSourcePropTyp
   "michael-ag.de": { image: require("../../assets/suppliers/michael-ag.de.png"), source: "https://www.michael-ag.de/media/0/apple-touch-icon-180.webp" },
   "mobilax.fr": { image: require("../../assets/suppliers/mobilax.fr.png"), source: "https://www.mobilax.fr/_next/static/media/mobilax-home.85f17e22.ico" },
   "mobiledepot.eu": { image: require("../../assets/suppliers/mobiledepot.eu.png"), source: "https://www.mobiledepot.eu/apple-touch-icon.png" },
-  "mobilepart.pl": { image: require("../../assets/suppliers/mobilepart.pl.png"), source: "https://img.mobilepart.pl/img/favicon.ico?1723803758" },
   "mobilesentrix.eu": { image: require("../../assets/suppliers/mobilesentrix.eu.png"), source: "https://static.mobilesentrix.eu/skin/frontend/msentrix2022/default/images/apple-touch-icon.png" },
   "mobileswholesale.co.uk": { image: require("../../assets/suppliers/mobileswholesale.co.uk.png"), source: "https://mobileswholesale.co.uk/apple-touch-icon.png" },
   "mobileworld.at": { image: require("../../assets/suppliers/mobileworld.at.png"), source: "https://www.mobileworld.at/images/logos/favicon.png" },
@@ -105,7 +102,6 @@ export const SUPPLIER_LOGOS: Readonly<Record<string, { image: ImageSourcePropTyp
   "pc-ricondizionati.com": { image: require("../../assets/suppliers/pc-ricondizionati.com.png"), source: "https://www.pc-ricondizionati.com/wp-content/uploads/2026/09/logo-pc-ricondizionati-leggero.png" },
   "pcsww.com": { image: require("../../assets/suppliers/pcsww.com.png"), source: "https://pcsww.com/wp-content/uploads/2025/12/cropped-PCS-favicon-512-c-180x180.png" },
   "phonemadrid.com": { image: require("../../assets/suppliers/phonemadrid.com.png"), source: "https://www.phonemad.com/img/favicon.ico" },
-  "portal.wortmann.de": { image: require("../../assets/suppliers/portal.wortmann.de.png"), source: "https://portal.wortmann.de/favicon.ico" },
   "portatilmovil.com": { image: require("../../assets/suppliers/portatilmovil.com.png"), source: "https://www.portatilmovil.com/apple-touch-icon.png?1755673681" },
   "pro.backmarket.fr": { image: require("../../assets/suppliers/pro.backmarket.fr.png"), source: "https://cdn.shopify.com/oxygen-v2/28380/14495/29879/4732358/assets/favicon--MaUjrW9.svg" },
   "pulledmacparts.nl": { image: require("../../assets/suppliers/pulledmacparts.nl.png"), source: "https://cdn.shopify.com/s/files/1/0981/0929/2928/files/apple-touch-icon.png?v=1787130097" },
@@ -115,7 +111,6 @@ export const SUPPLIER_LOGOS: Readonly<Record<string, { image: ImageSourcePropTyp
   "refurbly.se": { image: require("../../assets/suppliers/refurbly.se.png"), source: "https://www.refurbly.se/cdn/shop/files/refurbly-round-symbol-700x700.svg?crop=center&height=32&v=1759052006&width=32" },
   "repairoutlet.co.uk": { image: require("../../assets/suppliers/repairoutlet.co.uk.png"), source: "https://repairoutlet.co.uk/cdn/shop/files/Untitled-2_copy_c779777f-49bc-41ae-86c7-9e4a03e7c11e_32x32.png?v=1653493542" },
   "repuestosmovil.es": { image: require("../../assets/suppliers/repuestosmovil.es.png"), source: "https://repuestosmovil.es/wp-content/uploads/2018/02/favi.png" },
-  "retoure-paletten.de": { image: require("../../assets/suppliers/retoure-paletten.de.png"), source: "https://retoure-paletten.de/apple-touch-icon.png" },
   "retourendirekt.de": { image: require("../../assets/suppliers/retourendirekt.de.png"), source: "https://retourendirekt.de/apple-icon.png?42451020aa4606d5" },
   "rewa.tech": { image: require("../../assets/suppliers/rewa.tech.png"), source: "https://1956e4a0.delivery.rocketcdn.me/wp-content/uploads/2023/08/android-chrome-512x512-1-300x300.png" },
   "rutronik24.com": { image: require("../../assets/suppliers/rutronik24.com.png"), source: "https://www.rutronik24.com/assets/default/images/apple-touch-icon.png" },

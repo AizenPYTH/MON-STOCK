@@ -25,6 +25,13 @@ const MANIFEST = path.join(ROOT, "docs/sourcing/supplier-logos-manifest.json");
 const UA = "MonStockLogoFetcher/1.0 (+https://github.com/AizenPYTH/MON-STOCK; logo d'identification)";
 const MAX_BYTES = 1_500_000;
 const SIZE = 128;
+/** Icônes écartées après contrôle visuel (trop pixellisées ou génériques) : le fournisseur garde ses initiales. */
+const REJECTED = new Map(Object.entries({
+  "mobilepart.pl": "icône 32 px trop pixellisée",
+  "itp-technologie.com": "icône 32 px trop pixellisée",
+  "portal.wortmann.de": "icône générique du portail, pas la marque",
+  "retoure-paletten.de": "icône illisible",
+}));
 
 const domainOf = (url) => {
   try {
@@ -125,6 +132,10 @@ async function main() {
   const queue = [...list];
   const worker = async () => {
     for (let s = queue.shift(); s; s = queue.shift()) {
+      if (REJECTED.has(s.domain)) {
+        manifest.push({ domain: s.domain, names: s.names, source: null, fetchedAt: new Date().toISOString(), status: "rejected_quality", rejectedReason: REJECTED.get(s.domain) });
+        continue;
+      }
       const r = await logoFor(s);
       if (r.png) {
         writeFileSync(path.join(OUT_DIR, `${s.domain}.png`), r.png);
@@ -143,7 +154,7 @@ async function main() {
   const lines = ok.map((m) => `  ${JSON.stringify(m.domain)}: { image: require("../../assets/suppliers/${m.domain}.png"), source: ${JSON.stringify(m.source)} },`);
   writeFileSync(
     REGISTRY,
-    `/* eslint-disable */\n// FICHIER GÉNÉRÉ par scripts/fetch-supplier-logos.mjs — ne pas modifier à la main.\n// Logos récupérés sur le site officiel de chaque fournisseur (${new Date().toISOString().slice(0, 10)}), usage d'identification uniquement.\nimport type { ImageSourcePropType } from "react-native";\n\nexport const SUPPLIER_LOGOS: Readonly<Record<string, { image: ImageSourcePropType; source: string }>> = {\n${lines.join("\n")}\n};\n`,
+    `// FICHIER GÉNÉRÉ par scripts/fetch-supplier-logos.mjs — ne pas modifier à la main.\n// Logos récupérés sur le site officiel de chaque fournisseur (${new Date().toISOString().slice(0, 10)}), usage d'identification uniquement.\nimport type { ImageSourcePropType } from "react-native";\n\nexport const SUPPLIER_LOGOS: Readonly<Record<string, { image: ImageSourcePropType; source: string }>> = {\n${lines.join("\n")}\n};\n`,
   );
   console.log(`${ok.length}/${manifest.length} logos officiels récupérés.`);
 }

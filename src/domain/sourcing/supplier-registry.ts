@@ -83,13 +83,19 @@ export const ABANDONED: Readonly<Record<string, string>> = {
   "liquidity-services": "Conditions d'utilisation : robots, scrapers et extraction de données interdits.",
 };
 
+/** Consultation sur leur site uniquement : ni export, ni flux, ni automatisation autorisée sans accord écrit. */
+export const MANUAL_ONLY: Readonly<Record<string, string>> = {
+  gsmexchange: "Plateforme de négoce entre membres, sans API ni export : consultation sur leur site.",
+  merkandi: "Annuaire payant de lots, sans flux acheteur : accord écrit requis avant toute automatisation.",
+};
+
 /** Connecteurs API réellement implémentés dans MON STOCK, par fiche de l'annuaire. */
 export const CONNECTOR_BY_KEY: Readonly<Record<string, "bigbuy" | "ingram-micro">> = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
 
 /** Marques de référence du secteur (notoriété en France / Europe) : critère de priorité, pas de compétitivité. */
 export const MAJOR_BRANDS = new Set([
-  "foxway", "thephonehub", "distrihub", "mobilax", "mps-mobile", "mobistock", "ingram-micro-fr", "bigbuy", "td-synnex", "td-synnex-fr", "esprinet", "exertis", "komsa",
-  "mobilesentrix-eu", "foneday", "callisto-alchemy", "also", "also-france", "4phones", "lcd-phone", "tr-vertrieb", "refreshed-apples", "gsmexchange", "merkandi",
+  "foxway", "thephonehub", "distrihub", "mobilax", "mpsmobile", "mobistock", "ingram-micro-fr", "bigbuy", "td-synnex-fr", "esprinet", "exertis-fr", "komsa",
+  "mobilesentrix-eu", "foneday", "callisto-alchemy", "also-fr", "4phones", "lcd-phone", "tr-vertriebs-gmbh", "refreshed-apples", "gsmexchange", "merkandi",
 ]);
 
 export interface RegistryEntryInput {
@@ -124,13 +130,15 @@ const has = (e: RegistryEntryInput, ...modes: string[]) => e.accessModes.some((m
 export function accessMethodsOf(e: RegistryEntryInput, facts: Pick<RegistryOrgFacts, "publicAvailable"> = NO_FACTS): AccessMethod[] {
   const out: AccessMethod[] = [];
   if (ABANDONED[e.key]) return ["not_automatable"];
+  if (MANUAL_ONLY[e.key]) return e.proAccountRequired ? ["pro_account_first", "not_automatable"] : ["not_automatable"];
   if (CONNECTOR_BY_KEY[e.key]) out.push("official_api");
   if (e.key === "ebay-browse") out.push("oauth");
   if (facts.publicAvailable) out.push("public_integrated");
   if (has(e, "feed", "edi")) out.push("catalog_feed");
   if (has(e, "manual_download") || (has(e, "pro_portal") && has(e, "manual_download"))) out.push("portal_export");
   if (has(e, "manual_download", "email_pricelist", "pro_portal", "feed", "public_catalog") || e.proAccountRequired) out.push("manual_import");
-  if (has(e, "api") && !CONNECTOR_BY_KEY[e.key]) out.push("custom_development");
+  // API annoncée sans connecteur MON STOCK (eBay : API Browse déjà intégrée via la bibliothèque)
+  if (has(e, "api") && !CONNECTOR_BY_KEY[e.key] && e.key !== "ebay-browse") out.push("custom_development");
   if (e.proAccountRequired) out.push("pro_account_first");
   const automatable = out.some((m) => m !== "pro_account_first");
   if (!automatable) out.push("not_automatable");

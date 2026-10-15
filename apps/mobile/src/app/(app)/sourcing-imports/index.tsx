@@ -1,5 +1,5 @@
 import { RefreshControl } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import type { ImportJobDTO } from "@/features/mobile-api/contract";
 import { useImportJobs } from "~/data/hooks";
 import { IMPORT_STATUS_LABEL } from "~/data/sourcing-b2b";
@@ -17,7 +17,8 @@ export function countsText(c: ImportJobDTO["counts"]): string {
 
 /** Historique des imports de l'organisation (fichiers et flux), du plus récent au plus ancien. */
 export default function ImportHistoryScreen() {
-  const jobs = useImportJobs();
+  const { supplierId } = useLocalSearchParams<{ supplierId?: string }>();
+  const jobs = useImportJobs(supplierId || undefined);
   const header = <DetailHeader parentLabel="Mes sources" title="Historique des imports" />;
   if (jobs.isPending)
     return (

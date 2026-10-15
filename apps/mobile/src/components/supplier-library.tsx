@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Linking, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -51,7 +51,7 @@ export function useReduceMotion(): boolean {
 /** Apparition discrète (fondu + 8 px), décalée pour les premiers éléments ; instantanée si l'animation est réduite. */
 export function FadeIn({ index = 0, children }: { index?: number; children: ReactNode }) {
   const reduce = useReduceMotion();
-  const v = useRef(new Animated.Value(0)).current;
+  const [v] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (reduce) {
       v.setValue(1);
@@ -65,7 +65,7 @@ export function FadeIn({ index = 0, children }: { index?: number; children: Reac
 /** Étoile des favoris : retour visuel immédiat (léger rebond) et haptique. */
 export function FavoriteButton({ active, onPress, name }: { active: boolean; onPress: () => void; name: string }) {
   const reduce = useReduceMotion();
-  const scale = useRef(new Animated.Value(1)).current;
+  const [scale] = useState(() => new Animated.Value(1));
   const press = () => {
     onPress();
     void Haptics.selectionAsync().catch(() => {});

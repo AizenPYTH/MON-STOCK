@@ -1,10 +1,10 @@
-import { View } from "react-native";
+import { Share, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useImportJob } from "~/data/hooks";
-import { IMPORT_STATUS_LABEL, ISSUE_KIND_LABEL } from "~/data/sourcing-b2b";
+import { IMPORT_STATUS_LABEL, ISSUE_KIND_LABEL, issuesCsv } from "~/data/sourcing-b2b";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatNumber } from "~/lib/format";
-import { Card, DetailHeader, ErrorState, Screen, SectionHeader, SkeletonList, StatusChip, Txt } from "~/components/ui";
+import { Button, Card, DetailHeader, ErrorState, Screen, SectionHeader, SkeletonList, StatusChip, Txt } from "~/components/ui";
 import { color, space } from "~/theme/tokens";
 
 /** Détail d'un import : compteurs et lignes ignorées avec leur raison (500 au maximum). */
@@ -60,6 +60,15 @@ export default function ImportJobScreen() {
       </Card>
       {j.truncated ? <Txt variant="label" color={color.dangerInk}>Fichier tronqué : seules les 5 000 premières lignes ont été traitées. Demandez un export filtré.</Txt> : null}
       <SectionHeader title={`Lignes à vérifier (${j.issues.length})`} />
+      {j.issues.length > 0 ? (
+        <Button
+          label="Exporter le rapport d'erreurs (CSV)"
+          variant="secondary"
+          compact
+          onPress={() => void Share.share({ title: `Rapport d'import ${j.supplierName ?? ""}`.trim(), message: issuesCsv(j) }).catch(() => {})}
+          testID="import-issues-export"
+        />
+      ) : null}
       {j.issues.length === 0 ? (
         <Txt variant="label">Aucune ligne ignorée.</Txt>
       ) : (

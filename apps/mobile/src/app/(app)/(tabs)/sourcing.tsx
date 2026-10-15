@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Pressable, RefreshControl, TextInput, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { ChevronRight, ExternalLink, KeyRound, Search, Truck } from "lucide-react-native";
-import { useSupplierSearch } from "~/data/hooks";
+import { useSupplierDirectory, useSupplierSearch } from "~/data/hooks";
+import { useSupplierFavorites } from "~/data/supplier-favorites";
+import { useActiveOrg } from "~/org/org-provider";
 import { STOCK_TEXT, type SimpleDealDTO, type SimpleOfferDTO, type SimpleRankedOfferDTO, type SimpleSearchDTO, type SimpleSupplierResultDTO } from "~/data/supplier-search";
 import { fontFamily } from "~/theme/typography";
 import { userMessage } from "~/lib/errors";
@@ -88,6 +90,7 @@ export default function SuppliersScreen() {
       </View>
 
       <ConnectAccountsCta />
+      <SourcingHub />
 
       {!submitted ? (
         <View style={{ gap: space[3] }}>
@@ -143,6 +146,39 @@ export default function SuppliersScreen() {
 
       <Button label="Gérer mes fournisseurs" variant="ghost" compact onPress={() => router.push("/sourcing-connections")} testID="manage-suppliers" />
     </Screen>
+  );
+}
+
+/** Accès rapides : bibliothèque, comptes, favoris, imports et erreurs à résoudre (compteurs réels). */
+function SourcingHub() {
+  const directory = useSupplierDirectory();
+  const { active } = useActiveOrg();
+  const { favorites } = useSupplierFavorites(active.organization.id);
+  const entries = directory.data?.entries ?? [];
+  const connected = entries.filter((e) => e.org?.status === "connected").length;
+  const errors = entries.filter((e) => e.org?.lastError).length;
+  const tiles: { label: string; value: string; onPress: () => void; tone?: "danger"; testID: string }[] = [
+    { label: "Bibliothèque", value: entries.length ? String(entries.length) : "—", onPress: () => router.push("/supplier-directory"), testID: "hub-library" },
+    { label: "Connectés", value: String(connected), onPress: () => router.push({ pathname: "/supplier-directory", params: { view: "connected" } }), testID: "hub-connected" },
+    { label: "Favoris", value: String(favorites.size), onPress: () => router.push({ pathname: "/supplier-directory", params: { view: "favorites" } }), testID: "hub-favorites" },
+    { label: "Imports", value: "↻", onPress: () => router.push("/sourcing-imports"), testID: "hub-imports" },
+    ...(errors ? [{ label: "À résoudre", value: String(errors), onPress: () => router.push("/sourcing-connections"), tone: "danger" as const, testID: "hub-errors" }] : []),
+  ];
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
+      {tiles.map((t) => (
+        <Pressable key={t.label} onPress={t.onPress} accessibilityRole="button" accessibilityLabel={`${t.label} : ${t.value}`} testID={t.testID} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
+          <View style={{ minWidth: 96, paddingVertical: space[2], paddingHorizontal: space[3], borderRadius: radius.lg, borderWidth: 1, borderColor: t.tone ? color.danger : color.line, backgroundColor: t.tone ? color.dangerSoft : color.surface, gap: 2 }}>
+            <Txt variant="headline" num color={t.tone ? color.dangerInk : color.ink}>
+              {t.value}
+            </Txt>
+            <Txt variant="label" color={t.tone ? color.dangerInk : color.ink2}>
+              {t.label}
+            </Txt>
+          </View>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }
 
