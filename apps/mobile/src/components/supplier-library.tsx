@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { AccessibilityInfo, Animated, Easing, Linking, Pressable, View } from "react-native";
+import { useState } from "react";
+import { Animated, Linking, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
@@ -10,7 +10,7 @@ import { useConnectProAccount, useSyncProAccount } from "~/data/hooks";
 import { mailtoLink } from "~/data/suppliers-pro";
 import { userMessage } from "~/lib/errors";
 import { safeExternalUrl } from "~/lib/url";
-import { BottomSheet, Button, StatusChip, TextField, Txt, useToast, type ChipTone } from "~/components/ui";
+import { BottomSheet, Button, StatusChip, TextField, Txt, useReduceMotion, useToast, type ChipTone } from "~/components/ui";
 import { color, space } from "~/theme/tokens";
 
 export { ACCESS_METHOD_LABEL, INTEGRATION_STATUS_LABEL, RELIABILITY_LABEL, SEGMENT_LABEL };
@@ -31,36 +31,8 @@ export const INTEGRATION_TONE: Record<DirectoryEntryDTO["registry"]["integration
   abandoned: "danger",
 };
 
-/** Préférence système « Réduire les animations » (lue une fois, puis suivie). */
-export function useReduceMotion(): boolean {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    void AccessibilityInfo.isReduceMotionEnabled()
-      .then((v) => alive && setReduce(v))
-      .catch(() => {});
-    const sub = AccessibilityInfo.addEventListener?.("reduceMotionChanged", (v: boolean) => setReduce(v));
-    return () => {
-      alive = false;
-      sub?.remove?.();
-    };
-  }, []);
-  return reduce;
-}
-
-/** Apparition discrète (fondu + 8 px), décalée pour les premiers éléments ; instantanée si l'animation est réduite. */
-export function FadeIn({ index = 0, children }: { index?: number; children: ReactNode }) {
-  const reduce = useReduceMotion();
-  const [v] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    if (reduce) {
-      v.setValue(1);
-      return;
-    }
-    Animated.timing(v, { toValue: 1, duration: 220, delay: Math.min(index, 8) * 35, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [reduce, index, v]);
-  return <Animated.View style={{ opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>{children}</Animated.View>;
-}
+// Mouvement partagé (une seule lecture de « Réduire les animations » pour toute l'application).
+export { FadeIn, useReduceMotion } from "~/components/ui/motion";
 
 /** Étoile des favoris : retour visuel immédiat (léger rebond) et haptique. */
 export function FavoriteButton({ active, onPress, name }: { active: boolean; onPress: () => void; name: string }) {

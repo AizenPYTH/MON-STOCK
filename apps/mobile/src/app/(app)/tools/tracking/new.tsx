@@ -7,7 +7,7 @@ import * as Haptics from "expo-haptics";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { canonicalTrackingNumber, CARRIER_LABEL, detectCarriers, extractTrackingFromScan, TRACKING_NUMBER_ERROR_LABEL, validateTrackingNumber, type CarrierCode, type ScannedTracking } from "@/domain/tools/tracking";
 import { FooterActions } from "~/components/calc-screen";
-import { AlertBanner, BottomSheet, Button, FilterChip, NightHeader, Screen, TextField, Txt, useToast } from "~/components/ui";
+import { AlertBanner, BottomSheet, Button, cardStyle, FilterChip, NightHeader, Screen, TextField, Txt, useToast } from "~/components/ui";
 import { useAddParcel, useOrdersForLink } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { color, space } from "~/theme/tokens";
@@ -186,7 +186,7 @@ export default function NewParcelScreen() {
         </Pressable>
       </View>
       {queue.length ? (
-        <View style={{ backgroundColor: color.bg, borderRadius: 16, overflow: "hidden" }} testID="tracking-queue">
+        <View style={[cardStyle, { overflow: "hidden" }]} testID="tracking-queue">
           <Txt variant="label" style={{ paddingHorizontal: space[4], paddingTop: space[3] }}>
             {queue.length} colis prêt{queue.length > 1 ? "s" : ""} à suivre
           </Txt>

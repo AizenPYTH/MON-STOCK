@@ -61,7 +61,7 @@ export function Screen({
   );
   if (!header)
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: color.surface }} edges={["top", "left", "right"]}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: color.bg }} edges={["top", "left", "right"]}>
         <StatusBar style="dark" />
         {body}
         {footer}
@@ -71,7 +71,7 @@ export function Screen({
     <SafeAreaView style={{ flex: 1, backgroundColor: color.brand }} edges={["left", "right"]}>
       <StatusBar style="light" />
       {header}
-      <View style={{ flex: 1, backgroundColor: color.surface, marginTop: overlap ? -space.bodyOverlap : 0, borderTopLeftRadius: overlap ? radius.body : 0, borderTopRightRadius: overlap ? radius.body : 0, overflow: "hidden" }}>
+      <View style={{ flex: 1, backgroundColor: color.bg, marginTop: overlap ? -space.bodyOverlap : 0, borderTopLeftRadius: overlap ? radius.body : 0, borderTopRightRadius: overlap ? radius.body : 0, overflow: "hidden" }}>
         {body}
         {footer}
       </View>
@@ -131,30 +131,40 @@ export const DetailHeader = markHeader(function DetailHeader({ parentLabel, righ
   return <NightHeader back={{ label: parentLabel, onPress: onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/today"))) }} right={right} title={title} sub={sub} hero={hero} />;
 });
 
-export function SectionHeader({ title, action }: { title: string; action?: { label: string; onPress: () => void } }) {
+export function SectionHeader({ title, action, count }: { title: string; action?: { label: string; onPress: () => void }; count?: number }) {
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: space[1] }}>
-      <Txt variant="overline" accessibilityRole="header">
-        {title}
-      </Txt>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: space[3], minHeight: 24 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 }}>
+        <Txt variant="section" accessibilityRole="header" numberOfLines={1}>
+          {title}
+        </Txt>
+        {count !== undefined ? (
+          <Txt variant="section" num color={color.ink2}>
+            {count}
+          </Txt>
+        ) : null}
+      </View>
       {action ? (
-        <Pressable accessibilityRole="button" onPress={action.onPress} hitSlop={10}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${action.label} : ${title}`} onPress={action.onPress} hitSlop={12} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 2, opacity: pressed ? 0.6 : 1 })}>
           <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
             {action.label}
           </Txt>
+          <ChevronRight size={14} color={color.ink} strokeWidth={2.4} />
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-export function Card({ children, padded = false, style, accessibilityLabel }: { children: ReactNode; padded?: boolean; style?: StyleProp<ViewStyle>; accessibilityLabel?: string }) {
+/** Carte v4 : blanche, filet fin, ombre très légère, rayon 14. */
+export const cardStyle: ViewStyle = { backgroundColor: color.card, borderRadius: radius.xl, borderWidth: 1, borderColor: color.line, ...shadow.card };
+
+export function Card({ children, padded = false, style, accessibilityLabel, testID }: { children: ReactNode; padded?: boolean; style?: StyleProp<ViewStyle>; accessibilityLabel?: string; testID?: string }) {
+  // L'ombre est portée par le cadre extérieur ; le contenu (et `style` : gap, direction…) est
+  // découpé à l'intérieur, pour que l'appui d'une ligne respecte les coins arrondis.
   return (
-    <View
-      accessibilityLabel={accessibilityLabel}
-      style={[{ backgroundColor: color.bg, borderRadius: radius.xl, overflow: "hidden" }, padded ? { padding: space[4] } : null, style]}
-    >
-      {children}
+    <View accessibilityLabel={accessibilityLabel} testID={testID} style={cardStyle}>
+      <View style={[{ borderRadius: radius.xl - 1, overflow: "hidden" }, padded ? { padding: space[4] } : null, style]}>{children}</View>
     </View>
   );
 }
@@ -191,8 +201,8 @@ export function ListRow({
         paddingHorizontal: space[4],
         minHeight: 60,
         backgroundColor: pressed ? color.surfacePressed : "transparent",
-        borderBottomWidth: last ? 0 : 2,
-        borderBottomColor: color.surface,
+        borderBottomWidth: last ? 0 : 1,
+        borderBottomColor: color.lineSoft,
       }}
     >
       {left}
@@ -245,7 +255,12 @@ export function RowFrame({ children, first, last }: { children: ReactNode; first
   return (
     <View
       style={{
-        backgroundColor: color.bg,
+        backgroundColor: color.card,
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        borderTopWidth: first ? 1 : 0,
+        borderBottomWidth: last ? 1 : 0,
+        borderColor: color.line,
         borderTopLeftRadius: first ? radius.xl : 0,
         borderTopRightRadius: first ? radius.xl : 0,
         borderBottomLeftRadius: last ? radius.xl : 0,
@@ -259,7 +274,7 @@ export function RowFrame({ children, first, last }: { children: ReactNode; first
 }
 
 export function Divider() {
-  return <View style={{ height: 2, backgroundColor: color.surface }} />;
+  return <View style={{ height: 1, backgroundColor: color.lineSoft }} />;
 }
 
 export { shadow };

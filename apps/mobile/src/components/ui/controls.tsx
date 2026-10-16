@@ -1,21 +1,22 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator, Image, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import * as Haptics from "expo-haptics";
-import { color, radius, size, space } from "~/theme/tokens";
+import { Package } from "lucide-react-native";
+import { color, radius, shadow, size, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 
-const BUTTON: Record<ButtonVariant, { bg: string; bgPressed: string; fg: string }> = {
+const BUTTON: Record<ButtonVariant, { bg: string; bgPressed: string; fg: string; border?: string }> = {
   primary: { bg: color.mint, bgPressed: color.mintPressed, fg: color.onMint },
-  secondary: { bg: color.surfaceSunken, bgPressed: color.line, fg: color.ink },
+  secondary: { bg: color.surface, bgPressed: color.surfacePressed, fg: color.ink, border: color.lineStrong },
   ghost: { bg: "transparent", bgPressed: color.lineSoft, fg: color.ink },
   destructive: { bg: color.dangerSoft, bgPressed: "#F6DADA", fg: color.dangerInk },
 };
 
 /**
- * Bouton v3 : 52 pt (36 compact), rayon 14 (10 compact). primary = menthe avec texte bleu nuit
- * (une seule grande surface menthe par écran) ; secondary = gris clair sans bordure ; ghost ;
+ * Bouton v4 : 52 pt (36 compact), rayon 14 (10 compact). primary = menthe avec texte bleu nuit
+ * (une seule grande surface menthe par écran) ; secondary = blanc à filet ; ghost ;
  * destructive. Pressé : couleur plus dense et scale 0,98. Désactivé : gris clair, texte ink3.
  */
 export function Button({
@@ -63,6 +64,8 @@ export function Button({
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: disabled ? color.surfaceSunken : pressed ? v.bgPressed : v.bg,
+          borderWidth: v.border && !disabled ? 1 : 0,
+          borderColor: v.border ?? "transparent",
           transform: [{ scale: pressed && !inactive ? 0.98 : 1 }],
         },
         style,
@@ -97,7 +100,9 @@ export function IconButton({ icon, label, onPress, filled = false, onDark = fals
         borderRadius: radius.lg,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: onDark ? (filled ? color.mint : color.nightRaised) : filled ? color.brand : pressed ? color.line : color.surfaceSunken,
+        backgroundColor: onDark ? (filled ? color.mint : color.nightRaised) : filled ? color.brand : pressed ? color.surfacePressed : color.surface,
+        borderWidth: onDark || filled ? 0 : 1,
+        borderColor: color.line,
         transform: [{ scale: pressed ? 0.96 : 1 }],
       })}
     >
@@ -108,7 +113,7 @@ export function IconButton({ icon, label, onPress, filled = false, onDark = fals
 
 export function Segmented<T extends string>({ options, value, onChange }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: color.surfaceSunken, borderRadius: radius.lg, padding: 3 }}>
+    <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: color.track, borderRadius: radius.lg, padding: 3 }}>
       {options.map((o) => {
         const selected = o.value === value;
         return (
@@ -122,7 +127,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
               void Haptics.selectionAsync().catch(() => {});
               onChange(o.value);
             }}
-            style={{ flex: 1, minHeight: 36, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], backgroundColor: selected ? color.surface : "transparent" }}
+            style={[{ flex: 1, minHeight: 36, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], backgroundColor: selected ? color.surface : "transparent" }, selected ? shadow.card : null]}
           >
             <Txt variant="label" color={selected ? color.ink : color.ink2} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1}>
               {o.label}
@@ -135,7 +140,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
 }
 
 /**
- * Filtre v3. Sélectionné : bleu nuit, texte clair. Repos : gris clair sans bordure (corps blanc).
+ * Filtre v4. Sélectionné : bleu nuit, texte clair. Repos : blanc à filet (sur le canvas).
  * `tone` n'ajoute qu'un point coloré (jamais une pastille pleine).
  */
 export function FilterChip({ label, count, selected, tone, onPress }: { label: string; count?: number; selected: boolean; tone?: "danger" | "accent"; onPress: () => void }) {
@@ -155,7 +160,9 @@ export function FilterChip({ label, count, selected, tone, onPress }: { label: s
         minHeight: 34,
         paddingHorizontal: space[3],
         borderRadius: radius.pill,
-        backgroundColor: selected ? color.brand : pressed ? color.line : color.surfaceSunken,
+        backgroundColor: selected ? color.brand : pressed ? color.surfacePressed : color.surface,
+        borderWidth: 1,
+        borderColor: selected ? color.brand : color.line,
       })}
     >
       {dot && !selected && (count ?? 0) > 0 ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot }} /> : null}
@@ -166,10 +173,15 @@ export function FilterChip({ label, count, selected, tone, onPress }: { label: s
   );
 }
 
-/** Vignette produit 44 (rayon 12) ; placeholder `skeletonStrong` sans image. */
+/** Vignette produit 44 (rayon 10) ; sans image : pictogramme « colis » discret (jamais une fausse photo). */
 export function Thumb({ uri, size: s = size.thumb }: { uri?: string | null; size?: number }) {
   const safe = typeof uri === "string" && /^https:\/\//i.test(uri) ? uri : null;
-  if (!safe) return <View accessibilityElementsHidden importantForAccessibility="no" style={{ width: s, height: s, borderRadius: radius.md, backgroundColor: color.skeletonStrong }} />;
+  if (!safe)
+    return (
+      <View accessibilityElementsHidden importantForAccessibility="no" style={{ width: s, height: s, borderRadius: radius.md, backgroundColor: color.surfaceSunken, borderWidth: 1, borderColor: color.lineSoft, alignItems: "center", justifyContent: "center" }}>
+        <Package size={Math.round(s * 0.42)} color={color.ink3} strokeWidth={1.6} />
+      </View>
+    );
   return <Image source={{ uri: safe }} accessibilityIgnoresInvertColors style={{ width: s, height: s, borderRadius: radius.md, backgroundColor: color.skeleton }} />;
 }
 

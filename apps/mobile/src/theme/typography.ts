@@ -31,6 +31,10 @@ export const type = {
   title2: t(20, 26, 800, { letterSpacing: -0.3 }),
   kpi: t(24, 28, 800, { letterSpacing: -0.5 }),
   kpiSm: t(17, 22, 800),
+  /** prix / montant mis en avant dans une ligne ou une carte */
+  price: t(18, 22, 800, { letterSpacing: -0.3 }),
+  /** titre de section (capitales espacées) */
+  section: t(12, 16, 800, { letterSpacing: 0.9, textTransform: "uppercase", color: color.ink3 }),
   headline: t(17, 22, 700),
   body: t(15, 20, 600),
   bodyRegular: t(14, 20, 500, { color: color.ink2 }),

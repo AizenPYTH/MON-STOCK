@@ -53,13 +53,13 @@ export function StatusChip({ label, tone }: { label: string; tone: ChipTone }) {
 
 export type TileTone = "dark" | "success" | "accent" | "danger" | "neutral" | "unknown";
 
-const TILE: Record<TileTone, { bg: string; fg: string; label: string; reason: string; border?: string }> = {
+const TILE: Record<TileTone, { bg: string; fg: string; label: string; reason: string; border?: string; dashed?: boolean }> = {
   dark: { bg: color.brand, fg: color.inkOnDark, label: color.inkOnDarkMuted, reason: color.inkOnDarkMuted },
   success: { bg: color.successSoft, fg: color.success, label: color.success, reason: color.success },
   accent: { bg: color.accentSoft, fg: color.accentInkOnSoft, label: color.accentInkOnSoft, reason: color.accentInkOnSoft },
   danger: { bg: color.dangerSoft, fg: color.dangerInk, label: color.dangerInk, reason: color.dangerInk },
-  neutral: { bg: color.bg, fg: color.ink, label: color.ink3, reason: color.ink2 },
-  unknown: { bg: "transparent", fg: color.ink3, label: color.ink3, reason: color.accentInkOnSoft, border: color.accent },
+  neutral: { bg: color.card, fg: color.ink, label: color.ink3, reason: color.ink2, border: color.line },
+  unknown: { bg: "transparent", fg: color.ink3, label: color.ink3, reason: color.accentInkOnSoft, border: color.accent, dashed: true },
 };
 
 /**
@@ -79,9 +79,9 @@ export function Tile({ label, value, reason, reasonTone, tone = "neutral", onPre
         padding: space[4],
         borderRadius: radius.xl,
         backgroundColor: t.bg,
-        borderWidth: t.border ? 1.5 : selected ? 2 : 0,
-        borderStyle: t.border ? "dashed" : "solid",
-        borderColor: t.border ?? color.ink,
+        borderWidth: selected ? 2 : t.dashed ? 1.5 : t.border ? 1 : 0,
+        borderStyle: t.dashed ? "dashed" : "solid",
+        borderColor: selected ? color.ink : (t.border ?? color.ink),
         justifyContent: "space-between",
         gap: 4,
       }}

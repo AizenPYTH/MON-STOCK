@@ -8,3 +8,5 @@ export * from "~/components/ui/tab-bar";
 export * from "~/components/ui/brand";
 export * from "~/components/ui/header";
 export * from "~/components/ui/value-field";
+export * from "~/components/ui/motion";
+export * from "~/components/ui/blocks";

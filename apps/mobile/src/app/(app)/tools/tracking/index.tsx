@@ -5,7 +5,7 @@ import { PackageSearch } from "lucide-react-native";
 import { parcelDisplay, relativeFr } from "@/domain/tools/tracking";
 import { FooterActions } from "~/components/calc-screen";
 import { carrierText, PARCEL_TONE } from "~/components/tracking";
-import { AlertBanner, EmptyState, ErrorState, NightHeader, Screen, SkeletonList, Txt } from "~/components/ui";
+import { AlertBanner, cardStyle, EmptyState, ErrorState, NightHeader, Screen, SkeletonList, Txt } from "~/components/ui";
 import { useParcels, useToolsStatus } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { useActiveOrg } from "~/org/org-provider";
@@ -51,7 +51,7 @@ export default function TrackingListScreen() {
       ) : parcels.data.length === 0 ? (
         <EmptyState icon={<PackageSearch size={28} color={color.ink2} />} title={archived ? "Aucun colis archivé" : "Aucun colis suivi"} description="Ajoutez un numéro de suivi : le transporteur est détecté quand c'est possible." />
       ) : (
-        <View style={{ backgroundColor: color.bg, borderRadius: 16, overflow: "hidden" }}>
+        <View style={[cardStyle, { overflow: "hidden" }]}>
           {parcels.data.map((p, i) => {
             const d = parcelDisplay(p);
             const tone = PARCEL_TONE[d.tone];

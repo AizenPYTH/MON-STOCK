@@ -44,9 +44,10 @@ export const TextField = forwardRef<TextInput, TextInputProps & { label: string;
   );
 });
 
-export function SearchField({ value, onChangeText, placeholder }: { value: string; onChangeText: (v: string) => void; placeholder: string }) {
+export function SearchField({ value, onChangeText, placeholder, onSubmitEditing, autoFocus, testID }: { value: string; onChangeText: (v: string) => void; placeholder: string; onSubmitEditing?: () => void; autoFocus?: boolean; testID?: string }) {
+  const [focused, setFocused] = useState(false);
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], height: size.input, backgroundColor: color.surface, borderRadius: radius.pill, paddingHorizontal: space[4] }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], height: size.input, backgroundColor: color.surface, borderRadius: radius.pill, paddingHorizontal: space[4], borderWidth: focused ? 1.5 : 1, borderColor: focused ? color.ink : color.line }}>
       <Search size={18} color={color.ink3} strokeWidth={2} />
       <TextInput
         value={value}
@@ -59,6 +60,11 @@ export function SearchField({ value, onChangeText, placeholder }: { value: strin
         clearButtonMode="while-editing"
         returnKeyType="search"
         maxFontSizeMultiplier={1.4}
+        onSubmitEditing={onSubmitEditing}
+        autoFocus={autoFocus}
+        testID={testID}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={{ flex: 1, fontFamily: fontFamily[600], fontSize: 15, color: color.ink, paddingVertical: 0 }}
       />
     </View>
@@ -87,7 +93,7 @@ export function Stepper({ value, onChange, min = 0, disabled = false, busy = fal
         borderRadius: size.stepperButton / 2,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: filled ? color.ink : color.bg,
+        backgroundColor: filled ? color.ink : color.surfaceSunken,
         opacity: disabled || (delta < 0 && value <= min) ? 0.4 : pressed ? 0.85 : 1,
       })}
     >

@@ -1,6 +1,8 @@
 /**
- * Jetons de design MON STOCK v3 — « Bleu nuit + menthe » (handoff design_handoff_mon_stock_v3 ;
- * le README fait foi). Les clés des versions précédentes sont conservées (aucun écran ne casse).
+ * Jetons de design MON STOCK v4 — « Bleu nuit + menthe, pilotage » (docs/design-system.md fait foi).
+ * v4 garde l'identité v3 et ajoute la profondeur : fond « canvas » gris bleuté, cartes blanches à
+ * filet fin et ombre très légère, couleur d'information, palette de rentabilité. Les clés des
+ * versions précédentes sont conservées (aucun écran ne casse).
  *
  * Rôles :
  *  - brand (bleu nuit #101C2C) : bandeau d'en-tête, navigation, une surface sombre rare par écran, toasts.
@@ -12,8 +14,11 @@
  */
 export const color = {
   // Fonds et surfaces
-  bg: "#F7F8FA",
+  /** fond de l'application (canvas) sous les cartes */
+  bg: "#F2F4F7",
   surface: "#FFFFFF",
+  /** carte / panneau posé sur le canvas (blanc + filet `line`) */
+  card: "#FFFFFF",
   /** bloc de liste / champ-valeur posé sur le corps blanc */
   surfaceSunken: "#F2F4F7",
   surfacePressed: "#EEF1F5",
@@ -35,6 +40,8 @@ export const color = {
   line: "#E6EAF0",
   lineSoft: "#EEF1F5",
   lineStrong: "#D5DBE4",
+  /** rail de contrôle segmenté / barre de progression */
+  track: "#E4E8EE",
   skeleton: "#EBEEF3",
   skeletonStrong: "#E1E5EB",
 
@@ -63,6 +70,11 @@ export const color = {
   dangerSoft: "#FBE9E9",
   dangerOnDark: "#F2A3A3",
 
+  // Information (neutre, jamais une alerte)
+  info: "#3567C4",
+  infoSoft: "#EAF0FB",
+  infoInk: "#24518F",
+
   overlay: "rgba(16,28,44,0.40)",
 } as const;
 
@@ -86,11 +98,24 @@ export const size = {
   iconSm: 16,
   tabIcon: 22,
 } as const;
-export const motion = { press: 90, segmented: 150, chip: 120, toast: 200, sheet: 250, toastAutoDismiss: 4000, undoWindow: 5000, skeletonPulse: 1000 } as const;
+export const motion = { enter: 220, stagger: 40, press: 90, segmented: 150, chip: 120, toast: 200, sheet: 250, toastAutoDismiss: 4000, undoWindow: 5000, skeletonPulse: 1000 } as const;
 
-/** Ombres quasi inexistantes : les surfaces se distinguent par le fond. */
+/** Ombres très légères : la hiérarchie vient d'abord du canvas et du filet des cartes. */
 export const shadow = {
-  card: { shadowColor: "#101C2C", shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
+  card: { shadowColor: "#101C2C", shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  raised: { shadowColor: "#101C2C", shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
   toast: { shadowColor: "#101C2C", shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   tabBar: { shadowColor: "#101C2C", shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
+} as const;
+
+/**
+ * Rentabilité d'une offre (analyse « bonne affaire », src/domain/sourcing/deal-analysis.ts) :
+ * chaque niveau a une couleur ET un libellé ET une icône (jamais la couleur seule).
+ */
+export const dealTone = {
+  very_good: { fg: "#FFFFFF", bg: color.success, border: color.success },
+  good: { fg: color.successInk, bg: color.successSoft, border: color.successSoft },
+  average: { fg: color.ink2, bg: color.surfaceSunken, border: color.surfaceSunken },
+  not_competitive: { fg: color.dangerInk, bg: color.dangerSoft, border: color.dangerSoft },
+  insufficient_data: { fg: color.ink3, bg: "transparent", border: color.lineStrong },
 } as const;

@@ -9,8 +9,8 @@ import { useLayout } from "~/theme/layout";
 
 export function EmptyState({ icon, title, description, actions = [] }: { icon?: ReactNode; title: string; description: string; actions?: { label: string; onPress: () => void; variant?: "primary" | "secondary"; disabled?: boolean }[] }) {
   return (
-    <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: space[6], paddingHorizontal: space[5], gap: space[3], backgroundColor: color.bg, borderRadius: radius.xl }}>
-      {icon ? <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: color.surface, alignItems: "center", justifyContent: "center" }}>{icon}</View> : null}
+    <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: space[6], paddingHorizontal: space[5], gap: space[3], backgroundColor: color.card, borderRadius: radius.xl, borderWidth: 1, borderColor: color.line }}>
+      {icon ? <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: color.surfaceSunken, alignItems: "center", justifyContent: "center" }}>{icon}</View> : null}
       <Txt variant="headline" style={{ textAlign: "center" }}>
         {title}
       </Txt>
@@ -20,7 +20,7 @@ export function EmptyState({ icon, title, description, actions = [] }: { icon?: 
       {actions.length > 0 ? (
         <View style={{ alignSelf: "stretch", gap: space[2], marginTop: space[2] }}>
           {actions.map((a) => (
-            <Button key={a.label} label={a.label} onPress={a.onPress} variant={a.variant === "secondary" ? "ghost" : "primary"} disabled={a.disabled} compact />
+            <Button key={a.label} label={a.label} onPress={a.onPress} variant={a.variant === "secondary" ? "secondary" : "primary"} disabled={a.disabled} compact />
           ))}
         </View>
       ) : null}
@@ -30,7 +30,7 @@ export function EmptyState({ icon, title, description, actions = [] }: { icon?: 
 
 export function ErrorState({ title = "Impossible de charger les données", description, onRetry }: { title?: string; description: string; onRetry?: () => void }) {
   return (
-    <View style={{ backgroundColor: color.dangerSoft, borderRadius: radius.xxl, padding: space[5], alignItems: "center", gap: space[2] }} accessibilityRole="alert">
+    <View style={{ backgroundColor: color.dangerSoft, borderRadius: radius.xxl, borderWidth: 1, borderColor: "#F3D2D2", padding: space[5], alignItems: "center", gap: space[2] }} accessibilityRole="alert">
       <Txt variant="headline" color={color.dangerInk} style={{ fontSize: 16, textAlign: "center" }}>
         {title}
       </Txt>
@@ -55,7 +55,7 @@ export function Skeleton({ w, h, r = radius.sm }: { w: number | `${number}%`; h:
 
 export function SkeletonList({ rows = 8, thumb = true }: { rows?: number; thumb?: boolean }) {
   return (
-    <View accessibilityLabel="Chargement" accessibilityRole="progressbar" style={{ backgroundColor: color.bg, borderRadius: radius.xl, overflow: "hidden" }}>
+    <View accessibilityLabel="Chargement" accessibilityRole="progressbar" style={{ backgroundColor: color.card, borderRadius: radius.xl, borderWidth: 1, borderColor: color.line, overflow: "hidden" }}>
       {Array.from({ length: rows }, (_, i) => (
         <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[3], paddingHorizontal: space[4], borderBottomWidth: i === rows - 1 ? 0 : 1, borderBottomColor: color.lineSoft }}>
           {thumb ? <Skeleton w={44} h={44} r={radius.md} /> : null}
