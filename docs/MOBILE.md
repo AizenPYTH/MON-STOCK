@@ -190,6 +190,17 @@ que l'utilisateur en est membre, sans modifier l'organisation active du web.
 | Fournisseurs (annuaire) | 120 fournisseurs ; niveau d'accès réel (connecté, importable, accessible, vérifié, identifié) et prochaine action ; filtres | `/sourcing/directory` |
 | Import protégé | Fichier suspect (lignes illisibles, catalogue tronqué, prix décalés, doublons) : import suspendu, rien n'est modifié, « Importer quand même » après vérification | `/sourcing/import` |
 
+### 4.1 quater Design v4 « pilotage » (16/10/2026)
+
+La v4 remplace les éléments ci-dessous lorsqu'ils divergent. Référence : [design-system.md](design-system.md).
+
+- fond canvas `#F2F4F7` et cartes blanches à filet ;
+- onglet « Fournisseurs » renommé **Sourcing** ;
+- accueil « centre de pilotage » ;
+- recherche d'offres à deux densités ;
+- bibliothèque et fiche fournisseur à onglets ;
+- rapport d'import par catégories.
+
 ### 4.1 ter Design v3 « Bleu nuit + menthe » (handoff design_handoff_mon_stock_v3, remplace « Atelier »)
 
 - **Jetons** (`src/theme/*`) :
