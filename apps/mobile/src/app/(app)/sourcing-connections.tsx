@@ -5,11 +5,12 @@ import * as Haptics from "expo-haptics";
 import type { SourceOverviewDTO } from "@/features/mobile-api/contract";
 import { useActiveOrg } from "~/org/org-provider";
 import { useScheduleSource, useSources, useSyncSource } from "~/data/hooks";
-import { SOURCE_STATUS_TONE } from "~/data/sourcing-b2b";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatNumber } from "~/lib/format";
-import { BottomSheet, Button, Card, DetailHeader, EmptyState, ErrorState, FilterChip, Screen, SectionHeader, SkeletonList, StatusChip, Txt, useToast } from "~/components/ui";
-import { color, space } from "~/theme/tokens";
+import { ActionRow, BottomSheet, Button, Card, DetailHeader, EmptyState, ErrorState, FilterChip, MetricStrip, Screen, SectionHeader, SkeletonList, StatusLine, Txt, useToast, type BlockTone } from "~/components/ui";
+import { SupplierLogo } from "~/components/supplier-logo";
+import { History, KeyRound, Plug, Rss, Upload } from "lucide-react-native";
+import { color, radius, space } from "~/theme/tokens";
 
 const FREQUENCIES: { value: SourceOverviewDTO["frequency"]; label: string }[] = [
   { value: "manual", label: "Manuelle" },
@@ -45,14 +46,13 @@ export default function SourcingConnectionsScreen() {
   const header = <DetailHeader parentLabel="Sourcing" title="Mes sources" sub="Statut réel, âge des données et synchronisation" />;
   const actions = (
     <>
-      {permissions.canWrite ? (
-        <View style={{ flexDirection: "row", gap: space[2] }}>
-          <Button label="Importer un fichier" compact onPress={() => router.push("/sourcing-import")} style={{ flex: 1 }} testID="sources-import" />
-          <Button label="Ajouter un flux autorisé" compact variant="secondary" onPress={() => router.push("/sourcing-feed-new")} style={{ flex: 1 }} testID="sources-add-feed" />
-        </View>
-      ) : null}
-      <Button label="Mes comptes fournisseurs (prix pro)" variant="secondary" compact onPress={() => router.push("/pro-accounts")} testID="sources-pro-accounts" />
-      <Button label="Historique des imports" variant="ghost" compact onPress={() => router.push("/sourcing-imports")} testID="sources-history" />
+      <SectionHeader title="Ajouter ou gérer" />
+      <Card>
+        {permissions.canWrite ? <ActionRow icon={Upload} title="Importer un fichier" detail="Liste de prix ou de stock : CSV, Excel, XML, JSON" onPress={() => router.push("/sourcing-import")} testID="sources-import" /> : null}
+        {permissions.canWrite ? <ActionRow icon={Rss} title="Ajouter un flux autorisé" detail="Lien HTTPS fourni par le fournisseur, mis à jour seul" onPress={() => router.push("/sourcing-feed-new")} testID="sources-add-feed" /> : null}
+        <ActionRow icon={KeyRound} title="Mes comptes fournisseurs" detail="Prix pro : API, flux ou export de votre compte" onPress={() => router.push("/pro-accounts")} testID="sources-pro-accounts" />
+        <ActionRow icon={History} title="Historique des imports" detail="Résultats et rapports d'erreurs" onPress={() => router.push("/sourcing-imports")} last testID="sources-history" />
+      </Card>
     </>
   );
   if (sources.isPending)
@@ -71,10 +71,16 @@ export default function SourcingConnectionsScreen() {
       </Screen>
     );
 
-  const list = sources.data;
+  // sources en difficulté d'abord dans chaque groupe
+  const failing = (s: SourceOverviewDTO) => s.status === "error" || s.consecutiveFailures > 0;
+  const list = [...sources.data].sort((a, b) => Number(failing(b)) - Number(failing(a)));
   const automatic = list.filter((s) => s.schedulable);
   const live = list.filter((s) => s.kind === "live_search");
   const manual = list.filter((s) => !s.schedulable && s.kind !== "live_search");
+  const toFix = list.filter(failing).length;
+  const active = list.filter((s) => s.status === "connected" || s.status === "running").length;
+  const offers = list.reduce((a, s) => a + s.activeOffers, 0);
+  const lastSuccess = list.map((s) => s.lastSuccessfulSyncAt).filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
 
   function runSync(s: SourceOverviewDTO) {
     sync.mutate(s.id, {
@@ -95,8 +101,18 @@ export default function SourcingConnectionsScreen() {
   return (
     <Screen refreshControl={<RefreshControl refreshing={sources.isRefetching} onRefresh={() => void sources.refetch()} />}>
       {header}
-      {actions}
-      {list.length === 0 ? <EmptyState title="Aucune source" description="Importez la liste de stock d'un grossiste ou ajoutez le lien de flux qu'il vous a fourni." /> : null}
+      {list.length === 0 ? (
+        <EmptyState icon={<Plug size={26} color={color.ink2} />} title="Aucune source pour l'instant" description="Connectez votre premier fournisseur : importez sa liste de stock, ajoutez le lien de flux qu'il vous a fourni ou activez un catalogue public de la bibliothèque." actions={[{ label: "Explorer la bibliothèque", onPress: () => router.push("/supplier-directory") }]} />
+      ) : (
+        <MetricStrip
+          metrics={[
+            { label: "Actives", value: formatNumber(active), hint: `sur ${formatNumber(list.length)}`, tone: active > 0 ? "success" : undefined },
+            { label: "À corriger", value: formatNumber(toFix), hint: toFix ? "échecs ou erreurs" : "aucune", tone: toFix ? "danger" : undefined },
+            { label: "Offres", value: formatNumber(offers), hint: "exploitables" },
+            { label: "Dernier succès", value: lastSuccess ? ageText(lastSuccess).replace("il y a ", "") : null, hint: lastSuccess ? "il y a" : "jamais" },
+          ]}
+        />
+      )}
       {automatic.length > 0 ? <SectionHeader title={`Synchronisation automatique (${automatic.length})`} /> : null}
       {automatic.map((s) => (
         <SourceCard key={s.id} source={s} busy={sync.isPending && sync.variables === s.id} canWrite={permissions.canWrite} onPrimary={() => primary(s)} onSettings={permissions.isAdmin ? () => setSettings(s) : undefined} />
@@ -110,6 +126,7 @@ export default function SourcingConnectionsScreen() {
       {manual.map((s) => (
         <SourceCard key={s.id} source={s} busy={false} canWrite={permissions.canWrite} onPrimary={() => primary(s)} onSettings={permissions.isAdmin ? () => setSettings(s) : undefined} />
       ))}
+      {actions}
       <Txt variant="label">
         Une panne du fournisseur n'efface jamais vos offres : elles gardent leur date de vérification et un nouvel essai est programmé (15 min, puis 30 min, 1 h…). Une alerte apparaît après 3 échecs consécutifs.
       </Txt>
@@ -155,11 +172,13 @@ export default function SourcingConnectionsScreen() {
 
 function SourceCard({ source: s, busy, canWrite, onPrimary, onSettings }: { source: SourceOverviewDTO; busy: boolean; canWrite: boolean; onPrimary: () => void; onSettings?: () => void }) {
   const action = s.primaryAction === "sync_now" ? "Synchroniser maintenant" : s.primaryAction === "import_file" ? "Importer la nouvelle liste" : s.primaryAction === "enable" ? "Réactiver" : "Configurer";
+  const tone: BlockTone = s.status === "error" || s.consecutiveFailures > 0 ? "danger" : s.status === "connected" ? "success" : s.status === "running" ? "info" : s.status === "to_configure" ? "warning" : "neutral";
   return (
     <Card padded style={{ gap: space[2] }} accessibilityLabel={`${s.supplierName ?? s.name}, ${s.statusLabel}`}>
-      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: space[2] }}>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Txt variant="body" numberOfLines={2}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+        <SupplierLogo domain={null} name={s.supplierName ?? s.name} size={36} />
+        <View style={{ flex: 1, gap: 1 }}>
+          <Txt variant="body" numberOfLines={1}>
             {s.supplierName ?? s.name}
           </Txt>
           <Txt variant="label" numberOfLines={1}>
@@ -167,25 +186,29 @@ function SourceCard({ source: s, busy, canWrite, onPrimary, onSettings }: { sour
             {s.country ? ` · ${s.country}` : ""}
           </Txt>
         </View>
-        <StatusChip label={s.statusLabel} tone={SOURCE_STATUS_TONE[s.status]} />
       </View>
-      <Txt variant="label" color={color.ink}>
-        {formatNumber(s.activeOffers)} offre{s.activeOffers > 1 ? "s" : ""} exploitable{s.activeOffers > 1 ? "s" : ""} · données {ageText(s.lastSuccessfulSyncAt)}
-      </Txt>
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: space[3], rowGap: 2 }}>
+        <StatusLine tone={tone} label={s.statusLabel} />
+        <Txt variant="label" num color={color.ink}>
+          {formatNumber(s.activeOffers)} offre{s.activeOffers > 1 ? "s" : ""} exploitable{s.activeOffers > 1 ? "s" : ""} · données {ageText(s.lastSuccessfulSyncAt)}
+        </Txt>
+      </View>
       <Txt variant="label">
         Dernier succès : {s.lastSuccessfulSyncAt ? formatDateTime(s.lastSuccessfulSyncAt) : "jamais"}
         {s.schedulable ? ` · ${s.frequencyLabel}${s.nextRunAt && s.frequency !== "manual" ? ` · prochain passage ${formatDateTime(s.nextRunAt)}` : ""}` : ""}
       </Txt>
       {s.consecutiveFailures > 0 || s.lastError ? (
-        <Txt variant="label" color={color.dangerInk}>
-          {s.consecutiveFailures > 0 ? `${s.consecutiveFailures} échec(s) consécutif(s). ` : ""}
-          {s.lastError ?? ""}
-        </Txt>
+        <View style={{ padding: space[3], borderRadius: radius.md, backgroundColor: color.dangerSoft }}>
+          <Txt variant="label" color={color.dangerInk}>
+            {s.consecutiveFailures > 0 ? `${s.consecutiveFailures} échec(s) consécutif(s). ` : ""}
+            {s.lastError ?? ""}
+          </Txt>
+        </View>
       ) : null}
       {canWrite && (s.primaryAction !== "configure" || onSettings) ? (
         <View style={{ flexDirection: "row", gap: space[2] }}>
-          {s.primaryAction !== "configure" ? <Button label={action} compact loading={busy} disabled={s.primaryAction === "sync_now" && !s.canSyncNow} onPress={onPrimary} style={{ flex: 1 }} testID={`source-action-${s.id}`} /> : null}
-          {onSettings ? <Button label="Réglages" compact variant="secondary" onPress={onSettings} testID={`source-settings-${s.id}`} /> : null}
+          {s.primaryAction !== "configure" ? <Button label={action} compact variant={tone === "danger" ? "primary" : "secondary"} loading={busy} disabled={s.primaryAction === "sync_now" && !s.canSyncNow} onPress={onPrimary} style={{ flex: 1 }} testID={`source-action-${s.id}`} /> : null}
+          {onSettings ? <Button label="Réglages" compact variant="ghost" onPress={onSettings} testID={`source-settings-${s.id}`} /> : null}
         </View>
       ) : null}
     </Card>

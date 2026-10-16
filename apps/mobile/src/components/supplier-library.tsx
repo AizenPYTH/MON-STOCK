@@ -10,8 +10,8 @@ import { useConnectProAccount, useSyncProAccount } from "~/data/hooks";
 import { mailtoLink } from "~/data/suppliers-pro";
 import { userMessage } from "~/lib/errors";
 import { safeExternalUrl } from "~/lib/url";
-import { BottomSheet, Button, StatusChip, TextField, Txt, useReduceMotion, useToast, type ChipTone } from "~/components/ui";
-import { color, space } from "~/theme/tokens";
+import { BottomSheet, Button, StatusChip, TextField, Timeline, Txt, useReduceMotion, useToast, type ChipTone } from "~/components/ui";
+import { color, radius, space } from "~/theme/tokens";
 
 export { ACCESS_METHOD_LABEL, INTEGRATION_STATUS_LABEL, RELIABILITY_LABEL, SEGMENT_LABEL };
 
@@ -62,43 +62,81 @@ export function ConnectApiSheet({ entry, onClose }: { entry: Pick<DirectoryEntry
   const connect = useConnectProAccount();
   const fields = entry.connector?.fields ?? [];
   const [values, setValues] = useState<Record<string, string>>({});
+  // résultat RENVOYÉ PAR LE SERVEUR après son test réel chez le fournisseur (jamais supposé)
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const complete = fields.length > 0 && fields.every((f) => (values[f.name] ?? "").trim().length > 0);
+  const step = result?.ok ? 3 : connect.isPending ? 2 : 1;
+  const submit = () => {
+    setResult(null);
+    connect.mutate(
+      { key: entry.key, credentials: values },
+      {
+        onSuccess: (r) => {
+          void Haptics.notificationAsync(r.ok ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error).catch(() => {});
+          setResult({ ok: r.ok, message: r.message });
+          if (r.ok) {
+            setValues({});
+            toast({ text: r.message });
+          }
+        },
+        onError: (e) => setResult({ ok: false, message: userMessage(e) }),
+      },
+    );
+  };
   return (
     <BottomSheet visible title={`Configurer l'API ${entry.name}`} description="Vos identifiants partent uniquement vers le serveur MON STOCK, qui les chiffre et les teste auprès du fournisseur. Ils ne sont ni conservés sur ce téléphone ni réaffichés." onClose={onClose}>
       <View style={{ gap: space[3] }}>
-        {fields.map((f) => (
-          <TextField
-            key={f.name}
-            label={f.label}
-            value={values[f.name] ?? ""}
-            onChangeText={(v) => setValues((cur) => ({ ...cur, [f.name]: v }))}
-            placeholder={f.placeholder ?? undefined}
-            secureTextEntry={f.secret}
-            autoCapitalize="none"
-            autoCorrect={false}
-            testID={`pro-field-${f.name}`}
-          />
-        ))}
-        <Txt variant="label">Après la connexion : vos prix et stocks de ce compte arrivent dans la recherche et l'analyse des bonnes affaires.</Txt>
-        <Button
-          label="Connecter et tester"
-          disabled={!complete}
-          loading={connect.isPending}
-          onPress={() =>
-            connect.mutate(
-              { key: entry.key, credentials: values },
-              {
-                onSuccess: (r) => {
-                  void Haptics.notificationAsync(r.ok ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error).catch(() => {});
-                  toast({ text: r.message, tone: r.ok ? undefined : "error" });
-                  onClose();
-                },
-                onError: (e) => toast({ text: userMessage(e), tone: "error" }),
-              },
-            )
-          }
-          testID="pro-connect-submit"
+        <Timeline
+          steps={[
+            { label: "Identifiants de VOTRE compte", state: step > 1 ? "done" : "current" },
+            { label: "Test par le serveur MON STOCK", state: step > 2 ? "done" : step === 2 ? "current" : "todo", meta: step === 2 ? "en cours…" : undefined },
+            { label: "Première synchronisation des prix", state: step === 3 ? "current" : "todo", meta: step === 3 ? "lancée par le serveur" : undefined },
+          ]}
         />
+        {step === 3 && result ? (
+          <View style={{ padding: space[3], borderRadius: radius.md, backgroundColor: color.successSoft }} accessibilityRole="alert">
+            <Txt variant="body" color={color.success}>
+              Connexion vérifiée par le serveur
+            </Txt>
+            <Txt variant="label" color={color.success}>
+              {result.message}
+            </Txt>
+          </View>
+        ) : (
+          <>
+            {fields.map((f) => (
+              <TextField
+                key={f.name}
+                label={`${f.label} · obligatoire`}
+                value={values[f.name] ?? ""}
+                onChangeText={(v) => setValues((cur) => ({ ...cur, [f.name]: v }))}
+                placeholder={f.placeholder ?? undefined}
+                secureTextEntry={f.secret}
+                autoCapitalize="none"
+                autoCorrect={false}
+                hint={f.secret ? "Masqué à la saisie ; jamais réaffiché ni écrit dans les journaux." : undefined}
+                testID={`pro-field-${f.name}`}
+              />
+            ))}
+            {result && !result.ok ? (
+              <View style={{ padding: space[3], borderRadius: radius.md, backgroundColor: color.dangerSoft }} accessibilityRole="alert">
+                <Txt variant="body" color={color.dangerInk}>
+                  Le fournisseur a refusé la connexion
+                </Txt>
+                <Txt variant="label" color={color.dangerInk}>
+                  {result.message} Vérifiez les identifiants puis réessayez.
+                </Txt>
+              </View>
+            ) : (
+              <Txt variant="label">Après la connexion : vos prix et stocks de ce compte arrivent dans la recherche et l'analyse des bonnes affaires.</Txt>
+            )}
+          </>
+        )}
+        {step === 3 ? (
+          <Button label="Terminé" onPress={onClose} testID="pro-connect-done" />
+        ) : (
+          <Button label={result && !result.ok ? "Réessayer" : "Connecter et tester"} disabled={!complete} loading={connect.isPending} onPress={submit} testID="pro-connect-submit" />
+        )}
       </View>
     </BottomSheet>
   );

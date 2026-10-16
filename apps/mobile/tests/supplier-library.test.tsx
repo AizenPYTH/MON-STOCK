@@ -160,3 +160,29 @@ it("écran principal : accès rapides avec compteurs réels", async () => {
   fireEvent.press(screen.getByTestId("hub-errors"));
   expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/sourcing-connections");
 });
+
+it("configuration API : étapes, échec affiché sans fermer, succès seulement après confirmation du serveur", async () => {
+  let attempt = 0;
+  mockCallApi.mockImplementation((path: string) => {
+    if (path === "/sourcing/accounts/connect") {
+      attempt += 1;
+      return Promise.resolve(attempt === 1 ? { connectionId: "c1", ok: false, message: "Clé API refusée (401)." } : { connectionId: "c1", ok: true, message: "Compte BigBuy connecté : 1 250 produits accessibles." });
+    }
+    return Promise.resolve({});
+  });
+  const { ConnectApiSheet } = jest.requireActual("~/components/supplier-library");
+  const onClose = jest.fn();
+  render(wrap(<ConnectApiSheet entry={{ key: "bigbuy", name: "BigBuy", connector: { key: "bigbuy", label: "BigBuy", fields: [{ name: "api_key", label: "Clé API", secret: true, placeholder: null }] } }} onClose={onClose} />));
+  expect(screen.getByText("Identifiants de VOTRE compte")).toBeTruthy();
+  expect(screen.getByTestId("pro-field-api_key").props.secureTextEntry).toBe(true);
+  fireEvent.changeText(screen.getByTestId("pro-field-api_key"), "mauvaise");
+  fireEvent.press(screen.getByTestId("pro-connect-submit"));
+  expect(await screen.findByText("Le fournisseur a refusé la connexion")).toBeTruthy();
+  expect(screen.queryByText("Connexion vérifiée par le serveur")).toBeNull();
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.changeText(screen.getByTestId("pro-field-api_key"), "bonne");
+  fireEvent.press(screen.getByTestId("pro-connect-submit"));
+  expect(await screen.findByText("Connexion vérifiée par le serveur")).toBeTruthy();
+  fireEvent.press(screen.getByTestId("pro-connect-done"));
+  expect(onClose).toHaveBeenCalled();
+});
