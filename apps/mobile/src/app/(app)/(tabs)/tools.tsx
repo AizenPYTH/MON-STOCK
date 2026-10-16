@@ -34,7 +34,9 @@ export default function ToolsScreen() {
                   borderRadius: 18,
                   padding: space[4],
                   justifyContent: "space-between",
-                  backgroundColor: dark ? color.brand : pressed ? color.line : color.surfaceSunken,
+                  backgroundColor: dark ? color.brand : pressed ? color.surfacePressed : color.card,
+                  borderWidth: dark ? 0 : 1,
+                  borderColor: color.line,
                   opacity: dark && pressed ? 0.85 : 1,
                   transform: [{ scale: pressed ? 0.97 : 1 }],
                 })}
