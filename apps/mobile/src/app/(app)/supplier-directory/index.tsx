@@ -277,10 +277,10 @@ function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entr
         ) : null}
       </Pressable>
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-        <View style={{ flex: 1 }}>
-          <MethodChips methods={e.registry.accessMethods} max={2} connected={e.org.status === "connected"} />
+        <View style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+          <MethodChips methods={e.registry.accessMethods} max={1} connected={e.org.status === "connected"} showPro={false} />
         </View>
-        {e.registry.primaryAction.kind !== "none" ? <Button label={e.registry.primaryAction.label} compact variant={e.registry.primaryAction.kind === "open_site" ? "ghost" : "secondary"} loading={action.busy} onPress={() => action.run()} testID={`library-action-${e.key}`} /> : null}
+        {e.registry.primaryAction.kind !== "none" ? <Button label={e.registry.primaryAction.label} compact variant={e.registry.primaryAction.kind === "open_site" ? "ghost" : "secondary"} loading={action.busy} onPress={() => action.run()} testID={`library-action-${e.key}`} style={{ flexShrink: 0, maxWidth: "62%" }} /> : null}
       </View>
       {action.sheet}
     </View>

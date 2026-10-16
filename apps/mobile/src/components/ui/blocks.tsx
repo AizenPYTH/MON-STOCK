@@ -5,6 +5,7 @@ import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronRight, CircleHelp, Mi
 import { color, dealTone, radius, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { cardStyle } from "~/components/ui/layout";
+import { formatNumber } from "~/lib/format";
 import { useAnimatedProgress, useReduceMotion } from "~/components/ui/motion";
 
 /**
@@ -201,8 +202,9 @@ export function SplitBar({ parts, label }: { parts: { label: string; value: numb
   return (
     <View style={{ gap: space[2] }} accessible accessibilityLabel={`${label} : ${parts.map((p) => `${p.label} ${p.value}`).join(", ")}`}>
       <View style={{ flexDirection: "row", height: 8, borderRadius: 4, overflow: "hidden", backgroundColor: color.track, gap: total ? 2 : 0 }}>
-        {shown.map((p) => (
-          <View key={p.label} style={{ flex: p.value, backgroundColor: p.tone === "brand" ? color.brand : p.tone === "neutral" ? color.lineStrong : TONE[p.tone].fg }} />
+        {shown.map(({ label: key, value: weight, tone }) => (
+          // (pas de `x.value` dans un style : le plugin Reanimated le prendrait pour une valeur animée)
+          <View key={key} style={{ flex: weight, backgroundColor: tone === "brand" ? color.brand : tone === "neutral" ? color.lineStrong : TONE[tone].fg }} />
         ))}
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: space[4], rowGap: 4 }}>
@@ -210,7 +212,7 @@ export function SplitBar({ parts, label }: { parts: { label: string; value: numb
           <View key={p.label} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: p.tone === "brand" ? color.brand : p.tone === "neutral" ? color.lineStrong : TONE[p.tone].fg }} />
             <Txt variant="label" num>
-              {p.label} <Txt variant="label" num color={color.ink} style={{ fontFamily: "Manrope_800ExtraBold" }}>{p.value.toLocaleString("fr-FR")}</Txt>
+              {p.label} <Txt variant="label" num color={color.ink} style={{ fontFamily: "Manrope_800ExtraBold" }}>{formatNumber(p.value)}</Txt>
             </Txt>
           </View>
         ))}

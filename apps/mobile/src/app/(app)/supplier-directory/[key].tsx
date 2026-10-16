@@ -134,7 +134,7 @@ function EntryBody({ entry: e, favorite, onToggleFavorite, canWrite, canAdmin }:
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3] }}>
             <StatusLine tone={statusTone} label={ORG_STATUS_LABEL[e.org.status]} />
-            <StatusChip label={INTEGRATION_STATUS_LABEL[r.integrationStatus]} tone={INTEGRATION_TONE[r.integrationStatus]} />
+            {!connected ? <StatusChip label={INTEGRATION_STATUS_LABEL[r.integrationStatus]} tone={INTEGRATION_TONE[r.integrationStatus]} /> : null}
             <Txt variant="label">Priorité {r.priority.tier}</Txt>
           </View>
           {connected ? (
@@ -142,7 +142,7 @@ function EntryBody({ entry: e, favorite, onToggleFavorite, canWrite, canAdmin }:
               metrics={[
                 { label: "Votre compte", value: formatNumber(e.org.accountOffers), hint: "offres" },
                 { label: "Publiques", value: formatNumber(e.org.publicOffers), hint: "offres" },
-                { label: "Mise à jour", value: e.org.lastSyncAt ? formatRelative(e.org.lastSyncAt).replace(/^il y a /, "") : null, hint: e.org.lastSyncAt ? "il y a" : "jamais" },
+                { label: "Mise à jour", value: e.org.lastSyncAt ? formatRelative(e.org.lastSyncAt) : null, hint: e.org.lastSyncAt ? "données datées" : "jamais" },
               ]}
             />
           ) : e.whyUseful ? (
