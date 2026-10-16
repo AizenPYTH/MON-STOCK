@@ -1,16 +1,20 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "expo-router/tabs";
 import * as Haptics from "expo-haptics";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { color, size } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
+import { useSlide } from "~/components/ui/motion";
+import { motion } from "~/theme/tokens";
 
 /**
- * Barre d'onglets v3 ANCRÉE (non flottante) : fond blanc, filet haut, onglet actif = icône bleu
- * nuit dans une pastille menthe 52×28 + libellé encre ; inactifs en gris. La zone de sécurité est
- * incluse (aucun contenu ne passe dessous). Libellé « Auj. » sur petit écran.
+ * Barre d'onglets v5 ANCRÉE : fond blanc à 96 %, filet haut ; un SEUL indicateur menthe 52 × 30
+ * qui glisse vers l'onglet actif (280 ms, courbe « instrument » ; saut immédiat si « Réduire les
+ * animations ») ; icône bleu nuit + libellé encre à l'actif, gris sinon. La zone de sécurité est
+ * incluse. Libellé « Auj. » sur petit écran.
  */
 
 /** Hauteur à réserver sous le contenu des onglets (0 : la barre est ancrée). */
@@ -34,8 +38,13 @@ export function MonStockTabBar({ state, descriptors, navigation }: BottomTabBarP
   const insets = useSafeAreaInsets();
   const { compact } = useLayout();
   const height = compact ? 48 : size.tabBar;
+  const [width, setWidth] = useState(0);
+  const col = state.routes.length ? width / state.routes.length : 0;
+  const x = useSlide(state.index * col + (col - 52) / 2, motion.tabIndicator);
+  const indicator = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
-    <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: color.surface, borderTopWidth: 1, borderTopColor: color.line, paddingBottom: insets.bottom, paddingTop: 4 }}>
+    <View accessibilityRole="tablist" onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.96)", borderTopWidth: 1, borderTopColor: color.line, paddingBottom: insets.bottom, paddingTop: 4 }}>
+      {width > 0 ? <Animated.View pointerEvents="none" style={[{ position: "absolute", left: 0, top: compact ? 6 : 8, width: 52, height: compact ? 26 : 30, borderRadius: 15, backgroundColor: color.mint }, indicator]} /> : null}
       {state.routes.map((route, index) => {
         const options = descriptors[route.key]?.options ?? {};
         const focused = state.index === index;
@@ -59,7 +68,7 @@ export function MonStockTabBar({ state, descriptors, navigation }: BottomTabBarP
             onLongPress={() => navigation.emit({ type: "tabLongPress", target: route.key })}
             style={{ flex: 1, height, alignItems: "center", justifyContent: "center", gap: 3 }}
           >
-            <View style={{ width: 52, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: focused ? color.mint : "transparent" }}>
+            <View style={{ width: 52, height: compact ? 26 : 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: focused && width === 0 ? color.mint : "transparent" }}>
               {options.tabBarIcon?.({ focused, color: focused ? color.brand : color.ink3, size: size.tabIcon })}
             </View>
             <Txt variant="tab" color={focused ? color.ink : color.ink3} numberOfLines={1} maxFontSizeMultiplier={1.2}>

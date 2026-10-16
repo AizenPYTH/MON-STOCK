@@ -9,7 +9,8 @@ import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
 import { initialsOf } from "~/components/ui/controls";
 import { useInTabs, useTabBarClearance } from "~/components/ui/tab-bar";
-import { markHeader, NIGHT_HEADER, NightHeader, type HeaderStat, type HeaderTabs } from "~/components/ui/header";
+import { markHeader, NIGHT_HEADER, NightHeader, type HeaderHero, type HeaderTabs } from "~/components/ui/header";
+import { TabFocusFade } from "~/components/ui/tab-focus";
 import { useUser } from "~/auth/session-provider";
 
 function headerOf(children: ReactNode): { header: ReactElement | null; rest: ReactNode[] } {
@@ -20,9 +21,10 @@ function headerOf(children: ReactNode): { header: ReactElement | null; rest: Rea
 }
 
 /**
- * Écran v3 : bandeau bleu nuit (premier `TabHeader` / `DetailHeader` / `ToolHeader` des enfants,
- * ou `header`) puis corps blanc qui remonte de 22 pt (rayon 22) ; marge 16 (12 sur iPhone SE,
- * 20 si ≥ 430), contenu centré sur tablette. Sans en-tête : corps blanc plein écran.
+ * Écran v5 : scène nuit (premier `TabHeader` / `DetailHeader` / `ToolHeader` des enfants, ou
+ * `header`) puis papier clair qui remonte de 24 pt (rayon 24) ; marge 16 (12 sous 360 pt, 20 à
+ * partir de 430), contenu centré sur tablette. Dans un onglet, l'écran entre en fondu + 6 pt.
+ * Sans en-tête : papier plein écran.
  */
 export function Screen({
   children,
@@ -41,6 +43,7 @@ export function Screen({
 }) {
   const { screenX, maxWidth } = useLayout();
   const clearance = useTabBarClearance();
+  const inTabs = useInTabs();
   const found = explicitHeader ? { header: explicitHeader, rest: Children.toArray(children) } : headerOf(children);
   const header = found.header;
   const props = (header?.props ?? {}) as { tabs?: unknown; hero?: unknown };
@@ -49,7 +52,7 @@ export function Screen({
   const body = scroll ? (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={[inner, { paddingTop: overlap ? space[5] : space[4], paddingBottom: space[8] + clearance }]}
+      contentContainerStyle={[inner, { paddingTop: overlap ? 22 : space[4], paddingBottom: space[8] + clearance }]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       refreshControl={refreshControl as never}
@@ -57,24 +60,28 @@ export function Screen({
       {found.rest}
     </ScrollView>
   ) : (
-    <View style={[inner, { flex: 1, paddingTop: overlap ? space[5] : space[4] }]}>{found.rest}</View>
+    <View style={[inner, { flex: 1, paddingTop: overlap ? 22 : space[4] }]}>{found.rest}</View>
   );
   if (!header)
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: color.bg }} edges={["top", "left", "right"]}>
         <StatusBar style="dark" />
-        {body}
-        {footer}
+        <TabFocusFade enabled={inTabs}>
+          {body}
+          {footer}
+        </TabFocusFade>
       </SafeAreaView>
     );
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: color.brand }} edges={["left", "right"]}>
       <StatusBar style="light" />
-      {header}
-      <View style={{ flex: 1, backgroundColor: color.bg, marginTop: overlap ? -space.bodyOverlap : 0, borderTopLeftRadius: overlap ? radius.body : 0, borderTopRightRadius: overlap ? radius.body : 0, overflow: "hidden" }}>
-        {body}
-        {footer}
-      </View>
+      <TabFocusFade enabled={inTabs}>
+        {header}
+        <View style={{ flex: 1, backgroundColor: color.bg, marginTop: overlap ? -space.bodyOverlap : 0, borderTopLeftRadius: overlap ? radius.body : 0, borderTopRightRadius: overlap ? radius.body : 0, overflow: "hidden" }}>
+          {body}
+          {footer}
+        </View>
+      </TabFocusFade>
     </SafeAreaView>
   );
 }
@@ -91,14 +98,16 @@ export const TabHeader = markHeader(function TabHeader<T extends string = string
   avatar,
   hero,
   tabs,
+  stage,
 }: {
   title: string;
   overline?: string;
   sub?: string;
   right?: ReactNode;
   avatar?: boolean;
-  hero?: { value: string; label?: string; sub?: string; color?: string; stats?: HeaderStat[] };
+  hero?: HeaderHero;
   tabs?: HeaderTabs<T>;
+  stage?: ReactNode;
 }) {
   const inTabs = useInTabs();
   const showAvatar = avatar ?? inTabs;
@@ -109,10 +118,10 @@ export const TabHeader = markHeader(function TabHeader<T extends string = string
         {showAvatar ? <AccountAvatar /> : null}
       </>
     ) : undefined;
-  return <NightHeader right={actions} over={overline} title={title} sub={sub} hero={hero} tabs={tabs} />;
+  return <NightHeader right={actions} over={overline} title={title} sub={sub} hero={hero} tabs={tabs} stage={stage} />;
 });
 
-function AccountAvatar() {
+export function AccountAvatar() {
   const user = useUser();
   const name = (user?.user_metadata as { full_name?: string } | undefined)?.full_name ?? user?.email;
   return (
@@ -127,19 +136,19 @@ function AccountAvatar() {
 }
 
 /** En-tête d'écran de détail (bandeau nuit) : « ‹ Parent », action à droite, titre et sous-titre facultatifs. */
-export const DetailHeader = markHeader(function DetailHeader({ parentLabel, right, onBack, title, sub, hero }: { parentLabel: string; right?: ReactNode; onBack?: () => void; title?: string; sub?: string; hero?: { value: string; label?: string; sub?: string; color?: string; stats?: HeaderStat[] } }) {
-  return <NightHeader back={{ label: parentLabel, onPress: onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/today"))) }} right={right} title={title} sub={sub} hero={hero} />;
+export const DetailHeader = markHeader(function DetailHeader({ parentLabel, right, onBack, title, sub, hero, over, stage }: { parentLabel: string; right?: ReactNode; onBack?: () => void; title?: string; sub?: string; hero?: HeaderHero; over?: string; stage?: ReactNode }) {
+  return <NightHeader back={{ label: parentLabel, onPress: onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/today"))) }} right={right} over={over} title={title} sub={sub} hero={hero} stage={stage} />;
 });
 
 export function SectionHeader({ title, action, count }: { title: string; action?: { label: string; onPress: () => void }; count?: number }) {
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: space[3], minHeight: 24 }}>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: space[4], minHeight: 24 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 }}>
         <Txt variant="section" accessibilityRole="header" numberOfLines={1}>
           {title}
         </Txt>
         {count !== undefined ? (
-          <Txt variant="section" num color={color.ink2}>
+          <Txt variant="section" num color={color.ink}>
             {count}
           </Txt>
         ) : null}
@@ -156,8 +165,8 @@ export function SectionHeader({ title, action, count }: { title: string; action?
   );
 }
 
-/** Carte v4 : blanche, filet fin, ombre très légère, rayon 14. */
-export const cardStyle: ViewStyle = { backgroundColor: color.card, borderRadius: radius.xl, borderWidth: 1, borderColor: color.line, ...shadow.card };
+/** Carte v5 : blanche, filet fin, SANS ombre, rayon 16. */
+export const cardStyle: ViewStyle = { backgroundColor: color.card, borderRadius: radius.card, borderWidth: 1, borderColor: color.line };
 
 export function Card({ children, padded = false, style, accessibilityLabel, testID }: { children: ReactNode; padded?: boolean; style?: StyleProp<ViewStyle>; accessibilityLabel?: string; testID?: string }) {
   // L'ombre est portée par le cadre extérieur ; le contenu (et `style` : gap, direction…) est

@@ -1,9 +1,11 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ActivityIndicator, Image, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Package } from "lucide-react-native";
 import { color, radius, shadow, size, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
+import { useSlide } from "~/components/ui/motion";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 
@@ -15,7 +17,7 @@ const BUTTON: Record<ButtonVariant, { bg: string; bgPressed: string; fg: string;
 };
 
 /**
- * Bouton v4 : 52 pt (36 compact), rayon 14 (10 compact). primary = menthe avec texte bleu nuit
+ * Bouton v5 : 52 pt (36 compact), rayon 12 (10 compact). primary = menthe avec texte bleu nuit
  * (une seule grande surface menthe par écran) ; secondary = blanc à filet ; ghost ;
  * destructive. Pressé : couleur plus dense et scale 0,98. Désactivé : gris clair, texte ink3.
  */
@@ -57,7 +59,7 @@ export function Button({
       style={({ pressed }) => [
         {
           minHeight: compact ? size.buttonCompact : size.button,
-          borderRadius: compact ? radius.md : radius.xl,
+          borderRadius: compact ? radius.md : radius.lg,
           paddingHorizontal: compact ? space[3] : space[4],
           flexDirection: "row",
           gap: space[2],
@@ -111,9 +113,19 @@ export function IconButton({ icon, label, onPress, filled = false, onDark = fals
   );
 }
 
-export function Segmented<T extends string>({ options, value, onChange }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+/**
+ * Contrôle segmenté v5 (« SegmentedSlider ») : rail `track`, un SEUL pouce blanc qui glisse vers
+ * l'option choisie (240 ms, saut immédiat si « Réduire les animations »).
+ */
+export function Segmented<T extends string>({ options, value, onChange, testID }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; testID?: string }) {
+  const [width, setWidth] = useState(0);
+  const index = Math.max(0, options.findIndex((o) => o.value === value));
+  const thumb = options.length ? (width - 6) / options.length : 0;
+  const x = useSlide(index * thumb);
+  const thumbStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
-    <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: color.track, borderRadius: radius.lg, padding: 3 }}>
+    <View testID={testID} accessibilityRole="tablist" onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: "row", backgroundColor: color.track, borderRadius: radius.lg, padding: 3 }}>
+      {width > 0 ? <Animated.View pointerEvents="none" style={[{ position: "absolute", top: 3, bottom: 3, left: 3, width: thumb, borderRadius: radius.md, backgroundColor: color.surface }, shadow.thumb, thumbStyle]} /> : null}
       {options.map((o) => {
         const selected = o.value === value;
         return (
@@ -127,7 +139,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
               void Haptics.selectionAsync().catch(() => {});
               onChange(o.value);
             }}
-            style={[{ flex: 1, minHeight: 36, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], backgroundColor: selected ? color.surface : "transparent" }, selected ? shadow.card : null]}
+            style={{ flex: 1, minHeight: 38, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], backgroundColor: selected && width === 0 ? color.surface : "transparent" }}
           >
             <Txt variant="label" color={selected ? color.ink : color.ink2} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
               {o.label}
@@ -140,7 +152,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
 }
 
 /**
- * Filtre v4. Sélectionné : bleu nuit, texte clair. Repos : blanc à filet (sur le canvas).
+ * Filtre v5. Sélectionné : bleu nuit, texte clair. Repos : blanc à filet (sur le canvas).
  * `tone` n'ajoute qu'un point coloré (jamais une pastille pleine).
  */
 export function FilterChip({ label, count, selected, tone, onPress }: { label: string; count?: number; selected: boolean; tone?: "danger" | "accent"; onPress: () => void }) {

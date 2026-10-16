@@ -6,12 +6,14 @@ import { ChevronLeft } from "lucide-react-native";
 import { color, radius, size, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
+import { StageFigure, StageStats } from "~/components/ui/instrument";
 
 /**
- * Bandeau d'en-tête v3 (« construction commune ») : fond bleu nuit sous la zone de statut,
- * ligne de navigation 44 pt (« ‹ Parent » + action courte), titre 26/32, sur-titre / sous-titre,
- * chiffre clé facultatif (40/44) avec 2 à 4 stats, et onglets intercalaires facultatifs dont
- * l'onglet actif blanc fait corps avec la page. Sans onglets, le corps blanc remonte de 22 pt.
+ * Scène nuit v5 (« vitre de l'instrument ») : fond bleu nuit sous la zone de statut, rangée de
+ * navigation 44 pt (« ‹ Parent » + actions), sur-titre en capitales mono, titre 26/32, chiffre
+ * fin facultatif (Manrope 300) avec 2 à 4 relevés séparés par des filets, emplacement `stage`
+ * pour un graphique-signature, onglets intercalaires facultatifs. Sans onglets, le papier
+ * remonte de 24 pt.
  */
 
 /** Vrai à l'intérieur du bandeau : les boutons icônes passent en style « sur fond sombre ». */
@@ -20,10 +22,11 @@ export function useOnDark() {
   return useContext(OnDarkContext);
 }
 
-export type HeaderStat = { label: string; value: string; tone?: "positive" | "warning" | "negative" };
+export type HeaderStat = { label: string; value: string; tone?: "positive" | "warning" | "negative"; onPress?: () => void };
 export type HeaderTabs<T extends string> = { options: { value: T; label: string; unit?: string; a11y?: string }[]; value: T; onChange: (v: T) => void; size?: "md" | "lg" };
 
-const STAT_TONE = { positive: color.mint, warning: color.accent, negative: color.dangerOnDark } as const;
+const STAT_TONE = { positive: "mint", warning: "warning", negative: "danger" } as const;
+export type HeaderHero = { value: string; label?: string; sub?: string; color?: string; stats?: HeaderStat[]; size?: "xl" | "lg" | "md"; aside?: ReactNode };
 
 export function NightHeader<T extends string = string>({
   back,
@@ -33,6 +36,7 @@ export function NightHeader<T extends string = string>({
   sub,
   hero,
   tabs,
+  stage,
   topInset = true,
 }: {
   back?: { label: string; onPress: () => void };
@@ -40,8 +44,10 @@ export function NightHeader<T extends string = string>({
   over?: string;
   title?: string;
   sub?: string;
-  hero?: { value: string; label?: string; sub?: string; color?: string; stats?: HeaderStat[] };
+  hero?: HeaderHero;
   tabs?: HeaderTabs<T>;
+  /** graphique-signature ou contenu libre de la scène (sous le chiffre) */
+  stage?: ReactNode;
   /** gère la zone de statut (désactivé si l'écran la gère déjà) */
   topInset?: boolean;
 }) {
@@ -51,7 +57,7 @@ export function NightHeader<T extends string = string>({
   return (
     <OnDarkContext.Provider value>
       <View style={{ backgroundColor: color.brand, paddingTop: topInset ? insets.top : 0 }}>
-        <View style={{ paddingHorizontal: screenX, paddingBottom: tabs ? space[3] : space.bodyOverlap + space[4] }}>
+        <View style={{ paddingHorizontal: screenX, paddingBottom: tabs ? space[3] : space.bodyOverlap + space[5] }}>
           {back || right ? (
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: size.touchMin }}>
               {back ? (
@@ -74,7 +80,7 @@ export function NightHeader<T extends string = string>({
             </View>
           ) : null}
           {over ? (
-            <Txt variant="label" color={color.inkOnDarkMuted} style={{ marginTop: back || right ? 0 : space[3] }}>
+            <Txt variant="mono" color={color.inkOnDarkMuted} numberOfLines={1} style={{ marginTop: back || right ? 0 : space[3], marginBottom: 4 }}>
               {over}
             </Txt>
           ) : null}
@@ -84,41 +90,30 @@ export function NightHeader<T extends string = string>({
             </Txt>
           ) : null}
           {sub ? (
-            <Txt variant="label" color={color.inkOnDarkMuted} style={{ marginTop: 2 }}>
+            <Txt variant="label" color={color.inkOnDarkMuted} style={{ marginTop: 2, fontSize: 13.5, lineHeight: 19 }}>
               {sub}
             </Txt>
           ) : null}
           {hero ? (
-            <View style={{ marginTop: space[3], gap: space[2] }} accessible accessibilityLabel={`${hero.label ? `${hero.label} : ` : ""}${hero.value}${hero.sub ? `, ${hero.sub}` : ""}${hero.stats?.length ? `. ${hero.stats.map((s) => `${s.label} ${s.value}`).join(", ")}` : ""}`}>
+            <View style={{ marginTop: space[4], gap: space[2] }} accessible={!hero.stats?.some((x) => x.onPress)} accessibilityLabel={`${hero.label ? `${hero.label} : ` : ""}${hero.value}${hero.sub ? `, ${hero.sub}` : ""}${hero.stats?.length ? `. ${hero.stats.map((x) => `${x.label} ${x.value}`).join(", ")}` : ""}`}>
               {hero.label ? (
-                <Txt variant="label" color={color.inkOnDarkMuted}>
+                <Txt variant="monoSm" color={color.inkOnDarkMuted} numberOfLines={1}>
                   {hero.label}
                 </Txt>
               ) : null}
-              <Txt variant="hero" num color={hero.color ?? color.inkOnDark} adjustsFontSizeToFit numberOfLines={1}>
-                {hero.value}
-              </Txt>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: space[3] }}>
+                <StageFigure value={hero.value} size={hero.size ?? (compact ? "md" : "md")} tone={hero.color} />
+                {hero.aside}
+              </View>
               {hero.sub ? (
-                <Txt variant="label" color={color.inkOnDarkMuted} style={{ marginTop: -space[1] }}>
+                <Txt variant="label" color={color.inkOnDarkMuted}>
                   {hero.sub}
                 </Txt>
               ) : null}
-              {hero.stats?.length ? (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: space[5], rowGap: space[2] }}>
-                  {hero.stats.map((s) => (
-                    <View key={s.label}>
-                      <Txt variant="micro" color={color.inkOnDarkMuted}>
-                        {s.label}
-                      </Txt>
-                      <Txt variant="kpiSm" num color={s.tone ? STAT_TONE[s.tone] : color.inkOnDark} style={{ fontSize: 16 }}>
-                        {s.value}
-                      </Txt>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
+              {hero.stats?.length ? <StageStats style={{ marginTop: space[2] }} stats={hero.stats.map((x) => ({ label: x.label, value: x.value, tone: x.tone ? STAT_TONE[x.tone] : undefined, onPress: x.onPress }))} /> : null}
             </View>
           ) : null}
+          {stage}
         </View>
         {tabs ? <HeaderTabsRow tabs={tabs} large={lg} /> : null}
       </View>

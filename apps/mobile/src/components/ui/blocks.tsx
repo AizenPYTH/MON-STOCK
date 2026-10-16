@@ -1,16 +1,16 @@
 import { useState, type ComponentType, type ReactNode } from "react";
-import { Animated, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, ChevronRight, CircleHelp, Minus, TrendingUp } from "lucide-react-native";
 import { color, dealTone, radius, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { cardStyle } from "~/components/ui/layout";
 import { formatNumber } from "~/lib/format";
-import { useAnimatedProgress, useReduceMotion } from "~/components/ui/motion";
+import { Chevron, FillBar, Grow, PressScale } from "~/components/ui/motion";
 import { useLayout } from "~/theme/layout";
 
 /**
- * Blocs v4 (docs/design-system.md) : pictogramme teinté, ligne d'action, raccourci, bande de
+ * Blocs v5 (docs/design-system.md) : pictogramme teinté, ligne d'action, raccourci, bande de
  * chiffres, barre de progression, barre de répartition, section repliable, badge de rentabilité.
  * Tous signalent un état par une icône ou un libellé, jamais par la seule couleur.
  */
@@ -35,7 +35,7 @@ export function toneColors(tone: BlockTone) {
 export function IconBadge({ icon: Icon, tone = "neutral", size = 36 }: { icon: IconType; tone?: BlockTone; size?: number }) {
   const t = TONE[tone];
   return (
-    <View accessibilityElementsHidden importantForAccessibility="no" style={{ width: size, height: size, borderRadius: Math.round(size * 0.3), backgroundColor: t.bg, alignItems: "center", justifyContent: "center" }}>
+    <View accessibilityElementsHidden importantForAccessibility="no" style={{ width: size, height: size, borderRadius: Math.round(size * 0.31), backgroundColor: t.bg, alignItems: "center", justifyContent: "center" }}>
       <Icon size={Math.round(size * 0.5)} color={t.fg} strokeWidth={2.1} />
     </View>
   );
@@ -48,8 +48,8 @@ export function IconBadge({ icon: Icon, tone = "neutral", size = 36 }: { icon: I
 export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress, last = false, testID, value, valueHint, titleLines = 1, detailLines = 2 }: { icon: IconType; tone?: BlockTone; title: string; detail?: string | null; cta?: string; onPress?: () => void; last?: boolean; testID?: string; value?: string; valueHint?: string; titleLines?: number; detailLines?: number }) {
   const { compact } = useLayout();
   const body = (pressed: boolean) => (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? space[2] : space[3], paddingVertical: space[3], paddingHorizontal: compact ? space[3] : space[4], minHeight: 64, backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft }}>
-      <IconBadge icon={icon} tone={tone} />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? space[2] : space[3], paddingVertical: 10, paddingHorizontal: compact ? space[3] : 14, minHeight: 60, backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft }}>
+      <IconBadge icon={icon} tone={tone} size={32} />
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
         <Txt variant="body" numberOfLines={titleLines}>
           {title}
@@ -73,13 +73,11 @@ export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress,
         </View>
       ) : null}
       {cta && !compact ? (
-        <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: radius.xs, backgroundColor: color.surfaceSunken }}>
-          <Txt variant="micro" color={color.ink} style={{ letterSpacing: 0 }} numberOfLines={1}>
-            {cta}
-          </Txt>
-        </View>
+        <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1}>
+          {cta}
+        </Txt>
       ) : null}
-      {onPress ? <ChevronRight size={18} color={color.ink3} strokeWidth={2} /> : null}
+      {onPress ? <ChevronRight size={16} color={color.ink4} strokeWidth={2.2} /> : null}
     </View>
   );
   const a11y = `${title}${detail ? `, ${detail}` : ""}${value ? `, ${value}` : ""}${cta ? `. ${cta}` : ""}`;
@@ -99,18 +97,19 @@ export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress,
 /** Raccourci : carte compacte avec pictogramme, libellé et précision (grille de 2 ou 4). */
 export function ShortcutTile({ icon: Icon, label, sub, onPress, testID, accent = false }: { icon: IconType; label: string; sub?: string; onPress: () => void; testID?: string; accent?: boolean }) {
   return (
-    <Pressable
+    <PressScale
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={sub ? `${label}, ${sub}` : label}
       onPress={onPress}
-      style={({ pressed }) => [cardStyle, { flex: 1, padding: space[3], gap: space[2], minHeight: 92, backgroundColor: accent ? color.brand : pressed ? color.surfacePressed : color.card, borderColor: accent ? color.brand : color.line, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+      scale={0.96}
+      style={[cardStyle, { flex: 1, paddingTop: space[3], paddingHorizontal: 10, paddingBottom: 11, gap: space[2], minHeight: 96, justifyContent: "space-between", backgroundColor: accent ? color.brand : color.card, borderColor: accent ? color.brand : color.line }]}
     >
-      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: accent ? color.mint : color.surfaceSunken, alignItems: "center", justifyContent: "center" }}>
-        <Icon size={17} color={accent ? color.onMint : color.ink} strokeWidth={2.1} />
+      <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: accent ? color.mint : color.surfaceSunken, alignItems: "center", justifyContent: "center" }}>
+        <Icon size={16} color={accent ? color.onMint : color.ink} strokeWidth={2.1} />
       </View>
       <View style={{ gap: 1 }}>
-        <Txt variant="body" color={accent ? color.inkOnDark : color.ink} numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontFamily: "Manrope_700Bold" }}>
+        <Txt variant="body" color={accent ? color.inkOnDark : color.ink} numberOfLines={2} style={{ fontSize: 12.5, lineHeight: 16, fontFamily: "Manrope_700Bold" }}>
           {label}
         </Txt>
         {sub ? (
@@ -119,7 +118,7 @@ export function ShortcutTile({ icon: Icon, label, sub, onPress, testID, accent =
           </Txt>
         ) : null}
       </View>
-    </Pressable>
+    </PressScale>
   );
 }
 
@@ -190,37 +189,60 @@ export function MetricStrip({ metrics }: { metrics: Metric[] }) {
 /** Barre de progression (rail `track`) ; remplissage animé sauf si l'animation est réduite. */
 export function ProgressBar({ value, max = 1, tone = "brand", label, height = 6 }: { value: number; max?: number; tone?: BlockTone; label?: string; height?: number }) {
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
-  const v = useAnimatedProgress(ratio);
   const fill = tone === "brand" ? color.brand : TONE[tone].fg;
   return (
     <View accessibilityRole="progressbar" accessibilityLabel={label} accessibilityValue={{ min: 0, max: 100, now: Math.round(ratio * 100) }} style={{ height, borderRadius: height / 2, backgroundColor: color.track, overflow: "hidden" }}>
-      <Animated.View style={{ height, borderRadius: height / 2, backgroundColor: fill, width: v.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) }} />
+      <FillBar ratio={ratio} style={{ borderRadius: height / 2, backgroundColor: fill }} />
     </View>
   );
 }
 
 /** Barre de répartition (ex. lignes créées / mises à jour / ignorées) avec légende chiffrée. */
-export function SplitBar({ parts, label }: { parts: { label: string; value: number; tone: BlockTone }[]; label: string }) {
+/**
+ * Barre de répartition (lignes nouvelles / mises à jour / inchangées / ignorées) avec légende
+ * chiffrée en grille. Les segments se remplissent vers les VRAIS comptes (`scaleX`, décalage 60 ms) ;
+ * `animate={false}` pour un échec (rien ne s'anime). `height` 8 (liste) ou 12 (rapport).
+ */
+export function SplitBar({ parts, label, height = 8, animate = true, legend = "wrap" }: { parts: { label: string; value: number; tone: BlockTone }[]; label: string; height?: number; animate?: boolean; legend?: "wrap" | "grid" | "none" }) {
   const total = parts.reduce((a, p) => a + Math.max(0, p.value), 0);
   const shown = parts.filter((p) => p.value > 0);
+  const fillOf = (tone: BlockTone) => (tone === "brand" ? color.brand : tone === "neutral" ? color.lineStrong : TONE[tone].fg);
   return (
-    <View style={{ gap: space[2] }} accessible accessibilityLabel={`${label} : ${parts.map((p) => `${p.label} ${p.value}`).join(", ")}`}>
-      <View style={{ flexDirection: "row", height: 8, borderRadius: 4, overflow: "hidden", backgroundColor: color.track, gap: total ? 2 : 0 }}>
-        {shown.map(({ label: key, value: weight, tone }) => (
-          // (pas de `x.value` dans un style : le plugin Reanimated le prendrait pour une valeur animée)
-          <View key={key} style={{ flex: weight, backgroundColor: tone === "brand" ? color.brand : tone === "neutral" ? color.lineStrong : TONE[tone].fg }} />
-        ))}
-      </View>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: space[4], rowGap: 4 }}>
-        {parts.map((p) => (
-          <View key={p.label} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: p.tone === "brand" ? color.brand : p.tone === "neutral" ? color.lineStrong : TONE[p.tone].fg }} />
-            <Txt variant="label" num>
-              {p.label} <Txt variant="label" num color={color.ink} style={{ fontFamily: "Manrope_800ExtraBold" }}>{formatNumber(p.value)}</Txt>
-            </Txt>
+    <View style={{ gap: space[3] }} accessible accessibilityLabel={`${label} : ${parts.map((p) => `${p.label} ${p.value}`).join(", ")}`}>
+      <View style={{ flexDirection: "row", height, borderRadius: height / 2, overflow: "hidden", backgroundColor: total ? "transparent" : color.track, gap: total ? 3 : 0 }}>
+        {shown.map(({ label: key, value: weight, tone }, i) => (
+          // (pas de `x.value` dans un style : le plugin des worklets le prendrait pour une valeur animée)
+          <View key={key} style={{ flex: weight }}>
+            {animate ? <Grow axis="x" delay={i * 60} style={{ flex: 1, backgroundColor: fillOf(tone) }} /> : <View style={{ flex: 1, backgroundColor: fillOf(tone) }} />}
           </View>
         ))}
       </View>
+      {legend === "none" ? null : legend === "grid" ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: 10 }}>
+          {parts.map((p, i) => (
+            <View key={p.label} style={{ flexBasis: "50%", flexDirection: "row", alignItems: "center", gap: 8, paddingRight: i % 2 === 0 ? space[4] : 0 }}>
+              <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: fillOf(p.tone) }} />
+              <Txt variant="body" color={color.ink2} style={{ flex: 1, fontSize: 14 }} numberOfLines={1}>
+                {p.label}
+              </Txt>
+              <Txt variant="body" num style={{ fontFamily: "Manrope_800ExtraBold", fontSize: 14 }}>
+                {formatNumber(p.value)}
+              </Txt>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: space[4], rowGap: 4 }}>
+          {parts.map((p) => (
+            <View key={p.label} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: fillOf(p.tone) }} />
+              <Txt variant="label" num>
+                {p.label} <Txt variant="label" num color={color.ink} style={{ fontFamily: "Manrope_800ExtraBold" }}>{formatNumber(p.value)}</Txt>
+              </Txt>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -231,14 +253,9 @@ export function SplitBar({ parts, label }: { parts: { label: string; value: numb
  */
 export function Collapsible({ title, summary, children, defaultOpen = false, icon, testID }: { title: string; summary?: string; children: ReactNode; defaultOpen?: boolean; icon?: IconType; testID?: string }) {
   const [open, setOpen] = useState(defaultOpen);
-  const reduce = useReduceMotion();
-  const [rot] = useState(() => new Animated.Value(defaultOpen ? 1 : 0));
   const toggle = () => {
-    const next = !open;
-    setOpen(next);
+    setOpen(!open);
     void Haptics.selectionAsync().catch(() => {});
-    if (reduce) rot.setValue(next ? 1 : 0);
-    else Animated.timing(rot, { toValue: next ? 1 : 0, duration: 160, useNativeDriver: true }).start();
   };
   return (
     <View style={cardStyle} testID={testID}>
@@ -252,9 +269,9 @@ export function Collapsible({ title, summary, children, defaultOpen = false, ico
             </Txt>
           ) : null}
         </View>
-        <Animated.View style={{ transform: [{ rotate: rot.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }) }] }}>
+        <Chevron open={open}>
           <ChevronDown size={18} color={color.ink3} strokeWidth={2.2} />
-        </Animated.View>
+        </Chevron>
       </Pressable>
       {open ? <View style={{ paddingHorizontal: space[4], paddingBottom: space[4], gap: space[2], borderTopWidth: 1, borderTopColor: color.lineSoft, paddingTop: space[3] }}>{children}</View> : null}
     </View>
@@ -298,7 +315,8 @@ export function StatusLine({ tone, label }: { tone: BlockTone; label: string }) 
 }
 
 /** Étapes d'un parcours (horizontal) : faites (coche), en cours (bleu nuit), à venir (gris). */
-export function StepBar({ steps, current }: { steps: string[]; current: number }) {
+export function StepBar({ steps, current, onDark = false }: { steps: string[]; current: number; onDark?: boolean }) {
+  if (onDark) return <NightStepBar steps={steps} current={current} />;
   return (
     <View accessible accessibilityRole="progressbar" accessibilityLabel={`Étape ${Math.min(current + 1, steps.length)} sur ${steps.length} : ${steps[Math.min(current, steps.length - 1)]}`} style={{ flexDirection: "row", alignItems: "flex-start" }}>
       {steps.map((label, i) => {
@@ -322,3 +340,33 @@ export function StepBar({ steps, current }: { steps: string[]; current: number }
     </View>
   );
 }
+
+/**
+ * Étapes sur la scène nuit (assistant d'import) : faites = pastille menthe + coche bleu nuit ;
+ * en cours = contour menthe + numéro menthe ; à venir = contour clair atténué ; libellés en capitales.
+ */
+function NightStepBar({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <View accessible accessibilityRole="progressbar" accessibilityLabel={`Étape ${Math.min(current + 1, steps.length)} sur ${steps.length} : ${steps[Math.min(current, steps.length - 1)]}`} style={{ flexDirection: "row", alignItems: "flex-start" }}>
+      {steps.map((label, i) => {
+        const done = i < current;
+        const now = i === current;
+        return (
+          <View key={label} style={{ flex: 1, alignItems: "center", gap: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", alignSelf: "stretch" }}>
+              <View style={{ flex: 1, height: 2, backgroundColor: i === 0 ? "transparent" : done || now ? color.mint : color.nightStroke }} />
+              <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: done ? color.mint : "transparent", borderWidth: done ? 0 : now ? 2 : 1.5, borderColor: now ? color.mint : "rgba(247,248,250,0.22)" }}>
+                {done ? <Check size={13} color={color.brand} strokeWidth={3} /> : <Txt variant="code" num color={now ? color.mint : color.inkOnDarkSubtle} style={{ fontSize: 10.5 }}>{i + 1}</Txt>}
+              </View>
+              <View style={{ flex: 1, height: 2, backgroundColor: i === steps.length - 1 ? "transparent" : done ? color.mint : color.nightStroke }} />
+            </View>
+            <Txt variant="monoSm" color={now ? color.inkOnDark : color.inkOnDarkSubtle} numberOfLines={1} style={{ fontSize: 9, letterSpacing: 0.3 }}>
+              {label}
+            </Txt>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+

@@ -1,8 +1,8 @@
 /**
- * Jetons de design MON STOCK v4 — « Bleu nuit + menthe, pilotage » (docs/design-system.md fait foi).
- * v4 garde l'identité v3 et ajoute la profondeur : fond « canvas » gris bleuté, cartes blanches à
- * filet fin et ombre très légère, couleur d'information, palette de rentabilité. Les clés des
- * versions précédentes sont conservées (aucun écran ne casse).
+ * Jetons de design MON STOCK v5 — « Instrument » (docs/design-system.md fait foi).
+ * v5 garde l'identité v4 (bleu nuit, menthe, données honnêtes) : une scène nuit par écran qui
+ * porte un seul chiffre, un papier clair pour les listes, des cartes à filet SANS ombre, la
+ * couleur réservée aux signaux. Les clés des versions précédentes sont conservées.
  *
  * Rôles :
  *  - brand (bleu nuit #101C2C) : bandeau d'en-tête, navigation, une surface sombre rare par écran, toasts.
@@ -35,6 +35,8 @@ export const color = {
   inkOnDarkMuted: "#9AA6B6",
   /** onglet intercalaire inactif sur bandeau nuit */
   inkOnDarkSubtle: "#7D8AA0",
+  /** chevrons et pictogrammes discrets sur papier */
+  ink4: "#9AA6B6",
 
   // Lignes
   line: "#E6EAF0",
@@ -42,6 +44,9 @@ export const color = {
   lineStrong: "#D5DBE4",
   /** rail de contrôle segmenté / barre de progression */
   track: "#E4E8EE",
+  /** filet / contour sur la scène nuit */
+  nightLine: "rgba(247,248,250,0.10)",
+  nightStroke: "rgba(247,248,250,0.14)",
   skeleton: "#EBEEF3",
   skeletonStrong: "#E1E5EB",
 
@@ -69,18 +74,28 @@ export const color = {
   dangerInk: "#B03A3A",
   dangerSoft: "#FBE9E9",
   dangerOnDark: "#F2A3A3",
+  /** bordure d'un encadré d'erreur */
+  dangerLine: "#F3D2D2",
 
   // Information (neutre, jamais une alerte)
   info: "#3567C4",
   infoSoft: "#EAF0FB",
   infoInk: "#24518F",
 
-  overlay: "rgba(16,28,44,0.40)",
+  // Graphiques de la scène (code-barres du stock, 14 jours)
+  barOk: "rgba(247,248,250,0.86)",
+  barDay: "rgba(247,248,250,0.26)",
+  barTodayBg: "rgba(139,232,190,0.16)",
+  /** badge « DÉMO » sur la scène */
+  demoInk: "#E5A34D",
+  demoBg: "rgba(229,163,77,0.14)",
+
+  overlay: "rgba(10,20,32,0.45)",
 } as const;
 
-export const space = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, screenX: 16, blockGap: 10, tabBarClearance: 0, bodyOverlap: 22 } as const;
-/** badge 6 · bouton compact 10 · bouton / champ / liste 14 · corps 22 · feuille 20 */
-export const radius = { xs: 6, sm: 8, md: 10, lg: 12, xl: 14, xxl: 14, body: 22, sheet: 20, pill: 999 } as const;
+export const space = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, screenX: 16, blockGap: 10, sectionGap: 24, tabBarClearance: 0, bodyOverlap: 24 } as const;
+/** badge 6 · contrôle / bouton 12 (compact 10) · carte 16 · papier 24 · feuille 24 */
+export const radius = { xs: 6, sm: 8, md: 10, lg: 12, xl: 16, xxl: 16, card: 16, body: 24, sheet: 24, pill: 999 } as const;
 export const size = {
   button: 52,
   buttonCompact: 36,
@@ -98,13 +113,42 @@ export const size = {
   iconSm: 16,
   tabIcon: 22,
 } as const;
-export const motion = { enter: 220, stagger: 40, press: 90, segmented: 150, chip: 120, toast: 200, sheet: 250, toastAutoDismiss: 4000, undoWindow: 5000, skeletonPulse: 1000 } as const;
+/**
+ * Durées v5 (ms). « Réduire les animations » les ramène toutes à 0 (voir components/ui/motion.tsx).
+ * Les anciennes clés v4 restent disponibles.
+ */
+export const motion = {
+  press: 90,
+  quick: 160,
+  base: 240,
+  tabIndicator: 280,
+  move: 320,
+  sheet: 360,
+  progress: 420,
+  figure: 600,
+  staggerBars: 18,
+  staggerCards: 30,
+  staggerSections: 40,
+  enter: 240,
+  stagger: 30,
+  segmented: 240,
+  chip: 160,
+  toast: 280,
+  toastAutoDismiss: 4000,
+  undoWindow: 5000,
+  skeletonPulse: 1000,
+} as const;
 
-/** Ombres très légères : la hiérarchie vient d'abord du canvas et du filet des cartes. */
+/**
+ * Élévation v5 : les cartes posées n'ont PAS d'ombre (filet seul). Seul ce qui flotte (feuille,
+ * notification, pouce du contrôle segmenté, barre collante) porte une ombre.
+ */
 export const shadow = {
-  card: { shadowColor: "#101C2C", shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  card: { shadowColor: "#101C2C", shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
+  thumb: { shadowColor: "#101C2C", shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  sheet: { shadowColor: "#0A1420", shadowOpacity: 0.25, shadowRadius: 40, shadowOffset: { width: 0, height: -12 }, elevation: 12 },
   raised: { shadowColor: "#101C2C", shadowOpacity: 0.1, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
-  toast: { shadowColor: "#101C2C", shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  toast: { shadowColor: "#0A1420", shadowOpacity: 0.35, shadowRadius: 32, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
   tabBar: { shadowColor: "#101C2C", shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0 },
 } as const;
 

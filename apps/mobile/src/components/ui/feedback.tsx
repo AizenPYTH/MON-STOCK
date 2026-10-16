@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Check } from "lucide-react-native";
+import ReAnimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { Check, X } from "lucide-react-native";
 import { color, motion, radius, shadow, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { Button } from "~/components/ui/controls";
 import { useLayout } from "~/theme/layout";
-import { useReduceMotion } from "~/components/ui/motion";
+import { curve, useReduceMotion } from "~/components/ui/motion";
 
 export function EmptyState({ icon, title, description, actions = [] }: { icon?: ReactNode; title: string; description: string; actions?: { label: string; onPress: () => void; variant?: "primary" | "secondary"; disabled?: boolean }[] }) {
   return (
@@ -31,7 +32,7 @@ export function EmptyState({ icon, title, description, actions = [] }: { icon?: 
 
 export function ErrorState({ title = "Impossible de charger les données", description, onRetry }: { title?: string; description: string; onRetry?: () => void }) {
   return (
-    <View style={{ backgroundColor: color.dangerSoft, borderRadius: radius.xxl, borderWidth: 1, borderColor: "#F3D2D2", padding: space[5], alignItems: "center", gap: space[2] }} accessibilityRole="alert">
+    <View style={{ backgroundColor: color.dangerSoft, borderRadius: radius.card, borderWidth: 1, borderColor: color.dangerLine, padding: space[5], alignItems: "center", gap: space[2] }} accessibilityRole="alert">
       <Txt variant="headline" color={color.dangerInk} style={{ fontSize: 16, textAlign: "center" }}>
         {title}
       </Txt>
@@ -43,16 +44,16 @@ export function ErrorState({ title = "Impossible de charger les données", descr
   );
 }
 
-/** Bloc de chargement : opacité 0.5 ↔ 1 sur 1 s (fixe si « Réduire les animations »). Jamais de spinner plein écran. */
+/** Bloc de chargement : opacité 0,45 ↔ 1 sur 1 s (fixe si « Réduire les animations »). Jamais de spinner plein écran. */
 export function Skeleton({ w, h, r = radius.sm }: { w: number | `${number}%`; h: number; r?: number }) {
   const reduce = useReduceMotion();
-  const [opacity] = useState(() => new Animated.Value(0.5));
+  const [opacity] = useState(() => new Animated.Value(0.45));
   useEffect(() => {
     if (reduce) {
       opacity.setValue(0.75);
       return;
     }
-    const loop = Animated.loop(Animated.sequence([Animated.timing(opacity, { toValue: 1, duration: 500, useNativeDriver: true }), Animated.timing(opacity, { toValue: 0.5, duration: 500, useNativeDriver: true })]));
+    const loop = Animated.loop(Animated.sequence([Animated.timing(opacity, { toValue: 1, duration: 500, useNativeDriver: true }), Animated.timing(opacity, { toValue: 0.45, duration: 500, useNativeDriver: true })]));
     loop.start();
     return () => loop.stop();
   }, [opacity, reduce]);
@@ -82,37 +83,38 @@ export function SkeletonList({ rows = 8, thumb = true }: { rows?: number; thumb?
 type ToastInput = { text: string; tone?: "success" | "error"; action?: { label: string; onPress: () => void } };
 const ToastContext = createContext<(t: ToastInput) => void>(() => {});
 
+/**
+ * Notification v5 : bleu nuit, contour `nightStroke`, rayon 16 ; entrée `translateY -150 → 0`
+ * (280 ms, courbe « instrument ») + fondu ; disparition après 3 s (4 s avec une action « Annuler »).
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<(ToastInput & { id: number }) | null>(null);
   const insets = useSafeAreaInsets();
-  const [y] = useState(() => new Animated.Value(-120));
+  const p = useSharedValue(0);
   const show = useCallback((t: ToastInput) => setToast({ ...t, id: Date.now() }), []);
   const reduce = useReduceMotion();
-  const toastMs = reduce ? 0 : motion.toast;
 
   useEffect(() => {
     if (!toast) return;
-    Animated.timing(y, { toValue: 0, duration: toastMs, useNativeDriver: true }).start();
-    const timer = setTimeout(() => {
-      Animated.timing(y, { toValue: -120, duration: toastMs, useNativeDriver: true }).start(() => setToast(null));
-    }, motion.toastAutoDismiss);
-    return () => clearTimeout(timer);
-  }, [toast, y, toastMs]);
+    p.value = reduce ? 1 : withTiming(1, { duration: motion.toast, easing: curve.instrument });
+    const timer = setTimeout(() => setToast(null), toast.action ? motion.toastAutoDismiss : 3000);
+    return () => {
+      clearTimeout(timer);
+      p.value = 0;
+    };
+  }, [toast, p, reduce]);
+  const a = useAnimatedStyle(() => ({ opacity: Math.min(1, p.value * 1.4), transform: [{ translateY: (1 - p.value) * -150 }] }));
 
   return (
     <ToastContext.Provider value={show}>
       {children}
       {toast ? (
-        <Animated.View
-          pointerEvents="box-none"
-          style={{ position: "absolute", left: space[4], right: space[4], top: insets.top + space[2], transform: [{ translateY: y }] }}
-          accessibilityLiveRegion="polite"
-        >
-          <View style={[{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: color.brand, borderRadius: radius.xl, paddingVertical: space[3], paddingHorizontal: 14 }, shadow.toast]} accessibilityRole="alert">
-            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: toast.tone === "error" ? color.danger : color.mint, alignItems: "center", justifyContent: "center" }}>
-              {toast.tone === "error" ? <Txt variant="micro" color={color.inkOnDark}>!</Txt> : <Check size={12} color={color.onMint} strokeWidth={3} />}
+        <ReAnimated.View pointerEvents="box-none" style={[{ position: "absolute", left: space[4], right: space[4], top: Math.max(insets.top - 6, space[2]) }, a]} accessibilityLiveRegion="polite">
+          <View style={[{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: color.brand, borderRadius: radius.card, borderWidth: 1, borderColor: color.nightStroke, paddingVertical: space[3], paddingHorizontal: 14 }, shadow.toast]} accessibilityRole="alert">
+            <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: toast.tone === "error" ? color.dangerOnDark : color.mint, alignItems: "center", justifyContent: "center" }}>
+              {toast.tone === "error" ? <X size={13} color={color.brand} strokeWidth={3} /> : <Check size={13} color={color.onMint} strokeWidth={3} />}
             </View>
-            <Txt variant="bodyRegular" color={color.inkOnDark} style={{ flex: 1, fontFamily: "Manrope_600SemiBold" }}>
+            <Txt variant="bodyRegular" color={color.inkOnDark} style={{ flex: 1, fontFamily: "Manrope_600SemiBold", fontSize: 14, lineHeight: 19 }}>
               {toast.text}
             </Txt>
             {toast.action ? (
@@ -124,13 +126,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   setToast(null);
                 }}
               >
-                <Txt variant="label" color={color.inkOnDarkMuted} style={{ fontFamily: "Manrope_700Bold" }}>
+                <Txt variant="label" color={color.mint} style={{ fontFamily: "Manrope_700Bold" }}>
                   {toast.action.label}
                 </Txt>
               </Pressable>
             ) : null}
           </View>
-        </Animated.View>
+        </ReAnimated.View>
       ) : null}
     </ToastContext.Provider>
   );
@@ -153,7 +155,7 @@ export function BottomSheet({ visible, title, description, children, onClose }: 
         <Pressable style={{ flex: 1, backgroundColor: color.overlay }} accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} />
         <View
           accessibilityViewIsModal
-          style={{ backgroundColor: color.surface, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingTop: space[3], paddingHorizontal: space[4], paddingBottom: Math.max(insets.bottom, 34), gap: space[3], width: "100%", maxWidth, alignSelf: "center" }}
+          style={{ ...shadow.sheet, backgroundColor: color.surface, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingTop: space[3], paddingHorizontal: space[4], paddingBottom: Math.max(insets.bottom, 34), gap: space[3], width: "100%", maxWidth, alignSelf: "center" }}
         >
           <View style={{ alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: color.lineStrong, marginBottom: space[2] }} />
           <Txt variant="title2" accessibilityRole="header">
