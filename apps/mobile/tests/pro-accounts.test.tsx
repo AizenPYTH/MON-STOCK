@@ -71,10 +71,13 @@ it("recherche : vos comptes d'abord, puis sources publiques (logos, lien) ; invi
     { ...o("p", "Ecran iPhone 13 OLED", 89, { access: "public" }), supplierId: "b", supplierName: "Brico-phone", country: "FR", domain: "brico-phone.com" },
     { ...o("a", "iPhone 13 128GB Grade A", 250, { access: "account", url: null }), supplierId: "f", supplierName: "Foxway", country: "EE", domain: "foxway.com" },
   ];
-  mockCallApi.mockResolvedValue({ query: "iPhone 13", currency: "EUR", total: 2, partial: false, durationMs: 900, checked: [], offers, suppliers: [] });
+  const payload = { query: "iPhone 13", currency: "EUR", total: 2, partial: false, durationMs: 900, checked: [], offers, suppliers: [] };
+  mockCallApi.mockImplementation((path: string) => Promise.resolve(path === "/suppliers/search" ? payload : path === "/sourcing/imports" ? [] : { entries: [] }));
   const Screen = jest.requireActual("~/app/(app)/(tabs)/sourcing").default;
   render(wrap(<Screen />));
   expect(screen.getByTestId("connect-accounts-cta")).toBeTruthy();
+  fireEvent.press(screen.getByTestId("connect-accounts-cta"));
+  expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/pro-accounts");
   fireEvent.press(screen.getByText("iPhone 13"));
   await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
   expect(screen.getByText("Vos comptes fournisseurs (1)")).toBeTruthy();
@@ -83,6 +86,7 @@ it("recherche : vos comptes d'abord, puis sources publiques (logos, lien) ; invi
   expect(titles).toEqual(["iPhone 13 128GB Grade A", "Ecran iPhone 13 OLED"]);
   expect(screen.getByText(/Votre compte/)).toBeTruthy();
   expect(screen.getAllByTestId("supplier-logo-image", { includeHiddenElements: true })).toHaveLength(2);
-  fireEvent.press(screen.getByTestId("connect-accounts-cta"));
-  expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/pro-accounts");
+  // vue compacte : mêmes offres, une ligne chacune
+  fireEvent.press(screen.getByLabelText("Vue compacte"));
+  expect(screen.getAllByTestId("supplier-logo-image", { includeHiddenElements: true })).toHaveLength(2);
 });

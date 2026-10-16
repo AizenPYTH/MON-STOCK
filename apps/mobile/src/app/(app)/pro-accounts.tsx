@@ -24,7 +24,7 @@ export default function ProAccountsScreen() {
   const hub = useProAccounts();
   const { permissions } = useActiveOrg();
   const [connecting, setConnecting] = useState<ProAccountDTO | null>(null);
-  const header = <DetailHeader parentLabel="Fournisseurs" title="Mes comptes fournisseurs" sub="Vos prix pro d'abord, les sources publiques ensuite" />;
+  const header = <DetailHeader parentLabel="Sourcing" title="Mes comptes fournisseurs" sub="Vos prix pro d'abord, les sources publiques ensuite" />;
 
   if (hub.isPending)
     return (

@@ -61,7 +61,7 @@ describe("navigation protégée", () => {
     const r = renderRouter(routes, { initialUrl: "/" });
     expect(await screen.findByText("Aujourd'hui (écran)")).toBeTruthy();
     expect(r.getPathname()).toBe("/today");
-    for (const tab of ["Aujourd'hui", "Stock", "Ventes", "Fournisseurs"]) expect(screen.getByLabelText(tab)).toBeTruthy();
+    for (const tab of ["Aujourd'hui", "Stock", "Ventes", "Sourcing : offres et fournisseurs"]) expect(screen.getByLabelText(tab)).toBeTruthy();
     expect(screen.getByLabelText("Aujourd'hui").props.accessibilityState).toEqual({ selected: true });
     expect(screen.queryByText("Réglages")).toBeNull();
   });

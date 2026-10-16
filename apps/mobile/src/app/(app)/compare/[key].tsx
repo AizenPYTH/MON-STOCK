@@ -29,7 +29,7 @@ export default function CompareScreen() {
   if (q.isPending)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Fournisseurs" />
+        <DetailHeader parentLabel="Sourcing" />
         <Skeleton w="80%" h={26} />
         <Skeleton w="100%" h={74} r={radius.lg} />
         <Skeleton w="100%" h={100} r={radius.xl} />
@@ -38,7 +38,7 @@ export default function CompareScreen() {
   if (q.isError)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Fournisseurs" />
+        <DetailHeader parentLabel="Sourcing" />
         <ErrorState description={userMessage(q.error)} onRetry={() => void q.refetch()} />
       </Screen>
     );
@@ -46,7 +46,7 @@ export default function CompareScreen() {
   if (!c)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Fournisseurs" />
+        <DetailHeader parentLabel="Sourcing" />
         <EmptyState title="Offres introuvables" description="Elles ont peut-être expiré ou été retirées par la source." />
       </Screen>
     );
@@ -72,7 +72,7 @@ export default function CompareScreen() {
       }
       refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} />}
     >
-      <DetailHeader parentLabel="Fournisseurs" />
+      <DetailHeader parentLabel="Sourcing" />
       <View style={{ gap: 4 }}>
         <Txt variant="title2" accessibilityRole="header">
           {c.title}

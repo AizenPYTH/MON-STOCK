@@ -87,7 +87,7 @@ export default function SupplierLibraryScreen() {
     fn();
   };
   const activeFilters = countries.length + methods.length + (sort !== "priority" ? 1 : 0);
-  const header = <DetailHeader parentLabel="Fournisseurs" title="Bibliothèque des fournisseurs" sub={directory.data ? `${entries.length} fournisseurs · ${entries.filter((e) => e.org.status === "connected").length} connectés` : undefined} />;
+  const header = <DetailHeader parentLabel="Sourcing" title="Bibliothèque des fournisseurs" sub={directory.data ? `${entries.length} fournisseurs · ${entries.filter((e) => e.org.status === "connected").length} connectés` : undefined} />;
 
   if (directory.isPending)
     return (

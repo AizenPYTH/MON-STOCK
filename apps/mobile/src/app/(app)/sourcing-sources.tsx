@@ -27,14 +27,14 @@ export default function SourcingSourcesScreen() {
   if (library.isPending)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Fournisseurs" />
+        <DetailHeader parentLabel="Sourcing" />
         <SkeletonList rows={6} thumb={false} />
       </Screen>
     );
   if (library.isError)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Fournisseurs" />
+        <DetailHeader parentLabel="Sourcing" />
         <ErrorState description={userMessage(library.error)} onRetry={() => void library.refetch()} />
       </Screen>
     );
@@ -62,7 +62,7 @@ export default function SourcingSourcesScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={library.isRefetching} onRefresh={() => void library.refetch()} />}>
-      <DetailHeader parentLabel="Fournisseurs" />
+      <DetailHeader parentLabel="Sourcing" />
       <View style={{ gap: 4 }}>
         <Txt variant="title2" accessibilityRole="header">
           Sources fournisseurs

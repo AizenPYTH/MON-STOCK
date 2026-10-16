@@ -4,7 +4,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Package, Plus } from "lucide-react-native";
 import { useActiveOrg } from "~/org/org-provider";
 import { useCatalog } from "~/data/hooks";
-import { filterCatalog, type CatalogFilter, type ProductGroup } from "~/data/catalog";
+import { filterCatalog, stockSummary, type CatalogFilter, type ProductGroup } from "~/data/catalog";
+import { formatMoneyRounded, formatNumber } from "~/lib/format";
 import { useDebounced } from "~/lib/use-debounced";
 import { userMessage } from "~/lib/errors";
 import { AlertBanner, Button, EmptyState, RowFrame, ErrorState, FilterChip, ListRow, QtyBadge, Screen, SearchField, Skeleton, SkeletonList, TabHeader, Thumb, useTabBarClearance } from "~/components/ui";
@@ -22,6 +23,12 @@ export default function StockScreen() {
   const { screenX, maxWidth } = useLayout();
   const products = useMemo(() => (catalog.data ? filterCatalog(catalog.data.products, filter, query) : []), [catalog.data, filter, query]);
   const counts = catalog.data?.counts;
+  const summary = useMemo(() => (catalog.data ? stockSummary(catalog.data) : null), [catalog.data]);
+  const currency = useActiveOrg().active.organization.currency;
+  const sub =
+    counts && summary
+      ? `${formatNumber(counts.all)} produit${counts.all > 1 ? "s" : ""} · ${formatNumber(summary.units)} unités · ${summary.skusWithoutCost > 0 ? "≈ " : ""}${formatMoneyRounded(summary.value, currency)} au coût`
+      : undefined;
   const { permissions } = useActiveOrg();
   const clearance = useTabBarClearance();
   const addButton = permissions.canWrite ? <Button label="Produit" compact icon={<Plus size={18} color={color.inkOnDark} strokeWidth={2.6} />} accessibilityHint="Créer un nouveau produit" onPress={() => router.push("/product/new")} testID="stock-new-product" /> : undefined;
@@ -61,7 +68,7 @@ export default function StockScreen() {
     );
 
   return (
-    <Screen scroll={false} contentGap={0} header={<TabHeader title="Stock" sub={counts ? `${counts.all} produit${counts.all > 1 ? "s" : ""}` : undefined} right={addButton} />}>
+    <Screen scroll={false} contentGap={0} header={<TabHeader title="Stock" sub={sub} right={addButton} />}>
       <FlatList
         data={products}
         keyExtractor={(p) => p.productId}
@@ -79,7 +86,14 @@ export default function StockScreen() {
               actions={permissions.canWrite ? [{ label: "Créer un produit", onPress: () => router.push("/product/new") }] : []}
             />
           ) : (
-            <EmptyState title="Aucun produit ne correspond" description="Modifiez la recherche ou le filtre." />
+            <EmptyState
+              title="Aucun produit ne correspond"
+              description={search ? `Rien pour « ${search} »${filter !== "all" ? " avec ce filtre" : ""}. Vérifiez l'orthographe ou cherchez par code SKU.` : "Aucun produit dans ce filtre : bonne nouvelle s'il s'agit des ruptures."}
+              actions={[
+                ...(filter !== "all" || search ? [{ label: "Effacer la recherche et les filtres", onPress: () => { setSearch(""); setFilter("all"); } }] : []),
+                ...(search ? [{ label: `Chercher « ${search} » chez les fournisseurs`, variant: "secondary" as const, onPress: () => router.push({ pathname: "/sourcing", params: { q: search } }) }] : []),
+              ]}
+            />
           )
         }
         renderItem={({ item, index }) => <ProductRow product={item} first={index === 0} last={index === products.length - 1} />}
@@ -88,7 +102,7 @@ export default function StockScreen() {
   );
 }
 
-/** Ligne de liste v3 : bloc gris clair continu, filet blanc de 2 pt, badge quantité à droite. */
+/** Ligne de liste v4 : carte blanche continue, filet fin, badge quantité à droite. */
 function ProductRow({ product: p, first, last }: { product: ProductGroup; first: boolean; last: boolean }) {
   const state = p.level === "out" ? "Rupture" : p.level === "low" ? "Faible" : null;
   return (

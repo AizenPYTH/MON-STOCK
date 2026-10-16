@@ -50,7 +50,7 @@ export default function SourcingImportScreen() {
   if (!permissions.canWrite)
     return (
       <Screen scroll={false}>
-        <DetailHeader parentLabel="Fournisseurs" />
+        <DetailHeader parentLabel="Sourcing" />
         <ErrorState title="Lecture seule" description="Votre rôle ne permet pas d'importer un catalogue dans cette organisation." />
       </Screen>
     );
@@ -134,7 +134,7 @@ export default function SourcingImportScreen() {
           ) : undefined
         }
       >
-        <DetailHeader parentLabel="Fournisseurs" />
+        <DetailHeader parentLabel="Sourcing" />
         <View style={{ gap: 4 }}>
           <Txt variant="title2" accessibilityRole="header">
             Importer un catalogue fournisseur

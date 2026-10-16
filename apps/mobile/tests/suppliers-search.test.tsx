@@ -11,6 +11,10 @@ jest.mock("expo-router", () => ({ router: { back: jest.fn(), push: jest.fn(), re
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: jest.fn(() => Promise.resolve()) }));
 jest.setTimeout(30_000);
 beforeEach(() => mockCallApi.mockReset());
+/** Réponse simulée de la recherche ; les autres routes (annuaire, imports) répondent vide. */
+function searchReturns(payload: unknown) {
+  mockCallApi.mockImplementation((path: string) => Promise.resolve(path === "/suppliers/search" ? payload : path === "/sourcing/imports" ? [] : { entries: [] }));
+}
 
 function wrap(node: React.ReactElement) {
   const { QueryClient, QueryClientProvider } = jest.requireActual("@tanstack/react-query");
@@ -29,7 +33,7 @@ function wrap(node: React.ReactElement) {
 const o = (id: string, title: string, price: number, over: Record<string, unknown> = {}) => ({ id, title, price, currency: "EUR", priceConverted: price, taxType: "unknown", stock: "in_stock", quantity: null, url: `https://example.test/${id}`, seenAt: "2026-10-13T16:10:00Z", ...over });
 
 it("affiche tous les résultats du moins cher au plus cher, avec le fournisseur ; un appui ouvre la page du produit", async () => {
-  mockCallApi.mockResolvedValue({
+  searchReturns({
     query: "iPhone 15 Pro",
     currency: "EUR",
     total: 4,
@@ -47,7 +51,7 @@ it("affiche tous les résultats du moins cher au plus cher, avec le fournisseur 
   });
   const Screen = jest.requireActual("~/app/(app)/(tabs)/sourcing").default;
   render(wrap(<Screen />));
-  expect(screen.getByText("Fournisseurs")).toBeTruthy();
+  expect(screen.getByText("Sourcing")).toBeTruthy();
   fireEvent.changeText(screen.getByTestId("supplier-query"), "iPhone 15 Pro");
   fireEvent.press(screen.getByTestId("supplier-search"));
   await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
@@ -55,28 +59,28 @@ it("affiche tous les résultats du moins cher au plus cher, avec le fournisseur 
   // ordre : 1,15 € (converti) < 7,90 < 369,90 < 550
   const titles = screen.getAllByText(/iPhone 15 Pro/).map((n) => n.props.children).filter((t) => typeof t === "string" && t !== "iPhone 15 Pro");
   expect(titles).toEqual(["Lepení pod baterii iPhone 15 Pro", "Verre trempé iPhone 15 Pro", "Ecran iPhone 15 Pro - Origine Apple", "iPhone 15 Pro Used - 128 GB / Mixed / A/B Grade"]);
-  expect(screen.getAllByText("Chez Brico-phone")).toHaveLength(2);
-  expect(screen.getAllByText("Chez Refreshed Apples")).toHaveLength(2);
+  expect(screen.getAllByText("Brico-phone")).toHaveLength(2);
+  expect(screen.getAllByText("Refreshed Apples")).toHaveLength(2);
   expect(screen.getByText(/≈ 1,15/)).toBeTruthy();
   expect(screen.getAllByText(/En rupture/).length).toBe(1);
   fireEvent.press(screen.getByLabelText(/Verre trempé iPhone 15 Pro, .*chez Brico-phone/));
   const { openBrowserAsync } = jest.requireMock("expo-web-browser");
   expect(openBrowserAsync).toHaveBeenCalledWith("https://example.test/1");
   // vue par fournisseur
-  fireEvent.press(screen.getByText("Par fournisseur"));
-  expect(screen.getByText(/^Chez Brico-phone$/)).toBeTruthy();
+  fireEvent.press(screen.getByText("Fournisseurs"));
+  expect(screen.getByText(/^Brico-phone$/)).toBeTruthy();
   expect(screen.getByText(/550,00/)).toBeTruthy();
   expect(screen.getByText(/Servisní díly \(n'a pas répondu\)/)).toBeTruthy();
   expect(mockCallApi).toHaveBeenCalledWith("/suppliers/search", expect.objectContaining({ query: { q: "iPhone 15 Pro" } }));
 });
 
 it("rien trouvé : message clair, sans écran compliqué", async () => {
-  mockCallApi.mockResolvedValue({ query: "batterie trottinette", currency: "EUR", total: 0, partial: false, durationMs: 9000, checked: [{ supplierName: "Brico-phone", ok: true, found: 0, message: null }], suppliers: [] });
+  searchReturns({ query: "batterie trottinette", currency: "EUR", total: 0, partial: false, durationMs: 9000, checked: [{ supplierName: "Brico-phone", ok: true, found: 0, message: null }], suppliers: [] });
   const Screen = jest.requireActual("~/app/(app)/(tabs)/sourcing").default;
   render(wrap(<Screen />));
   fireEvent.press(screen.getByText("iPhone 13"));
   await waitFor(() => expect(screen.getByText(/Rien trouvé pour « batterie trottinette »/)).toBeTruthy());
-  expect(screen.getByText(/Fournisseurs consultés : Brico-phone/)).toBeTruthy();
+  expect(screen.getByText(/Fournisseurs consultés en direct : Brico-phone/)).toBeTruthy();
 });
 
 it("chaque offre affiche son analyse ; « Meilleures affaires » classe les offres rentables d'abord", async () => {
@@ -87,7 +91,7 @@ it("chaque offre affiche son analyse ; « Meilleures affaires » classe les offr
     { ...o("b", "iPhone 13 128GB Grade A reconditionné", 250, { deal: deal("very_good", "Très intéressant") }), supplierId: "r", supplierName: "Refreshed Apples", country: "NL" },
     { ...o("c", "iPhone 13 128GB Grade A", 450, { deal: deal("not_competitive", "Non compétitif", { margin: -40, marginPercent: -9.76, summary: "Marge nulle ou négative après les coûts.", score: 10 }) }), supplierId: "r", supplierName: "Refreshed Apples", country: "NL" },
   ];
-  mockCallApi.mockResolvedValue({ query: "iPhone 13", currency: "EUR", total: 3, partial: false, durationMs: 1000, checked: [], offers, suppliers: [{ supplierId: "r", supplierName: "Refreshed Apples", country: "NL", total: 3, offers }], missingCostSettings: ["régime de TVA", "commission marketplace"] });
+  searchReturns({ query: "iPhone 13", currency: "EUR", total: 3, partial: false, durationMs: 1000, checked: [], offers, suppliers: [{ supplierId: "r", supplierName: "Refreshed Apples", country: "NL", total: 3, offers }], missingCostSettings: ["régime de TVA", "commission marketplace"] });
   const Screen = jest.requireActual("~/app/(app)/(tabs)/sourcing").default;
   render(wrap(<Screen />));
   fireEvent.press(screen.getByText("iPhone 13"));
@@ -95,12 +99,14 @@ it("chaque offre affiche son analyse ; « Meilleures affaires » classe les offr
   expect(screen.getByText("Très intéressant")).toBeTruthy();
   expect(screen.getByText("Non compétitif")).toBeTruthy();
   expect(screen.getByText("Données insuffisantes")).toBeTruthy();
+  // marge visible d'emblée ; le détail du calcul s'ouvre à la demande
+  expect(screen.getByText(/Marge ≈ \+86,33/)).toBeTruthy();
+  for (const b of screen.getAllByLabelText("Voir le détail du calcul")) fireEvent.press(b);
   expect(screen.getAllByText(/Marché ≈ 420,00/).length).toBe(2);
   expect(screen.getAllByText(/Coût total ≈ 250,00/).length).toBe(2);
-  expect(screen.getByText(/Marge ≈ 86,33/)).toBeTruthy();
   expect(screen.getAllByText(/À vérifier : Prix HT ou TTC/).length).toBe(2);
   expect(screen.getByText(/Marges provisoires : coûts à compléter \(régime de TVA, commission marketplace\)/)).toBeTruthy();
-  fireEvent.press(screen.getByText("Meilleures affaires"));
+  fireEvent.press(screen.getByText("Opportunités"));
   const order = screen.getAllByText(/^(Très intéressant|Non compétitif|Données insuffisantes)$/).map((n) => n.props.children);
   expect(order).toEqual(["Très intéressant", "Non compétitif", "Données insuffisantes"]);
   fireEvent.press(screen.getByText(/Marges provisoires/));

@@ -259,7 +259,7 @@ export type DealLevel = "very_good" | "good" | "average" | "not_competitive" | "
 
 const DEAL_ICON: Record<DealLevel, IconType> = { very_good: TrendingUp, good: ArrowUpRight, average: Minus, not_competitive: ArrowDownRight, insufficient_data: CircleHelp };
 
-/** Niveau de rentabilité (analyse « bonne affaire ») : couleur + icône + libellé, sobre. */
+/** Niveau de rentabilité (analyse « bonne affaire ») : couleur + icône + libellé, sobre. « Provisoire » est annoncé (lecteur d'écran) et affiché à côté de la marge. */
 export function DealBadge({ level, label, provisional = false, size = "md" }: { level: DealLevel; label: string; provisional?: boolean; size?: "sm" | "md" }) {
   const t = dealTone[level];
   const Icon = DEAL_ICON[level];
@@ -273,7 +273,6 @@ export function DealBadge({ level, label, provisional = false, size = "md" }: { 
       <Icon size={sm ? 11 : 13} color={t.fg} strokeWidth={2.6} />
       <Txt variant="micro" color={t.fg} style={{ letterSpacing: 0, fontSize: sm ? 10 : 11 }} numberOfLines={1}>
         {label}
-        {provisional ? " · provisoire" : ""}
       </Txt>
     </View>
   );
