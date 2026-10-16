@@ -16,4 +16,21 @@ config.watchFolders = [path.join(repoRoot, "src")];
 config.resolver.nodeModulesPaths = [path.join(projectRoot, "node_modules")];
 config.resolver.disableHierarchicalLookup = false;
 
+// APERÇU VISUEL (jamais dans une build) : MONSTOCK_PREVIEW=1 remplace Supabase et l'API par la base
+// de démonstration en mémoire de preview/ pour contrôler les écrans dans un navigateur.
+// MONSTOCK_PREVIEW_MODULES : dossier node_modules contenant react-native-web (non installé ici).
+if (process.env.MONSTOCK_PREVIEW === "1") {
+  const swaps = {
+    [path.join(projectRoot, "src/lib/supabase.ts")]: path.join(projectRoot, "preview/mock-supabase.ts"),
+    [path.join(projectRoot, "src/lib/api.ts")]: path.join(projectRoot, "preview/mock-api.ts"),
+  };
+  if (process.env.MONSTOCK_PREVIEW_MODULES) config.resolver.nodeModulesPaths.push(process.env.MONSTOCK_PREVIEW_MODULES);
+  const upstream = config.resolver.resolveRequest;
+  config.resolver.resolveRequest = (context, moduleName, platform) => {
+    const res = upstream ? upstream(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
+    const swap = res && res.type === "sourceFile" ? swaps[res.filePath] : undefined;
+    return swap ? { type: "sourceFile", filePath: swap } : res;
+  };
+}
+
 module.exports = config;

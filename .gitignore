@@ -43,3 +43,5 @@ next-env.d.ts
 
 # comparaison manuelle des voix (scripts/tts-compare.mjs)
 tts-compare/
+# aperçu visuel : réponses générées (scripts/preview-api-fixtures.ts)
+apps/mobile/preview/api-fixtures.generated.json
