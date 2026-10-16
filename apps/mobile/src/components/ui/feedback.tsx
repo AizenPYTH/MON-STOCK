@@ -6,6 +6,7 @@ import { color, motion, radius, shadow, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { Button } from "~/components/ui/controls";
 import { useLayout } from "~/theme/layout";
+import { useReduceMotion } from "~/components/ui/motion";
 
 export function EmptyState({ icon, title, description, actions = [] }: { icon?: ReactNode; title: string; description: string; actions?: { label: string; onPress: () => void; variant?: "primary" | "secondary"; disabled?: boolean }[] }) {
   return (
@@ -42,14 +43,19 @@ export function ErrorState({ title = "Impossible de charger les données", descr
   );
 }
 
-/** Bloc de chargement : opacité 0.5 ↔ 1 sur 1 s. Jamais de spinner plein écran. */
+/** Bloc de chargement : opacité 0.5 ↔ 1 sur 1 s (fixe si « Réduire les animations »). Jamais de spinner plein écran. */
 export function Skeleton({ w, h, r = radius.sm }: { w: number | `${number}%`; h: number; r?: number }) {
+  const reduce = useReduceMotion();
   const [opacity] = useState(() => new Animated.Value(0.5));
   useEffect(() => {
+    if (reduce) {
+      opacity.setValue(0.75);
+      return;
+    }
     const loop = Animated.loop(Animated.sequence([Animated.timing(opacity, { toValue: 1, duration: 500, useNativeDriver: true }), Animated.timing(opacity, { toValue: 0.5, duration: 500, useNativeDriver: true })]));
     loop.start();
     return () => loop.stop();
-  }, [opacity]);
+  }, [opacity, reduce]);
   return <Animated.View style={{ width: w, height: h, borderRadius: r, backgroundColor: color.skeletonStrong, opacity }} />;
 }
 
@@ -81,15 +87,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const [y] = useState(() => new Animated.Value(-120));
   const show = useCallback((t: ToastInput) => setToast({ ...t, id: Date.now() }), []);
+  const reduce = useReduceMotion();
+  const toastMs = reduce ? 0 : motion.toast;
 
   useEffect(() => {
     if (!toast) return;
-    Animated.timing(y, { toValue: 0, duration: motion.toast, useNativeDriver: true }).start();
+    Animated.timing(y, { toValue: 0, duration: toastMs, useNativeDriver: true }).start();
     const timer = setTimeout(() => {
-      Animated.timing(y, { toValue: -120, duration: motion.toast, useNativeDriver: true }).start(() => setToast(null));
+      Animated.timing(y, { toValue: -120, duration: toastMs, useNativeDriver: true }).start(() => setToast(null));
     }, motion.toastAutoDismiss);
     return () => clearTimeout(timer);
-  }, [toast, y]);
+  }, [toast, y, toastMs]);
 
   return (
     <ToastContext.Provider value={show}>
@@ -138,8 +146,9 @@ export function useToast() {
 export function BottomSheet({ visible, title, description, children, onClose }: { visible: boolean; title: string; description?: string; children: ReactNode; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const { maxWidth } = useLayout();
+  const reduce = useReduceMotion();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType={reduce ? "fade" : "slide"} onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <Pressable style={{ flex: 1, backgroundColor: color.overlay }} accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} />
         <View
