@@ -224,3 +224,31 @@ export async function fetchAnalysis(supabase: MobileSupabase, organizationId: st
     topAlert: alert.data?.[0] ? { title: alert.data[0].title, message: alert.data[0].message } : null,
   };
 }
+
+export interface OpenAlert {
+  id: string;
+  type: string;
+  title: string;
+  message: string | null;
+  severity: string;
+  entityType: string | null;
+  entityId: string | null;
+  createdAt: string;
+}
+
+/** Alertes ouvertes (les plus graves puis les plus récentes), pour les rendre actionnables à l'accueil. */
+export async function fetchOpenAlerts(supabase: MobileSupabase, organizationId: string, limit = 5): Promise<OpenAlert[]> {
+  const { data, error } = await supabase
+    .from("alerts")
+    .select("id, type, title, message, severity, entity_type, entity_id, created_at")
+    .eq("organization_id", organizationId)
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  const rank = (s: string) => (s === "critical" ? 0 : s === "warning" ? 1 : 2);
+  return (data ?? [])
+    .map((a) => ({ id: a.id, type: String(a.type), title: a.title, message: a.message, severity: a.severity, entityType: a.entity_type, entityId: a.entity_id, createdAt: a.created_at }))
+    .sort((a, b) => rank(a.severity) - rank(b.severity) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
+}

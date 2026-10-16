@@ -5,7 +5,7 @@ import { useActiveOrg } from "~/org/org-provider";
 import { useUser } from "~/auth/session-provider";
 import { applyMovement, fetchMarginContext, fetchSkuDetail } from "~/data/stock";
 import { fetchCatalog } from "~/data/catalog";
-import { fetchAnalysis, fetchToday, type Period } from "~/data/intelligence";
+import { fetchAnalysis, fetchOpenAlerts, fetchToday, type Period } from "~/data/intelligence";
 import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } from "~/data/sales";
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { fetchSourcingOverview } from "~/data/sourcing";
@@ -83,6 +83,11 @@ export function useToday() {
   const { active } = useActiveOrg();
   const orgId = active.organization.id;
   return useQuery({ queryKey: [orgId, "today"], queryFn: () => fetchToday(requireSupabase(), orgId, active.organization.currency) });
+}
+
+export function useOpenAlerts() {
+  const orgId = useOrgId();
+  return useQuery({ queryKey: [orgId, "alerts", "open"], queryFn: () => fetchOpenAlerts(requireSupabase(), orgId) });
 }
 
 export function useAnalysis(period: Period) {

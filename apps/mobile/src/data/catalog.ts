@@ -125,3 +125,31 @@ export function summarizeProduct(p: ProductGroup, marginCtx: MarginContext, orgC
     currency: p.skus[0]?.row.currency ?? orgCurrency,
   };
 }
+
+export interface StockSummary {
+  /** valeur du stock au coût d'achat (SKU dont le coût est connu) */
+  value: number;
+  /** SKU en stock dont le coût d'achat est inconnu : la valeur est alors partielle */
+  skusWithoutCost: number;
+  skus: number;
+  units: number;
+}
+
+/** Synthèse réelle du stock (valeur au coût connu, références, unités) ; jamais de coût supposé. */
+export function stockSummary(catalog: Pick<Catalog, "products">): StockSummary {
+  let value = 0;
+  let skusWithoutCost = 0;
+  let skus = 0;
+  let units = 0;
+  for (const p of catalog.products)
+    for (const v of p.skus) {
+      skus += 1;
+      const qty = Math.max(0, v.row.quantity_available ?? 0);
+      units += qty;
+      if (qty === 0) continue;
+      if (v.row.stock_value !== null && v.row.stock_value !== undefined) value += v.row.stock_value;
+      else if (v.row.cost_price !== null && v.row.cost_price !== undefined) value += v.row.cost_price * qty;
+      else skusWithoutCost += 1;
+    }
+  return { value: Math.round(value * 100) / 100, skusWithoutCost, skus, units };
+}

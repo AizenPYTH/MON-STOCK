@@ -380,17 +380,17 @@ export function demoTables(now = new Date()): Tables {
   db.supplier_feeds = [];
   db.sync_runs = [];
 
-  interface DemoOffer { src: number; sup: string; title: string; price: number; qty: number | null; model: string; storage: string | null; grade: string | null; condition: string; type: string }
+  interface DemoOffer { src: number; sup: string; title: string; price: number; qty: number | null; model: string; storage: string | null; grade: string | null; condition: string; type: string; sku?: number }
   const offers: DemoOffer[] = [
-    { src: 1, sup: "foxway", title: "Apple iPhone 13 128GB Midnight Grade A", price: 279, qty: 40, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "CSV" },
-    { src: 1, sup: "foxway", title: "Apple iPhone 13 128GB Blue Grade B", price: 251, qty: 65, model: "iphone 13", storage: "128", grade: "B", condition: "refurbished", type: "CSV" },
-    { src: 1, sup: "foxway", title: "Apple iPhone 12 64GB Black Grade A", price: 199, qty: 22, model: "iphone 12", storage: "64", grade: "A", condition: "refurbished", type: "CSV" },
-    { src: 1, sup: "foxway", title: "Apple iPhone 14 Pro 256GB Gold Grade A", price: 569, qty: 8, model: "iphone 14 pro", storage: "256", grade: "A", condition: "refurbished", type: "CSV" },
-    { src: 3, sup: "refreshed-apples", title: "iPhone 13 128GB Midnight - Grade A", price: 299, qty: 12, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "PUBLIC_WEB" },
+    { src: 1, sup: "foxway", title: "Apple iPhone 13 128GB Midnight Grade A", price: 279, qty: 40, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "CSV", sku: 0 },
+    { src: 1, sup: "foxway", title: "Apple iPhone 13 128GB Blue Grade B", price: 251, qty: 65, model: "iphone 13", storage: "128", grade: "B", condition: "refurbished", type: "CSV", sku: 1 },
+    { src: 1, sup: "foxway", title: "Apple iPhone 12 64GB Black Grade A", price: 199, qty: 22, model: "iphone 12", storage: "64", grade: "A", condition: "refurbished", type: "CSV", sku: 2 },
+    { src: 1, sup: "foxway", title: "Apple iPhone 14 Pro 256GB Gold Grade A", price: 569, qty: 8, model: "iphone 14 pro", storage: "256", grade: "A", condition: "refurbished", type: "CSV", sku: 3 },
+    { src: 3, sup: "refreshed-apples", title: "iPhone 13 128GB Midnight - Grade A", price: 299, qty: 12, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "PUBLIC_WEB", sku: 0 },
     { src: 3, sup: "refreshed-apples", title: "iPhone 12 64GB Black - Grade B", price: 185, qty: 9, model: "iphone 12", storage: "64", grade: "B", condition: "refurbished", type: "PUBLIC_WEB" },
-    { src: 2, sup: "brico-phone", title: "Écran OLED iPhone 13 qualité origine", price: 84.9, qty: null, model: "iphone 13", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB" },
-    { src: 2, sup: "brico-phone", title: "Batterie iPhone 12 compatible 2815 mAh", price: 9.9, qty: null, model: "iphone 12", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB" },
-    { src: 2, sup: "brico-phone", title: "Batterie iPhone 11 compatible 3110 mAh", price: 9.5, qty: null, model: "iphone 11", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB" },
+    { src: 2, sup: "brico-phone", title: "Écran OLED iPhone 13 qualité origine", price: 84.9, qty: null, model: "iphone 13", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB", sku: 5 },
+    { src: 2, sup: "brico-phone", title: "Batterie iPhone 12 compatible 2815 mAh", price: 9.9, qty: null, model: "iphone 12", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB", sku: 6 },
+    { src: 2, sup: "brico-phone", title: "Batterie iPhone 11 compatible 3110 mAh", price: 9.5, qty: null, model: "iphone 11", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB", sku: 7 },
     { src: 5, sup: "ebay", title: "Apple iPhone 13 128 Go Minuit - Très bon état", price: 419, qty: 1, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "API" },
     { src: 5, sup: "ebay", title: "iPhone 13 128Go Minuit reconditionné grade A", price: 435, qty: 1, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "API" },
     { src: 5, sup: "ebay", title: "iPhone 13 bleu 128 Go bon état", price: 389, qty: 1, model: "iphone 13", storage: "128", grade: "B", condition: "refurbished", type: "API" },
@@ -409,7 +409,7 @@ export function demoTables(now = new Date()): Tables {
       title_original: o.title, original_price: o.price, original_currency: "EUR", normalized_price: o.price, normalized_currency: "EUR", fx_rate: 1, tax_type: o.src === 5 ? "ttc" : "ht",
       available_quantity: o.qty, stock_status: o.qty === null ? "unknown" : o.qty > 5 ? "in_stock" : "low", source_url: `${String(supplier.website)}/p/${i + 1}`,
       last_seen_at: iso((i + 1) * 2 * H), first_seen_at: iso(10 * D), brand: "Apple", model: o.model, storage: o.storage, condition: o.condition, grade: o.grade,
-      shipping_cost: o.src === 5 ? 0 : 9, shipping_currency: "EUR", moq: o.type === "CSV" ? 5 : 1, ship_from_country: String(supplier.country), sku_id: null, confidence: 0.82,
+      shipping_cost: o.src === 5 ? 0 : 9, shipping_currency: "EUR", moq: o.type === "CSV" ? 5 : 1, ship_from_country: String(supplier.country), sku_id: o.sku === undefined ? null : (db.skus![o.sku]?.id ?? null), confidence: 0.82,
     };
   });
 

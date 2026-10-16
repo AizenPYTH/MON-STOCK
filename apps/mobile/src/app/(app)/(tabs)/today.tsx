@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActionSheetIOS, Alert, Platform, Pressable, RefreshControl, View } from "react-native";
 import { router } from "expo-router";
-import { ChevronDown, Mic, Sparkles } from "lucide-react-native";
+import { ChevronDown } from "lucide-react-native";
 import { useUser } from "~/auth/session-provider";
 import { useActiveOrg } from "~/org/org-provider";
-import { useAnalysis, useCatalog, useToday } from "~/data/hooks";
+import { useAnalysis, useCatalog, useImportJobs, useIntegrations, useOpenAlerts, useProAccounts, useRadar, useToday } from "~/data/hooks";
+import { stockSummary } from "~/data/catalog";
+import { AdvisorEntry, buildTasks, LastImportRow, SetupChecklist, Shortcuts, SourcingPanel, StockPulse, TaskList } from "~/components/dashboard";
 import { PERIODS, type Period } from "~/data/intelligence";
 import { PROVIDER_LABEL } from "~/data/sales";
 import { userMessage } from "~/lib/errors";
@@ -13,9 +15,9 @@ import {
   AlertBanner,
   BarChart,
   Card,
-  Dot,
   EmptyState,
   ErrorState,
+  FadeIn,
   KpiCard,
   KpiGrid,
   ListRow,
@@ -24,7 +26,6 @@ import {
   Skeleton,
   SkeletonList,
   TabHeader,
-  Tile,
   Thumb,
   Txt,
 } from "~/components/ui";
@@ -73,30 +74,6 @@ export default function TodayScreen() {
   );
 }
 
-/** Accès au conseiller IA : conversation écrite ou vocale sur l'activité (ventes, marges, stock, expéditions). */
-function AssistantEntry() {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Parler à votre conseiller"
-      onPress={() => router.push("/advisor")}
-      testID="assistant-entry"
-      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: space[3], padding: space[4], borderRadius: radius.xl, backgroundColor: pressed ? color.surfacePressed : color.bg })}
-    >
-      <Sparkles size={20} color={color.brand} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Txt variant="body">Parlez à votre conseiller</Txt>
-        <Txt variant="label">
-          « Qu'est-ce que tu me conseilles de faire aujourd'hui ? »
-        </Txt>
-      </View>
-      <View style={{ width: 44, height: 44, borderRadius: radius.lg, backgroundColor: color.mint, alignItems: "center", justifyContent: "center" }}>
-        <Mic size={20} color={color.onMint} />
-      </View>
-    </Pressable>
-  );
-}
-
 const SEGMENTS: { value: Segment; label: string }[] = [
   { value: "today", label: "Aujourd'hui" },
   { value: "analysis", label: "Analyse" },
@@ -107,14 +84,23 @@ type Hero = { value: string; label?: string; stats?: { label: string; value: str
 function Today({ header, currency }: { header: (hero?: Hero) => React.ReactElement; currency: string }) {
   const today = useToday();
   const catalog = useCatalog();
+  const jobs = useImportJobs();
+  const accounts = useProAccounts();
+  const radar = useRadar("score");
+  const alerts = useOpenAlerts();
+  const integrations = useIntegrations();
   const refreshing = today.isRefetching || catalog.isRefetching;
-
-  const todo: { key: string; text: string; target: string; tone: "accent" | "danger" | "neutral"; go: () => void }[] = [];
-  if (today.data && today.data.toShip > 0) todo.push({ key: "ship", text: `${today.data.toShip} commande${today.data.toShip > 1 ? "s" : ""} à expédier`, target: "Ventes", tone: "accent", go: () => router.push({ pathname: "/sales", params: { status: "paid" } }) });
-  if (catalog.data && catalog.data.counts.out > 0) todo.push({ key: "out", text: `${catalog.data.counts.out} produit${catalog.data.counts.out > 1 ? "s" : ""} en rupture`, target: "Stock", tone: "danger", go: () => router.push({ pathname: "/stock", params: { filter: "out" } }) });
-  if (catalog.data && catalog.data.counts.low > 0) todo.push({ key: "low", text: `${catalog.data.counts.low} produit${catalog.data.counts.low > 1 ? "s" : ""} en stock faible`, target: "Stock", tone: "accent", go: () => router.push({ pathname: "/stock", params: { filter: "low" } }) });
-  if (today.data && today.data.pendingSales > 0) todo.push({ key: "pending", text: `${today.data.pendingSales} vente${today.data.pendingSales > 1 ? "s" : ""} non déduite${today.data.pendingSales > 1 ? "s" : ""} du stock`, target: "Ventes", tone: "neutral", go: () => router.push("/sales") });
-  if (today.data && today.data.openAlerts > 0) todo.push({ key: "alerts", text: `${today.data.openAlerts} alerte${today.data.openAlerts > 1 ? "s" : ""} à traiter`, target: "Analyse", tone: "neutral", go: () => {} });
+  const summary = useMemo(() => (catalog.data ? stockSummary(catalog.data) : null), [catalog.data]);
+  const tasks = useMemo(
+    () => buildTasks({ today: today.data, catalog: catalog.data, jobs: jobs.data, accounts: accounts.data, alerts: alerts.data }),
+    [today.data, catalog.data, jobs.data, accounts.data, alerts.data],
+  );
+  const lastJob = jobs.data?.[0] ?? null;
+  const hasSupplier = Boolean(accounts.data && (accounts.data.totals.account + accounts.data.totals.public > 0 || accounts.data.accounts.some((x) => x.status === "connected")));
+  const hasChannel = integrations.data ? integrations.data.connections.some((c) => c.status === "connected") : null;
+  const hasCosts = radar.data ? radar.data.missingSettings.length === 0 : null;
+  const emptyShop = Boolean(catalog.data && catalog.data.counts.all === 0);
+  const checklist = catalog.data ? <SetupChecklist hasProducts={!emptyShop} hasChannel={hasChannel} hasSupplier={hasSupplier} hasCosts={hasCosts} /> : null;
 
   return (
     <Screen
@@ -131,51 +117,44 @@ function Today({ header, currency }: { header: (hero?: Hero) => React.ReactEleme
             }
           : undefined,
       )}
-      contentGap={16}
+      contentGap={space[3]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={() => {
-            void today.refetch();
-            void catalog.refetch();
+            void Promise.all([today.refetch(), catalog.refetch(), jobs.refetch(), accounts.refetch(), radar.refetch(), alerts.refetch()]);
           }}
         />
       }
     >
-      <AssistantEntry />
-      {today.isPending ? (
+      {today.isPending || catalog.isPending ? (
         <>
-          <Skeleton w="100%" h={208} r={radius.xxl} />
-          <SkeletonList rows={3} thumb={false} />
+          <Skeleton w="100%" h={78} r={radius.xl} />
+          <SkeletonList rows={4} thumb={false} />
         </>
       ) : today.isError ? (
         <ErrorState description={`${userMessage(today.error)}${today.dataUpdatedAt ? ` Dernières données : ${formatClock(new Date(today.dataUpdatedAt).toISOString())}.` : ""}`} onRetry={() => void today.refetch()} />
       ) : (
         <>
-          {todo[0] ? <AlertBanner text={`À faire : ${todo[0].text}`} onPress={todo[0].go} /> : null}
-          <KpiGrid columns={2}>
-            {[
-              <Tile key="out" tone={catalog.data && catalog.data.counts.out > 0 ? "danger" : "neutral"} label="Rupture" value={catalog.data ? formatNumber(catalog.data.counts.out) : null} reason={catalog.data ? "produits à 0" : "stock indisponible"} onPress={() => router.push({ pathname: "/stock", params: { filter: "out" } })} />,
-              <Tile key="low" tone={catalog.data && catalog.data.counts.low > 0 ? "accent" : "neutral"} label="Faible" value={catalog.data ? formatNumber(catalog.data.counts.low) : null} reason={catalog.data ? "sous le seuil" : "stock indisponible"} onPress={() => router.push({ pathname: "/stock", params: { filter: "low" } })} />,
-            ]}
-          </KpiGrid>
-          {todo.length > 1 ? (
-            <>
-              <SectionHeader title="À faire" />
-              <Card>
-                {todo.map((t, i) => (
-                  <ListRow key={t.key} left={<Dot tone={t.tone} />} title={t.text} right={<Txt variant="label">{t.target}</Txt>} chevron onPress={t.go} last={i === todo.length - 1} />
-                ))}
-              </Card>
-            </>
-          ) : null}
-          <SectionHeader title="Dernières ventes" action={today.data.recentSales.length > 0 ? { label: "Tout voir", onPress: () => router.push("/sales") } : undefined} />
-          {today.data.recentSales.length === 0 ? (
+          <FadeIn>
+            <StockPulse catalog={catalog.data} summary={summary} currency={currency} />
+          </FadeIn>
+          {emptyShop ? checklist : null}
+          <SectionHeader title="À traiter" count={tasks.length || undefined} />
+          <TaskList tasks={tasks} />
+          <SectionHeader title="Raccourcis" />
+          <Shortcuts />
+          <AdvisorEntry />
+          <SectionHeader title="Sourcing et opportunités" action={{ label: "Radar", onPress: () => router.push("/radar") }} />
+          <SourcingPanel accounts={accounts.data} radar={radar.data} currency={currency} />
+          <SectionHeader title="Activité récente" action={today.data.recentSales.length > 0 ? { label: "Ventes", onPress: () => router.push("/sales") } : undefined} />
+          {today.data.recentSales.length === 0 && !lastJob ? (
             <Card padded>
-              <Txt variant="bodyRegular">Aucune vente enregistrée. Les commandes eBay apparaissent ici après la synchronisation.</Txt>
+              <Txt variant="bodyRegular">Aucune activité pour l'instant. Les commandes eBay et vos imports de catalogue apparaîtront ici.</Txt>
             </Card>
           ) : (
             <Card>
+              {lastJob ? <LastImportRow job={lastJob} last={today.data.recentSales.length === 0} /> : null}
               {today.data.recentSales.map((s, i) => (
                 <ListRow
                   key={s.orderId}
@@ -183,7 +162,7 @@ function Today({ header, currency }: { header: (hero?: Hero) => React.ReactEleme
                   title={s.title}
                   subtitle={`${PROVIDER_LABEL[s.provider] ?? s.provider} · ${formatClock(s.placedAt)}`}
                   right={
-                    <Txt variant="body" num style={{ fontFamily: "Manrope_700Bold" }}>
+                    <Txt variant="price" num style={{ fontSize: 16 }}>
                       {s.amount === null ? "—" : formatMoneyRounded(s.amount, s.currency ?? currency)}
                     </Txt>
                   }
@@ -193,6 +172,7 @@ function Today({ header, currency }: { header: (hero?: Hero) => React.ReactEleme
               ))}
             </Card>
           )}
+          {emptyShop ? null : checklist}
         </>
       )}
     </Screen>
@@ -206,7 +186,7 @@ function Analysis({ header, period, currency }: { header: React.ReactElement; pe
 
   return (
     <Screen header={header} contentGap={16} refreshControl={<RefreshControl refreshing={analysis.isRefetching} onRefresh={() => void Promise.all([catalog.refetch(), analysis.refetch()])} />}>
-      <AssistantEntry />
+      <AdvisorEntry />
       {analysis.isPending || catalog.isPending ? (
         <>
           <Skeleton w="100%" h={208} r={radius.xxl} />

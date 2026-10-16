@@ -43,29 +43,38 @@ export function IconBadge({ icon: Icon, tone = "neutral", size = 36 }: { icon: I
  * Ligne d'action (alerte, tâche, réglage manquant) : pictogramme teinté, titre, détail, et à droite
  * le libellé de l'action. Toute la ligne mène à la résolution.
  */
-export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress, last = false, testID, value }: { icon: IconType; tone?: BlockTone; title: string; detail?: string | null; cta?: string; onPress?: () => void; last?: boolean; testID?: string; value?: string }) {
+export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress, last = false, testID, value, valueHint, titleLines = 1 }: { icon: IconType; tone?: BlockTone; title: string; detail?: string | null; cta?: string; onPress?: () => void; last?: boolean; testID?: string; value?: string; valueHint?: string; titleLines?: number }) {
   const body = (pressed: boolean) => (
     <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[3], paddingHorizontal: space[4], minHeight: 64, backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft }}>
       <IconBadge icon={icon} tone={tone} />
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-        <Txt variant="body" numberOfLines={2}>
+        <Txt variant="body" numberOfLines={titleLines}>
           {title}
         </Txt>
         {detail ? (
-          <Txt variant="label" numberOfLines={2}>
+          <Txt variant="label" numberOfLines={2} style={{ fontSize: 12.5, lineHeight: 17 }}>
             {detail}
           </Txt>
         ) : null}
       </View>
       {value ? (
-        <Txt variant="price" num style={{ fontSize: 16 }}>
-          {value}
-        </Txt>
+        <View style={{ alignItems: "flex-end" }}>
+          <Txt variant="price" num style={{ fontSize: 16 }}>
+            {value}
+          </Txt>
+          {valueHint ? (
+            <Txt variant="micro" style={{ letterSpacing: 0 }}>
+              {valueHint}
+            </Txt>
+          ) : null}
+        </View>
       ) : null}
       {cta ? (
-        <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1}>
-          {cta}
-        </Txt>
+        <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: radius.xs, backgroundColor: color.surfaceSunken }}>
+          <Txt variant="micro" color={color.ink} style={{ letterSpacing: 0 }} numberOfLines={1}>
+            {cta}
+          </Txt>
+        </View>
       ) : null}
       {onPress ? <ChevronRight size={18} color={color.ink3} strokeWidth={2} /> : null}
     </View>

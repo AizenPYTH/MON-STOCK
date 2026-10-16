@@ -15,6 +15,7 @@ import { getImportJob, listImportJobs } from "@/services/sourcing/catalog-import
 import { listSourcesForOrg } from "@/services/sourcing/source-sync";
 import { simpleSupplierSearch } from "@/services/sourcing/simple-search";
 import { sourceLibrary } from "@/services/sourcing/source-library";
+import { buildRadar } from "@/services/radar/radar";
 
 const NOW = new Date();
 const db = demoTables(NOW);
@@ -48,6 +49,18 @@ async function main() {
   await record("GET /sourcing/sources", () => listSourcesForOrg(ctx, client as unknown as Parameters<typeof listSourcesForOrg>[1]));
   await record("GET /sourcing/imports", () => listImportJobs(ctx, { limit: 50 }));
   await record("GET /sourcing/library", () => sourceLibrary(ctx));
+  for (const sort of ["score", "profit", "margin", "availability", "freshness"] as const) await record(sort === "score" ? "GET /radar" : `GET /radar?sort=${sort}`, () => buildRadar(ctx, { sort, now: NOW }));
+  // features/mobile-api/service importe Next.js : réponse construite d'après la base de démonstration
+  // (connexion eBay cohérente avec ses annonces synchronisées).
+  await record("GET /integrations", async () => {
+    const last = (db.channel_listings ?? [])[0]?.last_synced_at ?? null;
+    return {
+      ebay: { configured: true, environment: "production" },
+      connections: [{ connectionId: "00000021-0000-4000-8000-000000000001", provider: "ebay", channelName: "eBay", status: "connected", environment: "production", externalUsername: "atelier-demo", lastSyncAt: last, lastSuccessfulSyncAt: last, lastError: null, autoSync: true, lastRun: null }],
+      unmappedCount: 0,
+      comingSoon: ["Amazon", "Back Market", "Shopify"],
+    };
+  });
   for (const job of db.sourcing_import_jobs ?? []) await record(`GET /sourcing/imports/detail?id=${String(job.id)}`, () => getImportJob(ctx, String(job.id)));
   for (const s of db.suppliers ?? []) {
     await record(`GET /sourcing/supplier-offers?supplierId=${String(s.id)}`, () => supplierOffers(ctx, String(s.id)));
