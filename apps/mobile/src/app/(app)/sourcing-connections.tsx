@@ -43,7 +43,7 @@ export default function SourcingConnectionsScreen() {
   const toast = useToast();
   const [settings, setSettings] = useState<SourceOverviewDTO | null>(null);
 
-  const header = <DetailHeader parentLabel="Sourcing" title="Mes sources" sub="Statut réel, âge des données et synchronisation" />;
+  const header = <DetailHeader parentLabel="Sourcing" title="Mes sources" />;
   const actions = (
     <>
       <SectionHeader title="Ajouter ou gérer" />
@@ -126,9 +126,6 @@ export default function SourcingConnectionsScreen() {
         <SourceCard key={s.id} source={s} busy={false} canWrite={permissions.canWrite} onPrimary={() => primary(s)} onSettings={permissions.isAdmin ? () => setSettings(s) : undefined} />
       ))}
       {actions}
-      <Txt variant="label">
-        Une panne du fournisseur n'efface jamais vos offres : elles gardent leur date de vérification et un nouvel essai est programmé (15 min, puis 30 min, 1 h…). Une alerte apparaît après 3 échecs consécutifs.
-      </Txt>
       <BottomSheet visible={settings !== null} title={settings?.name ?? ""} description={settings ? `${settings.methodLabel} · ${settings.statusLabel}` : undefined} onClose={() => setSettings(null)}>
         {settings?.schedulable ? (
           <>

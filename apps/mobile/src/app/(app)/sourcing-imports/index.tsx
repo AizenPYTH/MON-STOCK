@@ -7,7 +7,7 @@ import { useImportJobs } from "~/data/hooks";
 import { IMPORT_STATUS_LABEL } from "~/data/sourcing-b2b";
 import { userMessage } from "~/lib/errors";
 import { formatNumber, formatRelative } from "~/lib/format";
-import { ActionRow, Button, Card, DetailHeader, EmptyState, ErrorState, FadeIn, MetricStrip, Screen, SkeletonList, Txt, type BlockTone } from "~/components/ui";
+import { ActionRow, Button, Card, DetailHeader, EmptyState, ErrorState, FadeIn, MetricStrip, Screen, SkeletonList, type BlockTone } from "~/components/ui";
 import { color } from "~/theme/tokens";
 
 /** Résumé d'un import : nouvelles, mises à jour, inchangées, ignorées. */
@@ -25,7 +25,7 @@ export default function ImportHistoryScreen() {
   const jobs = useImportJobs(supplierId || undefined);
   const { permissions } = useActiveOrg();
   const newImport = permissions.canWrite ? <Button label="Importer" compact icon={<Upload size={16} color={color.onMint} strokeWidth={2.4} />} onPress={() => router.push({ pathname: "/sourcing-import", params: supplierId ? { supplierId } : {} })} testID="imports-new" /> : undefined;
-  const header = <DetailHeader parentLabel="Sourcing" title="Imports de catalogues" sub="Chaque fichier ou flux importé, son résultat et ses lignes ignorées" right={newImport} />;
+  const header = <DetailHeader parentLabel="Sourcing" title="Imports de catalogues" right={newImport} />;
   if (jobs.isPending)
     return (
       <Screen scroll={false}>
@@ -75,7 +75,6 @@ export default function ImportHistoryScreen() {
           </Card>
         </>
       )}
-      <Txt variant="label">Chaque import conserve le fichier d'origine (nom et empreinte), l'utilisateur et le détail des lignes ignorées. Un import ne s'annule pas : relancez-en un nouveau pour corriger.</Txt>
     </Screen>
   );
 }

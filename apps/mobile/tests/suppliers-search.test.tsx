@@ -56,9 +56,14 @@ it("affiche tous les résultats du moins cher au plus cher, avec le fournisseur 
   fireEvent.press(screen.getByTestId("supplier-search"));
   await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
   expect(screen.getByText(/4 résultats chez 2 fournisseurs pour « iPhone 15 Pro »/)).toBeTruthy();
-  // ordre : 1,15 € (converti) < 7,90 < 369,90 < 550
-  const titles = screen.getAllByText(/iPhone 15 Pro/).map((n) => n.props.children).filter((t) => typeof t === "string" && t !== "iPhone 15 Pro");
-  expect(titles).toEqual(["Lepení pod baterii iPhone 15 Pro", "Verre trempé iPhone 15 Pro", "Ecran iPhone 15 Pro - Origine Apple", "iPhone 15 Pro Used - 128 GB / Mixed / A/B Grade"]);
+  const shownTitles = () => screen.getAllByText(/iPhone 15 Pro/).map((n) => n.props.children).filter((t) => typeof t === "string" && t !== "iPhone 15 Pro");
+  // recherche d'un modèle : les appareils d'abord (catégorie choisie automatiquement), titres en français
+  expect(shownTitles()).toEqual(["iPhone 15 Pro occasion - 128 GB / mixte / A/B Grade"]);
+  expect(screen.getByRole("button", { name: "Appareils · 1" }).props.accessibilityState).toEqual({ selected: true });
+  expect(screen.getByRole("button", { name: "Protections · 1" })).toBeTruthy();
+  // « Tout » : ordre 1,15 € (converti) < 7,90 < 369,90 < 550
+  fireEvent.press(screen.getByRole("button", { name: "Tout · 4" }));
+  expect(shownTitles()).toEqual(["Adhésif de batterie iPhone 15 Pro", "Verre trempé iPhone 15 Pro", "Ecran iPhone 15 Pro - Origine Apple", "iPhone 15 Pro occasion - 128 GB / mixte / A/B Grade"]);
   expect(screen.getAllByText("Brico-phone")).toHaveLength(2);
   expect(screen.getAllByText("Refreshed Apples")).toHaveLength(2);
   expect(screen.getByText(/≈ 1,15/)).toBeTruthy();
@@ -98,18 +103,20 @@ it("chaque offre affiche son analyse ; « Meilleures affaires » classe les offr
   await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
   expect(screen.getByText("Très intéressant")).toBeTruthy();
   expect(screen.getByText("Non compétitif")).toBeTruthy();
-  expect(screen.getByText("Données insuffisantes")).toBeTruthy();
+  // « Données insuffisantes » n'encombre plus les cartes
+  fireEvent.press(screen.getByRole("button", { name: /^Tout · / }));
+  expect(screen.queryByText("Données insuffisantes")).toBeNull();
   // marge visible d'emblée ; le détail du calcul s'ouvre à la demande
   expect(screen.getByText(/Marge ≈ \+86,33/)).toBeTruthy();
   for (const b of screen.getAllByLabelText("Voir le détail du calcul")) fireEvent.press(b);
   expect(screen.getAllByText(/Marché ≈ 420,00/).length).toBe(2);
   expect(screen.getAllByText(/Coût total ≈ 250,00/).length).toBe(2);
   expect(screen.getAllByText(/À vérifier : Prix HT ou TTC/).length).toBe(2);
-  expect(screen.getByText(/Marges provisoires : coûts à compléter \(régime de TVA, commission marketplace\)/)).toBeTruthy();
+  expect(screen.getByLabelText("Marges provisoires : coûts à compléter (régime de TVA, commission marketplace)")).toBeTruthy();
   fireEvent.press(screen.getByText("Opportunités"));
-  const order = screen.getAllByText(/^(Très intéressant|Non compétitif|Données insuffisantes)$/).map((n) => n.props.children);
-  expect(order).toEqual(["Très intéressant", "Non compétitif", "Données insuffisantes"]);
-  fireEvent.press(screen.getByText(/Marges provisoires/));
+  const order = screen.getAllByText(/^(Très intéressant|Non compétitif)$/).map((n) => n.props.children);
+  expect(order).toEqual(["Très intéressant", "Non compétitif"]);
+  fireEvent.press(screen.getByLabelText(/^Marges provisoires/));
   const { router } = jest.requireMock("expo-router");
   expect(router.push).toHaveBeenCalledWith("/radar/settings");
 });

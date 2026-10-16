@@ -63,10 +63,10 @@ export function buildTasks(input: { today?: TodayData; catalog?: Catalog; jobs?:
   for (const a of accounts?.accounts ?? [])
     if (a.status === "error")
       tasks.push({ key: `acc-${a.key}`, icon: Link2Off, tone: "danger", title: `Connexion ${a.name} en erreur`, detail: a.lastError, cta: "Corriger", go: () => router.push({ pathname: "/supplier-directory/[key]", params: { key: a.key } }), rank: 0 });
-  if (catalog && catalog.counts.out > 0) tasks.push({ key: "out", icon: PackageX, tone: "danger", title: plural(catalog.counts.out, "produit en rupture", "produits en rupture"), detail: "Réapprovisionnez ou retirez les annonces", cta: "Voir", go: () => router.push({ pathname: "/stock", params: { filter: "out" } }), rank: 1 });
-  if (today && today.toShip > 0) tasks.push({ key: "ship", icon: Truck, tone: "warning", title: plural(today.toShip, "commande à expédier", "commandes à expédier"), detail: "Payées, en attente d'expédition", cta: "Expédier", go: () => router.push({ pathname: "/sales", params: { status: "paid" } }), rank: 2 });
-  if (catalog && catalog.counts.low > 0) tasks.push({ key: "low", icon: PackageMinus, tone: "warning", title: plural(catalog.counts.low, "produit en stock faible", "produits en stock faible"), detail: "Sous le seuil de réapprovisionnement", cta: "Voir", go: () => router.push({ pathname: "/stock", params: { filter: "low" } }), rank: 3 });
-  if (today && today.pendingSales > 0) tasks.push({ key: "pending", icon: Boxes, tone: "neutral", title: plural(today.pendingSales, "vente non déduite du stock", "ventes non déduites du stock"), detail: "Associez l'annonce à un produit", cta: "Traiter", go: () => router.push("/sales"), rank: 4 });
+  if (catalog && catalog.counts.out > 0) tasks.push({ key: "out", icon: PackageX, tone: "danger", title: plural(catalog.counts.out, "produit en rupture", "produits en rupture"), cta: "Voir", go: () => router.push({ pathname: "/stock", params: { filter: "out" } }), rank: 1 });
+  if (today && today.toShip > 0) tasks.push({ key: "ship", icon: Truck, tone: "warning", title: plural(today.toShip, "commande à expédier", "commandes à expédier"), cta: "Expédier", go: () => router.push({ pathname: "/sales", params: { status: "paid" } }), rank: 2 });
+  if (catalog && catalog.counts.low > 0) tasks.push({ key: "low", icon: PackageMinus, tone: "warning", title: plural(catalog.counts.low, "produit en stock faible", "produits en stock faible"), cta: "Voir", go: () => router.push({ pathname: "/stock", params: { filter: "low" } }), rank: 3 });
+  if (today && today.pendingSales > 0) tasks.push({ key: "pending", icon: Boxes, tone: "neutral", title: plural(today.pendingSales, "vente non déduite du stock", "ventes non déduites du stock"), cta: "Traiter", go: () => router.push("/sales"), rank: 4 });
   // alertes ouvertes liées à un produit, hors ruptures / stock faible (déjà résumés ci-dessus)
   for (const al of (alerts ?? []).filter((x) => x.entityType === "sku" && x.entityId && !/stock|out_of|low/i.test(x.type)).slice(0, 2)) {
     tasks.push({ key: `alert-${al.id}`, icon: BellRing, tone: al.severity === "critical" ? "danger" : "info", title: al.title, detail: al.message, cta: "Ouvrir", go: () => router.push({ pathname: "/sku/[skuId]", params: { skuId: al.entityId! } }), rank: al.severity === "critical" ? 1 : 4 });
@@ -78,7 +78,7 @@ export function TaskList({ tasks }: { tasks: Task[] }) {
   if (tasks.length === 0)
     return (
       <Card>
-        <ActionRow icon={CheckCircle2} tone="success" title="Tout est à jour" detail="Aucune rupture, commande en attente ni import en erreur." last />
+        <ActionRow icon={CheckCircle2} tone="success" title="Tout est à jour" last />
       </Card>
     );
   const shown = tasks.slice(0, 6);
@@ -182,15 +182,14 @@ export function SourcingPanel({ accounts, radar, currency }: { accounts: ProAcco
         </Card>
       ) : (
         <Card>
-          <ActionRow icon={Plug} tone="neutral" title="Aucune opportunité calculable" detail="Reliez des offres fournisseurs à vos produits pour estimer vos marges d'achat." cta="Radar" onPress={() => router.push("/radar")} last />
+          <ActionRow icon={Plug} tone="neutral" title="Aucune opportunité pour l'instant" cta="Radar" onPress={() => router.push("/radar")} last />
         </Card>
       )}
       {radar && radar.missingSettings.length > 0 && opportunities.length > 0 ? (
-        <Txt variant="label" style={{ fontSize: 12, lineHeight: 16 }}>
-          Marges provisoires : {radar.missingSettings.slice(0, 3).join(", ")}
-          {radar.missingSettings.length > 3 ? "…" : ""} non renseignés.{" "}
-          <Txt variant="label" color={color.ink} style={{ fontSize: 12, lineHeight: 16, fontFamily: "Manrope_700Bold", textDecorationLine: "underline" }} onPress={() => router.push("/radar/settings")} accessibilityRole="link">
-            Compléter
+        <Txt variant="label" color={color.accentInkOnSoft} style={{ fontSize: 12, lineHeight: 16 }}>
+          Marges provisoires ·{" "}
+          <Txt variant="label" color={color.accentInkOnSoft} style={{ fontSize: 12, lineHeight: 16, fontFamily: "Manrope_700Bold", textDecorationLine: "underline" }} onPress={() => router.push("/radar/settings")} accessibilityRole="link">
+            compléter mes coûts
           </Txt>
         </Txt>
       ) : null}

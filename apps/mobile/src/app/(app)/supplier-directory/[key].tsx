@@ -316,7 +316,7 @@ function EntryBody({ entry: e, favorite, onToggleFavorite, canWrite, canAdmin }:
       ) : null}
 
       <Txt variant="label" style={{ marginTop: space[2] }}>
-        Aucun prix n'est issu de cette fiche : les prix proviennent uniquement de vos imports, de vos comptes connectés ou des catalogues publics. Logo : icône publiée par le fournisseur sur son site, usage d'identification, aucun partenariat.
+        Logo : identification uniquement, aucun partenariat.
       </Txt>
       {action.sheet}
       <BottomSheet visible={confirmDisconnect} title={`Déconnecter ${name} ?`} description="Les identifiants enregistrés sont supprimés du serveur. Les offres déjà reçues restent dans l'historique. Vous pourrez reconnecter le compte à tout moment." onClose={() => setConfirmDisconnect(false)}>

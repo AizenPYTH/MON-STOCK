@@ -3,6 +3,7 @@ import { Pressable, RefreshControl, ScrollView, TextInput, View } from "react-na
 import { router, useLocalSearchParams } from "expo-router";
 import { FileStack, History, KeyRound, LayoutList, Library, Radar, Rows3, Search, SearchX, Upload } from "lucide-react-native";
 import { useImportJobs, useSupplierDirectory, useSupplierSearch } from "~/data/hooks";
+import { categoryOf, OFFER_CATEGORIES, OFFER_CATEGORY_LABEL, queryTargetsDevice, type OfferCategory } from "@/domain/sourcing/offer-display";
 import { useSupplierFavorites } from "~/data/supplier-favorites";
 import { useActiveOrg } from "~/org/org-provider";
 import type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO, SimpleSupplierResultDTO } from "~/data/supplier-search";
@@ -42,6 +43,29 @@ export function splitByAccess(offers: SimpleRankedOfferDTO[]): { account: Simple
 }
 
 type Sort = "price" | "deals" | "supplier";
+
+/** Offres rangées par catégorie (ordre de prix conservé). Pur. */
+export function groupByCategory<T extends { title: string }>(offers: T[]): Map<OfferCategory, T[]> {
+  const m = new Map<OfferCategory, T[]>();
+  for (const o of offers) {
+    const c = categoryOf(o.title);
+    const list = m.get(c);
+    if (list) list.push(o);
+    else m.set(c, [o]);
+  }
+  return m;
+}
+
+/** Vue « par fournisseur » limitée à la catégorie choisie. Pur. */
+function groupSuppliers(suppliers: SimpleSupplierResultDTO[], category: OfferCategory | "all"): SimpleSupplierResultDTO[] {
+  if (category === "all") return suppliers;
+  return suppliers
+    .map((s) => {
+      const offers = s.offers.filter((o) => categoryOf(o.title) === category);
+      return { ...s, offers, total: offers.length };
+    })
+    .filter((s) => s.offers.length > 0);
+}
 type Origin = "all" | "account" | "public" | "marketplace";
 
 /** Filtre d'origine des prix (vos comptes / sources publiques / places de marché). Pur. */
@@ -72,6 +96,8 @@ export default function SourcingScreen() {
   const { compact } = useLayout();
   const [sort, setSort] = useState<Sort>("price");
   const [origin, setOrigin] = useState<Origin>("all");
+  // catégorie choisie ; null = automatique (les appareils d'abord quand on cherche un modèle)
+  const [category, setCategory] = useState<OfferCategory | "all" | null>(null);
   const [density, setDensity] = useState<OfferDensity>("detailed");
   const [shown, setShown] = useState(PAGE);
   const run = (q: string) => {
@@ -80,6 +106,7 @@ export default function SourcingScreen() {
     setSubmitted(t);
     setShown(PAGE);
     setOrigin("all");
+    setCategory(null);
   };
   // fournisseur de l'organisation → fiche de la bibliothèque (raccourci « Fournisseur »)
   const keyBySupplier = useMemo(() => {
@@ -88,20 +115,24 @@ export default function SourcingScreen() {
     return m;
   }, [directory.data]);
 
-  const all = search.data ? rankedOffers(search.data) : [];
-  const counts = { account: all.filter((o) => o.access === "account").length, public: all.filter((o) => (o.access ?? "public") === "public").length, marketplace: all.filter((o) => o.access === "marketplace").length };
-  const analysed = all.filter((o) => o.deal && o.deal.level !== "insufficient_data").length;
+  const ranked = useMemo(() => (search.data ? rankedOffers(search.data) : []), [search.data]);
+  const byCategory = useMemo(() => groupByCategory(ranked), [ranked]);
+  const autoCategory: OfferCategory | "all" = search.data && queryTargetsDevice(search.data.query) && (byCategory.get("devices")?.length ?? 0) > 0 ? "devices" : "all";
+  const activeCategory = category ?? autoCategory;
+  const all = activeCategory === "all" ? ranked : (byCategory.get(activeCategory) ?? []);
+  const counts = { account: all.filter((o) => o.access === "account").length };
+  const withMargin = all.some((o) => o.deal && o.deal.margin !== null);
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={search.isRefetching} onRefresh={() => (submitted ? void search.refetch() : void directory.refetch())} />}>
-      <TabHeader title="Sourcing" sub="Les prix de vos fournisseurs, comparés et analysés" />
+      <TabHeader title="Sourcing" />
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 54, backgroundColor: color.surface, borderRadius: radius.xl, borderWidth: 1.5, borderColor: color.ink, paddingLeft: space[3], paddingRight: 6 }}>
         <Search size={19} color={color.ink} strokeWidth={2.2} style={{ flexShrink: 0 }} />
         <TextInput
           value={draft}
           onChangeText={setDraft}
           onSubmitEditing={() => run(draft)}
-          placeholder="Produit, modèle, pièce… ex. iPhone 13"
+          placeholder="Ex. iPhone 13, écran, batterie…"
           placeholderTextColor={color.ink3}
           returnKeyType="search"
           autoCorrect={false}
@@ -117,7 +148,7 @@ export default function SourcingScreen() {
         <Discover onExample={run} />
       ) : search.isPending ? (
         <View style={{ gap: space[3] }} testID="supplier-loading">
-          <Txt variant="label">Interrogation de vos fournisseurs… (jusqu'à 40 secondes)</Txt>
+          <Txt variant="label">Recherche chez vos fournisseurs…</Txt>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} w="100%" h={148} r={radius.xl} />
           ))}
@@ -128,15 +159,18 @@ export default function SourcingScreen() {
         <NoResult data={search.data} onExample={run} />
       ) : (
         <>
-          <View style={{ gap: 2 }}>
-            <Txt variant="headline" testID="supplier-summary">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
+            <Txt variant="headline" testID="supplier-summary" style={{ flex: 1 }} numberOfLines={2}>
               {formatNumber(search.data.total)} résultat{search.data.total > 1 ? "s" : ""} chez {search.data.suppliers.length} fournisseur{search.data.suppliers.length > 1 ? "s" : ""} pour « {search.data.query} »
             </Txt>
-            <Txt variant="label">
-              {analysed > 0 ? `${formatNumber(analysed)} offre${analysed > 1 ? "s" : ""} comparée${analysed > 1 ? "s" : ""} à des produits équivalents` : "Pas assez d'offres équivalentes pour estimer une marge"}
-              {search.data.partial ? " · certains fournisseurs n'ont pas répondu à temps" : ""}
-            </Txt>
+            <DensityToggle value={density} onChange={setDensity} />
           </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} accessibilityLabel="Catégories" testID="offer-categories">
+            <FilterChip label="Tout" count={ranked.length} selected={activeCategory === "all"} onPress={() => (setCategory("all"), setShown(PAGE))} />
+            {OFFER_CATEGORIES.filter((c) => (byCategory.get(c)?.length ?? 0) > 0).map((c) => (
+              <FilterChip key={c} label={OFFER_CATEGORY_LABEL[c]} count={byCategory.get(c)!.length} selected={activeCategory === c} onPress={() => (setCategory(c), setShown(PAGE))} />
+            ))}
+          </ScrollView>
           <Segmented<Sort>
             value={sort}
             onChange={(v) => {
@@ -149,30 +183,30 @@ export default function SourcingScreen() {
               { value: "supplier", label: "Fournisseurs" },
             ]}
           />
-          {sort !== "supplier" ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6 }} accessibilityLabel="Origine des prix">
-                <FilterChip label="Tout" selected={origin === "all"} onPress={() => setOrigin("all")} />
-                {counts.account ? <FilterChip label="Vos comptes" count={counts.account} selected={origin === "account"} onPress={() => setOrigin("account")} /> : null}
-                {counts.public ? <FilterChip label="Publiques" count={counts.public} selected={origin === "public"} onPress={() => setOrigin("public")} /> : null}
-                {counts.marketplace ? <FilterChip label="Marché" count={counts.marketplace} selected={origin === "marketplace"} onPress={() => setOrigin("marketplace")} /> : null}
-              </ScrollView>
-              <DensityToggle value={density} onChange={setDensity} />
-            </View>
+          {withMargin && search.data.missingCostSettings && search.data.missingCostSettings.length > 0 ? (
+            <Pressable onPress={() => router.push("/radar/settings")} accessibilityRole="button" accessibilityLabel={`Marges provisoires : coûts à compléter (${search.data.missingCostSettings.join(", ")})`} hitSlop={6}>
+              <Txt variant="label" color={color.accentInkOnSoft}>
+                Marges provisoires ·{" "}
+                <Txt variant="label" color={color.accentInkOnSoft} style={{ fontFamily: fontFamily[700], textDecorationLine: "underline" }}>
+                  compléter mes coûts
+                </Txt>
+              </Txt>
+            </Pressable>
           ) : null}
-          {search.data.missingCostSettings && search.data.missingCostSettings.length > 0 ? (
-            <AlertBanner text={`Marges provisoires : coûts à compléter (${search.data.missingCostSettings.slice(0, 3).join(", ")}${search.data.missingCostSettings.length > 3 ? "…" : ""}). Toucher pour les renseigner.`} onPress={() => router.push("/radar/settings")} />
-          ) : null}
-          {sort === "deals" ? <Txt variant="label">Classement par niveau, puis score et marge. Une offre n'est « intéressante » que comparée à des produits équivalents (même modèle, capacité, état, grade, type de pièce), avec une marge positive après les coûts connus.</Txt> : null}
           {sort === "supplier" ? (
-            search.data.suppliers.map((s) => <SupplierBlock key={s.supplierId} supplier={s} orgCurrency={search.data.currency} density={density} supplierKey={keyBySupplier.get(s.supplierId) ?? null} />)
+            groupSuppliers(search.data.suppliers, activeCategory).map((s) => <SupplierBlock key={s.supplierId} supplier={s} orgCurrency={search.data.currency} density={density} supplierKey={keyBySupplier.get(s.supplierId) ?? null} />)
           ) : sort === "deals" ? (
             <OfferList offers={byOrigin(bestDeals(all), origin)} orgCurrency={search.data.currency} density={density} shown={shown} onMore={() => setShown((n) => n + PAGE)} keyOf={(o) => keyBySupplier.get(o.supplierId) ?? null} />
-          ) : origin === "all" ? (
+          ) : origin === "all" && counts.account > 0 ? (
             <AccessSections offers={all} orgCurrency={search.data.currency} density={density} shown={shown} onMore={() => setShown((n) => n + PAGE)} keyOf={(o) => keyBySupplier.get(o.supplierId) ?? null} />
           ) : (
             <OfferList offers={byOrigin(all, origin)} orgCurrency={search.data.currency} density={density} shown={shown} onMore={() => setShown((n) => n + PAGE)} keyOf={(o) => keyBySupplier.get(o.supplierId) ?? null} />
           )}
+          {counts.account === 0 ? (
+            <Card>
+              <ActionRow icon={KeyRound} title="Voir vos prix pro" detail="Connectez vos comptes fournisseurs" onPress={() => router.push("/pro-accounts")} last testID="connect-accounts-row" />
+            </Card>
+          ) : null}
           <Checked data={search.data} />
         </>
       )}
@@ -254,7 +288,7 @@ function ConnectAccountsCta() {
           Connectez vos comptes fournisseurs
         </Txt>
         <Txt variant="label" color={color.inkOnDarkMuted}>
-          Foxway, Foneday, MobileSentrix… : vos prix pro passent en premier.
+          Vos prix pro passent en premier.
         </Txt>
       </View>
     </Pressable>
@@ -274,7 +308,7 @@ function NoResult({ data, onExample }: { data: SimpleSearchDTO; onExample: (q: s
           Rien trouvé pour « {data.query} »
         </Txt>
         <Txt variant="bodyRegular" style={{ textAlign: "center" }}>
-          Aucune offre active de vos fournisseurs ne contient tous ces mots. {failed > 0 ? `${failed} fournisseur${failed > 1 ? "s n'ont" : " n'a"} pas répondu : réessayez dans un instant. ` : ""}Les catalogues sont mis à jour à chaque import ou synchronisation, pas en temps réel.
+          Essayez un mot plus simple.{failed > 0 ? ` ${failed} fournisseur${failed > 1 ? "s n'ont" : " n'a"} pas répondu : réessayez dans un instant.` : ""}
         </Txt>
         {simpler ? <Button label={`Chercher « ${simpler} »`} compact onPress={() => onExample(simpler)} /> : null}
       </Card>

@@ -80,6 +80,7 @@ it("recherche : vos comptes d'abord, puis sources publiques (logos, lien) ; invi
   expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/pro-accounts");
   fireEvent.press(screen.getByText("iPhone 13"));
   await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
+  fireEvent.press(screen.getByRole("button", { name: /^Tout · / }));
   expect(screen.getByText("Vos comptes fournisseurs (1)")).toBeTruthy();
   expect(screen.getByText("Sources publiques et places de marché (1)")).toBeTruthy();
   const titles = screen.getAllByText(/iPhone 13/).map((n) => n.props.children).filter((t) => typeof t === "string" && t !== "iPhone 13");

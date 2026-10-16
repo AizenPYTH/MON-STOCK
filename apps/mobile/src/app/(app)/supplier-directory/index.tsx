@@ -104,7 +104,6 @@ export default function SupplierLibraryScreen() {
     <DetailHeader
       parentLabel="Sourcing"
       title="Bibliothèque fournisseurs"
-      sub="Grossistes et plateformes B2B étudiés : accès réels, conditions et état de votre connexion"
       hero={
         directory.data
           ? {
@@ -270,10 +269,6 @@ function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entr
         {e.org.lastError ? (
           <Txt variant="label" color={color.dangerInk} numberOfLines={2}>
             {e.org.lastError}
-          </Txt>
-        ) : !connected && e.whyUseful ? (
-          <Txt variant="label" numberOfLines={2} color={color.ink2}>
-            {e.whyUseful}
           </Txt>
         ) : null}
       </Pressable>

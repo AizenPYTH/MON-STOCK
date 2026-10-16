@@ -7,17 +7,16 @@ import type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO } from "~/data
 import { STOCK_TEXT } from "~/data/supplier-search";
 import { formatMoney, formatNumber, formatRelative } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
+import { frenchTitle, shortSupplierName } from "@/domain/sourcing/offer-display";
 import { SupplierLogo } from "~/components/supplier-logo";
 import { cardStyle, DealBadge, Txt } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
 /**
- * Résultat d'offre fournisseur, en deux densités :
- *  - détaillée : identification du produit, prix d'achat et marge estimée mis en avant, origine
- *    (votre compte / public / place de marché), fraîcheur du prix, détail du calcul repliable ;
- *  - compacte : une ligne par offre pour comparer vite.
- * Toute estimation est marquée « ≈ » ; une marge provisoire l'indique ; rien n'est inventé.
+ * Résultat d'offre fournisseur, en deux densités (carte / ligne compacte). Titres traduits en
+ * français par glossaire (titre d'origine annoncé au lecteur d'écran). Prix et marge estimée mis en
+ * avant ; toute estimation est marquée « ≈ » et « provisoire » si des coûts manquent.
  */
 
 export type OfferDensity = "detailed" | "compact";
@@ -121,7 +120,7 @@ export function DealLines({ deal: d, orgCurrency }: { deal: SimpleDealDTO; orgCu
   );
 }
 
-/** Carte détaillée d'une offre. */
+/** Carte d'une offre : simple. Toucher la carte ouvre l'offre ; toucher la marge montre le calcul. */
 export function OfferCard({ offer: o, orgCurrency, supplierName, domain, supplierKey, testID }: { offer: SimpleOfferDTO | SimpleRankedOfferDTO; orgCurrency: string; supplierName?: string; domain?: string | null; supplierKey?: string | null; testID?: string }) {
   const [details, setDetails] = useState(false);
   const link = safeExternalUrl(o.url);
@@ -129,89 +128,78 @@ export function OfferCard({ offer: o, orgCurrency, supplierName, domain, supplie
   const age = ageDays(o.seenAt);
   const stale = age !== null && age > STALE_DAYS;
   const d = o.deal ?? null;
+  const showDeal = Boolean(d && (d.margin !== null || d.level !== "insufficient_data"));
+  const title = frenchTitle(o.title);
+  const name = supplierName ? shortSupplierName(supplierName) : null;
   return (
-    <View style={[cardStyle, { padding: space[4], gap: space[3] }]} testID={testID}>
+    <View style={[cardStyle, { padding: space[4], gap: space[2] }]} testID={testID}>
       <Pressable
         disabled={!link}
         onPress={() => open(link)}
         accessibilityRole={link ? "link" : undefined}
-        accessibilityLabel={`${o.title}, ${price}${supplierName ? `, chez ${supplierName}` : ""}`}
-        style={({ pressed }) => ({ gap: space[2], opacity: pressed ? 0.75 : 1 })}
+        accessibilityLabel={`${title}, ${price}${name ? `, chez ${name}` : ""}`}
+        accessibilityHint={title !== o.title ? `Titre d'origine : ${o.title}` : undefined}
+        style={({ pressed }) => ({ gap: space[2], opacity: pressed ? 0.7 : 1 })}
       >
-        {supplierName ? (
+        {name ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-            <SupplierLogo domain={domain ?? null} name={supplierName} size={24} />
-            <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700], flexShrink: 1 }} numberOfLines={1}>
-              {supplierName}
+            <SupplierLogo domain={domain ?? null} name={name} size={22} />
+            <Txt variant="label" color={color.ink2} style={{ fontFamily: fontFamily[700], flexShrink: 1 }} numberOfLines={1}>
+              {name}
             </Txt>
-            {o.access ? <AccessTag access={o.access} /> : null}
+            {o.access === "account" ? <AccessTag access="account" /> : null}
+            {link ? <ExternalLink size={14} color={color.ink3} style={{ marginLeft: "auto" }} /> : null}
           </View>
         ) : null}
         <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
           <Txt variant="body" numberOfLines={2} style={{ flex: 1, fontSize: 15.5, lineHeight: 21 }}>
-            {o.title}
+            {title}
           </Txt>
           <View style={{ alignItems: "flex-end", maxWidth: "42%" }}>
             <Txt variant="price" num numberOfLines={1} adjustsFontSizeToFit>
               {price}
             </Txt>
-            {tax || converted ? (
+            {(tax && tax !== "HT/TTC ?") || converted ? (
               <Txt variant="micro" num style={{ letterSpacing: 0 }}>
-                {[tax, converted].filter(Boolean).join(" · ")}
+                {[tax !== "HT/TTC ?" ? tax : "", converted].filter(Boolean).join(" · ")}
               </Txt>
             ) : null}
           </View>
         </View>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: space[3], rowGap: 2 }}>
-          <Txt variant="label" color={o.stock === "out_of_stock" ? color.dangerInk : o.stock === "in_stock" ? color.success : color.ink2} style={{ fontFamily: fontFamily[700] }}>
+        <Txt variant="label" numberOfLines={1}>
+          <Txt variant="label" color={o.stock === "out_of_stock" ? color.dangerInk : o.stock === "in_stock" ? color.success : color.ink3} style={{ fontFamily: fontFamily[700] }}>
             {stockText(o)}
           </Txt>
-          {o.seenAt ? (
-            <Txt variant="label" color={stale ? color.accentInkOnSoft : color.ink3}>
-              {stale ? "Prix relevé " : "Vu "}
-              {formatRelative(o.seenAt)}
-            </Txt>
-          ) : null}
-        </View>
+          {o.seenAt ? <Txt variant="label" color={stale ? color.accentInkOnSoft : color.ink3}>{`  ·  ${formatRelative(o.seenAt)}`}</Txt> : null}
+        </Txt>
       </Pressable>
 
-      {d ? (
-        <View style={{ borderTopWidth: 1, borderTopColor: color.lineSoft, paddingTop: space[3], gap: space[2] }}>
+      {d && showDeal ? (
+        <Pressable
+          onPress={() => setDetails((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: details }}
+          accessibilityLabel={details ? "Masquer le détail du calcul" : "Voir le détail du calcul"}
+          style={{ borderTopWidth: 1, borderTopColor: color.lineSoft, paddingTop: space[2], gap: space[2] }}
+        >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] }}>
             <DealBadge level={d.level} label={d.label} provisional={d.provisional} />
-            <MarginBlock deal={d} orgCurrency={orgCurrency} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <MarginBlock deal={d} orgCurrency={orgCurrency} />
+              <ChevronDown size={14} color={color.ink3} style={{ transform: [{ rotate: details ? "180deg" : "0deg" }] }} />
+            </View>
           </View>
           {details ? <DealLines deal={d} orgCurrency={orgCurrency} /> : null}
-        </View>
+        </Pressable>
       ) : null}
 
-      {link || supplierKey || d ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "center" }}>
-          {link ? (
-            <Pressable onPress={() => open(link)} accessibilityRole="link" accessibilityLabel={`Voir l'offre chez ${supplierName ?? "le fournisseur"}`} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: pressed ? color.surfacePressed : color.surfaceSunken })}>
-              <ExternalLink size={14} color={color.ink} />
-              <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
-                Voir l'offre
-              </Txt>
-            </Pressable>
-          ) : null}
-          {supplierKey ? (
-            <Pressable onPress={() => router.push({ pathname: "/supplier-directory/[key]", params: { key: supplierKey } })} accessibilityRole="button" accessibilityLabel={`Fiche du fournisseur ${supplierName ?? ""}`} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: pressed ? color.surfacePressed : color.surfaceSunken })}>
-              <Store size={14} color={color.ink} />
-              <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
-                Fournisseur
-              </Txt>
-            </Pressable>
-          ) : null}
-          {d ? (
-            <Pressable accessibilityRole="button" accessibilityState={{ expanded: details }} accessibilityLabel={details ? "Masquer le détail du calcul" : "Voir le détail du calcul"} onPress={() => setDetails((v) => !v)} hitSlop={8} style={{ marginLeft: "auto", flexDirection: "row", alignItems: "center", gap: 2, paddingVertical: 8 }}>
-              <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
-                {details ? "Masquer" : "Calcul"}
-              </Txt>
-              <ChevronDown size={14} color={color.ink} style={{ transform: [{ rotate: details ? "180deg" : "0deg" }] }} />
-            </Pressable>
-          ) : null}
-        </View>
+      {supplierKey && details ? (
+        <Pressable onPress={() => router.push({ pathname: "/supplier-directory/[key]", params: { key: supplierKey } })} accessibilityRole="button" accessibilityLabel={`Fiche du fournisseur ${name ?? ""}`} style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 6 }}>
+          <Store size={14} color={color.ink} />
+          <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
+            Fiche du fournisseur
+          </Txt>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -222,21 +210,23 @@ export function OfferLine({ offer: o, orgCurrency, supplierName, domain, last }:
   const link = safeExternalUrl(o.url);
   const { price, tax } = priceParts(o, orgCurrency);
   const d = o.deal ?? null;
+  const title = frenchTitle(o.title);
+  const name = supplierName ? shortSupplierName(supplierName) : undefined;
   return (
     <Pressable
       disabled={!link}
       onPress={() => open(link)}
       accessibilityRole={link ? "link" : undefined}
-      accessibilityLabel={`${o.title}, ${price}${supplierName ? `, chez ${supplierName}` : ""}${d ? `, ${d.label}` : ""}`}
+      accessibilityLabel={`${title}, ${price}${name ? `, chez ${name}` : ""}${d ? `, ${d.label}` : ""}`}
       style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: 10, paddingHorizontal: space[3], backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft })}
     >
-      {supplierName ? <SupplierLogo domain={domain ?? null} name={supplierName} size={28} /> : null}
+      {name ? <SupplierLogo domain={domain ?? null} name={name} size={28} /> : null}
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
         <Txt variant="body" numberOfLines={1} style={{ fontSize: 14, lineHeight: 19 }}>
-          {o.title}
+          {title}
         </Txt>
         <Txt variant="label" numberOfLines={1} style={{ fontSize: 12, lineHeight: 16 }}>
-          {[supplierName, o.access ? ACCESS_LABEL[o.access] : null, stockText(o)].filter(Boolean).join(" · ")}
+          {[name, o.access === "account" ? ACCESS_LABEL.account : null, stockText(o)].filter(Boolean).join(" · ")}
         </Txt>
       </View>
       <View style={{ alignItems: "flex-end", gap: 2 }}>
@@ -244,7 +234,7 @@ export function OfferLine({ offer: o, orgCurrency, supplierName, domain, last }:
           {price}
           {tax && tax !== "HT/TTC ?" ? ` ${tax}` : ""}
         </Txt>
-        {d && d.margin !== null ? <MarginBlock deal={d} orgCurrency={orgCurrency} compact /> : d ? <DealBadge level={d.level} label={d.label} size="sm" /> : null}
+        {d && d.margin !== null ? <MarginBlock deal={d} orgCurrency={orgCurrency} compact /> : null}
       </View>
     </Pressable>
   );
