@@ -24,7 +24,10 @@ if (process.env.MONSTOCK_PREVIEW === "1") {
     [path.join(projectRoot, "src/lib/supabase.ts")]: path.join(projectRoot, "preview/mock-supabase.ts"),
     [path.join(projectRoot, "src/lib/api.ts")]: path.join(projectRoot, "preview/mock-api.ts"),
   };
-  if (process.env.MONSTOCK_PREVIEW_MODULES) config.resolver.nodeModulesPaths.push(process.env.MONSTOCK_PREVIEW_MODULES);
+  if (process.env.MONSTOCK_PREVIEW_MODULES) {
+    config.resolver.nodeModulesPaths.push(process.env.MONSTOCK_PREVIEW_MODULES);
+    config.watchFolders.push(process.env.MONSTOCK_PREVIEW_MODULES);
+  }
   const upstream = config.resolver.resolveRequest;
   config.resolver.resolveRequest = (context, moduleName, platform) => {
     const res = upstream ? upstream(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
