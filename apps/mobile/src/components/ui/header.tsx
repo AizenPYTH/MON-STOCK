@@ -30,6 +30,7 @@ export type HeaderHero = { value: string; label?: string; sub?: string; color?: 
 
 export function NightHeader<T extends string = string>({
   back,
+  left,
   right,
   over,
   title,
@@ -40,6 +41,8 @@ export function NightHeader<T extends string = string>({
   topInset = true,
 }: {
   back?: { label: string; onPress: () => void };
+  /** contenu à gauche de la rangée de navigation (à la place du retour) */
+  left?: ReactNode;
   right?: ReactNode;
   over?: string;
   title?: string;
@@ -58,7 +61,7 @@ export function NightHeader<T extends string = string>({
     <OnDarkContext.Provider value>
       <View style={{ backgroundColor: color.brand, paddingTop: topInset ? insets.top : 0 }}>
         <View style={{ paddingHorizontal: screenX, paddingBottom: tabs ? space[3] : space.bodyOverlap + space[5] }}>
-          {back || right ? (
+          {back || right || left ? (
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: size.touchMin }}>
               {back ? (
                 <Pressable
@@ -74,7 +77,7 @@ export function NightHeader<T extends string = string>({
                   </Txt>
                 </Pressable>
               ) : (
-                <View />
+                <View style={{ flexShrink: 1 }}>{left}</View>
               )}
               {right ? <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>{right}</View> : null}
             </View>

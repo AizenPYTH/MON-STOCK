@@ -134,13 +134,16 @@ export function Chevron({ open, children }: { open: boolean; children: ReactNode
  * Zone tactile avec retour d'appui : échelle (0,98 par défaut ; tuiles 0,96, boutons ronds 0,92)
  * en 90 ms ; opacité 0,7 si l'animation est réduite. L'action part immédiatement.
  */
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export function PressScale({ scale = 0.98, style, children, ...props }: Omit<PressableProps, "style" | "children"> & { scale?: number; style?: StyleProp<ViewStyle>; children: ReactNode }) {
   const reduce = useReduceMotion();
   const s = useSharedValue(1);
   const a = useAnimatedStyle(() => (reduce ? { opacity: s.value < 1 ? 0.7 : 1 } : { transform: [{ scale: s.value }] }));
   return (
-    <Pressable
+    <AnimatedPressable
       {...props}
+      style={[style, a]}
       onPressIn={(e) => {
         s.set(reduce ? 0.99 : withTiming(scale, { duration: motion.press, easing: curve.press }));
         props.onPressIn?.(e);
@@ -150,8 +153,8 @@ export function PressScale({ scale = 0.98, style, children, ...props }: Omit<Pre
         props.onPressOut?.(e);
       }}
     >
-      <Animated.View style={[style, a]}>{children}</Animated.View>
-    </Pressable>
+      {children}
+    </AnimatedPressable>
   );
 }
 

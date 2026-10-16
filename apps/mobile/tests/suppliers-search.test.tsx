@@ -55,7 +55,7 @@ it("affiche tous les résultats du moins cher au plus cher, avec le fournisseur 
   fireEvent.changeText(screen.getByTestId("supplier-query"), "iPhone 15 Pro");
   fireEvent.press(screen.getByTestId("supplier-search"));
   await waitFor(() => expect(screen.getByTestId("supplier-summary")).toBeTruthy());
-  expect(screen.getByText(/4 résultats chez 2 fournisseurs pour « iPhone 15 Pro »/)).toBeTruthy();
+  expect(screen.getByLabelText("4 offres chez 2 fournisseurs pour iPhone 15 Pro")).toBeTruthy();
   const shownTitles = () => screen.getAllByText(/iPhone 15 Pro/).map((n) => n.props.children).filter((t) => typeof t === "string" && t !== "iPhone 15 Pro");
   // recherche d'un modèle : les appareils d'abord (catégorie choisie automatiquement), titres en français
   expect(shownTitles()).toEqual(["iPhone 15 Pro occasion - 128 GB / mixte / A/B Grade"]);
@@ -68,14 +68,17 @@ it("affiche tous les résultats du moins cher au plus cher, avec le fournisseur 
   expect(screen.getAllByText("Refreshed Apples")).toHaveLength(2);
   expect(screen.getByText(/≈ 1,15/)).toBeTruthy();
   expect(screen.getAllByText(/En rupture/).length).toBe(1);
+  // toucher la carte ouvre l'analyse ; l'offre s'ouvre ensuite chez le fournisseur
   fireEvent.press(screen.getByLabelText(/Verre trempé iPhone 15 Pro, .*chez Brico-phone/));
+  fireEvent.press(screen.getByLabelText("Voir l'offre chez Brico-phone"));
   const { openBrowserAsync } = jest.requireMock("expo-web-browser");
   expect(openBrowserAsync).toHaveBeenCalledWith("https://example.test/1");
+  fireEvent.press(screen.getByLabelText("Fermer"));
   // vue par fournisseur
   fireEvent.press(screen.getByText("Fournisseurs"));
   expect(screen.getByText(/^Brico-phone$/)).toBeTruthy();
   expect(screen.getByText(/550,00/)).toBeTruthy();
-  expect(screen.getByText(/Servisní díly \(n'a pas répondu\)/)).toBeTruthy();
+  expect(screen.getByText(/Servisní díly \(sans réponse\)/)).toBeTruthy();
   expect(mockCallApi).toHaveBeenCalledWith("/suppliers/search", expect.objectContaining({ query: { q: "iPhone 15 Pro" } }));
 });
 
@@ -85,7 +88,7 @@ it("rien trouvé : message clair, sans écran compliqué", async () => {
   render(wrap(<Screen />));
   fireEvent.press(screen.getByText("iPhone 13"));
   await waitFor(() => expect(screen.getByText(/Rien trouvé pour « batterie trottinette »/)).toBeTruthy());
-  expect(screen.getByText(/Fournisseurs consultés en direct : Brico-phone/)).toBeTruthy();
+  expect(screen.getByText(/Consultés en direct : Brico-phone/)).toBeTruthy();
 });
 
 it("chaque offre affiche son analyse ; « Meilleures affaires » classe les offres rentables d'abord", async () => {
@@ -106,12 +109,19 @@ it("chaque offre affiche son analyse ; « Meilleures affaires » classe les offr
   // « Données insuffisantes » n'encombre plus les cartes
   fireEvent.press(screen.getByRole("button", { name: /^Tout · / }));
   expect(screen.queryByText("Données insuffisantes")).toBeNull();
-  // marge visible d'emblée ; le détail du calcul s'ouvre à la demande
-  expect(screen.getByText(/Marge ≈ \+86,33/)).toBeTruthy();
-  for (const b of screen.getAllByLabelText("Voir le détail du calcul")) fireEvent.press(b);
-  expect(screen.getAllByText(/Marché ≈ 420,00/).length).toBe(2);
-  expect(screen.getAllByText(/Coût total ≈ 250,00/).length).toBe(2);
-  expect(screen.getAllByText(/À vérifier : Prix HT ou TTC/).length).toBe(2);
+  // marge visible d'emblée ; position face au marché sur chaque carte (règle), « pas assez d'offres » sinon
+  expect(screen.getAllByText(/^≈ \+86,33/).length).toBe(1);
+  expect(screen.getByText(/^≈ −40,00/)).toBeTruthy();
+  // deux cartes + la meilleure opportunité de la scène
+  expect(screen.getAllByText(/Coût 250,00 € · marché 420,00 € \(3\)/).length).toBe(3);
+  expect(screen.getByText("Pas assez d'offres équivalentes (0 trouvée)")).toBeTruthy();
+  // meilleure opportunité sur la scène → analyse : cascade de marge et points à vérifier
+  fireEvent.press(screen.getByTestId("best-opportunity"));
+  expect(screen.getByText("Marge estimée par unité")).toBeTruthy();
+  expect(screen.getByLabelText(/^Revente \(bas du marché\) : 410,00/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Marge estimée : ≈ \+86,33/)).toBeTruthy();
+  expect(screen.getByText("Prix HT ou TTC non précisé par le fournisseur.")).toBeTruthy();
+  fireEvent.press(screen.getByLabelText("Fermer"));
   expect(screen.getByLabelText("Marges provisoires : coûts à compléter (régime de TVA, commission marketplace)")).toBeTruthy();
   fireEvent.press(screen.getByText("Opportunités"));
   const order = screen.getAllByText(/^(Très intéressant|Non compétitif)$/).map((n) => n.props.children);

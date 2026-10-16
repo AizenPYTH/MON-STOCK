@@ -81,12 +81,35 @@ describe("rendu", () => {
     expect(screen.getByText("Tout est à jour")).toBeTruthy();
   });
 
-  it("bande du stock : valeur partielle marquée « ≈ » ; un appui ouvre le filtre des ruptures", () => {
-    const { StockPulse } = jest.requireActual("~/components/dashboard");
-    render(wrap(<StockPulse catalog={{ products: [], truncated: false, counts: { all: 4, out: 1, low: 2, unlisted: 0 } }} summary={{ value: 350, skusWithoutCost: 1, skus: 6, units: 9 }} currency="EUR" />));
-    expect(screen.getByLabelText(/^Valeur : ≈ 350/)).toBeTruthy();
+  it("scène du stock : valeur partielle marquée « ≈ », part des ventes en rupture ; un appui ouvre le filtre des ruptures", () => {
+    const { TodayStage } = jest.requireActual("~/components/dashboard");
+    const view = (qty: number, units: number, level = "normal") => ({ row: { sku_id: `s${qty}${units}`, quantity_available: qty, units_30d: units }, classification: { level } });
+    const catalog = { products: [{ productId: "p", skus: [view(0, 3), view(5, 9), view(1, 0, "low")] }], truncated: false, counts: { all: 3, out: 1, low: 1, unlisted: 0 } };
+    render(wrap(<TodayStage today={undefined} catalog={catalog} summary={{ value: 350, skusWithoutCost: 1, skus: 3, units: 6 }} currency="EUR" onAnalysis={() => {}} />));
+    expect(screen.getByLabelText(/^Valeur du stock au coût : ≈ 350/)).toBeTruthy();
+    // 3 ventes sur 12 portent sur la référence en rupture
+    expect(screen.getByText(/^25 % de vos ventes sur 30 jours/)).toBeTruthy();
+    expect(screen.getByLabelText(/Stock : 3 références, 1 en rupture représentant 25 % des ventes/)).toBeTruthy();
     fireEvent.press(screen.getByTestId("pulse-out"));
     expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith({ pathname: "/stock", params: { filter: "out" } });
+  });
+
+  it("à faire maintenant : la rupture qui coûte le plus et sa meilleure offre rapprochée ; masquée sans offre", () => {
+    const { pickPriority } = jest.requireActual("~/components/dashboard");
+    const restock = (skuId: string, qty: number, units: number, price: number | null, offer: string | null) => ({ skuId, code: skuId, name: skuId, quantityAvailable: qty, units30d: units, daysOfCover: null, bestOfferId: offer, bestPrice: price, bestSupplier: "Foxway" });
+    expect(pickPriority({ items: [], restock: [restock("a", 0, 3, null, null)] })).toBeNull();
+    const pick = pickPriority({ items: [], restock: [restock("low", 2, 50, 300, "o1"), restock("a", 0, 2, 100, "o2"), restock("b", 0, 7, 199, "o3")] });
+    expect(pick.restock.skuId).toBe("b");
+  });
+
+  it("à traiter : 5 lignes visibles, puis « N autres points »", () => {
+    const { TaskList } = jest.requireActual("~/components/dashboard");
+    const { CheckCircle2 } = jest.requireActual("lucide-react-native");
+    const tasks = Array.from({ length: 7 }, (_, i) => ({ key: `t${i}`, icon: CheckCircle2, tone: "neutral", title: `Tâche ${i}`, cta: "Voir", go: () => {}, rank: i }));
+    render(wrap(<TaskList tasks={tasks} />));
+    expect(screen.queryByText("Tâche 6")).toBeNull();
+    fireEvent.press(screen.getByText("2 autres points"));
+    expect(screen.getByText("Tâche 6")).toBeTruthy();
   });
 
   it("configuration guidée : seules les étapes réellement manquantes, progression affichée", () => {

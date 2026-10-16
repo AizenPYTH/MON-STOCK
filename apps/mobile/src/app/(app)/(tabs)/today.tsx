@@ -2,16 +2,16 @@ import { useMemo, useState } from "react";
 import { ActionSheetIOS, Alert, Platform, Pressable, RefreshControl, View } from "react-native";
 import { router } from "expo-router";
 import { ChevronDown } from "lucide-react-native";
-import { useUser } from "~/auth/session-provider";
 import { useActiveOrg } from "~/org/org-provider";
 import { useAnalysis, useCatalog, useImportJobs, useIntegrations, useOpenAlerts, useProAccounts, useRadar, useToday } from "~/data/hooks";
 import { stockSummary } from "~/data/catalog";
-import { AdvisorEntry, buildTasks, LastImportRow, SetupChecklist, Shortcuts, SourcingPanel, StockPulse, TaskList } from "~/components/dashboard";
+import { AdvisorEntry, buildTasks, LastImportRow, PriorityCard, RadarOpportunities, SearchShortcut, SetupChecklist, Shortcuts, TaskList, TodayNavLeft, TodayStage } from "~/components/dashboard";
 import { PERIODS, type Period } from "~/data/intelligence";
 import { PROVIDER_LABEL } from "~/data/sales";
 import { userMessage } from "~/lib/errors";
-import { formatClock, formatCompactMoney, formatLongDate, formatMoneyRounded, formatNumber, formatSignedPercent } from "~/lib/format";
+import { formatClock, formatCompactMoney, formatMoneyRounded, formatNumber, formatSignedPercent } from "~/lib/format";
 import {
+  AccountAvatar,
   AlertBanner,
   BarChart,
   Card,
@@ -21,11 +21,12 @@ import {
   KpiCard,
   KpiGrid,
   ListRow,
+  MonoTitle,
+  NightHeader,
   Screen,
   SectionHeader,
   Skeleton,
   SkeletonList,
-  TabHeader,
   Thumb,
   Txt,
 } from "~/components/ui";
@@ -36,11 +37,7 @@ type Segment = "today" | "analysis";
 export default function TodayScreen() {
   const [segment, setSegment] = useState<Segment>("today");
   const [period, setPeriod] = useState<Period>(30);
-  const user = useUser();
   const { active } = useActiveOrg();
-
-  const fullName = (user?.user_metadata as { full_name?: string } | undefined)?.full_name?.trim();
-  const greeting = fullName ? `Bonjour ${fullName.split(/\s+/)[0]}` : "Aujourd'hui";
 
   const periodPicker = (
     <Pressable
@@ -66,22 +63,14 @@ export default function TodayScreen() {
     </Pressable>
   );
 
-  const tabs = { value: segment, onChange: setSegment, options: SEGMENTS };
   return segment === "today" ? (
-    <Today header={(hero) => <TabHeader overline={formatLongDate(new Date())} title={greeting} hero={hero} tabs={tabs} />} currency={active.organization.currency} />
+    <Today currency={active.organization.currency} orgName={active.organization.name} isDemo={Boolean(active.organization.isDemo)} onAnalysis={() => setSegment("analysis")} />
   ) : (
-    <Analysis header={<TabHeader overline={`Analyse · ${period} jours`} title={greeting} right={periodPicker} tabs={tabs} />} period={period} currency={active.organization.currency} />
+    <Analysis header={<NightHeader back={{ label: "Aujourd'hui", onPress: () => setSegment("today") }} right={periodPicker} over={`${period} derniers jours`} title="Analyse" />} period={period} currency={active.organization.currency} />
   );
 }
 
-const SEGMENTS: { value: Segment; label: string }[] = [
-  { value: "today", label: "Aujourd'hui" },
-  { value: "analysis", label: "Analyse" },
-];
-
-type Hero = { value: string; label?: string; stats?: { label: string; value: string; tone?: "positive" | "warning" | "negative" }[] };
-
-function Today({ header, currency }: { header: (hero?: Hero) => React.ReactElement; currency: string }) {
+function Today({ currency, orgName, isDemo, onAnalysis }: { currency: string; orgName: string; isDemo: boolean; onAnalysis: () => void }) {
   const today = useToday();
   const catalog = useCatalog();
   const jobs = useImportJobs();
@@ -102,22 +91,23 @@ function Today({ header, currency }: { header: (hero?: Hero) => React.ReactEleme
   const emptyShop = Boolean(catalog.data && catalog.data.counts.all === 0);
   const checklist = catalog.data ? <SetupChecklist hasProducts={!emptyShop} hasChannel={hasChannel} hasSupplier={hasSupplier} hasCosts={hasCosts} /> : null;
 
+  const header = (
+    <NightHeader
+      left={<TodayNavLeft orgName={orgName} isDemo={isDemo} />}
+      right={
+        <>
+          <SearchShortcut />
+          <AccountAvatar />
+        </>
+      }
+      stage={<TodayStage today={today.data} catalog={catalog.data} summary={summary} currency={currency} onAnalysis={onAnalysis} />}
+    />
+  );
+
   return (
     <Screen
-      header={header(
-        today.data
-          ? {
-              label: "Chiffre d'affaires du jour",
-              value: formatMoneyRounded(today.data.revenueToday, currency),
-              stats: [
-                { label: "Ventes", value: formatNumber(today.data.ordersToday) },
-                { label: "Marge (estimée)", value: today.data.marginTodayPercent === null ? "—" : `≈ ${Math.round(today.data.marginTodayPercent)} %` },
-                { label: "vs hier", value: formatSignedPercent(today.data.vsYesterdayPercent), tone: today.data.vsYesterdayPercent === null ? undefined : today.data.vsYesterdayPercent >= 0 ? "positive" : "negative" },
-              ],
-            }
-          : undefined,
-      )}
-      contentGap={space[3]}
+      header={header}
+      contentGap={26}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -129,49 +119,64 @@ function Today({ header, currency }: { header: (hero?: Hero) => React.ReactEleme
     >
       {today.isPending || catalog.isPending ? (
         <>
-          <Skeleton w="100%" h={78} r={radius.xl} />
+          <Skeleton w="100%" h={220} r={radius.card} />
           <SkeletonList rows={4} thumb={false} />
         </>
       ) : today.isError ? (
         <ErrorState description={`${userMessage(today.error)}${today.dataUpdatedAt ? ` Dernières données : ${formatClock(new Date(today.dataUpdatedAt).toISOString())}.` : ""}`} onRetry={() => void today.refetch()} />
       ) : (
         <>
-          <FadeIn>
-            <StockPulse catalog={catalog.data} summary={summary} currency={currency} />
-          </FadeIn>
           {emptyShop ? checklist : null}
-          <SectionHeader title="À traiter" count={tasks.length || undefined} />
-          <TaskList tasks={tasks} />
-          <SectionHeader title="Raccourcis" />
-          <Shortcuts />
+          <FadeIn index={0}>
+            <PriorityCard radar={radar.data} currency={currency} />
+          </FadeIn>
+          <FadeIn index={1} style={{ gap: 10 }}>
+            <MonoTitle title="À traiter" count={tasks.length || undefined} aside={tasks.length > 1 ? "par gravité" : undefined} />
+            <TaskList tasks={tasks} />
+          </FadeIn>
+          <FadeIn index={2}>
+            <Shortcuts />
+          </FadeIn>
+          <FadeIn index={3}>
+            <RadarOpportunities radar={radar.data} currency={currency} />
+          </FadeIn>
           <AdvisorEntry />
-          <SectionHeader title="Sourcing et opportunités" action={{ label: "Radar", onPress: () => router.push("/radar") }} />
-          <SourcingPanel accounts={accounts.data} radar={radar.data} currency={currency} />
-          <SectionHeader title="Activité récente" action={today.data.recentSales.length > 0 ? { label: "Ventes", onPress: () => router.push("/sales") } : undefined} />
-          {today.data.recentSales.length === 0 && !lastJob ? (
-            <Card padded>
-              <Txt variant="bodyRegular">Aucune activité pour l'instant. Les commandes eBay et vos imports de catalogue apparaîtront ici.</Txt>
-            </Card>
-          ) : (
-            <Card>
-              {lastJob ? <LastImportRow job={lastJob} last={today.data.recentSales.length === 0} /> : null}
-              {today.data.recentSales.map((s, i) => (
-                <ListRow
-                  key={s.orderId}
-                  left={<Thumb size={40} />}
-                  title={s.title}
-                  subtitle={`${PROVIDER_LABEL[s.provider] ?? s.provider} · ${formatClock(s.placedAt)}`}
-                  right={
-                    <Txt variant="price" num style={{ fontSize: 16 }}>
-                      {s.amount === null ? "—" : formatMoneyRounded(s.amount, s.currency ?? currency)}
-                    </Txt>
-                  }
-                  onPress={() => router.push({ pathname: "/order/[orderId]", params: { orderId: s.orderId } })}
-                  last={i === today.data.recentSales.length - 1}
-                />
-              ))}
-            </Card>
-          )}
+          <View style={{ gap: 10 }}>
+            <MonoTitle
+              title="Activité"
+              right={
+                <Pressable accessibilityRole="button" accessibilityLabel="Voir l'analyse des ventes" hitSlop={10} onPress={onAnalysis}>
+                  <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
+                    Analyse ›
+                  </Txt>
+                </Pressable>
+              }
+            />
+            {today.data.recentSales.length === 0 && !lastJob ? (
+              <Card padded>
+                <Txt variant="bodyRegular">Aucune activité pour l'instant.</Txt>
+              </Card>
+            ) : (
+              <Card>
+                {lastJob ? <LastImportRow job={lastJob} last={today.data.recentSales.length === 0} /> : null}
+                {today.data.recentSales.map((s, i) => (
+                  <ListRow
+                    key={s.orderId}
+                    left={<Thumb size={40} />}
+                    title={s.title}
+                    subtitle={`${PROVIDER_LABEL[s.provider] ?? s.provider} · ${formatClock(s.placedAt)}`}
+                    right={
+                      <Txt variant="price" num style={{ fontSize: 16 }}>
+                        {s.amount === null ? "—" : formatMoneyRounded(s.amount, s.currency ?? currency)}
+                      </Txt>
+                    }
+                    onPress={() => router.push({ pathname: "/order/[orderId]", params: { orderId: s.orderId } })}
+                    last={i === today.data.recentSales.length - 1}
+                  />
+                ))}
+              </Card>
+            )}
+          </View>
           {emptyShop ? null : checklist}
         </>
       )}

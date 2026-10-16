@@ -10,3 +10,4 @@ export * from "~/components/ui/header";
 export * from "~/components/ui/value-field";
 export * from "~/components/ui/motion";
 export * from "~/components/ui/blocks";
+export * from "~/components/ui/instrument";

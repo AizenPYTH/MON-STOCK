@@ -14,7 +14,7 @@ import { color, space } from "~/theme/tokens";
 
 /** Détail d'une opportunité : calcul complet ligne à ligne, coûts manquants, réserves, actions confirmées. */
 export default function RadarOfferScreen() {
-  const { offerId } = useLocalSearchParams<{ offerId: string }>();
+  const { offerId, order } = useLocalSearchParams<{ offerId: string; order?: string }>();
   const radar = useRadar("score");
   // détail enrichi (scénarios, offres concurrentes) : facultatif, l'écran reste utilisable sans
   const detail = useRadarOffer(offerId ?? "");
@@ -22,7 +22,8 @@ export default function RadarOfferScreen() {
   const po = useDraftPurchaseOrder();
   const { permissions } = useActiveOrg();
   const toast = useToast();
-  const [ordering, setOrdering] = useState(false);
+  // « Brouillon » depuis l'accueil : la feuille de quantité s'ouvre directement (rien n'est envoyé).
+  const [ordering, setOrdering] = useState(order === "1");
   const [qty, setQty] = useState<number | null>(null);
 
   if (radar.isPending)
@@ -270,7 +271,7 @@ export default function RadarOfferScreen() {
         {permissions.canWrite && o.price !== null ? <Button label="Préparer un brouillon de commande" loading={po.create.isPending} onPress={() => setOrdering(true)} /> : null}
       </View>
 
-      <BottomSheet visible={ordering} onClose={() => setOrdering(false)} title="Brouillon de commande fournisseur" description={`Rien n'est envoyé à ${o.supplierName} : le brouillon reste modifiable et supprimable.`}>
+      <BottomSheet visible={ordering && permissions.canWrite && o.price !== null} onClose={() => setOrdering(false)} title="Brouillon de commande fournisseur" description={`Rien n'est envoyé à ${o.supplierName} : le brouillon reste modifiable et supprimable.`}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <Txt variant="body">Quantité (MOQ {minQty})</Txt>
           <Stepper value={quantity} onChange={(v) => setQty(Math.max(minQty, v))} min={minQty} />

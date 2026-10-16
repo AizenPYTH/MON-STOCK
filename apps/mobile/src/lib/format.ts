@@ -50,3 +50,9 @@ export function formatLongDate(d: Date): string {
   const s = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Paris" }).format(d);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** « Ven. 16 oct. » (sur-titre de la scène). */
+export function formatShortDate(d: Date): string {
+  const s = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/Paris" }).format(d);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}

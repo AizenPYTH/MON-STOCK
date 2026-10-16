@@ -1,15 +1,13 @@
-import { useState } from "react";
 import { Pressable, View } from "react-native";
-import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { ChevronDown, ExternalLink, Store } from "lucide-react-native";
+import { ExternalLink } from "lucide-react-native";
 import type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO } from "~/data/supplier-search";
 import { STOCK_TEXT } from "~/data/supplier-search";
 import { formatMoney, formatNumber, formatRelative } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
 import { frenchTitle, shortSupplierName } from "@/domain/sourcing/offer-display";
 import { SupplierLogo } from "~/components/supplier-logo";
-import { cardStyle, DealBadge, Txt } from "~/components/ui";
+import { cardStyle, DealBadge, MarketRuler, Txt } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -59,7 +57,7 @@ function stockText(o: SimpleOfferDTO) {
   return o.quantity !== null && o.stock !== "out_of_stock" ? `${formatNumber(o.quantity)} en stock` : STOCK_TEXT[o.stock];
 }
 
-function open(link: string | null) {
+export function open(link: string | null) {
   if (link) void WebBrowser.openBrowserAsync(link).catch(() => {});
 }
 
@@ -120,88 +118,91 @@ export function DealLines({ deal: d, orgCurrency }: { deal: SimpleDealDTO; orgCu
   );
 }
 
-/** Carte d'une offre : simple. Toucher la carte ouvre l'offre ; toucher la marge montre le calcul. */
-export function OfferCard({ offer: o, orgCurrency, supplierName, domain, supplierKey, testID }: { offer: SimpleOfferDTO | SimpleRankedOfferDTO; orgCurrency: string; supplierName?: string; domain?: string | null; supplierKey?: string | null; testID?: string }) {
-  const [details, setDetails] = useState(false);
+/** Légende de la règle de marché (coût rendu, médiane du marché, écart), en capitales mono. */
+export function rulerCaption(d: SimpleDealDTO, orgCurrency: string): string | undefined {
+  if (d.totalCost === null || d.marketPrice === null) return undefined;
+  const gap = d.marketPrice > 0 ? Math.round((d.totalCost / d.marketPrice - 1) * 1000) / 10 : null;
+  return `Coût ${money(d.totalCost, orgCurrency)} · marché ${money(d.marketPrice, orgCurrency)} (${d.marketCount})${gap !== null ? ` · ${gap > 0 ? "+" : "−"}${formatNumber(Math.abs(gap))} %` : ""}`;
+}
+
+export function rulerEmptyCaption(d: SimpleDealDTO): string {
+  return `Pas assez d'offres équivalentes (${d.marketCount} trouvée${d.marketCount > 1 ? "s" : ""})`;
+}
+
+/**
+ * Carte d'une offre v5 (hauteur stable) : fournisseur et âge du prix ; titre en français et prix ;
+ * règle de marché (coût rendu face à la médiane des offres équivalentes) ; niveau, marge, stock.
+ * Toucher la carte ouvre l'analyse ; l'icône ouvre l'offre chez le fournisseur.
+ */
+export function OfferCard({ offer: o, orgCurrency, supplierName, domain, onAnalyze, testID }: { offer: SimpleOfferDTO | SimpleRankedOfferDTO; orgCurrency: string; supplierName?: string; domain?: string | null; supplierKey?: string | null; onAnalyze?: (o: SimpleOfferDTO | SimpleRankedOfferDTO) => void; testID?: string }) {
   const link = safeExternalUrl(o.url);
   const { price, tax, converted } = priceParts(o, orgCurrency);
   const age = ageDays(o.seenAt);
   const stale = age !== null && age > STALE_DAYS;
   const d = o.deal ?? null;
-  const showDeal = Boolean(d && (d.margin !== null || d.level !== "insufficient_data"));
   const title = frenchTitle(o.title);
   const name = supplierName ? shortSupplierName(supplierName) : null;
+  const a11y = `${title}, ${price}${tax && tax !== "HT/TTC ?" ? ` ${tax}` : ""}${name ? `, chez ${name}` : ""}${d ? `, ${d.label}${d.margin !== null ? `, marge estimée ${money(d.margin, orgCurrency)}` : ""}` : ""}`;
   return (
-    <View style={[cardStyle, { padding: space[4], gap: space[2] }]} testID={testID}>
-      <Pressable
-        disabled={!link}
-        onPress={() => open(link)}
-        accessibilityRole={link ? "link" : undefined}
-        accessibilityLabel={`${title}, ${price}${name ? `, chez ${name}` : ""}`}
-        accessibilityHint={title !== o.title ? `Titre d'origine : ${o.title}` : undefined}
-        style={({ pressed }) => ({ gap: space[2], opacity: pressed ? 0.7 : 1 })}
-      >
-        {name ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-            <SupplierLogo domain={domain ?? null} name={name} size={22} />
-            <Txt variant="label" color={color.ink2} style={{ fontFamily: fontFamily[700], flexShrink: 1 }} numberOfLines={1}>
-              {name}
-            </Txt>
-            {o.access === "account" ? <AccessTag access="account" /> : null}
-            {link ? <ExternalLink size={14} color={color.ink3} style={{ marginLeft: "auto" }} /> : null}
-          </View>
-        ) : null}
-        <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start" }}>
-          <Txt variant="body" numberOfLines={2} style={{ flex: 1, fontSize: 15.5, lineHeight: 21 }}>
-            {title}
+    <Pressable
+      testID={testID}
+      onPress={onAnalyze ? () => onAnalyze(o) : link ? () => open(link) : undefined}
+      disabled={!onAnalyze && !link}
+      accessibilityRole="button"
+      accessibilityLabel={a11y}
+      accessibilityHint={onAnalyze ? "Ouvre l'analyse de rentabilité" : title !== o.title ? `Titre d'origine : ${o.title}` : undefined}
+      style={({ pressed }) => [cardStyle, { paddingTop: 14, paddingHorizontal: 14, paddingBottom: 12, gap: 10, backgroundColor: pressed ? color.surfacePressed : color.card }]}
+    >
+      {name ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 24 }}>
+          <SupplierLogo domain={domain ?? null} name={name} size={24} />
+          <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700], flexShrink: 1 }} numberOfLines={1}>
+            {name}
           </Txt>
-          <View style={{ alignItems: "flex-end", maxWidth: "42%" }}>
-            <Txt variant="price" num numberOfLines={1} adjustsFontSizeToFit>
-              {price}
+          {o.access === "account" ? <AccessTag access="account" /> : null}
+          <View style={{ flex: 1 }} />
+          {o.seenAt ? (
+            <Txt variant="code" color={stale ? color.accentInkOnSoft : color.ink3} numberOfLines={1}>
+              {formatRelative(o.seenAt)}
             </Txt>
-            {(tax && tax !== "HT/TTC ?") || converted ? (
-              <Txt variant="micro" num style={{ letterSpacing: 0 }}>
-                {[tax !== "HT/TTC ?" ? tax : "", converted].filter(Boolean).join(" · ")}
-              </Txt>
-            ) : null}
-          </View>
+          ) : null}
+          {link ? (
+            <Pressable accessibilityRole="link" accessibilityLabel={`Ouvrir l'offre chez ${name}`} hitSlop={10} onPress={() => open(link)} style={{ paddingLeft: 4 }}>
+              <ExternalLink size={14} color={color.ink3} />
+            </Pressable>
+          ) : null}
         </View>
-        <Txt variant="label" numberOfLines={1}>
-          <Txt variant="label" color={o.stock === "out_of_stock" ? color.dangerInk : o.stock === "in_stock" ? color.success : color.ink3} style={{ fontFamily: fontFamily[700] }}>
-            {stockText(o)}
-          </Txt>
-          {o.seenAt ? <Txt variant="label" color={stale ? color.accentInkOnSoft : color.ink3}>{`  ·  ${formatRelative(o.seenAt)}`}</Txt> : null}
+      ) : null}
+      <View style={{ flexDirection: "row", gap: space[3], alignItems: "flex-start", minHeight: 40 }}>
+        <Txt variant="body" numberOfLines={2} style={{ flex: 1 }}>
+          {title}
         </Txt>
-      </Pressable>
-
-      {d && showDeal ? (
-        <Pressable
-          onPress={() => setDetails((v) => !v)}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: details }}
-          accessibilityLabel={details ? "Masquer le détail du calcul" : "Voir le détail du calcul"}
-          style={{ borderTopWidth: 1, borderTopColor: color.lineSoft, paddingTop: space[2], gap: space[2] }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] }}>
-            <DealBadge level={d.level} label={d.label} provisional={d.provisional} />
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <MarginBlock deal={d} orgCurrency={orgCurrency} />
-              <ChevronDown size={14} color={color.ink3} style={{ transform: [{ rotate: details ? "180deg" : "0deg" }] }} />
-            </View>
-          </View>
-          {details ? <DealLines deal={d} orgCurrency={orgCurrency} /> : null}
-        </Pressable>
-      ) : null}
-
-      {supplierKey && details ? (
-        <Pressable onPress={() => router.push({ pathname: "/supplier-directory/[key]", params: { key: supplierKey } })} accessibilityRole="button" accessibilityLabel={`Fiche du fournisseur ${name ?? ""}`} style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 6 }}>
-          <Store size={14} color={color.ink} />
-          <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
-            Fiche du fournisseur
+        <View style={{ alignItems: "flex-end", maxWidth: "42%" }}>
+          <Txt variant="price" num numberOfLines={1} adjustsFontSizeToFit>
+            {price}
           </Txt>
-        </Pressable>
-      ) : null}
-    </View>
+          {(tax && tax !== "HT/TTC ?") || converted ? (
+            <Txt variant="code" num style={{ fontSize: 10.5 }}>
+              {[tax !== "HT/TTC ?" ? tax : "", converted].filter(Boolean).join(" · ")}
+            </Txt>
+          ) : null}
+        </View>
+      </View>
+      {d ? <MarketRuler cost={d.totalCost} market={d.marketPrice} caption={rulerCaption(d, orgCurrency)} emptyCaption={rulerEmptyCaption(d)} /> : null}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 24 }}>
+        {d && d.level !== "insufficient_data" ? <DealBadge level={d.level} label={d.label} provisional={d.provisional} size="sm" /> : null}
+        {d && d.margin !== null ? (
+          <Txt variant="label" num color={d.margin > 0 ? color.success : color.dangerInk} style={{ fontFamily: fontFamily[800], fontSize: 13.5 }}>
+            ≈ {d.margin > 0 ? "+" : "−"}
+            {money(Math.abs(d.margin), orgCurrency)}
+          </Txt>
+        ) : null}
+        <View style={{ flex: 1 }} />
+        <Txt variant="label" numberOfLines={1} color={o.stock === "out_of_stock" ? color.dangerInk : o.stock === "in_stock" || o.stock === "low" ? color.success : color.ink2} style={{ fontFamily: fontFamily[700], fontSize: 12.5 }}>
+          {stockText(o)}
+        </Txt>
+      </View>
+    </Pressable>
   );
 }
 

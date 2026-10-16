@@ -13,6 +13,21 @@ export function bundledLogo(domain: string | null | undefined) {
 }
 
 /**
+ * Sans domaine connu (offres du radar, imports) : logo dont le PREMIER libellé de domaine est
+ * exactement le nom du fournisseur (« Foxway » → foxway.*). Aucune correspondance approximative.
+ */
+export function logoByName(name: string | null | undefined) {
+  const slug = (shortName(name ?? "")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  if (slug.length < 3) return null;
+  for (const [domain, logo] of Object.entries(SUPPLIER_LOGOS)) if (domain.split(".")[0]!.replace(/[^a-z0-9]/g, "") === slug) return logo;
+  return null;
+}
+
+function shortName(name: string) {
+  return name.split(/\s+[—–-]\s+/)[0]!.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+/**
  * Logo d'identification d'un fournisseur : l'icône officielle récupérée sur SON site et embarquée
  * dans l'application (aucun appel à un service tiers à l'affichage). Posée sur une plaque claire
  * pour rester lisible quel que soit le fond ; à défaut, les initiales du fournisseur. Les logos
@@ -20,7 +35,7 @@ export function bundledLogo(domain: string | null | undefined) {
  */
 export function SupplierLogo({ domain, name, size = 36 }: { domain: string | null | undefined; name: string; size?: number }) {
   const [failed, setFailed] = useState(false);
-  const logo = failed ? null : bundledLogo(domain);
+  const logo = failed ? null : (bundledLogo(domain) ?? logoByName(name));
   const radius = Math.round(size * 0.28);
   return (
     <View

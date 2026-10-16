@@ -153,3 +153,38 @@ export function stockSummary(catalog: Pick<Catalog, "products">): StockSummary {
     }
   return { value: Math.round(value * 100) / 100, skusWithoutCost, skus, units };
 }
+
+export type BarLevel = "ok" | "low" | "out";
+
+/** Niveau d'un SKU pour le code-barres du stock (même règle que `levelOf`, à l'échelle du SKU). */
+export function skuLevel(v: StockRowView): BarLevel {
+  if ((v.row.quantity_available ?? 0) <= 0) return "out";
+  return v.classification.level !== "normal" ? "low" : "ok";
+}
+
+/** Barres du code-barres : une par SKU, largeur = ventes 30 j (réelles), couleur = niveau. */
+export function barcodeItems(catalog: Pick<Catalog, "products">): { id: string; weight: number; level: BarLevel }[] {
+  return catalog.products.flatMap((p) => p.skus.map((v) => ({ id: v.row.sku_id ?? `${p.productId}-${v.row.code}`, weight: Math.max(0, v.row.units_30d ?? 0), level: skuLevel(v) })));
+}
+
+/**
+ * Part des ventes 30 j portée par des SKU en rupture (en %, arrondie). `null` si aucune vente sur
+ * 30 jours (rien à rapporter, et jamais « 0 % » inventé).
+ */
+export function outOfStockSalesShare(catalog: Pick<Catalog, "products">): number | null {
+  let total = 0;
+  let lost = 0;
+  for (const p of catalog.products)
+    for (const v of p.skus) {
+      const u = Math.max(0, v.row.units_30d ?? 0);
+      total += u;
+      if ((v.row.quantity_available ?? 0) <= 0) lost += u;
+    }
+  return total > 0 ? Math.round((lost / total) * 100) : null;
+}
+
+/** Couverture en jours : quantité disponible ÷ ventes quotidiennes (30 j). `null` sans vente. */
+export function coverDays(available: number, units30d: number): number | null {
+  if (!(units30d > 0)) return null;
+  return Math.round(Math.max(0, available) / (units30d / 30));
+}

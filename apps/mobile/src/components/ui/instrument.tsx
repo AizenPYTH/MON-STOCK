@@ -253,7 +253,7 @@ export function LegendKey({ fill, label, onPress }: { fill: string; label: strin
 export function DayBars({ days, height = 44, animate = true, accessibilityLabel }: { days: { day: string; amount: number }[]; height?: number; animate?: boolean; accessibilityLabel: string }) {
   const max = Math.max(...days.map((d) => d.amount), 0);
   return (
-    <View accessible accessibilityLabel={accessibilityLabel} style={{ gap: 6 }}>
+    <View accessible={Boolean(accessibilityLabel)} accessibilityLabel={accessibilityLabel || undefined} style={{ gap: 6 }}>
       <View style={{ flexDirection: "row", alignItems: "flex-end", height, gap: 3 }}>
         {days.map((d, i) => {
           const today = i === days.length - 1;

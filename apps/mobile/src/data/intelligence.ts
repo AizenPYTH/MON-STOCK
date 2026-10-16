@@ -32,6 +32,8 @@ export interface TodayData {
   openAlerts: number;
   pendingSales: number;
   recentSales: RecentSale[];
+  /** CA des 14 derniers jours (jour en cours inclus, en dernier), dans la devise de l'organisation */
+  last14Days: { day: string; amount: number }[];
   generatedAt: string;
 }
 
@@ -49,8 +51,9 @@ function percentChange(current: number, previous: number): number | null {
 export async function fetchToday(supabase: MobileSupabase, organizationId: string, currency: string, now: Date = new Date()): Promise<TodayData> {
   const today = dayKey(now);
   const yesterday = shiftDayKey(today, -1);
+  const firstDay = shiftDayKey(today, -13);
   const [daily, toShip, openAlerts, pendingSales, recent, todayItems] = await Promise.all([
-    supabase.from("v_daily_sales").select("*").eq("organization_id", organizationId).gte("day", yesterday).order("day", { ascending: true }),
+    supabase.from("v_daily_sales").select("*").eq("organization_id", organizationId).gte("day", firstDay).order("day", { ascending: true }),
     headCount(supabase.from("orders").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "paid")),
     headCount(supabase.from("alerts").select("id", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "open")),
     headCount(
@@ -82,7 +85,7 @@ export async function fetchToday(supabase: MobileSupabase, organizationId: strin
   const rows = (daily.data ?? []) as DailySalesRow[];
   const windows = summarizeSalesWindows(rows, now, currency);
   const sameCurrency = (c: string | null) => !c || c.toUpperCase() === currency.toUpperCase();
-  const revenueYesterday = rows.filter((r) => r.day === yesterday && sameCurrency(r.currency)).reduce((s, r) => s + Number(r.revenue ?? 0), 0);
+  const revenueYesterday = rows.filter((r) => r.day?.slice(0, 10) === yesterday && sameCurrency(r.currency)).reduce((s, r) => s + Number(r.revenue ?? 0), 0);
 
   // Marge du jour : uniquement si chaque ligne a un prix ET un coût d'achat connus dans la devise de l'organisation.
   const todays = (todayItems.data ?? []).filter((o) => o.placed_at && dayKey(new Date(o.placed_at), ANALYTICS_TIME_ZONE) === today);
@@ -122,6 +125,10 @@ export async function fetchToday(supabase: MobileSupabase, organizationId: strin
       amount: o.total,
       currency: o.currency,
     })),
+    last14Days: Array.from({ length: 14 }, (_, i) => {
+      const day = shiftDayKey(firstDay, i);
+      return { day, amount: Math.round(rows.filter((r) => r.day?.slice(0, 10) === day && sameCurrency(r.currency)).reduce((s, r) => s + Number(r.revenue ?? 0), 0) * 100) / 100 };
+    }),
     generatedAt: now.toISOString(),
   };
 }

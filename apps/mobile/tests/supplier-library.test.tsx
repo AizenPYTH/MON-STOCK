@@ -150,14 +150,23 @@ it("rapport d'erreurs d'import : CSV échappé, compatible Excel", () => {
   expect(csv).toContain('"A;1";"Prix ""abc"" illisible"');
 });
 
-it("écran principal : accès rapides avec compteurs réels", async () => {
-  mockCallApi.mockImplementation((path: string) => Promise.resolve(path === "/sourcing/directory" ? directory : path === "/sourcing/imports" ? [] : {}));
+it("écran principal : vos sources avec leur état réel et daté ; erreurs d'abord ; import en échec", async () => {
+  const src = (id: string, name: string, status: string, over: Record<string, unknown> = {}) => ({ id, name, supplierId: id, supplierName: name, country: "FR", kind: "file_import", methodLabel: "Liste de stock importée", status, statusLabel: status === "error" ? "Erreur" : "À jour", activeOffers: 12, lastSyncAt: null, lastSuccessfulSyncAt: "2026-10-14T08:00:00Z", nextRunAt: null, lastError: null, consecutiveFailures: 0, frequency: "manual", frequencyLabel: "Manuelle", schedulable: false, canSyncNow: false, primaryAction: "import_file", ...over });
+  const failed = { id: "j1", supplierId: "m", supplierName: "Mobilax", sourceId: null, origin: "file", fileName: "m.csv", fileSize: 1, format: "csv", mode: "partial", status: "failed", counts: { read: 0, valid: 0, created: 0, updated: 0, unchanged: 0, duplicates: 0, invalid: 0, rejected: 0, unrecognized: 0, expired: 0 }, truncated: false, message: "Aucune colonne de prix", createdBy: null, startedAt: "2026-10-15T08:00:00Z", finishedAt: null };
+  mockCallApi.mockImplementation((path: string) =>
+    Promise.resolve(path === "/sourcing/sources" ? [src("f", "Foxway", "connected"), src("b", "BigBuy", "error", { methodLabel: "API", lastError: "Clé API refusée (HTTP 401)", consecutiveFailures: 3 })] : path === "/sourcing/imports" ? [failed] : path === "/sourcing/directory" ? directory : {}),
+  );
   const Screen = jest.requireActual("~/app/(app)/(tabs)/sourcing").default;
   render(wrap(<Screen />));
-  await waitFor(() => expect(screen.getByLabelText(/^Bibliothèque : 3,/)).toBeTruthy());
-  expect(screen.getByLabelText(/^Connectés : 1,/)).toBeTruthy();
-  expect(screen.getByLabelText(/^1 connexion en erreur/)).toBeTruthy();
-  fireEvent.press(screen.getByTestId("hub-errors"));
+  await waitFor(() => expect(screen.getByTestId("sources-list")).toBeTruthy());
+  const rows = screen.getAllByLabelText(/^(Foxway|BigBuy), /);
+  expect(rows[0]!.props.accessibilityLabel).toMatch(/^BigBuy, API, Erreur/);
+  expect(screen.getByText("Clé API refusée (HTTP 401)")).toBeTruthy();
+  expect(screen.getByText("3 échecs")).toBeTruthy();
+  await waitFor(() => expect(screen.getByTestId("hub-failed-imports")).toBeTruthy());
+  fireEvent.press(screen.getByTestId("hub-failed-imports"));
+  expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith({ pathname: "/sourcing-imports/[id]", params: { id: "j1" } });
+  fireEvent.press(rows[0]!);
   expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/sourcing-connections");
 });
 
