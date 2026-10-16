@@ -137,14 +137,15 @@ export function useSupplierAction(entry: DirectoryEntryDTO, canWrite: boolean) {
   return { run, busy: sync.isPending, sheet: node, email, site, importFile };
 }
 
-export function MethodChips({ methods, max = 3 }: { methods: DirectoryEntryDTO["registry"]["accessMethods"]; max?: number }) {
+/** Méthodes d'accès ; « Compte pro à ouvrir » disparaît dès que vous êtes connecté (le compte existe). */
+export function MethodChips({ methods, max = 3, connected = false }: { methods: DirectoryEntryDTO["registry"]["accessMethods"]; max?: number; connected?: boolean }) {
   const shown = methods.filter((m) => m !== "pro_account_first").slice(0, max);
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
       {shown.map((m) => (
         <StatusChip key={m} label={ACCESS_METHOD_LABEL[m]} tone={m === "official_api" || m === "public_integrated" ? "dark" : m === "not_automatable" ? "danger" : "neutral"} />
       ))}
-      {methods.includes("pro_account_first") ? <StatusChip label={ACCESS_METHOD_LABEL.pro_account_first} tone="accent" /> : null}
+      {methods.includes("pro_account_first") && !connected ? <StatusChip label={ACCESS_METHOD_LABEL.pro_account_first} tone="accent" /> : null}
     </View>
   );
 }

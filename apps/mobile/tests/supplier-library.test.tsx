@@ -113,6 +113,7 @@ it("fiche : identité, méthodes réelles, connexion, produits récupérés, act
   expect(await screen.findByText(/Dernier import : .*40 créées, 2 mises à jour, 4 ignorées/)).toBeTruthy();
   await waitFor(() => expect(screen.getByText("Écran iPhone 13 OLED")).toBeTruthy());
   expect(screen.getByText(/Produits récupérés \(42\)/)).toBeTruthy();
+  fireEvent.press(screen.getByRole("tab", { name: "Accès" }));
   expect(screen.getByText("Export depuis l'espace client")).toBeTruthy();
   expect(screen.getByText(/Il faut d'abord VOTRE compte revendeur/)).toBeTruthy();
   expect(screen.getByText(/aucun partenariat/)).toBeTruthy();
@@ -135,6 +136,9 @@ it("fiche : connexion API (BigBuy en erreur) — synchroniser, déconnecter", as
   fireEvent.press(screen.getByTestId("entry-primary-action"));
   await waitFor(() => expect(mockCallApi).toHaveBeenCalledWith("/sourcing/accounts/sync", expect.objectContaining({ body: { connectionId: "c-big" } })));
   fireEvent.press(screen.getByTestId("entry-disconnect"));
+  // confirmation avant l'action destructive
+  expect(mockCallApi).not.toHaveBeenCalledWith("/sourcing/accounts/disconnect", expect.anything());
+  fireEvent.press(screen.getByTestId("entry-disconnect-confirm"));
   await waitFor(() => expect(mockCallApi).toHaveBeenCalledWith("/sourcing/accounts/disconnect", expect.objectContaining({ body: { connectionId: "c-big" } })));
 });
 
@@ -147,12 +151,12 @@ it("rapport d'erreurs d'import : CSV échappé, compatible Excel", () => {
 });
 
 it("écran principal : accès rapides avec compteurs réels", async () => {
-  mockCallApi.mockImplementation((path: string) => Promise.resolve(path === "/sourcing/directory" ? directory : {}));
+  mockCallApi.mockImplementation((path: string) => Promise.resolve(path === "/sourcing/directory" ? directory : path === "/sourcing/imports" ? [] : {}));
   const Screen = jest.requireActual("~/app/(app)/(tabs)/sourcing").default;
   render(wrap(<Screen />));
-  await waitFor(() => expect(screen.getByLabelText("Bibliothèque : 3")).toBeTruthy());
-  expect(screen.getByLabelText("Connectés : 1")).toBeTruthy();
-  expect(screen.getByLabelText("À résoudre : 1")).toBeTruthy();
+  await waitFor(() => expect(screen.getByLabelText(/^Bibliothèque : 3,/)).toBeTruthy());
+  expect(screen.getByLabelText(/^Connectés : 1,/)).toBeTruthy();
+  expect(screen.getByLabelText(/^1 connexion en erreur/)).toBeTruthy();
   fireEvent.press(screen.getByTestId("hub-errors"));
   expect(jest.requireMock("expo-router").router.push).toHaveBeenCalledWith("/sourcing-connections");
 });

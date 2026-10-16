@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { FlatList, LayoutAnimation, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { ChevronRight, SlidersHorizontal } from "lucide-react-native";
+import { SlidersHorizontal } from "lucide-react-native";
 import type { DirectoryEntryDTO } from "@/features/mobile-api/contract";
 import { useSupplierDirectory } from "~/data/hooks";
 import { useSupplierFavorites } from "~/data/supplier-favorites";
 import { useActiveOrg } from "~/org/org-provider";
 import { SupplierLogo } from "~/components/supplier-logo";
-import { ACCESS_METHOD_LABEL, countryLabel, FadeIn, FavoriteButton, INTEGRATION_STATUS_LABEL, INTEGRATION_TONE, MethodChips, ORG_STATUS_LABEL, ORG_STATUS_TONE, segmentLabel, useReduceMotion, useSupplierAction } from "~/components/supplier-library";
+import { ACCESS_METHOD_LABEL, countryLabel, FadeIn, FavoriteButton, INTEGRATION_STATUS_LABEL, MethodChips, ORG_STATUS_LABEL, segmentLabel, useReduceMotion, useSupplierAction } from "~/components/supplier-library";
 import { userMessage } from "~/lib/errors";
-import { formatDateTime, formatNumber } from "~/lib/format";
-import { BottomSheet, Button, Card, DetailHeader, EmptyState, ErrorState, FilterChip, Screen, SearchField, SkeletonList, StatusChip, Txt, useTabBarClearance } from "~/components/ui";
+import { formatNumber, formatRelative } from "~/lib/format";
+import { BottomSheet, Button, cardStyle, DetailHeader, EmptyState, ErrorState, FilterChip, Screen, SearchField, SkeletonList, StatusLine, Txt, useTabBarClearance, type BlockTone } from "~/components/ui";
 import { useLayout } from "~/theme/layout";
 import { color, radius, space } from "~/theme/tokens";
 
@@ -35,6 +35,18 @@ const SORTS: { value: Sort; label: string }[] = [
   { value: "recent", label: "Dernière synchro" },
 ];
 const CONNECTABLE: Method[] = ["official_api", "catalog_feed", "portal_export", "manual_import", "public_integrated"];
+
+/** Compteurs réels de la bibliothèque (un fournisseur n'est « connecté » que sur preuve). Pur. */
+export function libraryStats(entries: Entry[], favorites: ReadonlySet<string>) {
+  return {
+    total: entries.length,
+    connected: entries.filter((e) => e.org.status === "connected").length,
+    connectable: entries.filter((e) => e.org.status !== "connected" && e.registry.integrationStatus !== "abandoned" && e.registry.accessMethods.some((m) => CONNECTABLE.includes(m))).length,
+    pro: entries.filter((e) => e.proAccountRequired === true).length,
+    errors: entries.filter((e) => e.org.status === "error").length,
+    favorites: entries.filter((e) => favorites.has(e.key)).length,
+  };
+}
 
 /** Filtrage et tri de la bibliothèque. Pur. */
 export function filterLibrary(entries: Entry[], f: { q: string; view: QuickView; segment: string; countries: string[]; methods: Method[]; sort: Sort; favorites: ReadonlySet<string> }): Entry[] {
@@ -87,7 +99,28 @@ export default function SupplierLibraryScreen() {
     fn();
   };
   const activeFilters = countries.length + methods.length + (sort !== "priority" ? 1 : 0);
-  const header = <DetailHeader parentLabel="Sourcing" title="Bibliothèque des fournisseurs" sub={directory.data ? `${entries.length} fournisseurs · ${entries.filter((e) => e.org.status === "connected").length} connectés` : undefined} />;
+  const stats = useMemo(() => libraryStats(entries, favorites), [entries, favorites]);
+  const header = (
+    <DetailHeader
+      parentLabel="Sourcing"
+      title="Bibliothèque fournisseurs"
+      sub="Grossistes et plateformes B2B étudiés : accès réels, conditions et état de votre connexion"
+      hero={
+        directory.data
+          ? {
+              value: formatNumber(stats.total),
+              label: "fournisseurs étudiés",
+              stats: [
+                { label: "Connectés", value: formatNumber(stats.connected), tone: stats.connected > 0 ? "positive" : undefined },
+                { label: "Connectables", value: formatNumber(stats.connectable) },
+                { label: "Compte pro", value: formatNumber(stats.pro) },
+                ...(stats.errors > 0 ? [{ label: "En erreur", value: formatNumber(stats.errors), tone: "negative" as const }] : []),
+              ],
+            }
+          : undefined
+      }
+    />
+  );
 
   if (directory.isPending)
     return (
@@ -110,7 +143,7 @@ export default function SupplierLibraryScreen() {
       <SearchField value={q} onChangeText={setQ} placeholder="Nom, marque, pays, catégorie…" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
         {QUICK.map((v) => (
-          <FilterChip key={v.value} label={v.label} count={v.value === "favorites" ? favorites.size : v.value === "connected" ? entries.filter((e) => e.org.status === "connected").length : undefined} selected={view === v.value} onPress={() => animate(() => setView(v.value))} />
+          <FilterChip key={v.value} label={v.label} count={v.value === "favorites" ? favorites.size : v.value === "connected" ? stats.connected : v.value === "connectable" ? stats.connectable : v.value === "pro" ? stats.pro : undefined} selected={view === v.value} onPress={() => animate(() => setView(v.value))} />
         ))}
       </ScrollView>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }}>
@@ -118,14 +151,23 @@ export default function SupplierLibraryScreen() {
           <FilterChip key={s} label={s === "all" ? "Toutes catégories" : segmentLabel(s)} selected={segment === s} onPress={() => animate(() => setSegment(s))} />
         ))}
       </ScrollView>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Txt variant="label" testID="library-count">
-          {filtered.length} fournisseur{filtered.length > 1 ? "s" : ""}
-        </Txt>
-        <Pressable onPress={() => setFiltersOpen(true)} accessibilityRole="button" accessibilityLabel={`Filtres et tri${activeFilters ? `, ${activeFilters} actifs` : ""}`} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.md, backgroundColor: activeFilters ? color.brandSoft : "transparent" }} testID="library-filters">
-          <SlidersHorizontal size={16} color={color.ink} />
-          <Txt variant="label" color={color.ink}>
-            Filtres{activeFilters ? ` (${activeFilters})` : ""}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], flexShrink: 1 }}>
+          <Txt variant="body" num testID="library-count">
+            {filtered.length} fournisseur{filtered.length > 1 ? "s" : ""}
+          </Txt>
+          {filtered.length !== entries.length ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Effacer la recherche et les filtres" hitSlop={8} onPress={() => animate(() => (setView("all"), setSegment("all"), setCountries([]), setMethods([]), setQ("")))}>
+              <Txt variant="label" color={color.ink} style={{ textDecorationLine: "underline" }}>
+                Tout effacer
+              </Txt>
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable onPress={() => setFiltersOpen(true)} accessibilityRole="button" accessibilityLabel={`Filtres et tri${activeFilters ? `, ${activeFilters} actifs` : ""}`} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill, borderWidth: 1, borderColor: activeFilters ? color.brand : color.line, backgroundColor: activeFilters ? color.brand : color.surface }} testID="library-filters">
+          <SlidersHorizontal size={15} color={activeFilters ? color.inkOnDark : color.ink} />
+          <Txt variant="label" color={activeFilters ? color.inkOnDark : color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
+            Filtres et tri{activeFilters ? ` · ${activeFilters}` : ""}
           </Txt>
         </Pressable>
       </View>
@@ -142,7 +184,7 @@ export default function SupplierLibraryScreen() {
         initialNumToRender={8}
         windowSize={7}
         refreshControl={<RefreshControl refreshing={directory.isRefetching} onRefresh={() => void directory.refetch()} />}
-        contentContainerStyle={{ paddingBottom: space[8] + clearance, gap: space[3] }}
+        contentContainerStyle={{ paddingBottom: space[8] + clearance, gap: space[2] }}
         style={{ marginHorizontal: -screenX, paddingHorizontal: screenX, maxWidth }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
@@ -197,14 +239,17 @@ export default function SupplierLibraryScreen() {
 function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entry: Entry; favorite: boolean; onToggleFavorite: () => void; canWrite: boolean }) {
   const action = useSupplierAction(e, canWrite);
   const open = () => router.push({ pathname: "/supplier-directory/[key]", params: { key: e.key } });
-  const showStatus = e.org.status !== "not_connected";
+  const connected = e.org.status !== "not_connected";
+  const offers = e.org.accountOffers + e.org.publicOffers;
+  const tone: BlockTone = e.org.status === "connected" ? "success" : e.org.status === "error" ? "danger" : e.org.status === "pending" ? "warning" : e.registry.integrationStatus === "abandoned" ? "danger" : "neutral";
+  const facts = connected ? [`${formatNumber(offers)} offre${offers > 1 ? "s" : ""}`, e.org.lastSyncAt ? `à jour ${formatRelative(e.org.lastSyncAt)}` : null].filter(Boolean).join(" · ") : null;
   return (
-    <Card padded style={{ gap: space[2] }} accessibilityLabel={`${e.name}, ${showStatus ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[e.registry.integrationStatus]}`}>
-      <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={`Ouvrir la fiche ${e.name}`} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, gap: space[2] })} testID={`library-card-${e.key}`}>
+    <View style={[cardStyle, { padding: space[3], paddingLeft: space[4], gap: space[2] }]} accessibilityLabel={`${e.name}, ${connected ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[e.registry.integrationStatus]}`}>
+      <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={`Ouvrir la fiche ${e.name}`} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, gap: space[2] })} testID={`library-card-${e.key}`}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
           <SupplierLogo domain={e.registry.domain} name={e.name} size={44} />
-          <View style={{ flex: 1, gap: 2 }}>
-            <Txt variant="headline" numberOfLines={1}>
+          <View style={{ flex: 1, gap: 1 }}>
+            <Txt variant="headline" numberOfLines={1} style={{ fontSize: 16 }}>
               {e.name.replace(/\s*\(.*\)\s*$/, "")}
             </Txt>
             <Txt variant="label" numberOfLines={1}>
@@ -212,30 +257,32 @@ function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entr
             </Txt>
           </View>
           <FavoriteButton active={favorite} onPress={onToggleFavorite} name={e.name} />
-          <ChevronRight size={16} color={color.ink3} />
         </View>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          <StatusChip label={showStatus ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[e.registry.integrationStatus]} tone={showStatus ? ORG_STATUS_TONE[e.org.status] : INTEGRATION_TONE[e.registry.integrationStatus]} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" }}>
+          <StatusLine tone={tone} label={connected ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[e.registry.integrationStatus]} />
+          {facts ? (
+            <Txt variant="label" num numberOfLines={1}>
+              {facts}
+            </Txt>
+          ) : null}
         </View>
-        <MethodChips methods={e.registry.accessMethods} max={2} />
-        {e.org.status !== "not_connected" ? (
-          <Txt variant="label" numberOfLines={1}>
-            {formatNumber(e.org.accountOffers + e.org.publicOffers)} offre{e.org.accountOffers + e.org.publicOffers > 1 ? "s" : ""}
-            {e.org.lastSyncAt ? ` · mise à jour ${formatDateTime(e.org.lastSyncAt)}` : ""}
-          </Txt>
-        ) : e.whyUseful ? (
-          <Txt variant="label" numberOfLines={2}>
-            {e.whyUseful}
-          </Txt>
-        ) : null}
         {e.org.lastError ? (
           <Txt variant="label" color={color.dangerInk} numberOfLines={2}>
             {e.org.lastError}
           </Txt>
+        ) : !connected && e.whyUseful ? (
+          <Txt variant="label" numberOfLines={2} color={color.ink2}>
+            {e.whyUseful}
+          </Txt>
         ) : null}
       </Pressable>
-      {e.registry.primaryAction.kind !== "none" ? <Button label={e.registry.primaryAction.label} compact variant={e.registry.primaryAction.kind === "open_site" ? "ghost" : "secondary"} loading={action.busy} onPress={() => action.run()} testID={`library-action-${e.key}`} /> : null}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
+        <View style={{ flex: 1 }}>
+          <MethodChips methods={e.registry.accessMethods} max={2} connected={e.org.status === "connected"} />
+        </View>
+        {e.registry.primaryAction.kind !== "none" ? <Button label={e.registry.primaryAction.label} compact variant={e.registry.primaryAction.kind === "open_site" ? "ghost" : "secondary"} loading={action.busy} onPress={() => action.run()} testID={`library-action-${e.key}`} /> : null}
+      </View>
       {action.sheet}
-    </Card>
+    </View>
   );
 }
