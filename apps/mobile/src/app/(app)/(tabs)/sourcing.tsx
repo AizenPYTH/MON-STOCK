@@ -13,6 +13,7 @@ import { SupplierLogo } from "~/components/supplier-logo";
 import { OfferCard, OfferLines, type OfferDensity } from "~/components/offer-result";
 import { ActionRow, AlertBanner, Button, Card, ErrorState, FadeIn, FilterChip, IconBadge, MetricStrip, Screen, SectionHeader, Segmented, ShortcutGrid, ShortcutTile, Skeleton, TabHeader, Txt } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
+import { useLayout } from "~/theme/layout";
 
 export { DealLines } from "~/components/offer-result";
 
@@ -68,6 +69,7 @@ export default function SourcingScreen() {
   }
   const search = useSupplierSearch(submitted);
   const directory = useSupplierDirectory();
+  const { compact } = useLayout();
   const [sort, setSort] = useState<Sort>("price");
   const [origin, setOrigin] = useState<Origin>("all");
   const [density, setDensity] = useState<OfferDensity>("detailed");
@@ -94,7 +96,7 @@ export default function SourcingScreen() {
     <Screen refreshControl={<RefreshControl refreshing={search.isRefetching} onRefresh={() => (submitted ? void search.refetch() : void directory.refetch())} />}>
       <TabHeader title="Sourcing" sub="Les prix de vos fournisseurs, comparés et analysés" />
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 54, backgroundColor: color.surface, borderRadius: radius.xl, borderWidth: 1.5, borderColor: color.ink, paddingLeft: space[3], paddingRight: 6 }}>
-        <Search size={19} color={color.ink} strokeWidth={2.2} />
+        <Search size={19} color={color.ink} strokeWidth={2.2} style={{ flexShrink: 0 }} />
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -108,7 +110,7 @@ export default function SourcingScreen() {
           style={{ flex: 1, fontFamily: fontFamily[600], fontSize: 16, color: color.ink, paddingVertical: 0 }}
           testID="supplier-query"
         />
-        <Button label="Chercher" compact disabled={draft.trim().length < 2} loading={search.isFetching} onPress={() => run(draft)} testID="supplier-search" />
+        <Button label={compact ? "OK" : "Chercher"} compact disabled={draft.trim().length < 2} loading={search.isFetching} onPress={() => run(draft)} accessibilityHint="Lancer la recherche chez les fournisseurs" testID="supplier-search" />
       </View>
 
       {!submitted ? (

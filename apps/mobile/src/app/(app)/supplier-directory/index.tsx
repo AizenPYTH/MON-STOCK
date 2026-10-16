@@ -238,6 +238,7 @@ export default function SupplierLibraryScreen() {
 
 function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entry: Entry; favorite: boolean; onToggleFavorite: () => void; canWrite: boolean }) {
   const action = useSupplierAction(e, canWrite);
+  const { compact } = useLayout();
   const open = () => router.push({ pathname: "/supplier-directory/[key]", params: { key: e.key } });
   const connected = e.org.status !== "not_connected";
   const offers = e.org.accountOffers + e.org.publicOffers;
@@ -277,9 +278,7 @@ function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entr
         ) : null}
       </Pressable>
       <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>
-        <View style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-          <MethodChips methods={e.registry.accessMethods} max={1} connected={e.org.status === "connected"} showPro={false} />
-        </View>
+        <View style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>{compact ? null : <MethodChips methods={e.registry.accessMethods} max={1} connected={e.org.status === "connected"} showPro={false} />}</View>
         {e.registry.primaryAction.kind !== "none" ? <Button label={e.registry.primaryAction.label} compact variant={e.registry.primaryAction.kind === "open_site" ? "ghost" : "secondary"} loading={action.busy} onPress={() => action.run()} testID={`library-action-${e.key}`} style={{ flexShrink: 0, maxWidth: "62%" }} /> : null}
       </View>
       {action.sheet}

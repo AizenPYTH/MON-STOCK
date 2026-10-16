@@ -186,7 +186,7 @@ export function OfferCard({ offer: o, orgCurrency, supplierName, domain, supplie
       ) : null}
 
       {link || supplierKey || d ? (
-        <View style={{ flexDirection: "row", gap: space[2], alignItems: "center" }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2], alignItems: "center" }}>
           {link ? (
             <Pressable onPress={() => open(link)} accessibilityRole="link" accessibilityLabel={`Voir l'offre chez ${supplierName ?? "le fournisseur"}`} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: pressed ? color.surfacePressed : color.surfaceSunken })}>
               <ExternalLink size={14} color={color.ink} />

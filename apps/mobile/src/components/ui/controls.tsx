@@ -129,7 +129,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
             }}
             style={[{ flex: 1, minHeight: 36, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], backgroundColor: selected ? color.surface : "transparent" }, selected ? shadow.card : null]}
           >
-            <Txt variant="label" color={selected ? color.ink : color.ink2} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1}>
+            <Txt variant="label" color={selected ? color.ink : color.ink2} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
               {o.label}
             </Txt>
           </Pressable>

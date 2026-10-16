@@ -29,7 +29,8 @@ page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 for (const spec of routes.length ? routes : ["/today"]) {
   const [route, mode] = spec.split("#");
   // « #full » : fenêtre haute pour voir tout le contenu défilant (les listes défilent dans la page)
-  await page.setViewportSize({ width: 390, height: mode === "full" ? 2400 : 844 });
+  const width = Number(process.env.CAPTURE_WIDTH ?? 390);
+  await page.setViewportSize({ width, height: mode === "full" ? 2400 : width < 360 ? 568 : 844 });
   await page.goto(`http://localhost:${port}${route}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1800);
   const name = (route.replace(/^\//, "").replace(/[/?=&]/g, "_") || "root") + (mode === "full" ? "-full" : "");

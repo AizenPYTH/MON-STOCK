@@ -7,6 +7,7 @@ import { Txt } from "~/components/ui/text";
 import { cardStyle } from "~/components/ui/layout";
 import { formatNumber } from "~/lib/format";
 import { useAnimatedProgress, useReduceMotion } from "~/components/ui/motion";
+import { useLayout } from "~/theme/layout";
 
 /**
  * Blocs v4 (docs/design-system.md) : pictogramme teinté, ligne d'action, raccourci, bande de
@@ -45,8 +46,9 @@ export function IconBadge({ icon: Icon, tone = "neutral", size = 36 }: { icon: I
  * le libellé de l'action. Toute la ligne mène à la résolution.
  */
 export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress, last = false, testID, value, valueHint, titleLines = 1, detailLines = 2 }: { icon: IconType; tone?: BlockTone; title: string; detail?: string | null; cta?: string; onPress?: () => void; last?: boolean; testID?: string; value?: string; valueHint?: string; titleLines?: number; detailLines?: number }) {
+  const { compact } = useLayout();
   const body = (pressed: boolean) => (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[3], paddingHorizontal: space[4], minHeight: 64, backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? space[2] : space[3], paddingVertical: space[3], paddingHorizontal: compact ? space[3] : space[4], minHeight: 64, backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft }}>
       <IconBadge icon={icon} tone={tone} />
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
         <Txt variant="body" numberOfLines={titleLines}>
@@ -70,7 +72,7 @@ export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress,
           ) : null}
         </View>
       ) : null}
-      {cta ? (
+      {cta && !compact ? (
         <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: radius.xs, backgroundColor: color.surfaceSunken }}>
           <Txt variant="micro" color={color.ink} style={{ letterSpacing: 0 }} numberOfLines={1}>
             {cta}
@@ -149,12 +151,14 @@ const METRIC_FG = { danger: color.dangerInk, warning: color.accentInkOnSoft, suc
  * s'affiche « — », jamais 0.
  */
 export function MetricStrip({ metrics }: { metrics: Metric[] }) {
+  const { compact } = useLayout();
+  const grid = compact && metrics.length > 3;
   return (
-    <View style={[cardStyle, { flexDirection: "row", paddingVertical: space[3] }]}>
+    <View style={[cardStyle, { flexDirection: "row", flexWrap: grid ? "wrap" : "nowrap", paddingVertical: space[3], rowGap: space[3] }]}>
       {metrics.map((m, i) => {
         const fg = m.tone ? METRIC_FG[m.tone] : color.ink;
         const content = (
-          <View style={{ paddingHorizontal: space[3], gap: 2, borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: color.lineSoft }}>
+          <View style={{ paddingHorizontal: space[3], gap: 2, borderLeftWidth: i === 0 || (grid && i % 2 === 0) ? 0 : 1, borderLeftColor: color.lineSoft }}>
             <Txt variant="micro" numberOfLines={1}>
               {m.label}
             </Txt>
@@ -170,11 +174,11 @@ export function MetricStrip({ metrics }: { metrics: Metric[] }) {
         );
         const a11y = `${m.label} : ${m.value ?? "inconnu"}${m.hint ? `, ${m.hint}` : ""}`;
         return m.onPress ? (
-          <Pressable key={m.label} testID={m.testID} style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.6 : 1 })} accessibilityRole="button" accessibilityLabel={a11y} onPress={m.onPress}>
+          <Pressable key={m.label} testID={m.testID} style={({ pressed }) => ({ flexBasis: grid ? "50%" : undefined, flex: grid ? undefined : 1, opacity: pressed ? 0.6 : 1 })} accessibilityRole="button" accessibilityLabel={a11y} onPress={m.onPress}>
             {content}
           </Pressable>
         ) : (
-          <View key={m.label} testID={m.testID} style={{ flex: 1 }} accessible accessibilityLabel={a11y}>
+          <View key={m.label} testID={m.testID} style={grid ? { flexBasis: "50%" } : { flex: 1 }} accessible accessibilityLabel={a11y}>
             {content}
           </View>
         );
