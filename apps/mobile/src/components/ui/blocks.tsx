@@ -44,7 +44,7 @@ export function IconBadge({ icon: Icon, tone = "neutral", size = 36 }: { icon: I
  * Ligne d'action (alerte, tâche, réglage manquant) : pictogramme teinté, titre, détail, et à droite
  * le libellé de l'action. Toute la ligne mène à la résolution.
  */
-export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress, last = false, testID, value, valueHint, titleLines = 1 }: { icon: IconType; tone?: BlockTone; title: string; detail?: string | null; cta?: string; onPress?: () => void; last?: boolean; testID?: string; value?: string; valueHint?: string; titleLines?: number }) {
+export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress, last = false, testID, value, valueHint, titleLines = 1, detailLines = 2 }: { icon: IconType; tone?: BlockTone; title: string; detail?: string | null; cta?: string; onPress?: () => void; last?: boolean; testID?: string; value?: string; valueHint?: string; titleLines?: number; detailLines?: number }) {
   const body = (pressed: boolean) => (
     <View style={{ flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[3], paddingHorizontal: space[4], minHeight: 64, backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft }}>
       <IconBadge icon={icon} tone={tone} />
@@ -53,7 +53,7 @@ export function ActionRow({ icon, tone = "neutral", title, detail, cta, onPress,
           {title}
         </Txt>
         {detail ? (
-          <Txt variant="label" numberOfLines={2} style={{ fontSize: 12.5, lineHeight: 17 }}>
+          <Txt variant="label" numberOfLines={detailLines} style={{ fontSize: 12.5, lineHeight: 17 }}>
             {detail}
           </Txt>
         ) : null}

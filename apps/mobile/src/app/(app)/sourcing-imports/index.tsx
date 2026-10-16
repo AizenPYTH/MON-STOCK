@@ -65,7 +65,8 @@ export default function ImportHistoryScreen() {
                   icon={ICON[j.status]}
                   tone={TONE[j.status]}
                   title={`${j.supplierName ?? "Fournisseur"} · ${j.fileName ?? "flux"}`}
-                  detail={`${IMPORT_STATUS_LABEL[j.status]} · ${formatRelative(j.startedAt)}\n${countsText(j.counts)}`}
+                  detail={`${IMPORT_STATUS_LABEL[j.status]} · ${formatRelative(j.startedAt)}\n${j.status === "failed" && j.message ? j.message : countsText(j.counts)}`}
+                  detailLines={3}
                   onPress={() => router.push({ pathname: "/sourcing-imports/[id]", params: { id: j.id } })}
                   last={i === jobs.data.length - 1}
                 />

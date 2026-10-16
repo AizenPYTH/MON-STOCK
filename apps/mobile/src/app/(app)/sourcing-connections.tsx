@@ -107,9 +107,8 @@ export default function SourcingConnectionsScreen() {
         <MetricStrip
           metrics={[
             { label: "Actives", value: formatNumber(active), hint: `sur ${formatNumber(list.length)}`, tone: active > 0 ? "success" : undefined },
-            { label: "À corriger", value: formatNumber(toFix), hint: toFix ? "échecs ou erreurs" : "aucune", tone: toFix ? "danger" : undefined },
-            { label: "Offres", value: formatNumber(offers), hint: "exploitables" },
-            { label: "Dernier succès", value: lastSuccess ? ageText(lastSuccess).replace("il y a ", "") : null, hint: lastSuccess ? "il y a" : "jamais" },
+            { label: "À corriger", value: formatNumber(toFix), hint: toFix ? "en échec" : "aucune", tone: toFix ? "danger" : undefined },
+            { label: "Offres", value: formatNumber(offers), hint: lastSuccess ? `màj ${ageText(lastSuccess)}` : "jamais mises à jour" },
           ]}
         />
       )}
