@@ -9,7 +9,7 @@ import { useActiveSuppliers, useImportPreview, useRunImport } from "~/data/hooks
 import { ESSENTIAL_FIELDS, IMPORT_MODE_HELP, IMPORT_MODE_LABEL, MAPPABLE_FIELDS, mappingIssues, pickCatalogFile, taxTypeOf, withTaxType, type ImportMode, type PickedFile } from "~/data/suppliers-pro";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatMoney, formatNumber } from "~/lib/format";
-import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, FilterChip, Screen, SectionHeader, Segmented, StatusChip, StickyActions, TextField, Txt, useToast } from "~/components/ui";
+import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, FilterChip, Screen, SectionHeader, Segmented, StatusChip, StepBar, StickyActions, TextField, Txt, useToast } from "~/components/ui";
 import { color, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -141,6 +141,9 @@ export default function SourcingImportScreen() {
           </Txt>
           <Txt variant="label">CSV, Excel (.xlsx), XML ou JSON — 15 Mo maximum. Rien n'est enregistré avant votre confirmation.</Txt>
         </View>
+        <Card padded>
+          <StepBar steps={["Fournisseur", "Fichier", "Colonnes", "Vérifier", "Résultat"]} current={result ? 4 : confirming ? 3 : data ? 2 : supplierId || supplierName.trim() ? 1 : 0} />
+        </Card>
         {error ? <AlertBanner text={error} tone="dark" /> : null}
 
         <SectionHeader title="1. Fournisseur" />

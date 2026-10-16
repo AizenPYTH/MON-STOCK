@@ -9,10 +9,10 @@ import { ROLE_LABEL } from "~/org/org-service";
 import { appConfig } from "~/lib/config";
 import { BRANDS } from "~/brands/registry";
 import { useState } from "react";
-import { Check, Volume2 } from "lucide-react-native";
+import { Check, History, KeyRound, Library, Plug, Stethoscope, Volume2 } from "lucide-react-native";
 import { playVoiceSample, stopSpeaking } from "~/lib/tts";
 import { useVoicePreference, VOICE_CHOICES, type VoiceId } from "~/lib/voice-pref";
-import { Avatar, BrandDisclaimer, BrandMark, Button, Card, DetailHeader, ListRow, Screen, SectionHeader, StatusChip, Txt, initialsOf, useToast } from "~/components/ui";
+import { ActionRow, Avatar, BrandDisclaimer, BrandMark, Button, Card, DetailHeader, ListRow, Screen, SectionHeader, StatusChip, Txt, initialsOf, useToast } from "~/components/ui";
 import { color, space } from "~/theme/tokens";
 
 /** Compte, organisation active (changement par appareil), intégrations, déconnexion. */
@@ -40,16 +40,21 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <DetailHeader parentLabel="Aujourd'hui" />
-      <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
-        <Avatar initials={initialsOf(fullName ?? user?.email)} size={48} />
+      <DetailHeader parentLabel="Aujourd'hui" title="Compte et réglages" />
+      <Card padded style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+        <Avatar initials={initialsOf(fullName ?? user?.email)} size={52} />
         <View style={{ flex: 1 }}>
-          <Txt variant="title2">{fullName ?? "Mon compte"}</Txt>
-          <Txt variant="label">
+          <Txt variant="title2" numberOfLines={1}>
+            {fullName ?? "Mon compte"}
+          </Txt>
+          <Txt variant="label" numberOfLines={2}>
             {user?.email ?? "—"} · {user?.email_confirmed_at ? "email confirmé" : "email non confirmé"}
           </Txt>
+          <Txt variant="label" color={color.ink}>
+            {active.organization.name} · {ROLE_LABEL[active.role]}
+          </Txt>
         </View>
-      </View>
+      </Card>
 
       <SectionHeader title="Organisation" />
       <Card>
@@ -77,9 +82,11 @@ export default function SettingsScreen() {
       <SectionHeader title="Intégrations" />
       <Card>
         <ListRow left={<BrandMark brand={BRANDS.ebay} withName={false} />} title="eBay" subtitle="Connexion du compte vendeur, synchronisation, erreurs" chevron onPress={() => router.push("/ebay")} testID="settings-ebay" />
-        <ListRow title="Sources fournisseurs" subtitle="Sources vérifiées pour la recherche d'offres" chevron onPress={() => router.push("/sourcing-sources")} />
-        <ListRow title="Fournisseurs professionnels" subtitle="Annuaire qualifié, demandes d'accès, import de catalogue" chevron onPress={() => router.push("/supplier-directory")} />
-        <ListRow title="Diagnostic" subtitle="Base, serveur, sourcing, eBay, assistant IA" chevron onPress={() => router.push("/diagnostics")} last />
+        <ActionRow icon={KeyRound} title="Comptes fournisseurs" detail="API, flux ou export de vos comptes pro" onPress={() => router.push("/pro-accounts")} />
+        <ActionRow icon={Plug} title="Mes sources" detail="Statut, âge des données, synchronisation" onPress={() => router.push("/sourcing-connections")} />
+        <ActionRow icon={Library} title="Bibliothèque fournisseurs" detail="Fiches, accès, demandes d'ouverture de compte" onPress={() => router.push("/supplier-directory")} />
+        <ActionRow icon={History} title="Imports de catalogues" detail="Historique et rapports d'erreurs" onPress={() => router.push("/sourcing-imports")} />
+        <ActionRow icon={Stethoscope} title="Diagnostic" detail="Base, serveur, sourcing, eBay, assistant IA" onPress={() => router.push("/diagnostics")} last />
       </Card>
       <Txt variant="label">Amazon, Shopify et WooCommerce : disponibles prochainement (non connectables pour l'instant).</Txt>
       <BrandDisclaimer />

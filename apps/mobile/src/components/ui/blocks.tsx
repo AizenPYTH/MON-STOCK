@@ -1,7 +1,7 @@
 import { useState, type ComponentType, type ReactNode } from "react";
 import { Animated, Pressable, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronRight, CircleHelp, Minus, TrendingUp } from "lucide-react-native";
+import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, ChevronRight, CircleHelp, Minus, TrendingUp } from "lucide-react-native";
 import { color, dealTone, radius, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { cardStyle } from "~/components/ui/layout";
@@ -289,6 +289,32 @@ export function StatusLine({ tone, label }: { tone: BlockTone; label: string }) 
       <Txt variant="label" color={tone === "neutral" ? color.ink2 : fg} style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1}>
         {label}
       </Txt>
+    </View>
+  );
+}
+
+/** Étapes d'un parcours (horizontal) : faites (coche), en cours (bleu nuit), à venir (gris). */
+export function StepBar({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <View accessible accessibilityRole="progressbar" accessibilityLabel={`Étape ${Math.min(current + 1, steps.length)} sur ${steps.length} : ${steps[Math.min(current, steps.length - 1)]}`} style={{ flexDirection: "row", alignItems: "flex-start" }}>
+      {steps.map((label, i) => {
+        const done = i < current;
+        const now = i === current;
+        return (
+          <View key={label} style={{ flex: 1, alignItems: "center", gap: 4 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", alignSelf: "stretch" }}>
+              <View style={{ flex: 1, height: 2, backgroundColor: i === 0 ? "transparent" : done || now ? color.brand : color.track }} />
+              <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: done ? color.brand : now ? color.mint : color.surface, borderWidth: done || now ? 0 : 1.5, borderColor: color.lineStrong }}>
+                {done ? <Check size={12} color={color.inkOnDark} strokeWidth={3} /> : <Txt variant="micro" num color={now ? color.onMint : color.ink3} style={{ letterSpacing: 0 }}>{i + 1}</Txt>}
+              </View>
+              <View style={{ flex: 1, height: 2, backgroundColor: i === steps.length - 1 ? "transparent" : done ? color.brand : color.track }} />
+            </View>
+            <Txt variant="micro" color={now ? color.ink : color.ink3} numberOfLines={1} style={{ letterSpacing: 0, fontSize: 10.5 }}>
+              {label}
+            </Txt>
+          </View>
+        );
+      })}
     </View>
   );
 }
