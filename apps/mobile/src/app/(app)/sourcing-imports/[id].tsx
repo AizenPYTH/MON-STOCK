@@ -15,7 +15,6 @@ import { color, radius, space } from "~/theme/tokens";
 type Kind = ImportJobDetailDTO["issues"][number]["kind"];
 
 const STATUS_ICON: Record<ImportJobDetailDTO["status"], LucideIcon> = { completed: CheckCircle2, partial: FileWarning, failed: FileX2, quarantined: ShieldAlert, running: Repeat, skipped_duplicate: Copy };
-const STATUS_TONE: Record<ImportJobDetailDTO["status"], BlockTone> = { completed: "success", partial: "warning", failed: "danger", quarantined: "warning", running: "info", skipped_duplicate: "neutral" };
 const KIND_ICON: Record<Kind, LucideIcon> = { invalid: AlertTriangle, duplicate: Copy, rejected: FileX2, unrecognized: SearchX, warning: Info };
 const KIND_TONE: Record<Kind, BlockTone> = { invalid: "danger", duplicate: "neutral", rejected: "danger", unrecognized: "warning", warning: "info" };
 

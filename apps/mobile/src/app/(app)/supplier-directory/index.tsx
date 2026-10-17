@@ -12,7 +12,7 @@ import { userMessage } from "~/lib/errors";
 import { formatNumber, formatRelative } from "~/lib/format";
 import { BottomSheet, Button, cardStyle, DetailHeader, EmptyState, ErrorState, FilterChip, IconButton, Screen, SearchField, SkeletonList, StatusLine, Txt, useTabBarClearance, type BlockTone } from "~/components/ui";
 import { useLayout } from "~/theme/layout";
-import { color, radius, space } from "~/theme/tokens";
+import { color, space } from "~/theme/tokens";
 
 type Entry = DirectoryEntryDTO;
 type QuickView = "all" | "connected" | "connectable" | "favorites" | "pro";

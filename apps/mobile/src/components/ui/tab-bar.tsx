@@ -4,11 +4,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "expo-router/tabs";
 import * as Haptics from "expo-haptics";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
-import { color, size } from "~/theme/tokens";
+import { color, motion, size } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
 import { useSlide } from "~/components/ui/motion";
-import { motion } from "~/theme/tokens";
 
 /**
  * Barre d'onglets v5 ANCRÉE : fond blanc à 96 %, filet haut ; un SEUL indicateur menthe 52 × 30

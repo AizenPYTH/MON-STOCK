@@ -288,7 +288,6 @@ export function rulerPosition(cost: number, market: number): number {
 export function MarketRuler({ cost, market, resale, caption, emptyCaption, large = false, onDark = false }: { cost: number | null; market: number | null; resale?: number | null; caption?: string; emptyCaption?: string; large?: boolean; onDark?: boolean }) {
   const [w, setW] = useState(0);
   const rail = large ? 6 : 4;
-  const h = large ? 58 : 30;
   const has = cost !== null && market !== null && market > 0;
   const capColor = onDark ? color.inkOnDarkMuted : color.ink3;
   if (!has)

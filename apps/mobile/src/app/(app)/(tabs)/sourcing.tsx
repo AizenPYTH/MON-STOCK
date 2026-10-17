@@ -123,7 +123,7 @@ export default function SourcingScreen() {
   const byCategory = useMemo(() => groupByCategory(ranked), [ranked]);
   const autoCategory: OfferCategory | "all" = search.data && queryTargetsDevice(search.data.query) && (byCategory.get("devices")?.length ?? 0) > 0 ? "devices" : "all";
   const activeCategory = category ?? autoCategory;
-  const all = activeCategory === "all" ? ranked : (byCategory.get(activeCategory) ?? []);
+  const all = useMemo(() => (activeCategory === "all" ? ranked : (byCategory.get(activeCategory) ?? [])), [activeCategory, ranked, byCategory]);
   const counts = { account: all.filter((o) => o.access === "account").length };
   const withMargin = all.some((o) => o.deal && o.deal.margin !== null);
   const best = useMemo(() => bestDeals(all).find((o) => o.deal && (o.deal.level === "very_good" || o.deal.level === "good") && o.deal.margin !== null) ?? null, [all]);

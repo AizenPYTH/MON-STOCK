@@ -9,12 +9,12 @@ import { ACCESS_MODE_LABEL, mailtoLink } from "~/data/suppliers-pro";
 import { useSupplierFavorites } from "~/data/supplier-favorites";
 import { useActiveOrg } from "~/org/org-provider";
 import { SupplierLogo } from "~/components/supplier-logo";
-import { ACCESS_METHOD_LABEL, countryLabel, FadeIn, FavoriteButton, INTEGRATION_STATUS_LABEL, INTEGRATION_TONE, ORG_STATUS_LABEL, RELIABILITY_LABEL, segmentLabel, useSupplierAction } from "~/components/supplier-library";
+import { ACCESS_METHOD_LABEL, countryLabel, FavoriteButton, INTEGRATION_STATUS_LABEL, ORG_STATUS_LABEL, RELIABILITY_LABEL, segmentLabel, useSupplierAction } from "~/components/supplier-library";
 import { OfferLines } from "~/components/offer-result";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatNumber, formatRelative } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
-import { ActionRow, BottomSheet, Button, Card, Collapsible, DetailHeader, EmptyState, ErrorState, Screen, SectionHeader, Segmented, SkeletonList, StageStats, StatusChip, StatusLine, Timeline, Txt, useToast, type BlockTone } from "~/components/ui";
+import { ActionRow, BottomSheet, Button, Card, Collapsible, DetailHeader, EmptyState, ErrorState, Screen, SectionHeader, Segmented, SkeletonList, StageStats, Timeline, Txt, useToast } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 type Method = DirectoryEntryDTO["registry"]["accessMethods"][number];
@@ -112,7 +112,6 @@ function EntryBody({ entry: e, favorite, onToggleFavorite, canWrite, canAdmin }:
     ["Modes annoncés", e.accessModes.map((m) => ACCESS_MODE_LABEL[m] ?? m).join(", ") || null],
     ["Obtenir le catalogue", e.howToGetCatalog],
   ];
-  const statusTone: BlockTone = e.org.status === "connected" ? "success" : e.org.status === "error" ? "danger" : e.org.status === "pending" ? "warning" : "neutral";
   const total = offers.data?.total ?? e.org.accountOffers + e.org.publicOffers;
 
   const statusOnDark = e.org.status === "connected" ? color.mint : e.org.status === "error" ? color.dangerOnDark : e.org.status === "pending" ? color.accent : color.inkOnDarkMuted;
