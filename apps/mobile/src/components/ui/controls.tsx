@@ -88,9 +88,10 @@ export function Button({
 }
 
 /** Bouton icône 36 dans une zone tactile de 44, rayon 12. `filled` = bleu nuit ; `onDark` = sur bandeau nuit. */
-export function IconButton({ icon, label, onPress, filled = false, onDark = false }: { icon: ReactNode; label: string; onPress: () => void; filled?: boolean; onDark?: boolean }) {
+export function IconButton({ icon, label, onPress, filled = false, onDark = false, testID, badge }: { icon: ReactNode; label: string; onPress: () => void; filled?: boolean; onDark?: boolean; testID?: string; badge?: number }) {
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}

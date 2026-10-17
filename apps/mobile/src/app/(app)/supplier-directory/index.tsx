@@ -6,11 +6,11 @@ import type { DirectoryEntryDTO } from "@/features/mobile-api/contract";
 import { useSupplierDirectory } from "~/data/hooks";
 import { useSupplierFavorites } from "~/data/supplier-favorites";
 import { useActiveOrg } from "~/org/org-provider";
-import { SupplierLogo } from "~/components/supplier-logo";
+import { bundledLogo, SupplierLogo } from "~/components/supplier-logo";
 import { ACCESS_METHOD_LABEL, countryLabel, FadeIn, FavoriteButton, INTEGRATION_STATUS_LABEL, MethodChips, ORG_STATUS_LABEL, segmentLabel, useReduceMotion, useSupplierAction } from "~/components/supplier-library";
 import { userMessage } from "~/lib/errors";
 import { formatNumber, formatRelative } from "~/lib/format";
-import { BottomSheet, Button, cardStyle, DetailHeader, EmptyState, ErrorState, FilterChip, Screen, SearchField, SkeletonList, StatusLine, Txt, useTabBarClearance, type BlockTone } from "~/components/ui";
+import { BottomSheet, Button, cardStyle, DetailHeader, EmptyState, ErrorState, FilterChip, IconButton, Screen, SearchField, SkeletonList, StatusLine, Txt, useTabBarClearance, type BlockTone } from "~/components/ui";
 import { useLayout } from "~/theme/layout";
 import { color, radius, space } from "~/theme/tokens";
 
@@ -100,20 +100,24 @@ export default function SupplierLibraryScreen() {
   };
   const activeFilters = countries.length + methods.length + (sort !== "priority" ? 1 : 0);
   const stats = useMemo(() => libraryStats(entries, favorites), [entries, favorites]);
+  const wall = useMemo(() => [...entries].filter((e) => bundledLogo(e.registry.domain)).sort((a, b) => Number(b.org.status === "connected") - Number(a.org.status === "connected") || b.registry.priority.score - a.registry.priority.score).slice(0, 7), [entries]);
   const header = (
     <DetailHeader
       parentLabel="Sourcing"
-      title="Bibliothèque fournisseurs"
+      title="Fournisseurs"
+      right={<IconButton onDark testID="library-filters" icon={<SlidersHorizontal size={18} color={color.inkOnDark} strokeWidth={2.2} />} label={`Filtres et tri${activeFilters ? `, ${activeFilters} actifs` : ""}`} badge={activeFilters || undefined} onPress={() => setFiltersOpen(true)} />}
       hero={
         directory.data
           ? {
               value: formatNumber(stats.total),
-              label: "fournisseurs étudiés",
+              label: "Fournisseurs étudiés",
+              size: "lg",
+              aside: wall.length >= 3 ? <LogoWall entries={wall} more={Math.max(0, stats.total - wall.length)} /> : undefined,
               stats: [
-                { label: "Connectés", value: formatNumber(stats.connected), tone: stats.connected > 0 ? "positive" : undefined },
-                { label: "Connectables", value: formatNumber(stats.connectable) },
-                { label: "Compte pro", value: formatNumber(stats.pro) },
-                ...(stats.errors > 0 ? [{ label: "En erreur", value: formatNumber(stats.errors), tone: "negative" as const }] : []),
+                { label: "Connectés", value: formatNumber(stats.connected), tone: stats.connected > 0 ? "positive" : undefined, onPress: () => animate(() => setView("connected")) },
+                { label: "Connectables", value: formatNumber(stats.connectable), onPress: () => animate(() => setView("connectable")) },
+                { label: "Compte pro", value: formatNumber(stats.pro), onPress: () => animate(() => setView("pro")) },
+                ...(stats.errors > 0 ? [{ label: "En erreur", value: formatNumber(stats.errors), tone: "negative" as const, onPress: () => animate(() => setView("connected")) }] : []),
               ],
             }
           : undefined
@@ -150,25 +154,17 @@ export default function SupplierLibraryScreen() {
           <FilterChip key={s} label={s === "all" ? "Toutes catégories" : segmentLabel(s)} selected={segment === s} onPress={() => animate(() => setSegment(s))} />
         ))}
       </ScrollView>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], flexShrink: 1 }}>
-          <Txt variant="body" num testID="library-count">
-            {filtered.length} fournisseur{filtered.length > 1 ? "s" : ""}
-          </Txt>
-          {filtered.length !== entries.length ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Effacer la recherche et les filtres" hitSlop={8} onPress={() => animate(() => (setView("all"), setSegment("all"), setCountries([]), setMethods([]), setQ("")))}>
-              <Txt variant="label" color={color.ink} style={{ textDecorationLine: "underline" }}>
-                Tout effacer
-              </Txt>
-            </Pressable>
-          ) : null}
-        </View>
-        <Pressable onPress={() => setFiltersOpen(true)} accessibilityRole="button" accessibilityLabel={`Filtres et tri${activeFilters ? `, ${activeFilters} actifs` : ""}`} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill, borderWidth: 1, borderColor: activeFilters ? color.brand : color.line, backgroundColor: activeFilters ? color.brand : color.surface }} testID="library-filters">
-          <SlidersHorizontal size={15} color={activeFilters ? color.inkOnDark : color.ink} />
-          <Txt variant="label" color={activeFilters ? color.inkOnDark : color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
-            Filtres et tri{activeFilters ? ` · ${activeFilters}` : ""}
-          </Txt>
-        </Pressable>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], minHeight: 22 }}>
+        <Txt variant="mono" num testID="library-count" numberOfLines={1} style={{ flexShrink: 1 }}>
+          {filtered.length} fournisseur{filtered.length > 1 ? "s" : ""} · {filtered.length !== entries.length ? "filtrés" : SORTS.find((x) => x.value === sort)!.label}
+        </Txt>
+        {filtered.length !== entries.length ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Effacer la recherche et les filtres" hitSlop={8} onPress={() => animate(() => (setView("all"), setSegment("all"), setCountries([]), setMethods([]), setQ("")))}>
+            <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
+              Tout effacer
+            </Txt>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -183,7 +179,7 @@ export default function SupplierLibraryScreen() {
         initialNumToRender={8}
         windowSize={7}
         refreshControl={<RefreshControl refreshing={directory.isRefetching} onRefresh={() => void directory.refetch()} />}
-        contentContainerStyle={{ paddingBottom: space[8] + clearance, gap: space[2] }}
+        contentContainerStyle={{ paddingBottom: space[8] + clearance, gap: 10 }}
         style={{ marginHorizontal: -screenX, paddingHorizontal: screenX, maxWidth }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
@@ -199,27 +195,28 @@ export default function SupplierLibraryScreen() {
             actions={[{ label: "Tout afficher", onPress: () => animate(() => (setView("all"), setSegment("all"), setCountries([]), setMethods([]), setQ(""))) }]}
           />
         }
+        ListFooterComponent={filtered.length > 0 ? <Txt variant="note" style={{ marginTop: space[2] }}>Favoris enregistrés sur cet appareil. Logos : identification uniquement, aucun partenariat.</Txt> : null}
         renderItem={({ item, index }) => (
-          <FadeIn index={index}>
+          <FadeIn index={index} step={30}>
             <SupplierCard entry={item} favorite={favorites.has(item.key)} onToggleFavorite={() => void toggle(item.key)} canWrite={permissions.canWrite} />
           </FadeIn>
         )}
       />
       <BottomSheet visible={filtersOpen} title="Filtres et tri" onClose={() => setFiltersOpen(false)}>
         <View style={{ gap: space[3] }}>
-          <Txt variant="overline">Trier par</Txt>
+          <Txt variant="mono">Trier par</Txt>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
             {SORTS.map((s) => (
               <FilterChip key={s.value} label={s.label} selected={sort === s.value} onPress={() => animate(() => setSort(s.value))} />
             ))}
           </View>
-          <Txt variant="overline">Méthode d'accès</Txt>
+          <Txt variant="mono">Méthode d'accès</Txt>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
             {METHOD_FILTERS.map((m) => (
               <FilterChip key={m} label={ACCESS_METHOD_LABEL[m]} selected={methods.includes(m)} onPress={() => animate(() => setMethods((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m])))} />
             ))}
           </View>
-          <Txt variant="overline">Pays</Txt>
+          <Txt variant="mono">Pays</Txt>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space[2] }}>
             {allCountries.map((c) => (
               <FilterChip key={c} label={countryLabel(c)} selected={countries.includes(c)} onPress={() => animate(() => setCountries((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c])))} />
@@ -244,10 +241,10 @@ function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entr
   const tone: BlockTone = e.org.status === "connected" ? "success" : e.org.status === "error" ? "danger" : e.org.status === "pending" ? "warning" : e.registry.integrationStatus === "abandoned" ? "danger" : "neutral";
   const facts = connected ? [`${formatNumber(offers)} offre${offers > 1 ? "s" : ""}`, e.org.lastSyncAt ? `à jour ${formatRelative(e.org.lastSyncAt)}` : null].filter(Boolean).join(" · ") : null;
   return (
-    <View style={[cardStyle, { padding: space[3], paddingLeft: space[4], gap: space[2] }]} accessibilityLabel={`${e.name}, ${connected ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[e.registry.integrationStatus]}`}>
+    <View style={[cardStyle, { padding: 14, gap: 10 }]} accessibilityLabel={`${e.name}, ${connected ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[e.registry.integrationStatus]}`}>
       <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={`Ouvrir la fiche ${e.name}`} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, gap: space[2] })} testID={`library-card-${e.key}`}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
-          <SupplierLogo domain={e.registry.domain} name={e.name} size={44} />
+          <SupplierLogo domain={e.registry.domain} name={e.name} size={48} />
           <View style={{ flex: 1, gap: 1 }}>
             <Txt variant="headline" numberOfLines={1} style={{ fontSize: 16 }}>
               {e.name.replace(/\s*\(.*\)\s*$/, "")}
@@ -277,6 +274,26 @@ function SupplierCard({ entry: e, favorite, onToggleFavorite, canWrite }: { entr
         {e.registry.primaryAction.kind !== "none" ? <Button label={e.registry.primaryAction.label} compact variant={e.registry.primaryAction.kind === "open_site" ? "ghost" : "secondary"} loading={action.busy} onPress={() => action.run()} testID={`library-action-${e.key}`} style={{ flexShrink: 0, maxWidth: "62%" }} /> : null}
       </View>
       {action.sheet}
+    </View>
+  );
+}
+
+/** Mur de logos (scène) : plaques blanches qui se chevauchent, puis le nombre restant. */
+function LogoWall({ entries, more }: { entries: Entry[]; more: number }) {
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexDirection: "row", alignItems: "center", paddingBottom: 8 }}>
+      {entries.map((e, i) => (
+        <View key={e.key} style={{ marginLeft: i ? -6 : 0, borderRadius: 11, borderWidth: 2, borderColor: color.brand }}>
+          <SupplierLogo domain={e.registry.domain} name={e.name} size={30} />
+        </View>
+      ))}
+      {more > 0 ? (
+        <View style={{ marginLeft: -6, height: 34, minWidth: 34, paddingHorizontal: 6, borderRadius: 11, borderWidth: 2, borderColor: color.brand, backgroundColor: color.nightRaised, alignItems: "center", justifyContent: "center" }}>
+          <Txt variant="code" num color={color.inkOnDark} style={{ fontSize: 10 }}>
+            +{more}
+          </Txt>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -89,7 +89,7 @@ export function StageStats({ stats, size = 17, style }: { stats: StageStat[]; si
         const { approx, number, unit } = splitFigure(s.value ?? "—");
         const body = (
           <View style={{ paddingTop: space[3], paddingLeft: i ? 14 : 0, paddingRight: 6, gap: 4, borderLeftWidth: i ? 1 : 0, borderLeftColor: color.nightLine, flex: 1 }}>
-            <Txt variant="monoSm" color={color.inkOnDarkSubtle} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+            <Txt variant="monoSm" color={color.inkOnDarkSubtle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.2}>
               {s.label}
             </Txt>
             <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: 5 }}>

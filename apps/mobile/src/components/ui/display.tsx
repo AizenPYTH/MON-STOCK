@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
-import { Check } from "lucide-react-native";
+import { Check, X } from "lucide-react-native";
 import { color, radius, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
@@ -43,8 +43,8 @@ const CHIP: Record<ChipTone, { fg: string; bg: string }> = {
 export function StatusChip({ label, tone }: { label: string; tone: ChipTone }) {
   const c = CHIP[tone];
   return (
-    <View style={{ paddingVertical: 3, paddingHorizontal: 8, borderRadius: radius.xs, backgroundColor: c.bg, alignSelf: "flex-start" }}>
-      <Txt variant="micro" color={c.fg} style={{ textTransform: "none", letterSpacing: 0 }}>
+    <View style={{ paddingVertical: 3, paddingHorizontal: 8, borderRadius: radius.xs, backgroundColor: c.bg, alignSelf: "flex-start", maxWidth: "100%" }}>
+      <Txt variant="micro" color={c.fg} numberOfLines={1} style={{ textTransform: "none", letterSpacing: 0 }}>
         {label}
       </Txt>
     </View>
@@ -175,37 +175,43 @@ export function AlertBanner({ text, tone = "accent", onPress }: { text: string; 
   );
 }
 
-export type TimelineStep = { label: string; meta?: string; state: "done" | "current" | "todo"; metaTone?: "accent" };
+export type TimelineStep = { label: string; meta?: string; state: "done" | "current" | "todo" | "error"; metaTone?: "accent" | "danger" };
 
 export function Timeline({ steps }: { steps: TimelineStep[] }) {
   return (
-    <View style={{ gap: space[3] }}>
-      {steps.map((s) => (
-        <View key={s.label} style={{ flexDirection: "row", alignItems: "center", gap: space[3] }} accessible accessibilityLabel={`${s.label}${s.meta ? `, ${s.meta}` : ""}, ${s.state === "done" ? "terminé" : s.state === "current" ? "en cours" : "à venir"}`}>
-          <View
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: 10,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: s.state === "done" ? color.brand : s.state === "current" ? color.accentSoft : "transparent",
-              borderWidth: s.state === "done" ? 0 : s.state === "current" ? 2 : 1.5,
-              borderColor: s.state === "current" ? color.accent : color.line,
-            }}
-          >
-            {s.state === "done" ? <Check size={12} color={color.inkOnDark} strokeWidth={3} /> : null}
+    <View>
+      {steps.map((s, i) => {
+        const last = i === steps.length - 1;
+        const dot =
+          s.state === "done"
+            ? { bg: color.brand, border: color.brand, w: 0 }
+            : s.state === "error"
+              ? { bg: color.danger, border: color.danger, w: 0 }
+              : s.state === "current"
+                ? { bg: color.accentSoft, border: color.accent, w: 2 }
+                : { bg: "transparent", border: color.lineStrong, w: 1.5 };
+        const metaFg = s.metaTone === "accent" ? color.accentInkOnSoft : s.metaTone === "danger" ? color.dangerInk : color.ink3;
+        return (
+          <View key={s.label} style={{ flexDirection: "row", gap: space[3] }} accessible accessibilityLabel={`${s.label}${s.meta ? `, ${s.meta}` : ""}, ${s.state === "done" ? "terminé" : s.state === "error" ? "échec" : s.state === "current" ? "en cours" : "à venir"}`}>
+            <View style={{ alignItems: "center", width: 22 }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: dot.bg, borderWidth: dot.w, borderColor: dot.border }}>
+                {s.state === "done" ? <Check size={12} color={color.inkOnDark} strokeWidth={3} /> : s.state === "error" ? <X size={12} color={color.inkOnDark} strokeWidth={3} /> : null}
+              </View>
+              {last ? null : <View style={{ flex: 1, width: 2, minHeight: 12, backgroundColor: s.state === "done" ? color.brand : color.line, marginVertical: 2 }} />}
+            </View>
+            <View style={{ flex: 1, gap: 1, paddingBottom: last ? 0 : space[3], paddingTop: 1 }}>
+              <Txt variant="body" color={s.state === "todo" ? color.ink3 : color.ink} style={{ fontSize: 14.5, fontFamily: "Manrope_700Bold" }}>
+                {s.label}
+              </Txt>
+              {s.meta ? (
+                <Txt variant="label" num color={metaFg} style={{ fontSize: 12.5, lineHeight: 17 }}>
+                  {s.meta}
+                </Txt>
+              ) : null}
+            </View>
           </View>
-          <Txt variant="body" color={s.state === "todo" ? color.ink3 : color.ink} style={{ flex: 1 }}>
-            {s.label}
-          </Txt>
-          {s.meta ? (
-            <Txt variant="label" num color={s.metaTone === "accent" ? color.accentInkOnSoft : color.ink3} style={s.metaTone === "accent" ? { fontFamily: "Manrope_700Bold" } : null}>
-              {s.meta}
-            </Txt>
-          ) : null}
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }

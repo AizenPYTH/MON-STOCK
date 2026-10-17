@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { AccessibilityInfo, Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming, type SharedValue } from "react-native-reanimated";
 import { motion } from "~/theme/tokens";
 
 /**
@@ -169,7 +169,10 @@ export function Pop({ trigger, peak = 1.3, children }: { trigger: unknown; peak?
       return;
     }
     if (reduce) return;
-    s.value = withSequence(withTiming(peak, { duration: motion.press, easing: curve.press }), withTiming(1, { duration: 260, easing: curve.pop }));
+    // saut immédiat au sommet puis retour amorti. La courbe « pop » (dépassement, y > 1) n'est pas
+    // utilisée : elle bloque l'animation sous Jest et rien ne garantit son comportement partout.
+    s.set(peak);
+    s.set(withTiming(1, { duration: motion.press + 260, easing: curve.instrument }));
   }, [trigger, reduce, peak, s]);
   const a = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
   return <Animated.View style={a}>{children}</Animated.View>;

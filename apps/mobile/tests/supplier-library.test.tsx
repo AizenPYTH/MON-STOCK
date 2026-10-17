@@ -64,7 +64,7 @@ it("bibliothèque : logos officiels, connectés d'abord, filtres, favoris, actio
   expect(screen.getByText("Clé API refusée (401).")).toBeTruthy();
   // vue « Connectés »
   fireEvent.press(screen.getByRole("button", { name: /^Connectés · / }));
-  expect(screen.getByTestId("library-count").props.children.join("")).toBe("1 fournisseur");
+  expect(screen.getByTestId("library-count").props.children.join("")).toBe("1 fournisseur · filtrés");
   fireEvent.press(screen.getByRole("button", { name: "Tous" }));
   // favoris : l'étoile ajoute, la vue Favoris le retrouve
   fireEvent.press(screen.getByLabelText("Ajouter Foxway (Reseller Portal / Wholesale) aux favoris"));
@@ -132,7 +132,10 @@ it("fiche : connexion API (BigBuy en erreur) — synchroniser, déconnecter", as
   const Screen = jest.requireActual("~/app/(app)/supplier-directory/[key]").default;
   render(wrap(<Screen />));
   await waitFor(() => expect(screen.getByTestId("entry-primary-action")).toBeTruthy());
-  expect(screen.getByText(/Dernière erreur : Clé API refusée/)).toBeTruthy();
+  // erreur en clair + frise : le test du serveur a échoué, la synchronisation attend
+  expect(screen.getByText("Connexion en erreur")).toBeTruthy();
+  expect(screen.getAllByText(/Clé API refusée/).length).toBeGreaterThan(0);
+  expect(screen.getByLabelText(/^Test par le serveur, Clé API refusée.*, échec$/)).toBeTruthy();
   fireEvent.press(screen.getByTestId("entry-primary-action"));
   await waitFor(() => expect(mockCallApi).toHaveBeenCalledWith("/sourcing/accounts/sync", expect.objectContaining({ body: { connectionId: "c-big" } })));
   fireEvent.press(screen.getByTestId("entry-disconnect"));

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Animated, Linking, Pressable, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as WebBrowser from "expo-web-browser";
@@ -10,7 +10,7 @@ import { useConnectProAccount, useSyncProAccount } from "~/data/hooks";
 import { mailtoLink } from "~/data/suppliers-pro";
 import { userMessage } from "~/lib/errors";
 import { safeExternalUrl } from "~/lib/url";
-import { BottomSheet, Button, StatusChip, TextField, Timeline, Txt, useReduceMotion, useToast, type ChipTone } from "~/components/ui";
+import { BottomSheet, Button, Pop, StatusChip, TextField, Timeline, Txt, useToast, type ChipTone } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 export { ACCESS_METHOD_LABEL, INTEGRATION_STATUS_LABEL, RELIABILITY_LABEL, SEGMENT_LABEL };
@@ -35,23 +35,27 @@ export const INTEGRATION_TONE: Record<DirectoryEntryDTO["registry"]["integration
 export { FadeIn, useReduceMotion } from "~/components/ui/motion";
 
 /** Étoile des favoris : retour visuel immédiat (léger rebond) et haptique. */
-export function FavoriteButton({ active, onPress, name }: { active: boolean; onPress: () => void; name: string }) {
-  const reduce = useReduceMotion();
-  const [scale] = useState(() => new Animated.Value(1));
+export function FavoriteButton({ active, onPress, name, onDark = false }: { active: boolean; onPress: () => void; name: string; onDark?: boolean }) {
+  const toast = useToast();
+  const short = name.replace(/\s*\(.*\)\s*$/, "");
   const press = () => {
     onPress();
     void Haptics.selectionAsync().catch(() => {});
-    if (reduce) return;
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 1.25, duration: 90, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }),
-    ]).start();
+    toast({ text: active ? `${short} retiré des favoris.` : `${short} ajouté aux favoris de cet appareil.` });
   };
   return (
-    <Pressable onPress={press} hitSlop={10} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={active ? `Retirer ${name} des favoris` : `Ajouter ${name} aux favoris`} testID={`favorite-${name}`}>
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <Star size={20} color={active ? color.accent : color.ink3} fill={active ? color.accent : "transparent"} />
-      </Animated.View>
+    <Pressable
+      onPress={press}
+      hitSlop={onDark ? 4 : 10}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={active ? `Retirer ${name} des favoris` : `Ajouter ${name} aux favoris`}
+      testID={`favorite-${name}`}
+      style={onDark ? ({ pressed }) => ({ width: 36, height: 36, margin: 4, borderRadius: radius.lg, backgroundColor: pressed ? color.surfaceDeep : color.nightRaised, alignItems: "center", justifyContent: "center" }) : { width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
+    >
+      <Pop trigger={active}>
+        <Star size={onDark ? 18 : 20} color={active ? color.accent : onDark ? color.inkOnDark : color.ink3} fill={active ? color.accent : "transparent"} strokeWidth={2} />
+      </Pop>
     </Pressable>
   );
 }

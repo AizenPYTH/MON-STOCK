@@ -14,7 +14,7 @@ import { OfferLines } from "~/components/offer-result";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatNumber, formatRelative } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
-import { ActionRow, BottomSheet, Button, Card, Collapsible, DetailHeader, EmptyState, ErrorState, MetricStrip, Screen, SectionHeader, Segmented, SkeletonList, StatusChip, StatusLine, Txt, useToast, type BlockTone } from "~/components/ui";
+import { ActionRow, BottomSheet, Button, Card, Collapsible, DetailHeader, EmptyState, ErrorState, Screen, SectionHeader, Segmented, SkeletonList, StageStats, StatusChip, StatusLine, Timeline, Txt, useToast, type BlockTone } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 type Method = DirectoryEntryDTO["registry"]["accessMethods"][number];
@@ -115,57 +115,75 @@ function EntryBody({ entry: e, favorite, onToggleFavorite, canWrite, canAdmin }:
   const statusTone: BlockTone = e.org.status === "connected" ? "success" : e.org.status === "error" ? "danger" : e.org.status === "pending" ? "warning" : "neutral";
   const total = offers.data?.total ?? e.org.accountOffers + e.org.publicOffers;
 
+  const statusOnDark = e.org.status === "connected" ? color.mint : e.org.status === "error" ? color.dangerOnDark : e.org.status === "pending" ? color.accent : color.inkOnDarkMuted;
+  const stage = (
+    <View style={{ gap: space[3], marginTop: space[2] }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+        <SupplierLogo domain={r.domain} name={e.name} size={68} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt variant="title1" color={color.inkOnDark} accessibilityRole="header" numberOfLines={2} style={{ fontSize: 28, lineHeight: 34, letterSpacing: -0.7 }}>
+            {name}
+          </Txt>
+          <Txt variant="label" color={color.inkOnDarkMuted} numberOfLines={2}>
+            {[countryLabel(e.country), segmentLabel(e.segment), r.domain].filter(Boolean).join(" · ")}
+          </Txt>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }} accessible accessibilityLabel={`État : ${connected ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[r.integrationStatus]}`}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusOnDark, borderWidth: 3, borderColor: "rgba(255,255,255,0.08)" }} />
+          <Txt variant="label" color={statusOnDark} style={{ fontFamily: "Manrope_700Bold" }}>
+            {connected ? ORG_STATUS_LABEL[e.org.status] : INTEGRATION_STATUS_LABEL[r.integrationStatus]}
+          </Txt>
+        </View>
+        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.xs, borderWidth: 1, borderColor: color.nightStroke }}>
+          <Txt variant="monoSm" color={color.inkOnDarkMuted}>
+            Priorité {r.priority.tier}
+          </Txt>
+        </View>
+      </View>
+      {connected ? (
+        <StageStats
+          stats={[
+            { label: "Offres du compte", value: formatNumber(e.org.accountOffers) },
+            { label: "Publiques", value: formatNumber(e.org.publicOffers) },
+            { label: "Mise à jour", value: e.org.lastSyncAt ? formatRelative(e.org.lastSyncAt) : null, tone: e.org.status === "error" ? "danger" : undefined },
+          ]}
+          size={15}
+        />
+      ) : null}
+    </View>
+  );
+
   return (
     <Screen>
-      <DetailHeader parentLabel="Bibliothèque" />
-      <FadeIn>
-        <Card padded style={{ gap: space[3] }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
-            <SupplierLogo domain={r.domain} name={e.name} size={64} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Txt variant="title2" accessibilityRole="header" numberOfLines={2}>
-                {name}
+      <DetailHeader parentLabel="Bibliothèque" right={<FavoriteButton onDark active={favorite} onPress={onToggleFavorite} name={e.name} />} stage={stage} />
+      {e.org.lastError ? (
+        <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 10, padding: space[4], borderRadius: radius.card, borderWidth: 1, borderColor: color.dangerLine, backgroundColor: color.dangerSoft }}>
+          <CircleAlert size={18} color={color.dangerInk} style={{ marginTop: 1 }} />
+          <View style={{ flex: 1, gap: 3 }}>
+            <Txt variant="body" color={color.dangerInk} style={{ fontFamily: "Manrope_700Bold" }}>
+              Connexion en erreur
+            </Txt>
+            <Txt variant="label" color={color.dangerInk}>
+              {e.org.lastError}
+            </Txt>
+            {e.org.lastSyncAt ? (
+              <Txt variant="note" color={color.dangerInk}>
+                Dernière réussite {formatRelative(e.org.lastSyncAt)}
               </Txt>
-              <Txt variant="label" numberOfLines={2}>
-                {[countryLabel(e.country), segmentLabel(e.segment), r.domain].filter(Boolean).join(" · ")}
-              </Txt>
-            </View>
-            <FavoriteButton active={favorite} onPress={onToggleFavorite} name={e.name} />
+            ) : null}
           </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3] }}>
-            <StatusLine tone={statusTone} label={ORG_STATUS_LABEL[e.org.status]} />
-            {!connected ? <StatusChip label={INTEGRATION_STATUS_LABEL[r.integrationStatus]} tone={INTEGRATION_TONE[r.integrationStatus]} /> : null}
-            <Txt variant="label">Priorité {r.priority.tier}</Txt>
-          </View>
-          {connected ? (
-            <MetricStrip
-              metrics={[
-                { label: "Votre compte", value: formatNumber(e.org.accountOffers), hint: "offres" },
-                { label: "Publiques", value: formatNumber(e.org.publicOffers), hint: "offres" },
-                { label: "Mise à jour", value: e.org.lastSyncAt ? formatRelative(e.org.lastSyncAt) : null, hint: e.org.lastSyncAt ? "données datées" : "jamais" },
-              ]}
-            />
-          ) : e.whyUseful ? (
-            <Txt variant="bodyRegular">{e.whyUseful}</Txt>
-          ) : null}
-          {e.org.lastError ? (
-            <View style={{ flexDirection: "row", gap: space[2], padding: space[3], borderRadius: radius.md, backgroundColor: color.dangerSoft }}>
-              <CircleAlert size={16} color={color.dangerInk} />
-              <Txt variant="label" color={color.dangerInk} style={{ flex: 1 }}>
-                Dernière erreur : {e.org.lastError}
-              </Txt>
-            </View>
-          ) : null}
-          {r.primaryAction.kind !== "none" ? (
-            <View style={{ gap: 6 }}>
-              <Button label={r.primaryAction.label} loading={action.busy} onPress={() => action.run()} testID="entry-primary-action" />
-              <Txt variant="label" style={{ textAlign: "center" }}>
-                {r.primaryAction.outcome}
-              </Txt>
-            </View>
-          ) : null}
-        </Card>
-      </FadeIn>
+        </View>
+      ) : null}
+      {r.primaryAction.kind !== "none" ? (
+        <View style={{ gap: 6 }}>
+          <Button label={r.primaryAction.label} loading={action.busy} onPress={() => action.run()} testID="entry-primary-action" />
+          <Txt variant="note" style={{ textAlign: "center" }}>
+            {r.primaryAction.outcome}
+          </Txt>
+        </View>
+      ) : null}
 
       <Segmented<Tab>
         value={tab}
@@ -183,11 +201,26 @@ function EntryBody({ entry: e, favorite, onToggleFavorite, canWrite, canAdmin }:
           <SectionHeader title="Votre connexion" />
           <Card padded style={{ gap: space[2] }} accessibilityLabel={`Connexion : ${ORG_STATUS_LABEL[e.org.status]}`}>
             {!connected ? (
-              <Txt variant="bodyRegular">
-                {e.proAccountRequired
-                  ? "Pas encore connecté. Il vous faut votre propre compte professionnel chez ce fournisseur et les autorisations qu'il accorde (clé API, flux ou export)."
-                  : "Pas encore connecté. Choisissez une méthode dans l'onglet Accès."}
-              </Txt>
+              <Txt variant="bodyRegular">{e.proAccountRequired ? "Pas encore connecté. Il faut votre propre compte pro chez ce fournisseur." : "Pas encore connecté. Voir l'onglet Accès."}</Txt>
+            ) : e.org.connectionId ? (
+              <>
+                <Timeline
+                  steps={[
+                    { label: "Identifiants enregistrés", meta: "Chiffrés côté serveur", state: "done" },
+                    e.org.status === "error"
+                      ? { label: "Test par le serveur", meta: e.org.lastError ?? "Refusé", state: "error", metaTone: "danger" }
+                      : e.org.status === "pending"
+                        ? { label: "Test par le serveur", meta: "En cours", state: "current", metaTone: "accent" }
+                        : { label: "Test par le serveur", meta: "Réussi", state: "done" },
+                    e.org.status === "connected" && e.org.lastSyncAt
+                      ? { label: "Synchronisation des prix", meta: `Faite ${formatRelative(e.org.lastSyncAt)} · ${formatNumber(e.org.accountOffers)} offres`, state: "done" }
+                      : { label: "Synchronisation des prix", meta: e.org.status === "error" ? "En attente d'une connexion valide" : "À venir", state: e.org.status === "connected" ? "current" : "todo" },
+                  ]}
+                />
+                <Txt variant="note" testID="entry-connection-facts">
+                  Chaque étape est confirmée par le serveur. Données datées, pas du temps réel.
+                </Txt>
+              </>
             ) : (
               <>
                 <Txt variant="body" testID="entry-connection-facts">
@@ -248,11 +281,11 @@ function EntryBody({ entry: e, favorite, onToggleFavorite, canWrite, canAdmin }:
                 {offers.data.total > 30 ? <Txt variant="label">… et {formatNumber(offers.data.total - 30)} autres : utilisez la recherche Sourcing pour les comparer.</Txt> : null}
               </>
             ) : (
-              <EmptyState title="Aucun produit actif" description="Importez son catalogue ou lancez une synchronisation : les produits apparaîtront ici, avec leur prix et leur stock." actions={canWrite ? [{ label: "Importer un catalogue", onPress: action.importFile }] : []} />
+              <EmptyState title="Aucun produit actif" description="Importez son catalogue ou lancez une synchronisation." actions={canWrite ? [{ label: "Importer un catalogue", onPress: action.importFile }] : []} />
             )}
           </>
         ) : (
-          <EmptyState title="Pas encore de produits" description="Les produits apparaissent ici une fois ce fournisseur connecté (API, flux, import de fichier ou catalogue public)." actions={r.primaryAction.kind !== "none" ? [{ label: r.primaryAction.label, onPress: () => action.run() }] : []} />
+          <EmptyState title="Pas encore de produits" description="Ils apparaîtront une fois ce fournisseur connecté." actions={r.primaryAction.kind !== "none" ? [{ label: r.primaryAction.label, onPress: () => action.run() }] : []} />
         )
       ) : null}
 
