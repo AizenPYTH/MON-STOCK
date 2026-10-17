@@ -112,12 +112,12 @@ it("écran radar : estimation partielle affichée comme telle (≈), réapprovis
   mockCallApi.mockImplementation((path: string) => Promise.resolve(path === "/radar" ? radarResponse : []));
   const Screen = jest.requireActual("~/app/(app)/radar/index").default;
   render(wrap(<Screen />));
-  await waitFor(() => expect(screen.getByText("Radar d'opportunités")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("Radar d'achat")).toBeTruthy());
   expect(screen.getByText("Estimation partielle")).toBeTruthy();
   expect(screen.getAllByText(/≈ 106,00/).length).toBeGreaterThan(0);
   expect(screen.getByText(/Prix importé d'un catalogue fournisseur/)).toBeTruthy();
   expect(screen.getByText(/À réapprovisionner \(1\)/)).toBeTruthy();
-  expect(screen.getByText(/Paramètres de coûts manquants \(emballage\)/)).toBeTruthy();
+  expect(screen.getByText(/Coûts manquants \(emballage\)/)).toBeTruthy();
 });
 
 it("écran d'import : aperçu sans enregistrement puis import confirmé", async () => {

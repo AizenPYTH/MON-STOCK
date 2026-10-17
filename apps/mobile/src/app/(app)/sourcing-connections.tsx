@@ -50,7 +50,7 @@ export default function SourcingConnectionsScreen() {
       <Card>
         {permissions.canWrite ? <ActionRow icon={Upload} title="Importer un fichier" detail="Liste de prix ou de stock : CSV, Excel, XML, JSON" onPress={() => router.push("/sourcing-import")} testID="sources-import" /> : null}
         {permissions.canWrite ? <ActionRow icon={Rss} title="Ajouter un flux autorisé" detail="Lien HTTPS fourni par le fournisseur, mis à jour seul" onPress={() => router.push("/sourcing-feed-new")} testID="sources-add-feed" /> : null}
-        <ActionRow icon={KeyRound} title="Mes comptes fournisseurs" detail="Prix pro : API, flux ou export de votre compte" onPress={() => router.push("/pro-accounts")} testID="sources-pro-accounts" />
+        <ActionRow icon={KeyRound} title="Comptes fournisseurs" detail="API, flux ou export de votre compte" onPress={() => router.push("/pro-accounts")} testID="sources-pro-accounts" />
         <ActionRow icon={History} title="Historique des imports" detail="Résultats et rapports d'erreurs" onPress={() => router.push("/sourcing-imports")} last testID="sources-history" />
       </Card>
     </>

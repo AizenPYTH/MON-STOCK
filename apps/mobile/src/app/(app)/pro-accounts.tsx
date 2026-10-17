@@ -24,7 +24,7 @@ export default function ProAccountsScreen() {
   const hub = useProAccounts();
   const { permissions } = useActiveOrg();
   const [connecting, setConnecting] = useState<ProAccountDTO | null>(null);
-  const header = <DetailHeader parentLabel="Sourcing" title="Mes comptes fournisseurs" sub="Vos prix pro d'abord, les sources publiques ensuite" />;
+  const header = <DetailHeader parentLabel="Sourcing" title="Comptes fournisseurs" />;
 
   if (hub.isPending)
     return (
@@ -47,14 +47,11 @@ export default function ProAccountsScreen() {
     <Screen refreshControl={<RefreshControl refreshing={hub.isRefetching} onRefresh={() => void hub.refetch()} />}>
       {header}
       <Card padded style={{ gap: space[2] }}>
-        <Txt variant="headline">Connectez vos comptes : ce sont VOS prix</Txt>
-        <Txt variant="bodyRegular">
-          Les meilleurs prix d'achat ne sont pas publics : ils sont réservés aux revendeurs (prix HT, par grade, parfois négociés). Branchez vos comptes ici ; vos offres passent en premier dans la recherche, puis les sources publiques complètent.
-        </Txt>
+        <Txt variant="headline">Vos prix pro passent en premier</Txt>
         <Txt variant="label" testID="pro-accounts-totals">
           {connected} compte{connected > 1 ? "s" : ""} connecté{connected > 1 ? "s" : ""} · {formatNumber(totals.account)} offre{totals.account > 1 ? "s" : ""} de vos comptes · {formatNumber(totals.public)} offres publiques · {formatNumber(totals.marketplace)} annonces de places de marché
         </Txt>
-        <Txt variant="label">Il vous faut en général un Kbis et un numéro de TVA intracommunautaire pour ouvrir ces comptes.</Txt>
+        <Txt variant="note">Ouverture d'un compte : Kbis et n° de TVA en général.</Txt>
       </Card>
 
       <SectionHeader title="Comptes professionnels" />

@@ -54,16 +54,16 @@ export default function RadarScreen() {
       <DetailHeader parentLabel="Sourcing" right={<IconButton icon={<Settings2 size={18} color={color.ink} />} label="Paramètres de coûts" onPress={() => router.push("/radar/settings")} />} />
       <View style={{ gap: 4 }}>
         <Txt variant="title2" accessibilityRole="header">
-          Radar d'opportunités
+          Radar d'achat
         </Txt>
         <Txt variant="label">
           {formatNumber(d.counts.profitable)} rentables · {formatNumber(d.counts.estimated)} estimées · {formatNumber(d.counts.unprofitable)} non rentables · {formatNumber(d.counts.insufficient)} incomplètes
         </Txt>
       </View>
-      {d.missingSettings.length ? <AlertBanner text={`Paramètres de coûts manquants (${d.missingSettings.join(", ")}) : les bénéfices restent des estimations partielles. Compléter →`} onPress={() => router.push("/radar/settings")} /> : null}
-      {(matches.data?.length ?? 0) > 0 ? <AlertBanner text={`${matches.data!.length} offre(s) à rapprocher de vos SKU : confirmez les correspondances proposées →`} tone="dark" onPress={() => router.push("/radar/matches")} /> : null}
+      {d.missingSettings.length ? <AlertBanner text={`Coûts manquants (${d.missingSettings.join(", ")}) : bénéfices partiels. Compléter →`} onPress={() => router.push("/radar/settings")} /> : null}
+      {(matches.data?.length ?? 0) > 0 ? <AlertBanner text={`${matches.data!.length} offre(s) à rapprocher de vos produits →`} tone="dark" onPress={() => router.push("/radar/matches")} /> : null}
       {d.counts.unlinkedOffers > 0 && !(matches.data?.length ?? 0) ? (
-        <Txt variant="label">{formatNumber(d.counts.unlinkedOffers)} offre(s) fournisseur ne correspondent encore à aucun de vos SKU (référence ou EAN différents) : elles n'apparaissent pas dans le radar.</Txt>
+        <Txt variant="note">{formatNumber(d.counts.unlinkedOffers)} offre(s) sans produit correspondant (non comptées).</Txt>
       ) : null}
 
       {d.restock.length ? (
@@ -108,8 +108,8 @@ export default function RadarScreen() {
           title="Aucune offre à évaluer"
           description={
             d.counts.skus === 0
-              ? "Ajoutez vos produits au stock : le radar compare les offres fournisseurs à ce que vous vendez."
-              : "Importez le catalogue d'un fournisseur ou activez une source : les offres rapprochées de vos SKU apparaîtront ici."
+              ? "Ajoutez vos produits : le radar les compare aux offres."
+              : "Importez un catalogue ou activez une source."
           }
           actions={[
             { label: "Importer un catalogue", onPress: () => router.push("/sourcing-import") },

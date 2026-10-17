@@ -418,3 +418,26 @@ vrai jeton utilisateur (pas d'identifiants dans ce conteneur), connexion eBay r�
 - **Protection des mots de passe divulgués** à activer dans Supabase Auth.
 - Aucune exécution sur appareil depuis cet environnement : le build TestFlight est le premier test réel.
 - Catalogue limité à 5 000 SKU (signalé). Pas de cache hors ligne des données (confidentialité).
+
+## 9. Candidat de distribution iOS — design v5 (17 octobre 2026)
+
+Vérifié dans cet environnement (sans appareil, sans compte Apple) :
+
+| Point | État |
+| --- | --- |
+| Identifiant | `com.aizenpyth.monstock` (inchangé), version `1.0.0`, numéro de build géré par EAS (`appVersionSource: remote`, `autoIncrement`) |
+| Icône / lancement | Icône et écran de lancement dérivés du mot-symbole (barres sur `#101C2C`), 1024 × 1024 sans transparence |
+| Permissions | Micro, reconnaissance vocale, appareil photo (scan de suivi) : descriptions en français ; photothèque : mention exigée par Apple, jamais demandée |
+| Chiffrement | `ITSAppUsesNonExemptEncryption: false` |
+| Bundle | `npm run scan:bundle` : export iOS réussi, aucun secret ni code serveur détecté |
+| Configuration | `npx expo config --type public` valide |
+| Environnement | Les trois profils EAS pointent sur le projet Supabase **TEST** (`EXPO_PUBLIC_APP_ENV=TEST`) — à changer uniquement sur décision explicite avant une diffusion publique |
+
+Reste à faire, hors de portée de cet environnement :
+
+1. `eas build -p ios --profile production` puis test TestFlight sur iPhone réel (petit écran,
+   texte ×1,4, « Réduire les animations », VoiceOver, mode sombre système → l'application reste claire).
+2. Vérifier sur iPhone : polices Manrope 300 / Geist Mono, hachures du code-barres (SVG), glissement
+   de l'indicateur d'onglets, feuilles (Modal natif), clavier dans l'assistant d'import.
+3. Fiche App Store (captures, confidentialité, compte de démonstration pour la revue Apple).
+4. Choix de l'environnement Supabase de production (actuellement TEST).

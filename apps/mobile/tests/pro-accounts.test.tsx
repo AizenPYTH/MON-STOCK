@@ -45,7 +45,7 @@ it("comptes pro (statut réel, logo), connexion API chiffrée côté serveur, so
   });
   const Screen = jest.requireActual("~/app/(app)/pro-accounts").default;
   render(wrap(<Screen />));
-  await waitFor(() => expect(screen.getByText("Connectez vos comptes : ce sont VOS prix")).toBeTruthy());
+  await waitFor(() => expect(screen.getByText("Vos prix pro passent en premier")).toBeTruthy());
   expect(screen.getByTestId("pro-accounts-totals").props.children.join("")).toMatch(/1 compte connecté · 42 offres de vos comptes · 120 offres publiques · 30 annonces/);
   expect(screen.getByText("Connecté")).toBeTruthy();
   expect(screen.getByText("Non connecté")).toBeTruthy();
