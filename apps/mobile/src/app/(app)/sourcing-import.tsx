@@ -134,16 +134,16 @@ export default function SourcingImportScreen() {
           ) : undefined
         }
       >
-        <DetailHeader parentLabel="Sourcing" />
-        <View style={{ gap: 4 }}>
-          <Txt variant="title2" accessibilityRole="header">
-            Importer un catalogue fournisseur
-          </Txt>
-          <Txt variant="label">CSV, Excel (.xlsx), XML ou JSON — 15 Mo maximum. Rien n'est enregistré avant votre confirmation.</Txt>
-        </View>
-        <Card padded>
-          <StepBar steps={["Fournisseur", "Fichier", "Colonnes", "Vérifier", "Résultat"]} current={result ? 4 : confirming ? 3 : data ? 2 : supplierId || supplierName.trim() ? 1 : 0} />
-        </Card>
+        <DetailHeader
+          parentLabel="Sourcing"
+          title="Importer un catalogue"
+          sub="CSV, Excel, XML ou JSON · 15 Mo max. Rien n'est enregistré avant votre confirmation."
+          stage={
+            <View style={{ marginTop: space[4] }}>
+              <StepBar onDark steps={["Fournisseur", "Fichier", "Colonnes", "Vérifier", "Résultat"]} current={result ? 4 : confirming ? 3 : data ? 2 : supplierId || supplierName.trim() ? 1 : 0} />
+            </View>
+          }
+        />
         {error ? <AlertBanner text={error} tone="dark" /> : null}
 
         <SectionHeader title="1. Fournisseur" />

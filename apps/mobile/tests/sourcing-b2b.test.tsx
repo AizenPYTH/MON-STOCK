@@ -263,12 +263,14 @@ describe("détail du radar", () => {
     const Screen = jest.requireActual("~/app/(app)/radar/[offerId]").default;
     render(wrap(<Screen />));
     await waitFor(() => expect(screen.getByText("À vérifier")).toBeTruthy());
+    // appréciation repliée par défaut : le verdict reste visible, le détail s'ouvre à la demande
+    fireEvent.press(screen.getByLabelText(/^Appréciation, À vérifier/));
     expect(screen.getByText("78 / 100 · Bonne")).toBeTruthy();
     expect(screen.getByText("Données insuffisantes")).toBeTruthy();
     expect(screen.getByText("55 / 100 · Moyenne")).toBeTruthy();
     expect(screen.getByText(/Stock non confirmé par le fournisseur/)).toBeTruthy();
     expect(screen.getByText(/garantie 12 mois · expédié depuis DE/)).toBeTruthy();
-    await waitFor(() => expect(screen.getByText(/2 unités · minimum de commande/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/2 u\. · minimum de commande/)).toBeTruthy());
     expect(screen.getByText(/Capital 620,00/)).toBeTruthy();
     expect(screen.getByText("Grossiste B")).toBeTruthy();
     expect(screen.getByText("Risquée")).toBeTruthy();

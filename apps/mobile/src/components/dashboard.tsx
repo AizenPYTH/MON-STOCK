@@ -190,6 +190,7 @@ const RADAR_LEVEL: Record<string, { level: DealLevel; label: string }> = {
 };
 
 export function PriorityCard({ radar, currency }: { radar: RadarDTO | undefined; currency: string }) {
+  const { compact } = useLayout();
   const [why, setWhy] = useState(false);
   const pick = pickPriority(radar);
   if (!pick) return null;
@@ -287,7 +288,7 @@ export function PriorityCard({ radar, currency }: { radar: RadarDTO | undefined;
           >
             <ClipboardList size={18} color={color.onMint} strokeWidth={2.2} />
             <Txt variant="button" color={color.onMint} numberOfLines={1} adjustsFontSizeToFit style={{ flexShrink: 1 }}>
-              Brouillon · {moq} u.
+              {compact ? "Brouillon" : `Brouillon · ${moq} u.`}
             </Txt>
           </Pressable>
           {e && e.breakdown.length ? (

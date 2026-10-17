@@ -82,7 +82,7 @@ export type StageStat = { label: string; value: string | null; note?: string; to
 
 const STAT_FG = { mint: color.mint, warning: color.accent, danger: color.dangerOnDark } as const;
 
-export function StageStats({ stats, size = 17, style }: { stats: StageStat[]; size?: number; style?: StyleProp<ViewStyle> }) {
+export function StageStats({ stats, size = 17, light = false, style }: { stats: StageStat[]; size?: number; light?: boolean; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[{ flexDirection: "row", borderTopWidth: 1, borderTopColor: color.nightLine }, style]}>
       {stats.map((s, i) => {
@@ -93,7 +93,7 @@ export function StageStats({ stats, size = 17, style }: { stats: StageStat[]; si
               {s.label}
             </Txt>
             <View style={{ flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: 5 }}>
-              <Txt variant="stat" num color={s.value === null ? color.inkOnDarkMuted : s.tone ? STAT_FG[s.tone] : color.inkOnDark} numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: size, lineHeight: size + 5 }}>
+              <Txt variant="stat" num color={s.value === null ? color.inkOnDarkMuted : s.tone ? STAT_FG[s.tone] : color.inkOnDark} numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: size, lineHeight: size + 5, ...(light ? { fontFamily: "Manrope_300Light", letterSpacing: -0.6 } : null) }}>
                 {approx ? <Txt variant="stat" color={color.inkOnDarkSubtle} style={{ fontFamily: "Manrope_500Medium", fontSize: size, lineHeight: size + 5 }}>≈ </Txt> : null}
                 {number}
                 {unit ? ` ${unit}` : ""}
@@ -352,7 +352,7 @@ export function ScoreBar({ score }: { score: number }) {
 // ---------------------------------------------------------------------------------------------
 // Cascade de marge — chaque ligne avec une barre ∝ |montant| / revente
 // ---------------------------------------------------------------------------------------------
-export type WaterfallLine = { label: string; note?: string; amount: number | null; kind: "base" | "minus" | "result" };
+export type WaterfallLine = { label: string; note?: string; amount: number | null; kind: "base" | "minus" | "subtotal" | "result" };
 
 export function MarginWaterfall({ lines, format }: { lines: WaterfallLine[]; format: (n: number) => string }) {
   const base = Math.abs(lines.find((l) => l.kind === "base")?.amount ?? 0);
@@ -361,7 +361,7 @@ export function MarginWaterfall({ lines, format }: { lines: WaterfallLine[]; for
       {lines.map((l, i) => {
         const v = l.amount;
         const text = v === null ? "—" : l.kind === "minus" ? `− ${format(Math.abs(v))}` : l.kind === "result" ? `${v >= 0 ? "≈ +" : "≈ −"}${format(Math.abs(v))}` : format(v);
-        const fill = l.kind === "base" ? color.ink : l.kind === "result" ? (v !== null && v < 0 ? color.danger : color.success) : color.lineStrong;
+        const fill = l.kind === "base" ? color.ink : l.kind === "subtotal" ? color.ink3 : l.kind === "result" ? (v !== null && v < 0 ? color.danger : color.success) : color.lineStrong;
         const ratio = base > 0 && v !== null ? Math.abs(v) / base : 0;
         return (
           <View key={`${l.label}-${i}`} accessible accessibilityLabel={`${l.label}${l.note ? ` (${l.note})` : ""} : ${text}`} style={{ paddingVertical: 9, gap: 6, borderTopWidth: i ? 1 : 0, borderTopColor: color.lineSoft }}>
@@ -375,7 +375,7 @@ export function MarginWaterfall({ lines, format }: { lines: WaterfallLine[]; for
                 </Txt>
               ) : null}
               <View style={{ flex: 1 }} />
-              <Txt variant="body" num style={{ fontSize: 14, fontFamily: l.kind === "minus" ? "Manrope_600SemiBold" : "Manrope_800ExtraBold" }} color={l.kind === "result" ? fill : l.kind === "minus" ? color.ink2 : color.ink}>
+              <Txt variant="body" num numberOfLines={1} style={{ fontSize: 14, flexShrink: 0, fontFamily: l.kind === "minus" ? "Manrope_600SemiBold" : "Manrope_800ExtraBold" }} color={l.kind === "result" ? fill : l.kind === "minus" ? color.ink2 : color.ink}>
                 {text}
               </Txt>
             </View>

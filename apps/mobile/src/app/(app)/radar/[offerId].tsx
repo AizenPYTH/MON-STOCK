@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
+import { Bookmark, ExternalLink, TriangleAlert } from "lucide-react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
@@ -7,10 +8,11 @@ import { useActiveOrg } from "~/org/org-provider";
 import { useDraftPurchaseOrder, useRadar, useRadarOffer, useSavedOffer } from "~/data/hooks";
 import { appraisalText, FRESHNESS_LABEL, PRICE_ORIGIN_LABEL, STATUS_LABEL, STATUS_TONE, VERDICT_LABEL, VERDICT_TONE } from "~/data/radar";
 import { userMessage } from "~/lib/errors";
-import { formatDateTime, formatMoney, formatNumber } from "~/lib/format";
+import { formatMoney, formatNumber, formatRelative } from "~/lib/format";
+import { SupplierLogo } from "~/components/supplier-logo";
 import { safeExternalUrl } from "~/lib/url";
-import { BottomSheet, Button, Card, DetailHeader, ErrorState, Screen, SectionHeader, SkeletonList, StatusChip, Stepper, Txt, useToast } from "~/components/ui";
-import { color, space } from "~/theme/tokens";
+import { BottomSheet, Button, Card, Collapsible, DetailHeader, ErrorState, MarginWaterfall, MonoTitle, ScoreBar, Screen, SkeletonList, StageFigure, StatusChip, Stepper, StickyActions, Txt, useToast, type WaterfallLine } from "~/components/ui";
+import { color, radius, space } from "~/theme/tokens";
 
 /** Détail d'une opportunité : calcul complet ligne à ligne, coûts manquants, réserves, actions confirmées. */
 export default function RadarOfferScreen() {
@@ -88,188 +90,179 @@ export default function RadarOfferScreen() {
     );
   }
 
-  return (
-    <Screen>
-      <DetailHeader parentLabel="Radar" />
-      <View style={{ gap: 6 }}>
-        <Txt variant="title2" accessibilityRole="header">
-          {item.sku.name}
-        </Txt>
-        <Txt variant="label">
-          {item.sku.code} · stock {formatNumber(item.sku.quantityAvailable)} · {formatNumber(item.sku.units30d)} ventes / 30 j
-        </Txt>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          <StatusChip label={STATUS_LABEL[e.status]} tone={STATUS_TONE[e.status]} />
-          <StatusChip label={FRESHNESS_LABEL[e.freshness]} tone={e.freshness === "stale" || e.freshness === "unknown" ? "danger" : "neutral"} />
-          {item.savedAt ? <StatusChip label={`Enregistrée${item.priceAtSave !== null ? ` à ${formatMoney(item.priceAtSave, cur)}` : ""}`} tone="accent" /> : null}
-        </View>
-      </View>
+  const lines = waterfallFromBreakdown(e.breakdown);
+  const profit = e.estimatedProfit;
+  const missing = [...e.missing, ...e.cautions];
+  const canOrder = permissions.canWrite && o.price !== null;
 
-      <Card padded style={{ gap: 4 }}>
-        <Txt variant="headline">{o.supplierName}</Txt>
-        <Txt variant="body" numberOfLines={3}>
+  return (
+    <Screen
+      footer={
+        <StickyActions>
+          {link ? (
+            <Pressable accessibilityRole="link" accessibilityLabel={`Voir l'offre chez ${o.supplierName}`} onPress={() => void WebBrowser.openBrowserAsync(link).catch(() => {})} style={({ pressed }) => ({ width: 52, height: 52, borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: pressed ? color.surfacePressed : color.card, alignItems: "center", justifyContent: "center" })}>
+              <ExternalLink size={20} color={color.ink} strokeWidth={2} />
+            </Pressable>
+          ) : null}
+          {permissions.canWrite ? (
+            <Pressable accessibilityRole="button" accessibilityState={{ selected: Boolean(item.savedAt), busy: save.isPending }} accessibilityLabel={item.savedAt ? "Retirer des offres enregistrées" : "Enregistrer pour comparer plus tard"} disabled={save.isPending} onPress={toggleSave} testID="radar-save" style={({ pressed }) => ({ width: 52, height: 52, borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: pressed ? color.surfacePressed : color.card, alignItems: "center", justifyContent: "center" })}>
+              <Bookmark size={20} color={item.savedAt ? color.accentInkOnSoft : color.ink} fill={item.savedAt ? color.accent : "transparent"} strokeWidth={2} />
+            </Pressable>
+          ) : null}
+          {canOrder ? <Button label="Préparer un brouillon" loading={po.create.isPending} onPress={() => setOrdering(true)} style={{ flex: 1 }} testID="radar-draft" /> : null}
+        </StickyActions>
+      }
+    >
+      <DetailHeader parentLabel="Radar" over={`${item.sku.code} · stock ${formatNumber(item.sku.quantityAvailable)} · ${formatNumber(item.sku.units30d)} ventes / 30 j`} title={item.sku.name} />
+      <Card padded style={{ gap: space[3] }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+          <SupplierLogo domain={null} name={o.supplierName} size={36} />
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Txt variant="body" style={{ fontFamily: "Manrope_700Bold" }} numberOfLines={1}>
+              {o.supplierName}
+            </Txt>
+            <Txt variant="code" numberOfLines={1} style={{ textTransform: "uppercase", fontSize: 10.5 }}>
+              {[o.availableQuantity !== null ? `${formatNumber(o.availableQuantity)} dispo` : o.stockStatus === "out_of_stock" ? "en rupture" : "stock ?", o.moq ? `MOQ ${o.moq}` : null, o.lastSeenAt ? `vu ${formatRelative(o.lastSeenAt)}` : "date inconnue"].filter(Boolean).join(" · ")}
+            </Txt>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Txt variant="price" num>
+              {o.price !== null && o.currency ? formatMoney(o.price, o.currency) : "—"}
+            </Txt>
+            <Txt variant="code" style={{ fontSize: 10.5 }}>
+              {o.taxType === "ht" ? "HT" : o.taxType === "ttc" ? "TTC" : "HT/TTC ?"}
+            </Txt>
+          </View>
+        </View>
+        <Txt variant="label" numberOfLines={2}>
           {o.title}
         </Txt>
-        <Txt variant="label">
-          {o.price !== null && o.currency ? formatMoney(o.price, o.currency) : "prix inconnu"}
-          {o.taxType === "ht" ? " HT" : o.taxType === "ttc" ? " TTC" : " (HT/TTC non précisé)"} · port fournisseur {o.shippingCost !== null ? formatMoney(o.shippingCost, o.currency ?? cur) : "non précisé"} · MOQ {o.moq ?? "non précisé"} · {o.availableQuantity !== null ? `${formatNumber(o.availableQuantity)} dispo.` : o.stockStatus === "in_stock" ? "en stock (quantité non communiquée)" : o.stockStatus === "out_of_stock" ? "en rupture" : "stock non communiqué"}
-        </Txt>
-        <Txt variant="label">
-          {PRICE_ORIGIN_LABEL[o.priceOrigin]} · {o.lastSeenAt ? `relevé le ${formatDateTime(o.lastSeenAt)}` : "date de relevé inconnue"}
-        </Txt>
-        {extras.length ? <Txt variant="label">Annoncé par le fournisseur : {extras.join(" · ")}</Txt> : null}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space[3] }}>
+          <StatusChip label={STATUS_LABEL[e.status]} tone={STATUS_TONE[e.status]} />
+          <ScoreBar score={e.score} />
+        </View>
       </Card>
 
-      {assessment ? (
-        <>
-          <SectionHeader title="Appréciation" />
-          <Card padded style={{ gap: space[2] }} accessibilityLabel={`Verdict : ${VERDICT_LABEL[assessment.verdict]}`}>
-            <StatusChip label={VERDICT_LABEL[assessment.verdict]} tone={VERDICT_TONE[assessment.verdict]} />
-            {assessment.verdictReasons.map((r) => (
-              <Txt key={r} variant="body">
-                – {r}
+      <View style={{ gap: space[3] }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: space[3] }}>
+          <View style={{ gap: 4, flexShrink: 1 }}>
+            <Txt variant="monoSm">Bénéfice estimé par unité</Txt>
+            <StageFigure value={profit === null ? "—" : `${e.status === "profitable" ? "" : "≈ "}${profit >= 0 ? "+" : "−"}${formatMoney(Math.abs(profit), cur)}`} size="sheet" onDark={false} tone={profit === null ? color.ink3 : profit >= 0 ? color.success : color.dangerInk} />
+          </View>
+          {e.marginPercent !== null ? (
+            <Txt variant="label" style={{ textAlign: "right" }}>
+              <Txt variant="label" num color={color.ink} style={{ fontFamily: "Manrope_700Bold" }}>
+                {formatNumber(e.marginPercent)} %
               </Txt>
-            ))}
-            {(
-              [
-                ["Compétitivité de l'offre", assessment.competitiveness],
-                ["Fiabilité de la source", assessment.sourceReliability],
-                ["Confiance des données", assessment.dataConfidence],
-              ] as const
-            ).map(([label, a]) => (
-              <View key={label} style={{ gap: 2, paddingTop: space[1] }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
-                  <Txt variant="body" style={{ flex: 1 }}>
-                    {label}
-                  </Txt>
-                  <Txt variant="body" num>
-                    {appraisalText(a)}
-                  </Txt>
-                </View>
-                {a.reasons.slice(0, 3).map((r) => (
-                  <Txt key={r} variant="label">
-                    {r}
-                  </Txt>
-                ))}
+              {"\n"}du prix de vente
+            </Txt>
+          ) : null}
+        </View>
+        <Txt variant="note">{FRESHNESS_LABEL[e.freshness]} · {PRICE_ORIGIN_LABEL[o.priceOrigin]}</Txt>
+      </View>
+
+      <MonoTitle title="Calcul par unité" />
+      {lines.length ? <MarginWaterfall lines={lines} format={(n) => formatMoney(n, cur)} /> : <Card padded><Txt variant="label">Calcul impossible : données essentielles manquantes.</Txt></Card>}
+
+      {missing.length ? (
+        <>
+          <MonoTitle title="À vérifier avant d'acheter" />
+          <View style={{ gap: 8 }}>
+            {missing.map((m) => (
+              <View key={m} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                <TriangleAlert size={15} color={color.accentInkOnSoft} strokeWidth={2.2} style={{ marginTop: 2 }} />
+                <Txt variant="label" color={color.accentInkOnSoft} style={{ flex: 1 }}>
+                  {m}
+                </Txt>
               </View>
             ))}
-            <Txt variant="label">Trois notes séparées : un bon prix ne compense jamais une donnée ancienne ou un stock non confirmé. Aucune recommandation ne déclenche d'achat.</Txt>
-          </Card>
+          </View>
+          {e.missing.length ? <Button label="Compléter mes coûts" variant="secondary" compact onPress={() => router.push("/radar/settings")} /> : null}
         </>
       ) : null}
 
       {scenarios.length ? (
         <>
-          <SectionHeader title="Scénarios de quantité" />
-          {scenarios.map((sc) => (
-            <Card key={`${sc.quantity}-${sc.label}`} padded style={{ gap: 4 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
-                <Txt variant="headline" style={{ flex: 1 }}>
-                  {formatNumber(sc.quantity)} unité{sc.quantity > 1 ? "s" : ""} · {sc.label}
+          <MonoTitle title="Scénarios de quantité" />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            {scenarios.map((sc) => (
+              <Card key={`${sc.quantity}-${sc.label}`} padded style={{ gap: 4, minWidth: 150 }}>
+                <Txt variant="body" style={{ fontFamily: "Manrope_700Bold" }}>
+                  {formatNumber(sc.quantity)} u. · {sc.label}
                 </Txt>
-                {sc.exceedsStock ? <StatusChip label="dépasse le stock annoncé" tone="danger" /> : null}
-              </View>
-              <Txt variant="label" color={color.ink}>
-                Capital {sc.capital === null ? "—" : formatMoney(sc.capital, cur)} · bénéfice total {sc.totalProfit === null ? "—" : formatMoney(sc.totalProfit, cur)} · coût rendu {sc.unitLandedCost === null ? "—" : formatMoney(sc.unitLandedCost, cur)} / u
-              </Txt>
-              {sc.assumption ? <Txt variant="label">Hypothèse : {sc.assumption}</Txt> : null}
-              {sc.missing.length ? (
-                <Txt variant="label" color={color.accentInkOnSoft}>
-                  Manque : {sc.missing.join(", ")}
+                <Txt variant="label" num>
+                  Capital {sc.capital === null ? "—" : formatMoney(sc.capital, cur)}
                 </Txt>
-              ) : null}
-            </Card>
-          ))}
+                <Txt variant="label" num color={sc.totalProfit !== null && sc.totalProfit < 0 ? color.dangerInk : color.success} style={{ fontFamily: "Manrope_700Bold" }}>
+                  Bénéfice ≈ {sc.totalProfit === null ? "—" : formatMoney(sc.totalProfit, cur)}
+                </Txt>
+                {sc.exceedsStock ? <StatusChip label="Dépasse le stock annoncé" tone="danger" /> : null}
+                {sc.missing.length ? (
+                  <Txt variant="note" color={color.accentInkOnSoft}>
+                    Manque : {sc.missing.join(", ")}
+                  </Txt>
+                ) : null}
+              </Card>
+            ))}
+          </View>
         </>
       ) : null}
 
       {peers.length ? (
         <>
-          <SectionHeader title={`Autres offres du même produit (${peers.length})`} />
-          <Card padded style={{ gap: space[2] }}>
-            {peers.map((p) => (
-              <View key={p.offerId} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[2] }}>
+          <MonoTitle title="Autres offres" count={peers.length} />
+          <Card>
+            {peers.map((p, i) => (
+              <View key={p.offerId} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[2], paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: i === peers.length - 1 ? 0 : 1, borderBottomColor: color.lineSoft }}>
                 <View style={{ flex: 1, gap: 2 }}>
                   <Txt variant="body" numberOfLines={1}>
                     {p.supplierName}
                   </Txt>
-                  <Txt variant="label" numberOfLines={1}>
-                    {p.availableQuantity !== null ? `${formatNumber(p.availableQuantity)} dispo.` : p.stockStatus === "out_of_stock" ? "en rupture" : "stock non confirmé"} · {p.ageDays === null ? "date inconnue" : `vu il y a ${p.ageDays} j`}
+                  <Txt variant="code" numberOfLines={1} style={{ fontSize: 10.5 }}>
+                    {p.availableQuantity !== null ? `${formatNumber(p.availableQuantity)} dispo` : p.stockStatus === "out_of_stock" ? "en rupture" : "stock ?"} · {p.ageDays === null ? "date ?" : `il y a ${p.ageDays} j`}
                   </Txt>
                 </View>
                 <View style={{ alignItems: "flex-end", gap: 2 }}>
-                  <Txt variant="body" num>
+                  <Txt variant="body" num style={{ fontFamily: "Manrope_700Bold" }}>
                     {p.landedCost === null ? "—" : formatMoney(p.landedCost, cur)}
                   </Txt>
                   <StatusChip label={VERDICT_LABEL[p.verdict]} tone={VERDICT_TONE[p.verdict]} />
                 </View>
               </View>
             ))}
-            <Txt variant="label">Coût rendu par unité, du moins cher au plus cher. Seules les offres rattachées au même article de votre stock sont comparées (rattachement confirmé ou fiche identifiée par marque, modèle et capacité), jamais sur la seule ressemblance du nom.</Txt>
           </Card>
+          <Txt variant="note">Coût rendu par unité ; seules les offres rattachées au même article sont comparées.</Txt>
         </>
       ) : null}
 
-      {e.reasons.length ? (
-        <>
-          <SectionHeader title="Pourquoi cette offre" />
-          <Card padded style={{ gap: 4 }}>
-            {e.reasons.map((r) => (
-              <Txt key={r} variant="body">
-                – {r}
-              </Txt>
-            ))}
-          </Card>
-        </>
-      ) : null}
-
-      <SectionHeader title="Calcul par unité" />
-      <Card padded style={{ gap: 6 }}>
-        {e.breakdown.length === 0 ? <Txt variant="label">Calcul impossible : données essentielles manquantes.</Txt> : null}
-        {e.breakdown.map((l, idx) => (
-          <View key={`${l.label}-${idx}`} style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
-            <Txt variant={/Marge brute|Bénéfice/.test(l.label) ? "headline" : "body"} style={{ flex: 1 }}>
-              {l.label}
+      {assessment ? (
+        <Collapsible title="Appréciation" summary={VERDICT_LABEL[assessment.verdict]} testID="radar-assessment">
+          {assessment.verdictReasons.map((r) => (
+            <Txt key={r} variant="label" color={color.ink2}>
+              – {r}
             </Txt>
-            <Txt variant={/Marge brute|Bénéfice/.test(l.label) ? "headline" : "body"} num>
-              {l.amount === null ? "—" : formatMoney(l.amount, cur)}
-            </Txt>
-          </View>
-        ))}
-        <Txt variant="label">Chiffre d'affaires, marge brute et bénéfice sont distincts : le bénéfice ne déduit que les coûts connus.</Txt>
-      </Card>
-
-      {e.missing.length ? (
-        <>
-          <SectionHeader title="Coûts ou données manquants" />
-          <Card padded style={{ gap: 4 }}>
-            {e.missing.map((m) => (
-              <Txt key={m} variant="body" color={color.accentInkOnSoft}>
-                – {m}
+          ))}
+          {(
+            [
+              ["Compétitivité", assessment.competitiveness],
+              ["Fiabilité de la source", assessment.sourceReliability],
+              ["Confiance des données", assessment.dataConfidence],
+            ] as const
+          ).map(([label, a]) => (
+            <View key={label} style={{ flexDirection: "row", justifyContent: "space-between", gap: space[2] }}>
+              <Txt variant="label" color={color.ink} style={{ flex: 1 }}>
+                {label}
               </Txt>
-            ))}
-            <Button label="Compléter mes paramètres de coûts" variant="ghost" onPress={() => router.push("/radar/settings")} />
-          </Card>
-        </>
-      ) : null}
-      {e.cautions.length ? (
-        <>
-          <SectionHeader title="Réserves" />
-          <Card padded style={{ gap: 4 }}>
-            {e.cautions.map((c) => (
-              <Txt key={c} variant="label">
-                – {c}
+              <Txt variant="label" num color={color.ink}>
+                {appraisalText(a)}
               </Txt>
-            ))}
-          </Card>
-        </>
+            </View>
+          ))}
+          {extras.length ? <Txt variant="note">Annoncé par le fournisseur : {extras.join(" · ")}</Txt> : null}
+          {e.reasons.length ? <Txt variant="note">{e.reasons.join(" ")}</Txt> : null}
+        </Collapsible>
       ) : null}
-
-      <View style={{ gap: space[2] }}>
-        {link ? <Button label="Voir l'offre chez le fournisseur" variant="secondary" onPress={() => void WebBrowser.openBrowserAsync(link).catch(() => {})} /> : null}
-        {permissions.canWrite ? <Button label={item.savedAt ? "Retirer des offres enregistrées" : "Enregistrer pour comparer plus tard"} variant="secondary" loading={save.isPending} onPress={toggleSave} /> : null}
-        {permissions.canWrite && o.price !== null ? <Button label="Préparer un brouillon de commande" loading={po.create.isPending} onPress={() => setOrdering(true)} /> : null}
-      </View>
+      <Txt variant="note">Estimation sur vos paramètres de coûts. Rien n'est commandé ni envoyé au fournisseur.</Txt>
 
       <BottomSheet visible={ordering && permissions.canWrite && o.price !== null} onClose={() => setOrdering(false)} title="Brouillon de commande fournisseur" description={`Rien n'est envoyé à ${o.supplierName} : le brouillon reste modifiable et supprimable.`}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -282,4 +275,13 @@ export default function RadarOfferScreen() {
       </BottomSheet>
     </Screen>
   );
+}
+
+/** Lignes de cascade depuis le calcul du radar : 1re = base, sous-totaux, bénéfice = résultat. Pur. */
+export function waterfallFromBreakdown(breakdown: { label: string; amount: number | null }[]): WaterfallLine[] {
+  return breakdown.map((l, i) => ({
+    label: l.label,
+    amount: l.amount,
+    kind: i === 0 ? "base" : /^Bénéfice/.test(l.label) ? "result" : /^(Marge brute|Coût d'achat rendu)/.test(l.label) ? "subtotal" : "minus",
+  }));
 }

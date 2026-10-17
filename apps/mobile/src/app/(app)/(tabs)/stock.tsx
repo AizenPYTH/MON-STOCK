@@ -216,10 +216,10 @@ function ProductRow({ product: p, first, last, restock, currency }: { product: P
               accessibilityLabel={`Racheter dès ${formatMoney(restock.bestPrice, currency)} chez ${restock.bestSupplier ?? "le fournisseur"}`}
               onPress={() => router.push({ pathname: "/radar/[offerId]", params: { offerId: restock.bestOfferId! } })}
               hitSlop={6}
-              style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", marginTop: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.xs, backgroundColor: pressed ? color.mintSoft : color.successSoft })}
+              style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", maxWidth: "100%", marginTop: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.xs, backgroundColor: pressed ? color.mintSoft : color.successSoft })}
             >
               <PackagePlus size={13} color={color.success} strokeWidth={2.2} />
-              <Txt variant="label" color={color.success} numberOfLines={1} style={{ fontFamily: "Manrope_700Bold", fontSize: 12 }}>
+              <Txt variant="label" color={color.success} numberOfLines={1} style={{ fontFamily: "Manrope_700Bold", fontSize: 12, flexShrink: 1 }}>
                 Racheter dès {formatMoney(restock.bestPrice, currency)}
                 {restock.bestSupplier ? ` · ${restock.bestSupplier}` : ""}
               </Txt>
