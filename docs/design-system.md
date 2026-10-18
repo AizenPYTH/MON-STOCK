@@ -119,10 +119,8 @@ ajustement automatique du texte) : une vérification sur iPhone reste nécessair
 ```bash
 npx tsx --conditions=react-server scripts/preview-api-fixtures.ts
 cd apps/mobile
-MONSTOCK_PREVIEW=1 MONSTOCK_PREVIEW_MODULES=<node_modules contenant react-native-web@0.21.2> \
-  EXPO_PUBLIC_SUPABASE_URL=https://preview.invalid EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_preview \
-  npx expo export --clear --platform web --output-dir /tmp/web-dist
-PLAYWRIGHT_MODULE=<chemin de playwright> node preview/capture.mjs /tmp/web-dist /tmp/shots "/today#full" "/sourcing?q=iphone%2013#full"
+bash preview/export-web.sh <node_modules contenant react-native-web@0.21.2> /tmp/web-dist
+node preview/capture.mjs /tmp/web-dist /tmp/shots "/today#full" "/sourcing?q=iphone%2013#full"
 ```
 
 `metro.config.js` ne remplace Supabase et l'API que si `MONSTOCK_PREVIEW=1` : une build normale
