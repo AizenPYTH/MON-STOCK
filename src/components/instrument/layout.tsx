@@ -36,7 +36,7 @@ export function SceneHeader({ eyebrow, title, description, actions, back }: { ey
 }
 
 /** Relevés de scène : 2 à 4 valeurs séparées par des filets ; « — » si inconnu. */
-export type StageStat = { label: string; value: ReactNode | null; note?: ReactNode; tone?: "mint" | "warning" | "danger"; href?: string };
+export type StageStat = { label: string; value: ReactNode | null; note?: ReactNode; noteTone?: "warning" | "muted"; tone?: "mint" | "warning" | "danger"; href?: string };
 
 export function StageStats({ stats, className, size = "md" }: { stats: StageStat[]; className?: string; size?: "md" | "sm" }) {
   return (
@@ -48,7 +48,7 @@ export function StageStats({ stats, className, size = "md" }: { stats: StageStat
             <dt className="ms-mono truncate text-[10px] leading-[13px] text-on-night-subtle">{s.label}</dt>
             <dd className={cn("mt-1.5 flex min-w-0 items-baseline gap-1.5 font-bold tnum", size === "md" ? "text-[20px] leading-[26px]" : "text-[17px] leading-[22px]", tone)}>
               <span className="truncate">{s.value ?? "—"}</span>
-              {s.note ? <span className="truncate text-[13px] font-semibold text-amber">{s.note}</span> : null}
+              {s.note ? <span className={cn("truncate text-[13px] font-semibold", s.noteTone === "muted" ? "text-on-night-muted" : "text-amber")}>{s.note}</span> : null}
             </dd>
           </>
         );
@@ -69,6 +69,10 @@ export function StageStats({ stats, className, size = "md" }: { stats: StageStat
 }
 
 /** Carte blanche à filet, rayon 16, sans ombre (charte v5). */
-export function Panel({ children, className, as: Tag = "div" }: { children: ReactNode; className?: string; as?: "div" | "section" | "article" | "li" }) {
-  return <Tag className={cn("rounded-2xl border border-border bg-surface", className)}>{children}</Tag>;
+export function Panel({ children, className, id, as: Tag = "div" }: { children: ReactNode; className?: string; id?: string; as?: "div" | "section" | "article" | "li" }) {
+  return (
+    <Tag id={id} className={cn("scroll-mt-20 rounded-2xl border border-border bg-surface", className)}>
+      {children}
+    </Tag>
+  );
 }
