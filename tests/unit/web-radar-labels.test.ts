@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageDaysText, appraisalText, classifyBreakdown, filterItems, parseRadarParams, parseSetting, profitPrefix, settingText } from "@/features/radar/labels";
+import { ageDaysText, appraisalText, classifyBreakdown, filterItems, parseRadarParams, parseSetting, profitPrefix, radarFigure, radarHref, settingText, signedProfit } from "@/features/radar/labels";
 import { parseDraftQuantity, parseSettingsForm } from "@/features/radar/settings-form";
 
 const form = (entries: Record<string, string>) => {
@@ -108,5 +108,25 @@ describe("radar — paramètres de coûts", () => {
     expect(parseDraftQuantity(null, null).ok).toBe(false);
     expect(parseDraftQuantity("200000", null).ok).toBe(false);
     expect(parseDraftQuantity("1", null)).toEqual({ ok: true, quantity: 1 });
+  });
+});
+
+describe("radar — présentation v5", () => {
+  it("scène : bénéfice positif = rentables + estimations, sur toutes les offres évaluées", () => {
+    expect(radarFigure({ profitable: 2, estimated: 5, unprofitable: 1, insufficient: 1 })).toEqual({ positive: 7, evaluated: 9 });
+    expect(radarFigure({ profitable: 0, estimated: 0, unprofitable: 0, insufficient: 0 })).toEqual({ positive: 0, evaluated: 0 });
+  });
+
+  it("bénéfice signé : exact si coûts complets, « ≈ » sinon, « — » si inconnu", () => {
+    const f = (n: number) => `${n.toFixed(2)} €`;
+    expect(signedProfit(38.2, "profitable", f)).toBe("+38.20 €");
+    expect(signedProfit(38.2, "estimated", f)).toBe("≈ +38.20 €");
+    expect(signedProfit(-1.5, "unprofitable", f)).toBe("≈ −1.50 €");
+    expect(signedProfit(null, "insufficient_data", f)).toBe("—");
+  });
+
+  it("lien conservant tri et filtre", () => {
+    expect(radarHref({ sort: "score", filter: "all" })).toBe("/radar");
+    expect(radarHref({ sort: "profit", filter: "saved", offer: "abc" })).toBe("/radar?sort=profit&filter=saved&offer=abc");
   });
 });

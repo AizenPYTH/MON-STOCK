@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, EmptyState } from "@/components/ui/page";
+import { EmptyState } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -21,15 +22,18 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
   const writable = canWrite(ctx.role);
   return (
     <>
-      <PageHeader
+      <Scene>
+        <SceneHeader
         eyebrow={
-          <Link href="/sourcing" className="hover:text-foreground">
+          <Link href="/sourcing" className="hover:text-on-night">
             Sourcing
           </Link>
         }
         title="Correspondances à valider"
         description="Suggestions d'association entre offres fournisseurs et vos SKU. Rien n'est lié sans votre confirmation (sauf identifiant exact EAN / référence)."
       />
+      </Scene>
+      <Paper>
       {result.rows.length === 0 ? (
         <EmptyState title="Aucune correspondance en attente." description="Les suggestions apparaissent après l'import d'offres (flux, pages, saisie) lorsqu'un SKU ressemble sans être certain." />
       ) : (
@@ -99,6 +103,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
           <Pagination page={result.page} pageSize={result.pageSize} total={result.total} makeHref={(p) => `/sourcing/matches?page=${p}`} />
         </div>
       )}
+      </Paper>
     </>
   );
 }

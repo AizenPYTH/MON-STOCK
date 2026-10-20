@@ -154,3 +154,34 @@ export function ageDaysText(days: number | null): string {
   if (days === null) return "date inconnue";
   return days <= 0 ? "aujourd'hui" : `il y a ${days} j`;
 }
+
+/** Origine du prix en quelques mots (cartes du radar). */
+export const PRICE_ORIGIN_SHORT: Record<RadarItemDTO["offer"]["priceOrigin"], string> = {
+  verified_live: "Prix vérifié en direct",
+  observed_public: "Site public",
+  catalog_import: "Catalogue importé",
+  supplier_communicated: "Communiqué par le fournisseur",
+  manual_entry: "Saisie manuelle",
+  unknown: "Origine inconnue",
+};
+
+/** Scène du radar : offres à bénéfice positif (rentables + estimations) sur l'ensemble des offres évaluées. */
+export function radarFigure(c: { profitable: number; estimated: number; unprofitable: number; insufficient: number }): { positive: number; evaluated: number } {
+  return { positive: c.profitable + c.estimated, evaluated: c.profitable + c.estimated + c.unprofitable + c.insufficient };
+}
+
+/** Bénéfice signé : « ≈ +38,20 € » (estimation) ou « +38,20 € » (coûts complets) ; « — » si inconnu. */
+export function signedProfit(profit: number | null, status: Status, format: (n: number) => string): string {
+  if (profit === null) return "—";
+  return `${profitPrefix(status)}${profit >= 0 ? "+" : "−"}${format(Math.abs(profit))}`;
+}
+
+/** Lien vers une offre du radar en conservant le tri et le filtre (`?offer=` ouvre le détail à droite). */
+export function radarHref(params: { sort: RadarSort; filter: RadarFilter; offer?: string | null }): string {
+  const sp = new URLSearchParams();
+  if (params.sort !== "score") sp.set("sort", params.sort);
+  if (params.filter !== "all") sp.set("filter", params.filter);
+  if (params.offer) sp.set("offer", params.offer);
+  const q = sp.toString();
+  return `/radar${q ? `?${q}` : ""}`;
+}

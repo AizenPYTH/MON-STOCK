@@ -1,19 +1,17 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bell, GitMerge, Layers, Radar } from "lucide-react";
+import { Bell, ChevronRight, GitMerge, Layers, Library, Radar, Upload } from "lucide-react";
 import { requireOrgContext } from "@/features/auth/dal";
-import { PageHeader, Callout } from "@/components/ui/page";
-import { ButtonLink } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { MonoTitle, Paper } from "@/components/instrument";
 import { countPendingMatches, countUnseenAlertEvents } from "@/features/sourcing/queries";
 import { legacyCatalogHref } from "@/features/sourcing-search/legacy";
-import { MIN_QUERY_LENGTH, SEARCH_EXAMPLES, normalizeQuery } from "@/features/sourcing-search/display";
-import { SupplierSearchForm } from "@/features/sourcing-search/components/search-form";
+import { MIN_QUERY_LENGTH, normalizeQuery } from "@/features/sourcing-search/display";
+import { SearchExamples, SourcingScene } from "@/features/sourcing-search/components/search-scene";
 import { SearchPending, SearchSection } from "@/features/sourcing-search/components/search-section";
 
-export const metadata: Metadata = { title: "Sourcing" };
+export const metadata: Metadata = { title: "Recherche fournisseurs" };
 // recherche en direct : jusqu'à ~35 s chez les fournisseurs, puis lecture et analyse des offres
 export const maxDuration = 60;
 
@@ -24,79 +22,80 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
   if (legacy) redirect(legacy as never);
   const ctx = await requireOrgContext();
   const query = normalizeQuery(raw.q);
-  const [pendingMatches, unseenEvents] = await Promise.all([countPendingMatches(ctx), countUnseenAlertEvents(ctx)]);
 
+  if (query.length >= MIN_QUERY_LENGTH) {
+    return (
+      <Suspense key={query} fallback={<SearchPending query={query} />}>
+        <SearchSection ctx={ctx} query={query} />
+      </Suspense>
+    );
+  }
+
+  const [pendingMatches, unseenEvents] = await Promise.all([countPendingMatches(ctx), countUnseenAlertEvents(ctx)]);
   return (
     <>
-      <PageHeader
-        title="Sourcing"
-        description="Cherchez un produit : MON STOCK interroge vos fournisseurs, compare les prix du moins cher au plus cher et estime la marge quand des produits équivalents existent. Les estimations sont signalées « ≈ »."
-        actions={
-          <>
-            <ButtonLink href="/sourcing/catalog" variant="ghost">
-              <Layers className="h-4 w-4" aria-hidden="true" /> Offres collectées
-            </ButtonLink>
-            <ButtonLink href="/radar" variant="ghost">
-              <Radar className="h-4 w-4" aria-hidden="true" /> Radar d&apos;achat
-            </ButtonLink>
-            <ButtonLink href="/sourcing/matches" variant="ghost">
-              <GitMerge className="h-4 w-4" aria-hidden="true" /> Correspondances{pendingMatches > 0 ? ` (${pendingMatches})` : ""}
-            </ButtonLink>
-            <ButtonLink href="/sourcing/alerts" variant="secondary">
-              <Bell className="h-4 w-4" aria-hidden="true" /> Alertes{unseenEvents > 0 ? ` (${unseenEvents})` : ""}
-            </ButtonLink>
-          </>
+      <SourcingScene
+        query={query}
+        below={
+          query ? (
+            <p role="status" className="text-[13px] font-semibold text-amber">
+              Tapez au moins {MIN_QUERY_LENGTH} caractères, par exemple « iPhone 13 » ou « batterie trottinette ».
+            </p>
+          ) : (
+            <SearchExamples />
+          )
         }
       />
-      <div className="space-y-5">
-        <SupplierSearchForm query={query} />
-        {!query ? (
-          <Intro />
-        ) : query.length < MIN_QUERY_LENGTH ? (
-          <Callout tone="warning">Tapez au moins {MIN_QUERY_LENGTH} caractères, par exemple « iPhone 13 » ou « batterie trottinette ».</Callout>
-        ) : (
-          <Suspense key={query} fallback={<SearchPending query={query} />}>
-            <SearchSection ctx={ctx} query={query} />
-          </Suspense>
-        )}
-      </div>
+      <Paper>
+        <div className="grid max-w-[1280px] gap-8 lg:grid-cols-[7fr_5fr]">
+          <section className="min-w-0 space-y-2.5" aria-label="Comment fonctionne la recherche">
+            <MonoTitle title="Comment ça marche" as="h2" />
+            <ol className="divide-y divide-line-soft rounded-2xl border border-border bg-surface">
+              {[
+                ["Vos fournisseurs en direct", "MON STOCK interroge vos comptes pro, vos flux et les sources publiques autorisées (jusqu'à ~35 s), puis les offres déjà enregistrées."],
+                ["Du moins cher au plus cher", "Vos comptes passent en premier, puis toutes les offres par catégorie détectée (appareils, écrans, batteries…), prix d'origine et conversion « ≈ € »."],
+                ["Marge estimée, jamais inventée", "Une marge n'est calculée que face à des produits équivalents ; sans tous vos coûts, elle est « provisoire ». Un inconnu s'affiche « — »."],
+              ].map(([t, d], i) => (
+                <li key={t} className="flex gap-3 px-3.5 py-3">
+                  <span className="ms-code flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-background text-[11px] text-muted">{i + 1}</span>
+                  <span className="min-w-0">
+                    <span className="block text-[15px] font-semibold leading-5">{t}</span>
+                    <span className="block text-[13px] font-semibold leading-[18px] text-ink-3">{d}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
+          <section className="min-w-0 space-y-2.5" aria-label="Explorer">
+            <MonoTitle title="Explorer" as="h2" />
+            <div className="grid grid-cols-2 gap-2">
+              <Tile href="/sourcing/catalog" icon={<Layers />} label="Offres collectées" />
+              <Tile href="/radar" icon={<Radar />} label="Radar d'achat" />
+              <Tile href="/sourcing/matches" icon={<GitMerge />} label="Correspondances" count={pendingMatches} />
+              <Tile href="/sourcing/alerts" icon={<Bell />} label="Alertes" count={unseenEvents} />
+              <Tile href="/suppliers" icon={<Library />} label="Fournisseurs" />
+              <Tile href="/sourcing/imports" icon={<Upload />} label="Imports" />
+            </div>
+          </section>
+        </div>
+      </Paper>
     </>
   );
 }
 
-function Intro() {
+function Tile({ href, icon, label, count }: { href: string; icon: ReactNode; label: string; count?: number }) {
   return (
-    <div className="space-y-5">
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Essayez</p>
-        <ul className="flex flex-wrap gap-2">
-          {SEARCH_EXAMPLES.map((e) => (
-            <li key={e}>
-              <Link href={`/sourcing?q=${encodeURIComponent(e)}` as never} className="inline-flex rounded-full border border-border bg-surface px-3 py-1.5 text-sm hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Chercher ${e}`}>
-                {e}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        <ShortcutCard href="/sourcing/catalog" title="Offres collectées" text="Toutes les offres de vos sources : podium, filtres avancés (grade, MOQ, pays…), mode « Trouver moins cher » pour un SKU." />
-        <ShortcutCard href="/radar" title="Radar d'achat" text="Vos produits en rupture ou en stock faible face aux offres rapprochées : bénéfice estimé, verdict, brouillon de commande." />
-        <ShortcutCard href="/suppliers" title="Fournisseurs et sources" text="Ajoutez une page publique autorisée, un flux ou un compte fournisseur : vos prix pro passent en premier." />
-      </div>
-    </div>
-  );
-}
-
-function ShortcutCard({ href, title, text }: { href: "/sourcing/catalog" | "/radar" | "/suppliers"; title: string; text: string }) {
-  return (
-    <Card>
-      <CardContent className="space-y-1 py-4">
-        <Link href={href} className="text-sm font-semibold text-foreground hover:underline">
-          {title}
-        </Link>
-        <p className="text-xs text-muted">{text}</p>
-      </CardContent>
-    </Card>
+    <Link href={href as never} className="flex min-h-[88px] flex-col justify-between rounded-2xl border border-border bg-surface p-3 hover:bg-line-soft">
+      <span className="flex items-center justify-between">
+        <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[10px] bg-background [&>svg]:h-4 [&>svg]:w-4" aria-hidden="true">
+          {icon}
+        </span>
+        {count ? <span className="ms-code text-[11px] text-foreground tnum">{count}</span> : null}
+      </span>
+      <span className="flex items-center justify-between text-[13.5px] font-bold">
+        {label}
+        <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-ink-3" />
+      </span>
+    </Link>
   );
 }

@@ -5,7 +5,7 @@
  * (`simpleSupplierSearch`) ; une estimation est marquée « ≈ », un inconnu « — ».
  */
 import type { SimpleDealDTO, SimpleOfferDTO, SimpleRankedOfferDTO, SimpleSearchDTO } from "@/features/mobile-api/contract";
-import { categoryOf, queryTargetsDevice, type OfferCategory } from "@/domain/sourcing/offer-display";
+import { categoryOf, OFFER_CATEGORIES, OFFER_CATEGORY_LABEL, queryTargetsDevice, shortSupplierName, type OfferCategory } from "@/domain/sourcing/offer-display";
 import { formatMoney, formatNumber } from "@/lib/format";
 
 export const MIN_QUERY_LENGTH = 2;
@@ -13,12 +13,13 @@ export const SEARCH_EXAMPLES = ["iPhone 13", "iPhone 15 Pro", "Écran iPhone 12"
 /** au-delà de 7 jours, l'âge du prix est signalé */
 export const STALE_PRICE_DAYS = 7;
 
-export type SearchSort = "price" | "deals";
+export type SearchSort = "price" | "deals" | "supplier";
 
-export const SORT_LABEL: Record<SearchSort, string> = { price: "Moins cher", deals: "Meilleures affaires" };
+export const SORT_LABEL: Record<SearchSort, string> = { price: "Prix", deals: "Opportunités", supplier: "Fournisseurs" };
 export const SORT_HINT: Record<SearchSort, string> = {
-  price: "Vos comptes d'abord, puis du moins cher au plus cher.",
-  deals: "Meilleure rentabilité estimée d'abord.",
+  price: "Vos comptes d'abord, puis du moins cher au plus cher, par catégorie détectée.",
+  deals: "Meilleure rentabilité estimée d'abord, par catégorie détectée.",
+  supplier: "Regroupées par fournisseur, du moins cher au plus cher.",
 };
 
 export const STOCK_TEXT: Record<SimpleOfferDTO["stock"], string> = {
@@ -82,10 +83,50 @@ export function defaultCategory(query: string, byCategory: Map<OfferCategory, un
   return queryTargetsDevice(query) && (byCategory.get("devices")?.length ?? 0) > 0 ? "devices" : "all";
 }
 
-/** Offres affichées pour une catégorie et un tri. */
+/** Offres affichées pour une catégorie et un tri (« Fournisseurs » garde l'ordre de prix). */
 export function visibleOffers(ranked: SimpleRankedOfferDTO[], category: OfferCategory | "all", sort: SearchSort): SimpleRankedOfferDTO[] {
   const inCategory = category === "all" ? ranked : ranked.filter((o) => categoryOf(o.title) === category);
   return sort === "deals" ? bestDeals(inCategory) : inCategory;
+}
+
+export interface OfferGroup<T> {
+  key: string;
+  label: string;
+  rows: T[];
+}
+
+/**
+ * Groupes du tableau : par catégorie détectée (Prix : vos comptes d'abord puis du moins cher au plus
+ * cher ; Opportunités : ordre de rentabilité), ou par fournisseur (ordre d'apparition au prix).
+ * `limit` coupe la liste après N lignes au total (pagination « Afficher plus »).
+ */
+export function offerGroups<T extends SimpleRankedOfferDTO>(offers: T[], sort: SearchSort, limit = Number.POSITIVE_INFINITY): OfferGroup<T>[] {
+  let groups: OfferGroup<T>[];
+  if (sort === "supplier") {
+    const m = new Map<string, OfferGroup<T>>();
+    for (const o of offers) {
+      const g = m.get(o.supplierId);
+      if (g) g.rows.push(o);
+      else m.set(o.supplierId, { key: `s-${o.supplierId}`, label: shortSupplierName(o.supplierName), rows: [o] });
+    }
+    groups = [...m.values()];
+  } else {
+    const byCat = groupByCategory(offers);
+    groups = OFFER_CATEGORIES.filter((c) => (byCat.get(c)?.length ?? 0) > 0).map((c) => {
+      const rows = byCat.get(c) ?? [];
+      const ordered = sort === "price" ? [...splitByAccess(rows).account, ...splitByAccess(rows).other] : rows;
+      return { key: `c-${c}`, label: OFFER_CATEGORY_LABEL[c], rows: ordered };
+    });
+  }
+  const out: OfferGroup<T>[] = [];
+  let left = limit;
+  for (const g of groups) {
+    if (left <= 0) break;
+    const rows = g.rows.slice(0, left);
+    left -= rows.length;
+    out.push({ ...g, rows });
+  }
+  return out;
 }
 
 /** Meilleure opportunité : la première offre « intéressante » (ou mieux) dont la marge est calculée. */
@@ -107,6 +148,21 @@ export function priceView(o: Pick<SimpleOfferDTO, "price" | "currency" | "priceC
   const tax = o.price === null ? null : o.taxType === "ht" ? "HT" : o.taxType === "ttc" ? "TTC" : null;
   const converted = o.currency && o.currency.toUpperCase() !== orgCurrency.toUpperCase() && o.priceConverted !== null ? `≈ ${formatMoney(o.priceConverted, orgCurrency)}` : null;
   return { price, tax, converted };
+}
+
+export function taxLabel(taxType: SimpleOfferDTO["taxType"]): string {
+  return taxType === "ht" ? "HT" : taxType === "ttc" ? "TTC" : "HT/TTC ?";
+}
+
+/** Âge court d'un prix : « 3 min », « 5 h », « 2 j » ; null si la date est inconnue. */
+export function shortAge(seenAt: string | null, now: Date = new Date()): string | null {
+  if (!seenAt) return null;
+  const t = new Date(seenAt).getTime();
+  if (Number.isNaN(t)) return null;
+  const min = Math.max(0, Math.floor((now.getTime() - t) / 60_000));
+  if (min < 60) return `${Math.max(1, min)} min`;
+  if (min < 1440) return `${Math.floor(min / 60)} h`;
+  return `${Math.floor(min / 1440)} j`;
 }
 
 export function stockText(o: Pick<SimpleOfferDTO, "quantity" | "stock">): string {
@@ -189,6 +245,51 @@ export function rulerCaption(d: Pick<SimpleDealDTO, "totalCost" | "marketPrice" 
   if (d.totalCost === null || d.marketPrice === null) return null;
   const gap = d.marketPrice > 0 ? Math.round((d.totalCost / d.marketPrice - 1) * 1000) / 10 : null;
   return `Coût ${formatMoney(d.totalCost, orgCurrency)} · marché ${formatMoney(d.marketPrice, orgCurrency)} (${d.marketCount})${gap !== null ? ` · ${gap > 0 ? "+" : "−"}${formatNumber(Math.abs(gap), 1)} %` : ""}`;
+}
+
+/** Légende courte de la règle (tableau) : « −8 % · 14 offres » ou « 2 offres équivalentes ». */
+export function rulerShortCaption(d: Pick<SimpleDealDTO, "totalCost" | "marketPrice" | "marketCount">): string {
+  const n = d.marketCount;
+  if (d.totalCost === null || d.marketPrice === null || !(d.marketPrice > 0)) return `${n} offre${n > 1 ? "s" : ""} équivalente${n > 1 ? "s" : ""}`;
+  const gap = Math.round((d.totalCost / d.marketPrice - 1) * 100);
+  return `${gap > 0 ? "+" : gap < 0 ? "−" : ""}${Math.abs(gap)} % · ${n} offre${n > 1 ? "s" : ""}`;
+}
+
+/** « 32 % sous la médiane de 7 offres équivalentes » (coût rendu face au marché) ; null si incomparable. */
+export function marketGapText(d: Pick<SimpleDealDTO, "totalCost" | "marketPrice" | "marketCount">): string | null {
+  if (d.totalCost === null || d.marketPrice === null || !(d.marketPrice > 0)) return null;
+  const gap = Math.round((1 - d.totalCost / d.marketPrice) * 100);
+  const of = `de ${d.marketCount} offre${d.marketCount > 1 ? "s" : ""} équivalente${d.marketCount > 1 ? "s" : ""}`;
+  if (gap === 0) return `Au niveau de la médiane ${of}`;
+  return gap > 0 ? `${gap} % sous la médiane ${of}` : `${Math.abs(gap)} % au-dessus de la médiane ${of}`;
+}
+
+export interface WaterfallStep {
+  label: string;
+  note?: string;
+  amount: number | null;
+  kind: "base" | "minus" | "subtotal" | "result";
+}
+
+const RESALE_NOTE: Record<NonNullable<SimpleDealDTO["resaleBasis"]>, string> = { own_sales: "vos ventes 30 j", own_price: "votre prix", marketplace_low: "bas du marché" };
+
+/**
+ * Cascade du panneau d'analyse (handoff v5) : Revente → Achat → Frais d'achat → Coût rendu →
+ * Frais de vente et taxes → Marge. Uniquement si la marge est calculée par le serveur ; les frais ne
+ * sont affichés que s'ils se déduisent des montants du serveur (jamais supposés).
+ */
+export function analysisWaterfall(d: SimpleDealDTO, taxType: SimpleOfferDTO["taxType"]): WaterfallStep[] {
+  if (d.margin === null) return [];
+  const lines: WaterfallStep[] = [{ label: "Revente", note: d.resaleBasis ? RESALE_NOTE[d.resaleBasis] : undefined, amount: d.resalePrice, kind: "base" }];
+  lines.push({ label: "Achat", note: taxLabel(taxType), amount: d.supplierPrice, kind: "minus" });
+  if (d.totalCost !== null && d.supplierPrice !== null && d.totalCost - d.supplierPrice > 0.005) lines.push({ label: "Frais d'achat", note: "port, change", amount: r2(d.totalCost - d.supplierPrice), kind: "minus" });
+  lines.push({ label: "Coût rendu", note: "achat + frais", amount: d.totalCost, kind: "subtotal" });
+  if (d.resalePrice !== null && d.totalCost !== null) {
+    const rest = r2(d.resalePrice - d.totalCost - d.margin);
+    if (rest > 0.005) lines.push({ label: "Frais de vente et taxes", note: "vos paramètres", amount: rest, kind: "minus" });
+  }
+  lines.push({ label: "Marge estimée", amount: d.margin, kind: "result" });
+  return lines;
 }
 
 export function rulerEmptyCaption(d: Pick<SimpleDealDTO, "marketCount">): string {

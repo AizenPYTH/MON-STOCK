@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, EmptyState } from "@/components/ui/page";
+import { EmptyState } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -38,9 +39,10 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
 
   return (
     <>
-      <PageHeader
+      <Scene>
+        <SceneHeader
         eyebrow={
-          <Link href="/sourcing" className="hover:text-foreground">
+          <Link href="/sourcing" className="hover:text-on-night">
             Sourcing
           </Link>
         }
@@ -51,7 +53,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
             <>
               <EvaluateAlertsButton />
               {totalUnseen > 0 ? (
-                <ActionButtonForm action={markAlertEventsSeenAction} variant="ghost" size="md">
+                <ActionButtonForm action={markAlertEventsSeenAction} variant="night" size="md">
                   Tout marquer comme vu ({totalUnseen})
                 </ActionButtonForm>
               ) : null}
@@ -62,6 +64,8 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
           ) : null
         }
       />
+      </Scene>
+      <Paper>
       <div className="space-y-6">
         {formValues ? <AlertForm initial={formValues} currency={currency} /> : null}
         {alerts.length === 0 && !formValues ? (
@@ -144,6 +148,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
           })
         )}
       </div>
+      </Paper>
     </>
   );
 }

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Bell, GitMerge } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, EmptyState, Callout } from "@/components/ui/page";
+import { EmptyState, Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { ButtonLink } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { searchOffers } from "@/services/sourcing/search";
@@ -79,25 +80,28 @@ export default async function SourcingCatalogPage({ searchParams }: { searchPara
 
   return (
     <>
-      <PageHeader
+      <Scene>
+        <SceneHeader
         title={skuMode ? (skuMode.costPrice !== null ? "Trouver moins cher" : "Trouver du stock") : "Offres collectées"}
         eyebrow={
-          <Link href="/sourcing" className="hover:text-foreground">
+          <Link href="/sourcing" className="hover:text-on-night">
             Sourcing
           </Link>
         }
-        description={skuMode ? <span>Offres fournisseurs pour <code className="font-mono text-foreground">{skuMode.code}</code> — {skuMode.productName}{skuMode.variantName && skuMode.variantName !== "Standard" ? ` · ${skuMode.variantName}` : ""}.</span> : "Offres collectées auprès de vos sources (moteur complet : podium, filtres avancés, détail par source). Chaque recherche interroge en direct vos sources connectées (pages publiques autorisées, JSON/flux publics, comptes fournisseurs) puis compare les offres — prix normalisés, MOQ, délais, marge potentielle. Rien n'est inventé : une donnée absente est affichée « Non communiqué »."}
+        description={skuMode ? <span>Offres fournisseurs pour <code className="font-mono text-on-night">{skuMode.code}</code> — {skuMode.productName}{skuMode.variantName && skuMode.variantName !== "Standard" ? ` · ${skuMode.variantName}` : ""}.</span> : "Offres collectées auprès de vos sources (moteur complet : podium, filtres avancés, détail par source). Chaque recherche interroge en direct vos sources connectées (pages publiques autorisées, JSON/flux publics, comptes fournisseurs) puis compare les offres — prix normalisés, MOQ, délais, marge potentielle. Rien n'est inventé : une donnée absente est affichée « Non communiqué »."}
         actions={
           <>
-            <ButtonLink href="/sourcing/matches" variant="ghost">
-              <GitMerge className="h-4 w-4" /> Correspondances{pendingMatches > 0 ? ` (${pendingMatches})` : ""}
+            <ButtonLink href="/sourcing/matches" variant="night">
+              <GitMerge className="h-4 w-4" aria-hidden="true" /> Correspondances{pendingMatches > 0 ? ` (${pendingMatches})` : ""}
             </ButtonLink>
-            <ButtonLink href="/sourcing/alerts" variant="secondary">
-              <Bell className="h-4 w-4" /> Alertes{unseenEvents > 0 ? ` (${unseenEvents})` : ""}
+            <ButtonLink href="/sourcing/alerts" variant="night">
+              <Bell className="h-4 w-4" aria-hidden="true" /> Alertes{unseenEvents > 0 ? ` (${unseenEvents})` : ""}
             </ButtonLink>
           </>
         }
       />
+      </Scene>
+      <Paper>
       <div className="space-y-5">
         <SourcingSearchForm params={params} suppliers={supplierRows ?? []} skuCode={result.sku?.code ?? params.sku ?? null} liveEnabled={liveEnabled} toggleLiveHref={toggleLiveHref} />
         {params.sku && !result.sku ? <Callout tone="warning">SKU « {params.sku} » introuvable : la recherche porte uniquement sur le texte saisi.</Callout> : null}
@@ -123,7 +127,7 @@ export default async function SourcingCatalogPage({ searchParams }: { searchPara
 
         {skuMode ? <CurrentSupplierComparison sku={skuMode} offers={result.skuTopOffers} bestSavings={result.bestSavings} requestedQuantity={result.requestedQuantity} currency={currency} totalOffers={result.total} /> : null}
 
-        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
             {hasQuery ? <PipelineStrip live={live} total={result.total} duplicatesCollapsed={duplicatesCollapsed} connectedSources={result.connectedSources} stage={result.stage} /> : null}
             {!hasQuery && result.total === 0 ? (
@@ -189,6 +193,7 @@ export default async function SourcingCatalogPage({ searchParams }: { searchPara
         </div>
         {pendingDiscovered.length > 0 || result.discovery.configured ? <DiscoveredSourcesPanel sources={pendingDiscovered} writable={writable} /> : null}
       </div>
+      </Paper>
     </>
   );
 }

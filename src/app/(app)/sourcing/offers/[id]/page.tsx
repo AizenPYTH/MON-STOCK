@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink, AlertTriangle } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, DescriptionList, Stat, Callout } from "@/components/ui/page";
+import { DescriptionList, Stat, Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -65,9 +66,10 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
 
   return (
     <>
-      <PageHeader
+      <Scene>
+        <SceneHeader
         eyebrow={
-          <Link href="/sourcing/catalog" className="hover:text-foreground">
+          <Link href="/sourcing/catalog" className="hover:text-on-night">
             Offres collectées
           </Link>
         }
@@ -79,7 +81,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
         }
         description={
           <span>
-            <Link href={`/suppliers/${o.supplier_id}` as never} className="font-medium text-foreground hover:underline">
+            <Link href={`/suppliers/${o.supplier_id}` as never} className="font-bold text-on-night hover:underline">
               {o.supplier?.name ?? "Fournisseur"}
             </Link>
             {" · "}
@@ -90,7 +92,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
             {" · "}
             <ConfidenceBadge confidence={d.confidenceBadge} showReasons />
             {" · "}
-            <span className={d.freshness.stale ? "text-amber-700" : ""}>
+            <span className={d.freshness.stale ? "text-amber" : ""}>
               {d.freshness.label}
               {d.freshness.warning ? ` · ${d.freshness.warning}` : ""}
             </span>
@@ -99,8 +101,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
         actions={
           <>
             {o.source_url ? (
-              <ButtonLink href={o.source_url} variant="secondary">
-                <ExternalLink className="h-4 w-4" /> Voir la source
+              <ButtonLink href={o.source_url} variant="night">
+                <ExternalLink className="h-4 w-4" aria-hidden="true" /> Voir la source
               </ButtonLink>
             ) : null}
             {writable ? <LinkOfferDialog offerId={o.id} currentSkuCode={o.sku?.code ?? null} label={o.sku ? "Changer le SKU associé" : "Associer à un SKU"} size="md" /> : null}
@@ -110,6 +112,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
           </>
         }
       />
+      </Scene>
+      <Paper>
 
       {o.status === "expired" ? <Callout tone="warning" className="mb-5" title="Offre expirée">Cette offre n'a plus été vue par sa source lors de la dernière synchronisation{o.expired_at ? ` (${formatDateTime(o.expired_at)})` : ""}. Elle est conservée pour l'historique.</Callout> : null}
       {o.anomalies.length > 0 ? (
@@ -327,6 +331,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
           ) : null}
         </div>
       </div>
+      </Paper>
     </>
   );
 }

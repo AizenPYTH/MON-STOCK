@@ -1,28 +1,36 @@
 import "server-only";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { SearchX } from "lucide-react";
+import { RotateCw, SearchX, WifiOff } from "lucide-react";
 import type { OrgContext } from "@/features/auth/dal";
 import type { SimpleSearchDTO } from "@/features/mobile-api/contract";
-import { Badge } from "@/components/ui/badge";
-import { ButtonLink } from "@/components/ui/button";
-import { Callout, EmptyState, LoadingRegion, Skeleton, TableSkeleton } from "@/components/ui/page";
+import { Paper } from "@/components/instrument";
 import { callEdgeApi } from "@/lib/edge-api";
 import { toUserMessage } from "@/lib/errors";
-import { formatNumber } from "@/lib/format";
-import { checkedSummary, simplerQuery } from "@/features/sourcing-search/display";
-import { SupplierSearchResults } from "@/features/sourcing-search/components/search-results";
+import { simplerQuery } from "@/features/sourcing-search/display";
+import { SourcingScene } from "@/features/sourcing-search/components/search-scene";
+import { CheckedLine, SupplierSearchView } from "@/features/sourcing-search/components/search-results";
 
 /** État d'attente honnête : aucune progression simulée, seulement ce qui se passe et la durée maximale. */
 export function SearchPending({ query }: { query: string }) {
   return (
-    <LoadingRegion label={`Recherche de « ${query} » chez vos fournisseurs en cours…`}>
-      <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm">
-        <p className="font-medium text-foreground">Recherche de « {query} » chez vos fournisseurs…</p>
-        <p className="mt-0.5 text-muted">Les fournisseurs sont interrogés en direct : cela peut prendre jusqu&apos;à 35 secondes environ. Au-delà, les offres déjà enregistrées s&apos;affichent.</p>
-      </div>
-      <Skeleton className="h-24 rounded-xl" />
-      <TableSkeleton rows={8} />
-    </LoadingRegion>
+    <>
+      <SourcingScene
+        query={query}
+        below={
+          <p role="status" className="text-[13px] font-semibold leading-[18px] text-on-night-muted">
+            Recherche de « {query} » chez vos fournisseurs · jusqu&apos;à ~35 s. Les résultats s&apos;affichent quand toutes les sources ont répondu ; au-delà, les offres déjà enregistrées.
+          </p>
+        }
+      />
+      <Paper>
+        <div role="progressbar" aria-label="Recherche en cours" className="flex flex-col gap-2.5">
+          <span className="ms-pulse block h-[38px] w-full max-w-[420px] rounded-xl bg-track" />
+          <span className="ms-pulse block h-44 rounded-2xl bg-track" />
+          <span className="ms-pulse block h-44 rounded-2xl bg-line-soft" />
+        </div>
+      </Paper>
+    </>
   );
 }
 
@@ -38,85 +46,80 @@ export async function SearchSection({ ctx, query }: { ctx: OrgContext; query: st
     data = await callEdgeApi<SimpleSearchDTO>(ctx, "/suppliers/search", { query: { q: query }, timeoutMs: 55_000 });
   } catch (e) {
     return (
-      <Callout tone="danger" title="Recherche interrompue" action={<ButtonLink href={`/sourcing?q=${encodeURIComponent(query)}`} variant="secondary" size="sm">Réessayer</ButtonLink>}>
-        {toUserMessage(e)}
-      </Callout>
+      <>
+        <SourcingScene query={query} below={<p className="ms-mono text-[11px] leading-[14px] tracking-[0.08em] text-amber">Recherche interrompue · « {query} »</p>} />
+        <Paper>
+          <StateCard
+            icon={<WifiOff aria-hidden="true" className="h-6 w-6" />}
+            tone="danger"
+            title="La recherche n'a pas abouti"
+            text={`${toUserMessage(e)} Aucune offre n'est affichée tant que vos fournisseurs n'ont pas été consultés.`}
+            actions={
+              <>
+                <Link href={`/sourcing?q=${encodeURIComponent(query)}` as never} className="inline-flex h-10 items-center gap-2 rounded-xl bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed">
+                  <RotateCw aria-hidden="true" className="h-4 w-4" /> Réessayer
+                </Link>
+                <Link href={`/sourcing/catalog?q=${encodeURIComponent(query)}` as never} className="inline-flex h-10 items-center rounded-xl border border-border bg-surface px-4 text-sm font-bold hover:bg-line-soft">
+                  Chercher dans les offres collectées
+                </Link>
+              </>
+            }
+          />
+        </Paper>
+      </>
     );
   }
-  return (
-    <div className="space-y-4">
-      {data.partial ? (
-        <Callout tone="warning" title="Recherche en direct incomplète">
-          La recherche en direct n&apos;a pas abouti dans le délai (~35 s) : les résultats affichés sont les offres déjà enregistrées. Relancez la recherche dans un instant pour des prix plus frais.
-        </Callout>
-      ) : null}
-      {data.total === 0 ? <NoResult data={data} /> : <SupplierSearchResults data={data} />}
-      <Checked data={data} />
-    </div>
-  );
+  const partial = data.partial ? (
+    <p role="status" className="mb-4 flex items-start gap-2.5 rounded-2xl bg-warning-soft px-3.5 py-3 text-sm font-semibold leading-5 text-warning">
+      <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber" />
+      La recherche en direct n&apos;a pas abouti dans le délai (~35 s) : les résultats affichés sont les offres déjà enregistrées. Relancez la recherche dans un instant pour des prix plus frais.
+    </p>
+  ) : null;
+  if (data.total === 0) return <NoResult data={data} notice={partial} />;
+  return <SupplierSearchView data={data} notice={partial} />;
 }
 
-function NoResult({ data }: { data: SimpleSearchDTO }) {
+function NoResult({ data, notice }: { data: SimpleSearchDTO; notice: ReactNode }) {
   const simpler = simplerQuery(data.query);
   const failed = data.checked.filter((c) => !c.ok).length;
   return (
-    <EmptyState
-      icon={<SearchX className="h-8 w-8" aria-hidden="true" />}
-      title={`Rien trouvé pour « ${data.query} »`}
-      description={`Essayez un mot plus simple ou vérifiez l'orthographe.${failed > 0 ? ` ${failed} fournisseur${failed > 1 ? "s n'ont" : " n'a"} pas répondu : réessayez dans un instant.` : ""} Vous pouvez aussi parcourir les offres collectées ou ajouter une source.`}
-      action={
-        <div className="flex flex-wrap justify-center gap-2">
-          {simpler ? <ButtonLink href={`/sourcing?q=${encodeURIComponent(simpler)}`}>Chercher « {simpler} »</ButtonLink> : null}
-          <ButtonLink href={`/sourcing/catalog?q=${encodeURIComponent(data.query)}`} variant="secondary">
-            Chercher dans les offres collectées
-          </ButtonLink>
-          <ButtonLink href="/suppliers" variant="ghost">
-            Ajouter un fournisseur ou une source
-          </ButtonLink>
-        </div>
-      }
-    />
+    <>
+      <SourcingScene query={data.query} below={<p className="ms-mono text-[11px] leading-[14px] tracking-[0.08em] text-on-night-muted">0 offre · « {data.query} »</p>} />
+      <Paper>
+        {notice}
+        <StateCard
+          icon={<SearchX aria-hidden="true" className="h-6 w-6" />}
+          title={`Rien trouvé pour « ${data.query} »`}
+          text={`Essayez un mot plus simple ou vérifiez l'orthographe.${failed > 0 ? ` ${failed} fournisseur${failed > 1 ? "s n'ont" : " n'a"} pas répondu : réessayez dans un instant.` : ""}`}
+          actions={
+            <>
+              {simpler ? (
+                <Link href={`/sourcing?q=${encodeURIComponent(simpler)}` as never} className="inline-flex h-10 items-center rounded-xl bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed">
+                  Chercher « {simpler} »
+                </Link>
+              ) : null}
+              <Link href={`/sourcing/catalog?q=${encodeURIComponent(data.query)}` as never} className="inline-flex h-10 items-center rounded-xl border border-border bg-surface px-4 text-sm font-bold hover:bg-line-soft">
+                Chercher dans les offres collectées
+              </Link>
+              <Link href="/suppliers" className="inline-flex h-10 items-center rounded-xl px-4 text-sm font-bold text-muted-strong hover:bg-line-soft">
+                Ajouter une source
+              </Link>
+            </>
+          }
+        />
+        <CheckedLine checked={data.checked} />
+      </Paper>
+    </>
   );
 }
 
-function Checked({ data }: { data: SimpleSearchDTO }) {
-  if (data.checked.length === 0) {
-    return <p className="text-xs text-muted">Aucun fournisseur interrogé en direct pour cette recherche : seules les offres enregistrées ont été comparées.</p>;
-  }
-  const { answered, failed } = checkedSummary(data.checked);
+function StateCard({ icon, title, text, actions, tone = "neutral" }: { icon: ReactNode; title: string; text: string; actions: ReactNode; tone?: "neutral" | "danger" }) {
   return (
-    <section aria-labelledby="checked-title" className="rounded-xl border border-border bg-surface px-4 py-3">
-      <h2 id="checked-title" className="text-sm font-semibold">
-        Fournisseurs consultés en direct ({data.checked.length})
-      </h2>
-      <ul className="mt-2 flex flex-wrap gap-1.5">
-        {answered.map((c) => (
-          <li key={`ok-${c.supplierName}`}>
-            <Badge variant="success">
-              {c.supplierName} · {formatNumber(c.found)} trouvée{c.found > 1 ? "s" : ""}
-            </Badge>
-          </li>
-        ))}
-        {failed.map((c) => (
-          <li key={`ko-${c.supplierName}`} title={c.message ?? undefined}>
-            <Badge variant="warning">{c.supplierName} · sans réponse</Badge>
-          </li>
-        ))}
-      </ul>
-      {failed.some((c) => c.message) ? (
-        <ul className="mt-2 space-y-0.5 text-xs text-muted">
-          {failed
-            .filter((c) => c.message)
-            .map((c) => (
-              <li key={`msg-${c.supplierName}`}>
-                {c.supplierName} : {c.message}
-              </li>
-            ))}
-        </ul>
-      ) : null}
-      <p className="mt-2 text-xs text-muted">
-        Détail des sources et des offres collectées : <Link href="/sourcing/catalog" className="underline">Offres collectées</Link>.
-      </p>
-    </section>
+    <div className="ms-fade mx-auto flex max-w-[640px] flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-6 py-7 text-center">
+      <span className={tone === "danger" ? "flex h-12 w-12 items-center justify-center rounded-[15px] bg-danger-soft text-danger" : "flex h-12 w-12 items-center justify-center rounded-[15px] bg-background text-muted"}>{icon}</span>
+      <h2 className="text-[17px] font-bold leading-[22px]">{title}</h2>
+      <p className="text-sm font-medium leading-5 text-muted">{text}</p>
+      <div className="mt-1 flex flex-wrap justify-center gap-2">{actions}</div>
+    </div>
   );
 }

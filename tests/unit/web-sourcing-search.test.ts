@@ -19,6 +19,12 @@ import {
   splitByAccess,
   stockText,
   visibleOffers,
+  analysisWaterfall,
+  marketGapText,
+  offerGroups,
+  rulerShortCaption,
+  shortAge,
+  taxLabel,
 } from "@/features/sourcing-search/display";
 import { legacyCatalogHref } from "@/features/sourcing-search/legacy";
 
@@ -188,5 +194,56 @@ describe("compatibilité des anciens liens /sourcing", () => {
     expect(legacyCatalogHref({ q: "iPhone 13" })).toBeNull();
     expect(legacyCatalogHref({})).toBeNull();
     expect(legacyCatalogHref({ sku: "" })).toBeNull();
+  });
+});
+
+describe("recherche fournisseurs — présentation v5", () => {
+  const list = [offer("d", "iPhone 13 128 Go", 300), offer("s", "Écran iPhone 13 OLED", 60, { access: "account", supplierId: "s2", supplierName: "Mobilax" }), offer("s2", "Écran iPhone 13 Incell", 30), offer("b", "Batterie iPhone 13", 12, { supplierId: "s2", supplierName: "Mobilax" })];
+
+  it("groupe par catégorie, vos comptes d'abord, et coupe à la limite", () => {
+    const g = offerGroups(list, "price");
+    expect(g.map((x) => x.label)).toEqual(["Appareils", "Écrans", "Batteries"]);
+    expect(g[1]!.rows.map((o) => o.id)).toEqual(["s", "s2"]);
+    expect(offerGroups(list, "price", 2).flatMap((x) => x.rows.map((o) => o.id))).toEqual(["d", "s"]);
+  });
+
+  it("groupe par fournisseur (nom court, ordre d'apparition)", () => {
+    const g = offerGroups(list, "supplier");
+    expect(g.map((x) => [x.label, x.rows.length])).toEqual([
+      ["Fournisseur", 2],
+      ["Mobilax", 2],
+    ]);
+  });
+
+  it("cascade du panneau : revente → achat → frais → coût rendu → frais de vente → marge", () => {
+    const lines = analysisWaterfall(deal(), "ht");
+    expect(lines.map((l) => [l.label, l.amount, l.kind])).toEqual([
+      ["Revente", 160, "base"],
+      ["Achat", 100, "minus"],
+      ["Frais d'achat", 10, "minus"],
+      ["Coût rendu", 110, "subtotal"],
+      ["Frais de vente et taxes", 20, "minus"],
+      ["Marge estimée", 30, "result"],
+    ]);
+    expect(analysisWaterfall(deal({ margin: null }), "ht")).toEqual([]);
+    expect(analysisWaterfall(deal(), "unknown")[1]!.note).toBe("HT/TTC ?");
+  });
+
+  it("légendes de la règle et écart au marché (jamais inventés)", () => {
+    expect(rulerShortCaption(deal())).toBe("−27 % · 6 offres");
+    expect(rulerShortCaption(deal({ marketPrice: null, marketCount: 1 }))).toBe("1 offre équivalente");
+    expect(marketGapText(deal())).toBe("27 % sous la médiane de 6 offres équivalentes");
+    expect(marketGapText(deal({ totalCost: 165 }))).toBe("10 % au-dessus de la médiane de 6 offres équivalentes");
+    expect(marketGapText(deal({ totalCost: null }))).toBeNull();
+  });
+
+  it("âge court du prix et type de prix", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    expect(shortAge("2026-10-20T11:30:00Z", now)).toBe("30 min");
+    expect(shortAge("2026-10-20T07:00:00Z", now)).toBe("5 h");
+    expect(shortAge("2026-10-08T12:00:00Z", now)).toBe("12 j");
+    expect(shortAge(null, now)).toBeNull();
+    expect(shortAge("pas une date", now)).toBeNull();
+    expect([taxLabel("ht"), taxLabel("ttc"), taxLabel("unknown")]).toEqual(["HT", "TTC", "HT/TTC ?"]);
   });
 });
