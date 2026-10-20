@@ -5,8 +5,8 @@ export function findCheaperQuantity(recommendedQuantity: number | null | undefin
   return recommendedQuantity !== null && recommendedQuantity !== undefined && Number.isFinite(recommendedQuantity) && recommendedQuantity >= 1 ? Math.floor(recommendedQuantity) : 1;
 }
 
-/** /sourcing?sku=…&qty=… (mode SKU : comparaison avec le coût actuel). */
+/** /sourcing/catalog?sku=…&qty=… (mode SKU : comparaison avec le coût actuel). */
 export function findCheaperHref(skuCode: string, recommendedQuantity?: number | null): string {
   const sp = new URLSearchParams({ sku: skuCode, qty: String(findCheaperQuantity(recommendedQuantity)) });
-  return `/sourcing?${sp.toString()}`;
+  return `/sourcing/catalog?${sp.toString()}`;
 }

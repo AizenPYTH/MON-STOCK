@@ -35,7 +35,7 @@ describe("buildInsights", () => {
     });
     expect(items.map((i) => i.severity)).toEqual(["critical", "critical", "info", "info"]);
     expect(items[0]?.title).toBe("Rupture : Produit A");
-    expect(items[0]?.href).toBe("/sourcing?sku=A-1");
+    expect(items[0]?.href).toBe("/sourcing/catalog?sku=A-1");
     expect(items[1]?.title).toBe("Rupture estimée dans 3 jours : Produit B");
     expect(items[1]?.href).toBe("/stock/B-2");
     expect(items.find((i) => i.key === "fees")?.title).toContain("eBay");

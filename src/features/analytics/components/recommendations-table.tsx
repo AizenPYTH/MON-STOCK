@@ -91,7 +91,7 @@ export function RecommendationsTable({ recommendations, writable }: { recommenda
                       Préparer la commande
                     </ButtonLink>
                   ) : r.recommendedQuantity ? (
-                    <ButtonLink href={`/sourcing?sku=${encodeURIComponent(r.code)}`} size="sm" variant="secondary">
+                    <ButtonLink href={`/sourcing/catalog?sku=${encodeURIComponent(r.code)}`} size="sm" variant="secondary">
                       Trouver un fournisseur
                     </ButtonLink>
                   ) : null}

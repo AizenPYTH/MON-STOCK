@@ -89,7 +89,7 @@ export function buildInsights(input: InsightInput): InsightItem[] {
       severity: "critical",
       title: `Rupture : ${s.name}`,
       detail: s.dailyVelocity !== null ? `${formatVelocity(s.dailyVelocity)} vente(s)/jour perdue(s) tant que le stock est à zéro.` : "Aucune vente récente enregistrée : vitesse inconnue (pas assez de données).",
-      href: `/sourcing?sku=${encodeURIComponent(s.code)}`,
+      href: `/sourcing/catalog?sku=${encodeURIComponent(s.code)}`,
       action: "Trouver du stock",
     });
   }

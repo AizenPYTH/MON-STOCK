@@ -124,7 +124,7 @@ export default async function StockAlertsPage({ searchParams }: { searchParams: 
                         <ButtonLink href={`/stock/${encodeURIComponent(code)}`} variant="secondary" size="sm">
                           Fiche SKU
                         </ButtonLink>
-                        <ButtonLink href={`/sourcing?sku=${encodeURIComponent(code)}`} variant="ghost" size="sm">
+                        <ButtonLink href={`/sourcing/catalog?sku=${encodeURIComponent(code)}`} variant="ghost" size="sm">
                           <Search className="h-3.5 w-3.5" /> Trouver du stock
                         </ButtonLink>
                       </div>

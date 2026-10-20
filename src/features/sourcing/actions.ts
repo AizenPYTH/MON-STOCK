@@ -108,6 +108,7 @@ export async function setOfferStatusAction(_prev: MessageResult | null, formData
     revalidatePath(`/sourcing/offers/${offer.id}`);
     revalidatePath(`/suppliers/${offer.supplier_id}/offers`);
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return ok({ message: parsed.data.status === "rejected" ? "Offre rejetée : exclue des recherches." : "Offre réactivée." });
   } catch (e) {
     return fail(toUserMessage(e));

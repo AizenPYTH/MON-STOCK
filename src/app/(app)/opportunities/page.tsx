@@ -154,7 +154,7 @@ export default async function OpportunitiesPage() {
           description="Les opportunités apparaissent quand (1) une offre fournisseur est associée à l'un de vos SKU dans le sourcing, (2) le SKU a un prix de vente connu (ventes des 30 derniers jours ou prix renseigné) et (3) le prix fournisseur est normalisé dans votre devise."
           action={
             <div className="flex flex-wrap justify-center gap-2">
-              <ButtonLink href="/sourcing">Associer des offres à mes SKU</ButtonLink>
+              <ButtonLink href="/sourcing/matches">Associer des offres à mes SKU</ButtonLink>
               <ButtonLink href="/stock" variant="secondary">
                 Renseigner les prix de vente
               </ButtonLink>
@@ -184,7 +184,7 @@ export default async function OpportunitiesPage() {
           <Card>
             <CardContent className="text-sm text-muted">
               Aucun événement sur les 7 derniers jours.{" "}
-              <Link href="/sourcing" className="underline">
+              <Link href="/sourcing/alerts" className="underline">
                 Créez une alerte de sourcing
               </Link>{" "}
               pour être prévenu d'une baisse de prix ou d'un retour en stock.

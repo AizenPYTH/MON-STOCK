@@ -7,7 +7,7 @@ import { SOURCE_TYPE_LABEL } from "@/features/sourcing/labels";
 
 export function SourcingSearchForm({ params, suppliers, skuCode, liveEnabled = true, toggleLiveHref }: { params: SourcingSearchParams; suppliers: Array<{ id: string; name: string }>; skuCode?: string | null; liveEnabled?: boolean; toggleLiveHref?: string }) {
   return (
-    <form method="get" action="/sourcing" className="rounded-xl border border-border bg-surface p-4">
+    <form method="get" action="/sourcing/catalog" className="rounded-xl border border-border bg-surface p-4">
       {skuCode ? <input type="hidden" name="sku" value={skuCode} /> : null}
       {!liveEnabled ? <input type="hidden" name="live" value="0" /> : null}
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -78,7 +78,7 @@ export function SourcingSearchForm({ params, suppliers, skuCode, liveEnabled = t
             <Button type="submit" variant="secondary">
               Appliquer les filtres
             </Button>
-            <ButtonLink href={skuCode ? `/sourcing?sku=${encodeURIComponent(skuCode)}` : "/sourcing"} variant="ghost">
+            <ButtonLink href={skuCode ? `/sourcing/catalog?sku=${encodeURIComponent(skuCode)}` : "/sourcing/catalog"} variant="ghost">
               Réinitialiser
             </ButtonLink>
           </div>

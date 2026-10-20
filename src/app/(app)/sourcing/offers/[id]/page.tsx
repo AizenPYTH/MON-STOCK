@@ -67,8 +67,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
     <>
       <PageHeader
         eyebrow={
-          <Link href="/sourcing" className="hover:text-foreground">
-            Sourcing
+          <Link href="/sourcing/catalog" className="hover:text-foreground">
+            Offres collectées
           </Link>
         }
         title={

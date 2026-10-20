@@ -10,7 +10,7 @@ describe("« Trouver moins cher » depuis la fiche SKU", () => {
     expect(findCheaperQuantity(7.6)).toBe(7);
   });
   it("lien encodé vers le mode SKU", () => {
-    expect(findCheaperHref("IPH13-128 A/B", 20)).toBe("/sourcing?sku=IPH13-128+A%2FB&qty=20");
-    expect(findCheaperHref("X", null)).toBe("/sourcing?sku=X&qty=1");
+    expect(findCheaperHref("IPH13-128 A/B", 20)).toBe("/sourcing/catalog?sku=IPH13-128+A%2FB&qty=20");
+    expect(findCheaperHref("X", null)).toBe("/sourcing/catalog?sku=X&qty=1");
   });
 });

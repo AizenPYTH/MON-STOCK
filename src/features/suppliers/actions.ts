@@ -192,6 +192,7 @@ export async function createPublicWebSourceAction(_prev: ActionResult<{ robots: 
     log.info("public web source created", { orgId: ctx.organization.id, sourceId: data.id, adapter: adapter.key, robotsAllowed: robots.allowed });
     revalidatePath(supplierPath(d.supplier_id, "sources"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return ok({ robots: robots.details });
   } catch (e) {
     return fail(toUserMessage(e));
@@ -216,6 +217,7 @@ export async function testSourceAction(_prev: ActionResult<{ message: string }> 
     await ctx.supabase.from("supplier_sources").update({ last_error: result.ok ? null : result.message, status: result.ok ? "active" : "error" }).eq("id", source.id);
     revalidatePath(supplierPath(source.supplier_id, "sources"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return result.ok ? ok({ message }) : fail(message);
   } catch (e) {
     return fail(toUserMessage(e));
@@ -284,6 +286,7 @@ export async function runSourceCrawlAction(_prev: ActionResult<{ message: string
     revalidatePath(supplierPath(source.supplier_id, "sources"));
     revalidatePath(supplierPath(source.supplier_id, "offers"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return result.status === "failed" || result.status === "refused" ? fail(result.message) : ok({ message: result.message });
   } catch (e) {
     return fail(toUserMessage(e));
@@ -365,6 +368,7 @@ export async function createFeedAction(_prev: ActionResult<{ message: string }> 
     revalidatePath(supplierPath(d.supplier_id, "sources"));
     revalidatePath(supplierPath(d.supplier_id, "offers"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return result.status === "failed" ? fail(`Flux enregistré mais première synchronisation en échec : ${result.message}`) : ok({ message: `Flux enregistré. ${result.message}` });
   } catch (e) {
     return fail(toUserMessage(e));
@@ -383,6 +387,7 @@ export async function runFeedSyncAction(_prev: ActionResult<{ message: string }>
     revalidatePath(supplierPath(feed.supplier_id, "sources"));
     revalidatePath(supplierPath(feed.supplier_id, "offers"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return result.status === "failed" ? fail(result.message) : ok({ message: result.message });
   } catch (e) {
     return fail(toUserMessage(e));
@@ -428,6 +433,7 @@ export async function connectSupplierAccountAction(_prev: ActionResult<{ connect
     log.info("supplier connection created", { orgId: ctx.organization.id, supplierId: supplier.id, connectionId, connector: descriptor.key });
     revalidatePath(supplierPath(supplier.id, "sources"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return ok({ connectionId, message: `Connexion « ${descriptor.label} » créée (statut : en attente). Testez la connexion pour vérifier vos identifiants : rien n'est supposé fonctionner avant ce test.` });
   } catch (e) {
     return fail(toUserMessage(e));
@@ -450,6 +456,7 @@ export async function testSupplierConnectionAction(_prev: ActionResult<{ message
     const result = await testSupplierConnection(connection.id);
     revalidatePath(supplierPath(connection.supplier_id, "sources"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return result.ok ? ok({ message: result.message }) : fail(result.message);
   } catch (e) {
     return fail(toUserMessage(e));
@@ -467,6 +474,7 @@ export async function syncSupplierConnectionAction(_prev: ActionResult<{ message
     revalidatePath(supplierPath(connection.supplier_id, "sources"));
     revalidatePath(supplierPath(connection.supplier_id, "offers"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return result.status === "failed" || result.status === "refused" ? fail(result.message) : ok({ message: result.message });
   } catch (e) {
     return fail(toUserMessage(e));
@@ -523,6 +531,7 @@ export async function createManualOfferAction(_prev: ActionResult<{ offerId: str
     if (result.fxUnavailable) warnings.push(`Conversion ${d.currency} → ${ctx.organization.default_currency} indisponible : prix original conservé.`);
     revalidatePath(supplierPath(supplier.id, "offers"));
     revalidatePath("/sourcing");
+    revalidatePath("/sourcing/catalog");
     return ok({ offerId: result.offerId, warnings });
   } catch (e) {
     return fail(toUserMessage(e));

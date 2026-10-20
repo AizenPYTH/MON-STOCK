@@ -35,7 +35,7 @@ export function SupplierHeader({ supplier, tab, counts }: { supplier: Supplier; 
         }
         description={[supplier.company, supplier.country, supplier.website].filter(Boolean).join(" · ") || "Aucune information complémentaire."}
         actions={
-          <ButtonLink href={`/sourcing?supplier=${supplier.id}`} variant="secondary">
+          <ButtonLink href={`/sourcing/catalog?supplier=${supplier.id}`} variant="secondary">
             <Search className="h-4 w-4" /> Voir ses offres dans le sourcing
           </ButtonLink>
         }
