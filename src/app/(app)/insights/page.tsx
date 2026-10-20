@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, RefreshCw } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, Section, Callout, EmptyState } from "@/components/ui/page";
+import { Section, Callout, EmptyState } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge, StatusDot } from "@/components/ui/badge";
 import { getStockAnalytics } from "@/features/analytics/stock-analytics";
@@ -54,7 +55,10 @@ export default async function InsightsPage() {
 
   return (
     <>
-      <PageHeader title="Que dois-je faire maintenant ?" description="Priorités calculées à partir de vos ventes, de votre stock et de vos synchronisations. Chaque ligne mène à une action concrète." />
+      <Scene>
+        <SceneHeader eyebrow="Pilotage · priorités" title="Que dois-je faire maintenant ?" description="Priorités calculées à partir de vos ventes, de votre stock et de vos synchronisations. Chaque ligne mène à une action concrète." />
+      </Scene>
+      <Paper>
 
       <Section title="Priorités" description={insights.length === 0 ? undefined : `${insights.length} point(s), du plus urgent au moins urgent.`}>
         {insights.length === 0 ? (
@@ -132,7 +136,7 @@ export default async function InsightsPage() {
               {analytics.deadStock.slice(0, 10).map((v) => (
                 <li key={v.row.sku_id} className="flex items-center justify-between gap-3 px-5 py-2.5">
                   <Link href={`/stock/${encodeURIComponent(v.row.code ?? "")}` as never} className="min-w-0 truncate hover:underline">
-                    {skuLabel(v.row)} <span className="font-mono text-xs text-muted">{v.row.code}</span>
+                    {skuLabel(v.row)} <span className="ms-code text-xs text-muted">{v.row.code}</span>
                   </Link>
                   <span className="shrink-0 text-xs text-muted">
                     {v.row.quantity_available} u. · {v.row.last_sale_at ? `dernière vente ${formatRelative(v.row.last_sale_at)}` : "jamais vendu"}
@@ -143,6 +147,7 @@ export default async function InsightsPage() {
           </Card>
         </Section>
       ) : null}
+      </Paper>
     </>
   );
 }

@@ -6,8 +6,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import { getCurrentUser, getOrgContext } from "@/features/auth/dal";
-import { OnboardingForm } from "@/features/organizations/onboarding-form";
+import { Wordmark } from "@/components/public/wordmark";
+import { OnboardingForm } from "@/features/organizations/components/onboarding-form";
 
 export const metadata: Metadata = { title: "Créer votre organisation" };
 
@@ -16,19 +18,20 @@ export default async function OnboardingPage() {
   if (!user) redirect("/login");
   const ctx = await getOrgContext();
   return (
-    <div className="flex min-h-full flex-1 flex-col bg-background">
-      <header className="flex items-center justify-between px-6 py-5">
-        <Link href="/" className="text-sm font-semibold tracking-tight">
-          MON STOCK
+    <div className="flex min-h-full flex-1 flex-col bg-night">
+      <header className="mx-auto flex h-[68px] w-full max-w-[1440px] items-center justify-between gap-4 px-4 text-on-night sm:px-6 lg:px-12">
+        <Link href="/" aria-label="MON STOCK — accueil" className="flex min-h-10 items-center rounded-md">
+          <Wordmark />
         </Link>
         {ctx ? (
-          <Link href="/dashboard" className="text-sm text-muted hover:text-foreground">
-            Retour au tableau de bord
+          <Link href="/dashboard" className="inline-flex h-10 items-center gap-1 rounded-[10px] px-3 text-sm font-bold text-on-night-muted hover:bg-night-raised hover:text-on-night">
+            <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+            Retour à Aujourd&apos;hui
           </Link>
         ) : null}
       </header>
-      <main className="flex flex-1 items-start justify-center px-4 pb-16 pt-8">
-        <div className="w-full max-w-lg">
+      <main id="contenu" className="mt-6 flex flex-1 justify-center rounded-t-3xl bg-background px-4 pb-16 pt-10 sm:px-6 sm:pt-16">
+        <div className="w-full max-w-[460px]">
           <OnboardingForm hasOrganization={Boolean(ctx)} />
         </div>
       </main>

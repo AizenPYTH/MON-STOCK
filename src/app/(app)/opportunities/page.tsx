@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { requireOrgContext } from "@/features/auth/dal";
-import { PageHeader, EmptyState, Section, Callout, Stat } from "@/components/ui/page";
+import { EmptyState, Section, Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
+import { SceneStatGrid } from "@/features/analytics/components/scene-stats";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -43,7 +45,7 @@ function OpportunityCard({ o }: { o: OpportunityView }) {
         }
         description={
           <span>
-            <code className="font-mono text-xs">{o.code}</code> · stock {formatNumber(o.stockAvailable)} · {o.offersCount} offre{o.offersCount > 1 ? "s" : ""}
+            <code className="ms-code text-xs">{o.code}</code> · stock {formatNumber(o.stockAvailable)} · {o.offersCount} offre{o.offersCount > 1 ? "s" : ""}
           </span>
         }
         actions={
@@ -136,11 +138,28 @@ export default async function OpportunitiesPage() {
 
   return (
     <>
-      <PageHeader
-        title="Opportunités"
-        description="Produits pour lesquels une offre fournisseur associée permet, d'après vos prix de vente réels, une marge estimée positive. Rien n'est annoncé quand une donnée essentielle manque."
-        actions={<ButtonLink href="/sourcing" variant="secondary">Sourcing</ButtonLink>}
-      />
+      <Scene>
+        <SceneHeader
+          eyebrow="Achats · opportunités"
+          title="Opportunités"
+          description="Produits pour lesquels une offre fournisseur associée permet, d'après vos prix de vente réels, une marge estimée positive. Rien n'est annoncé quand une donnée essentielle manque."
+          actions={
+            <ButtonLink href="/sourcing" variant="night">
+              Sourcing
+            </ButtonLink>
+          }
+        />
+        {data.items.length > 0 ? (
+          <SceneStatGrid
+            stats={[
+              { label: "Opportunités potentielles", value: formatNumber(data.potentialCount), tone: data.potentialCount > 0 ? "mint" : undefined, hint: "Prix de vente et prix fournisseur connus, marge estimée positive" },
+              { label: "Non rentables (estimation)", value: formatNumber(data.unprofitableCount), hint: "Marge estimée nulle ou négative" },
+              { label: "Données insuffisantes", value: formatNumber(data.insufficientCount), tone: data.insufficientCount > 0 ? "warning" : undefined, hint: "Prix de vente ou prix fournisseur manquant" },
+            ]}
+          />
+        ) : null}
+      </Scene>
+      <Paper>
 
       {data.missingFees.length > 0 && data.items.length > 0 ? (
         <Callout tone="info" className="mb-4" action={<ButtonLink href="/settings/organization" variant="secondary" size="sm">Renseigner les frais</ButtonLink>}>
@@ -166,11 +185,6 @@ export default async function OpportunitiesPage() {
         />
       ) : (
         <>
-          <div className="mb-5 grid gap-3 sm:grid-cols-3">
-            <Stat label="Opportunités potentielles" value={formatNumber(data.potentialCount)} tone={data.potentialCount > 0 ? "success" : undefined} hint="prix de vente et prix fournisseur connus, marge estimée positive" />
-            <Stat label="Non rentables (estimation)" value={formatNumber(data.unprofitableCount)} hint="marge estimée nulle ou négative" />
-            <Stat label="Données insuffisantes" value={formatNumber(data.insufficientCount)} tone={data.insufficientCount > 0 ? "warning" : undefined} hint="prix de vente ou prix fournisseur manquant" />
-          </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {data.items.map((o) => (
               <OpportunityCard key={o.skuId} o={o} />
@@ -220,6 +234,7 @@ export default async function OpportunitiesPage() {
           </Card>
         )}
       </Section>
+      </Paper>
     </>
   );
 }

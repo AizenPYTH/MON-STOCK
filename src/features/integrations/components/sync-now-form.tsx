@@ -41,13 +41,13 @@ export function SyncNowForm({
       {disabled && disabledReason ? <p className="text-xs text-muted">{disabledReason}</p> : null}
       {state && !state.ok ? <FormError message={state.error} action={state.action} /> : null}
       {state?.ok ? (
-        <div role="status" className={`rounded-lg border px-3 py-2 text-sm ${state.data.status === "success" ? "border-green-200 bg-success-soft text-green-800" : "border-amber-200 bg-warning-soft text-amber-900"}`}>
+        <div role="status" className={`rounded-xl border px-3 py-2 text-sm font-semibold ${state.data.status === "success" ? "border-[#bfe9d3] bg-success-soft text-success" : "border-[#f1dcb8] bg-warning-soft text-warning"}`}>
           <div className="font-medium">{state.data.summary}</div>
           <div className="mt-0.5 text-xs opacity-80">
             Durée {formatDuration(state.data.durationMs)}
             {state.data.errorSummary ? ` · ${state.data.errorSummary}` : ""} ·{" "}
             <Link href={`/settings/sync/${state.data.runId}` as never} className="underline">
-              Voir le détail du run
+              Voir le détail du passage
             </Link>
           </div>
         </div>

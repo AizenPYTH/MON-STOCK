@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { requireOrgContext } from "@/features/auth/dal";
-import { PageHeader, EmptyState, Stat, Callout } from "@/components/ui/page";
+import { EmptyState, Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader, Segmented } from "@/components/instrument";
+import { SceneStatGrid } from "@/features/analytics/components/scene-stats";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
-import { LinkTabs } from "@/components/ui/tabs";
 import { Table, THead, TBody, TH, TD, TR } from "@/components/ui/table";
 import { getAnalysis } from "@/features/analysis/queries";
 import { ANALYSIS_PERIODS, parseAnalysisPeriod } from "@/features/analysis/analysis.pure";
@@ -28,48 +29,54 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader
-        title="Analyse"
-        description={`Vos ${period} derniers jours, calculés sur vos ventes et votre stock réels. Rien n'est estimé à partir de données fictives.`}
-        actions={
-          <ButtonLink href="/advisor" variant="secondary">
-            <Sparkles aria-hidden="true" className="h-4 w-4" /> Demander au conseiller
-          </ButtonLink>
-        }
-      />
-      <LinkTabs label="Période d'analyse" current={`/analysis?period=${period}`} items={ANALYSIS_PERIODS.map((p) => ({ href: `/analysis?period=${p}`, label: `${p} jours` }))} />
+      <Scene>
+        <SceneHeader
+          eyebrow={`Pilotage · ${period} derniers jours`}
+          title="Analyse"
+          description={`Vos ${period} derniers jours, calculés sur vos ventes et votre stock réels. Rien n'est estimé à partir de données fictives.`}
+          actions={
+            <ButtonLink href="/advisor" variant="night">
+              <Sparkles aria-hidden="true" className="h-4 w-4 text-mint" /> Demander au conseiller
+            </ButtonLink>
+          }
+        />
+        {!empty ? (
+          <SceneStatGrid
+            stats={[
+              {
+                label: "Chiffre d'affaires",
+                value: formatMoney(d.revenue, currency, { decimals: 0 }),
+                hint: d.revenueChangePercent === null ? "Pas de période précédente comparable" : `${signedPercent(d.revenueChangePercent)} vs ${period} jours précédents (${formatMoney(d.revenuePrevious, currency, { decimals: 0 })})`,
+                tone: d.revenueChangePercent === null ? undefined : d.revenueChangePercent >= 0 ? "mint" : "danger",
+              },
+              {
+                label: "Marge nette estimée",
+                value: d.netProfit === null ? null : `≈ ${formatMoney(d.netProfit, currency, { decimals: 0 })}`,
+                hint:
+                  d.netProfitShare === null
+                    ? d.netProfit === null
+                      ? "Coûts d'achat inconnus"
+                      : "CA nul sur la période"
+                    : `${formatNumber(Math.round(d.netProfitShare))} % du CA${d.skusWithoutMargin > 0 ? ` · ${d.skusWithoutMargin} SKU exclus (coût inconnu)` : ""}${d.skusPartialMargin > 0 ? ` · provisoire (frais inconnus sur ${d.skusPartialMargin} SKU)` : ""}`,
+                tone: d.netProfit !== null && d.netProfit < 0 ? "danger" : undefined,
+              },
+              { label: "Ventes", value: formatNumber(d.orders), hint: d.averageBasket === null ? "Panier moyen : —" : `Panier moyen ${formatMoney(d.averageBasket, currency)}` },
+              {
+                label: "Couverture stock",
+                value: d.coverDays === null ? null : `${formatNumber(d.coverDays)} j`,
+                hint: `Valeur au coût ≈ ${formatMoney(d.stockValue, currency, { decimals: 0 })}${d.stockWithoutCost > 0 ? ` · ${d.stockWithoutCost} SKU sans coût non comptés` : ""}`,
+              },
+            ]}
+          />
+        ) : null}
+      </Scene>
+      <Paper>
+      <Segmented label="Période d'analyse" className="mb-5" options={ANALYSIS_PERIODS.map((p) => ({ href: `/analysis?period=${p}`, label: `${p} jours`, selected: p === period }))} />
 
       {empty ? (
         <EmptyState title="Pas encore de données à analyser" description="L'analyse se calcule sur vos ventes et votre stock réels. Rien n'est estimé à partir de données fictives." action={<ButtonLink href="/stock/new">Créer un produit</ButtonLink>} />
       ) : (
         <div className="space-y-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Stat
-              label="Chiffre d'affaires"
-              value={formatMoney(d.revenue, currency, { decimals: 0 })}
-              hint={d.revenueChangePercent === null ? "Pas de période précédente comparable" : `${signedPercent(d.revenueChangePercent)} vs ${period} jours précédents (${formatMoney(d.revenuePrevious, currency, { decimals: 0 })})`}
-              tone={d.revenueChangePercent === null ? undefined : d.revenueChangePercent >= 0 ? "success" : "danger"}
-            />
-            <Stat
-              label="Marge nette estimée"
-              value={d.netProfit === null ? "—" : `≈ ${formatMoney(d.netProfit, currency, { decimals: 0 })}`}
-              hint={
-                d.netProfitShare === null
-                  ? d.netProfit === null
-                    ? "Coûts d'achat inconnus"
-                    : "CA nul sur la période"
-                  : `${formatNumber(Math.round(d.netProfitShare))} % du CA${d.skusWithoutMargin > 0 ? ` · ${d.skusWithoutMargin} SKU exclus (coût inconnu)` : ""}${d.skusPartialMargin > 0 ? ` · provisoire (frais inconnus sur ${d.skusPartialMargin} SKU)` : ""}`
-              }
-              tone={d.netProfit !== null && d.netProfit < 0 ? "danger" : undefined}
-            />
-            <Stat label="Ventes" value={formatNumber(d.orders)} hint={d.averageBasket === null ? "Panier moyen : —" : `Panier moyen ${formatMoney(d.averageBasket, currency)}`} />
-            <Stat
-              label="Couverture stock"
-              value={d.coverDays === null ? "—" : `${formatNumber(d.coverDays)} j`}
-              hint={`Valeur au coût ≈ ${formatMoney(d.stockValue, currency, { decimals: 0 })}${d.stockWithoutCost > 0 ? ` · ${d.stockWithoutCost} SKU sans coût non comptés` : ""}`}
-            />
-          </div>
-
           {d.netProfit !== null ? (
             <p className="text-xs text-muted">
               ≈ Marge nette : unités vendues sur la période × bénéfice net unitaire actuel de chaque SKU (prix de vente, coût d&apos;achat et frais renseignés aujourd&apos;hui). Détail par produit dans{" "}
@@ -80,7 +87,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Pro
             </p>
           ) : null}
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Card>
               <CardHeader title="CA par semaine" description={d.weekly.length > 0 ? `${d.weekly[0]?.label} → ${d.weekly[d.weekly.length - 1]?.label} · ${currency}` : undefined} />
               <CardContent>
@@ -110,7 +117,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Pro
                           {p.code ? (
                             <Link href={`/stock/${encodeURIComponent(p.code)}` as never} className="block max-w-[260px] hover:underline">
                               <span className="block truncate font-medium text-foreground">{p.label}</span>
-                              <span className="font-mono text-xs text-muted">{p.code}</span>
+                              <span className="ms-code text-xs text-muted">{p.code}</span>
                             </Link>
                           ) : (
                             <span className="block max-w-[260px] truncate font-medium text-foreground">{p.label}</span>
@@ -147,6 +154,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Pro
           </p>
         </div>
       )}
+      </Paper>
     </>
   );
 }

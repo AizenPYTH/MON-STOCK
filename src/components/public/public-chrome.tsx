@@ -1,25 +1,39 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/public/wordmark";
 
-const LEGAL_LINKS = [
-  { href: "/confidentialite", label: "Confidentialité" },
-  { href: "/conditions", label: "Conditions d'utilisation" },
-  { href: "/mentions-legales", label: "Mentions légales" },
-  { href: "/support", label: "Support" },
+const SITE_LINKS = [
+  { href: "/#fonctionnalites", label: "Fonctionnalités" },
+  { href: "/#iphone", label: "Sur iPhone" },
+  { href: "/#faq", label: "Questions" },
 ] as const;
 
+const LEGAL_LINKS = [
+  { href: "/confidentialite", label: "Confidentialité" },
+  { href: "/mentions-legales", label: "Mentions légales" },
+  { href: "/conditions", label: "Conditions d'utilisation" },
+  { href: "/support", label: "Support et contact" },
+] as const;
+
+/** En-tête nuit du site public et des pages d'authentification (handoff v5, 68 px). */
 export function PublicHeader() {
   return (
     <header className="bg-night text-on-night">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" aria-label="MON STOCK — accueil" className="rounded-md focus-visible:outline-mint">
+      <div className="mx-auto flex h-[68px] w-full max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:gap-7 lg:px-12">
+        <Link href="/" aria-label="MON STOCK — accueil" className="flex min-h-10 items-center rounded-md">
           <Wordmark />
         </Link>
-        <nav aria-label="Compte" className="flex items-center gap-1 whitespace-nowrap text-[13px] font-semibold sm:gap-2 sm:text-sm">
-          <Link href="/login" className="rounded-lg px-2 py-2 text-on-night-muted hover:text-on-night sm:px-3">
+        <nav aria-label="Site" className="hidden flex-1 items-center gap-[22px] md:flex">
+          {SITE_LINKS.map((l) => (
+            <Link key={l.href} href={l.href as never} className="rounded-md py-2 text-sm font-semibold text-on-night-muted hover:text-on-night">
+              {l.label}
+            </Link>
+          ))}
+        </nav>
+        <nav aria-label="Compte" className="ml-auto flex items-center gap-1.5 whitespace-nowrap md:ml-0">
+          <Link href="/login" className="inline-flex h-10 items-center rounded-[10px] px-3.5 text-sm font-bold text-on-night hover:bg-night-raised">
             Se connecter
           </Link>
-          <Link href="/signup" className="hidden rounded-lg bg-mint px-3.5 py-2 text-night hover:bg-mint-pressed sm:inline-block">
+          <Link href="/signup" className="hidden h-10 items-center rounded-[10px] bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed sm:inline-flex">
             Créer un compte
           </Link>
         </nav>
@@ -28,22 +42,24 @@ export function PublicHeader() {
   );
 }
 
+/** Pied légal (papier, filet haut) : liens vers les pages légales, mention sur les marques citées. */
 export function PublicFooter() {
   return (
-    <footer className="border-t border-border bg-surface">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <Wordmark tone="light" />
-        <nav aria-label="Informations légales">
-          <ul className="flex flex-wrap gap-x-5 gap-y-2">
+    <footer className="border-t border-border bg-background">
+      <div className="mx-auto flex w-full max-w-[1280px] flex-wrap items-center gap-x-8 gap-y-4 px-4 pb-10 pt-7 sm:px-6 lg:px-12">
+        <span className="text-[13px] font-extrabold tracking-[2.4px] text-foreground">MON STOCK</span>
+        <nav aria-label="Pages légales" className="flex-1">
+          <ul className="flex flex-wrap gap-x-5 gap-y-1">
             {LEGAL_LINKS.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="hover:text-foreground">
+                <Link href={l.href} className="inline-flex min-h-8 items-center text-[13.5px] font-semibold text-foreground underline underline-offset-2 hover:text-muted">
                   {l.label}
                 </Link>
               </li>
             ))}
           </ul>
         </nav>
+        <p className="text-[12.5px] font-semibold text-ink-3">© {new Date().getFullYear()} MON STOCK · Marques et logos cités : identification uniquement, aucun partenariat.</p>
       </div>
     </footer>
   );

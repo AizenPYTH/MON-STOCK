@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ExternalLink, Plus } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, Callout, EmptyState } from "@/components/ui/page";
-import { Card, CardContent } from "@/components/ui/card";
+import { Callout, EmptyState } from "@/components/ui/page";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink, buttonClasses } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import { ActionForm } from "@/features/integrations/components/action-form";
 import { AssignSkuDialog } from "@/features/integrations/components/assign-sku-dialog";
 import { PushQuantityButton } from "@/features/integrations/components/push-quantity-button";
 import { safeExternalUrl } from "@/lib/utils";
+import { SettingsSectionHeader } from "@/features/organizations/components/settings-section-header";
 
 export const metadata: Metadata = { title: "Listings non associés" };
 
@@ -48,10 +48,10 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHeader
-        title="Listings non associés"
+      <SettingsSectionHeader
+        back={{ href: "/settings/integrations", label: "Intégrations" }}
+        title="Associations des annonces"
         description="Chaque annonce marketplace doit pointer vers un SKU interne pour que ses ventes décrémentent le stock. Les suggestions ne sont jamais appliquées sans votre validation."
-        actions={<ButtonLink href="/settings/integrations" variant="secondary">Retour aux intégrations</ButtonLink>}
       />
       <LinkTabs
         current={tabHref(params.tab)}
@@ -61,16 +61,16 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
           { href: tabHref("ignored"), label: "Ignorées", count: result.counts.ignored },
         ]}
       />
-      {!writer ? <Callout tone="neutral" className="mb-4">Votre rôle (lecture seule) ne permet pas de modifier les associations.</Callout> : null}
+      {!writer ? <Callout tone="neutral">Votre rôle (lecture seule) ne permet pas de modifier les associations.</Callout> : null}
       {result.error ? (
-        <Callout tone="danger" title="Impossible de charger les annonces" className="mb-4">
+        <Callout tone="danger" title="Impossible de charger les annonces">
           {result.error}
         </Callout>
       ) : null}
 
-      <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
+      <form method="get" role="search" className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="tab" value={params.tab} />
-        <Input name="q" defaultValue={params.q ?? ""} placeholder="Titre, SKU eBay ou n° d'annonce" className="max-w-xs" />
+        <Input name="q" defaultValue={params.q ?? ""} placeholder="Titre, SKU eBay ou n° d'annonce" className="max-w-xs rounded-xl" />
         <Button type="submit" variant="secondary" size="md">
           Rechercher
         </Button>
@@ -88,8 +88,6 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
           action={params.tab === "unmapped" && !params.q ? <ButtonLink href="/settings/integrations" variant="secondary">Aller aux intégrations</ButtonLink> : undefined}
         />
       ) : (
-        <Card>
-          <CardContent className="p-0">
             <Table className="min-w-[900px]">
               <THead>
                 <tr>
@@ -115,8 +113,8 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                           {l.title || "(sans titre)"}
                         </div>
                         <div className="text-xs text-muted">
-                          {PROVIDER_LABEL[l.provider] ?? l.provider} · <span className="font-mono">{l.external_listing_id}</span>
-                          {l.external_variation_id ? <span className="font-mono"> / {l.external_variation_id}</span> : null}
+                          {PROVIDER_LABEL[l.provider] ?? l.provider} · <span className="ms-code">{l.external_listing_id}</span>
+                          {l.external_variation_id ? <span className="ms-code"> / {l.external_variation_id}</span> : null}
                           {safeExternalUrl(l.listing_url) ? (
                             <a href={safeExternalUrl(l.listing_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex align-middle hover:text-foreground">
                               <ExternalLink className="h-3 w-3" />
@@ -125,12 +123,12 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                           {l.status !== "active" ? <Badge variant="neutral" className="ml-1">{l.status}</Badge> : null}
                         </div>
                       </TD>
-                      <TD className="font-mono text-xs">{l.external_sku ?? <span className="text-muted">—</span>}</TD>
+                      <TD className="ms-code text-xs">{l.external_sku ?? <span className="text-muted">—</span>}</TD>
                       <TD align="right">{formatMoney(l.price, l.currency ?? "EUR")}</TD>
                       <TD align="right">{formatNumber(l.quantity_available ?? l.quantity_listed)}</TD>
                       {params.tab === "mapped" ? (
                         <TD>
-                          <div className="font-mono text-xs">{l.sku_code ?? "—"}</div>
+                          <div className="ms-code text-xs">{l.sku_code ?? "—"}</div>
                           <div className="max-w-[220px] truncate text-xs text-muted">{l.sku_product_name ?? ""}</div>
                           <div className="text-xs text-muted">
                             Stock interne : <span className="tnum">{formatNumber(l.sku_quantity_available)}</span>
@@ -147,7 +145,7 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                               {suggestions.map((s) => (
                                 <li key={s.id} className="rounded-md border border-border px-2 py-1.5 text-xs">
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="font-mono">{s.code}</span>
+                                    <span className="ms-code">{s.code}</span>
                                     <Badge variant={s.confidence >= 0.8 ? "success" : "warning"}>{confidenceLabel(s.confidence)}</Badge>
                                     <span className="text-muted">{SUGGESTION_METHOD_LABEL[s.method] ?? s.method}</span>
                                   </div>
@@ -218,12 +216,8 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                 })}
               </TBody>
             </Table>
-          </CardContent>
-        </Card>
       )}
-      <div className="mt-3">
-        <Pagination page={result.page} pageSize={result.pageSize} total={result.total} makeHref={makeHref} />
-      </div>
+      <Pagination page={result.page} pageSize={result.pageSize} total={result.total} makeHref={makeHref} />
     </>
   );
 }

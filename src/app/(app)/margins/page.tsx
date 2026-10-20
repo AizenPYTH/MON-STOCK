@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOrgContext } from "@/features/auth/dal";
-import { PageHeader, EmptyState, Stat, Callout } from "@/components/ui/page";
+import { EmptyState, Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
+import { SceneStatGrid } from "@/features/analytics/components/scene-stats";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -37,11 +39,37 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHeader
-        title="Marges"
-        description="Bénéfice par unité et sur 30 jours, calculé uniquement quand le coût d'achat est connu. Un coût inconnu n'est jamais compté comme zéro."
-        actions={<ButtonLink href="/settings/organization" variant="secondary">Renseigner les frais</ButtonLink>}
-      />
+      <Scene>
+        <SceneHeader
+          eyebrow="Pilotage · 30 derniers jours"
+          title="Marges"
+          description="Bénéfice par unité et sur 30 jours, calculé uniquement quand le coût d'achat est connu. Un coût inconnu n'est jamais compté comme zéro."
+          actions={
+            <ButtonLink href="/settings/organization" variant="night">
+              Renseigner les frais
+            </ButtonLink>
+          }
+        />
+        <SceneStatGrid
+          stats={[
+            { label: "CA 30 j (sélection)", value: formatMoney(agg.revenue30d, currency), hint: `${formatNumber(agg.units30d)} unité(s) vendue(s) · ${agg.lines} SKU` },
+            {
+              label: "Bénéfice estimé 30 j",
+              value: agg.profit30d === null ? null : `≈ ${formatMoney(agg.profit30d, currency)}`,
+              hint: agg.profit30d === null ? "Pas assez de données : aucun SKU avec prix de vente et coût connus." : `Sur ${agg.included} SKU (${formatNumber(agg.unitsIncluded)} unités) au coût connu`,
+              tone: agg.profit30d !== null && agg.profit30d < 0 ? "danger" : undefined,
+            },
+            { label: "SKU exclus", value: formatNumber(agg.excludedUnknownCost + agg.excludedUnknownSalePrice + agg.excludedOtherCurrency), hint: agg.caveat ?? "Aucune exclusion.", tone: agg.excludedUnknownCost > 0 ? "warning" : undefined },
+            {
+              label: "Frais déduits",
+              value: agg.missingFees.length === 0 ? "Complets" : "Partiels",
+              hint: agg.missingFees.length === 0 ? "Commission, paiement et transport connus." : `Non déduits : ${agg.missingFees.map((m) => UNKNOWN_COST_LABEL[m]).join(", ")}.`,
+              tone: agg.missingFees.length === 0 ? undefined : "warning",
+            },
+          ]}
+        />
+      </Scene>
+      <Paper>
 
       <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {data.channels.map(({ channel, ctx: c, missing }) => (
@@ -72,7 +100,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
                 <span className="tnum">{c.shippingCost === null ? <Unknown>Inconnu</Unknown> : formatMoney(c.shippingCost, currency)}</span>
               </div>
               {missing.length > 0 ? (
-                <Link href="/settings/organization" className="block pt-1 text-amber-700 underline">
+                <Link href="/settings/organization" className="block pt-1 font-semibold text-warning underline">
                   Compléter : {missing.map((m) => UNKNOWN_COST_LABEL[m]).join(", ")}
                 </Link>
               ) : (
@@ -88,7 +116,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
         ) : null}
       </div>
 
-      <form method="get" action="/margins" className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border bg-surface p-3 md:grid-cols-5">
+      <form method="get" action="/margins" className="mb-4 grid grid-cols-2 gap-2 rounded-2xl border border-border bg-surface p-3 md:grid-cols-5">
         <Select name="channel" defaultValue={data.selectedChannel?.id ?? ""} aria-label="Canal (contexte de frais)">
           {data.channels.map(({ channel }) => (
             <option key={channel.id} value={channel.id}>
@@ -116,22 +144,6 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
           </ButtonLink>
         </div>
       </form>
-
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="CA 30 j (sélection)" value={formatMoney(agg.revenue30d, currency)} hint={`${formatNumber(agg.units30d)} unité(s) vendue(s) · ${agg.lines} SKU`} />
-        <Stat
-          label="Bénéfice estimé 30 j"
-          value={agg.profit30d === null ? <span className="text-base font-medium text-muted">Pas assez de données</span> : formatMoney(agg.profit30d, currency)}
-          hint={agg.included > 0 ? `Sur ${agg.included} SKU (${formatNumber(agg.unitsIncluded)} unités) au coût connu` : "Aucun SKU avec prix de vente et coût connus."}
-          tone={agg.profit30d !== null && agg.profit30d < 0 ? "danger" : undefined}
-        />
-        <Stat label="SKU exclus" value={formatNumber(agg.excludedUnknownCost + agg.excludedUnknownSalePrice + agg.excludedOtherCurrency)} hint={agg.caveat ?? "Aucune exclusion."} tone={agg.excludedUnknownCost > 0 ? "warning" : undefined} />
-        <Stat
-          label="Frais déduits"
-          value={agg.missingFees.length === 0 ? "Complets" : <span className="text-base font-medium text-warning">Partiels</span>}
-          hint={agg.missingFees.length === 0 ? "Commission, paiement et transport connus." : `Non déduits : ${agg.missingFees.map((m) => UNKNOWN_COST_LABEL[m]).join(", ")}.`}
-        />
-      </div>
 
       {agg.excludedUnknownCost > 0 && !params.unknown ? (
         <Callout tone="warning" className="mb-4" title={`${agg.excludedUnknownCost} SKU exclu${agg.excludedUnknownCost > 1 ? "s" : ""} du bénéfice : coût d'achat inconnu.`} action={<ButtonLink href="/margins?unknown=1" variant="secondary" size="sm">Voir ces SKU</ButtonLink>}>
@@ -171,7 +183,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
                     <TD>
                       <Link href={`/stock/${encodeURIComponent(l.code)}` as never} className="block max-w-[280px]">
                         <div className="truncate font-medium text-foreground">{l.name}</div>
-                        <div className="font-mono text-xs text-muted">{l.code}</div>
+                        <div className="ms-code text-xs text-muted">{l.code}</div>
                       </Link>
                     </TD>
                     <TD align="right">
@@ -217,6 +229,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
           {data.truncated ? <p className="text-xs text-muted">Plus de 5 000 SKU actifs : seuls les 5 000 premiers sont analysés.</p> : null}
         </div>
       )}
+      </Paper>
     </>
   );
 }

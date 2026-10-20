@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireOrgContext } from "@/features/auth/dal";
-import { PageHeader, DescriptionList, Callout } from "@/components/ui/page";
+import { DescriptionList, Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
+import { SceneStatGrid } from "@/features/analytics/components/scene-stats";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -36,21 +38,27 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <PageHeader
-        eyebrow={
-          <Link href="/sales" className="hover:text-foreground">
-            Ventes
-          </Link>
-        }
-        title={
-          <span className="flex flex-wrap items-center gap-2">
-            Commande <span className="font-mono">{order.order_number ?? order.external_order_id}</span>
-            <Badge variant={ORDER_STATUS_VARIANT[order.status] ?? "neutral"}>{ORDER_STATUS_LABEL[order.status] ?? order.status}</Badge>
-          </span>
-        }
-        description={`${channel ? `${PROVIDER_LABEL[channel.provider] ?? channel.provider} · ${channel.name}` : PROVIDER_LABEL[order.provider] ?? order.provider} · passée le ${formatDateTime(order.placed_at)}`}
-      />
-
+      <Scene>
+        <SceneHeader
+          back={{ href: "/sales", label: "Ventes" }}
+          eyebrow={`${channel ? `${PROVIDER_LABEL[channel.provider] ?? channel.provider} · ${channel.name}` : PROVIDER_LABEL[order.provider] ?? order.provider} · passée le ${formatDateTime(order.placed_at)}`}
+          title={
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              Commande <span className="ms-code text-[24px] tracking-normal">{order.order_number ?? order.external_order_id}</span>
+              <Badge variant={ORDER_STATUS_VARIANT[order.status] ?? "neutral"}>{ORDER_STATUS_LABEL[order.status] ?? order.status}</Badge>
+            </span>
+          }
+        />
+        <SceneStatGrid
+          stats={[
+            { label: "Total", value: order.total === null ? null : formatMoney(order.total, order.currency) },
+            { label: "Lignes", value: formatNumber(items.length), hint: `${formatNumber(items.reduce((a, i) => a + i.item.quantity, 0))} unité(s)` },
+            { label: "Stock déduit", value: order.inventory_applied ? "Oui" : cancelled ? "Sans effet" : "Non", tone: !order.inventory_applied && !cancelled && items.length > 0 ? "warning" : undefined, hint: unmapped.length > 0 ? `${unmapped.length} ligne(s) non associée(s)` : undefined },
+            { label: "Acheteur", value: order.buyer_username ?? NOT_PROVIDED },
+          ]}
+        />
+      </Scene>
+      <Paper>
       {unmapped.length > 0 ? (
         <Callout tone="warning" className="mb-5" title={`${unmapped.length} ligne(s) non associée(s) à un SKU : leur stock n'a pas été déduit.`} action={<ButtonLink href="/settings/integrations/mapping" variant="secondary" size="sm">Associer les annonces</ButtonLink>}>
           Associez l'annonce correspondante à un SKU ; les ventes passées seront rattachées, puis vous pourrez appliquer la déduction depuis la fiche SKU.
@@ -88,7 +96,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                         <TR key={item.id} className="align-top">
                           <TD>
                             <div className="max-w-[320px] truncate font-medium">{item.title || "Article sans titre"}</div>
-                            <div className="font-mono text-xs text-muted">
+                            <div className="ms-code text-xs text-muted">
                               {item.external_sku ? `SKU externe ${item.external_sku} · ` : ""}
                               {item.external_listing_id ? `annonce ${item.external_listing_id}` : ""}
                               {item.external_variation_id ? ` / ${item.external_variation_id}` : ""}
@@ -97,7 +105,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                           <TD>
                             {sku ? (
                               <Link href={`/stock/${encodeURIComponent(sku.code)}` as never} className="hover:underline">
-                                <div className="font-mono text-xs">{sku.code}</div>
+                                <div className="ms-code text-xs">{sku.code}</div>
                                 <div className="max-w-[220px] truncate text-xs text-muted">
                                   {sku.productName}
                                   {sku.variantName ? ` · ${sku.variantName}` : ""}
@@ -151,7 +159,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 className="sm:grid-cols-1"
                 items={[
                   { label: "Acheteur", value: order.buyer_username ?? NOT_PROVIDED },
-                  { label: "Identifiant externe", value: <span className="font-mono text-xs">{order.external_order_id}</span> },
+                  { label: "Identifiant externe", value: <span className="ms-code text-xs">{order.external_order_id}</span> },
                   { label: "Paiement", value: order.payment_status ?? NOT_PROVIDED },
                   { label: "Expédition", value: order.fulfillment_status ?? NOT_PROVIDED },
                   { label: "Sous-total", value: formatMoney(order.subtotal, order.currency) },
@@ -183,7 +191,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                         </span>
                       </div>
                       <div className="text-xs text-muted">
-                        {formatDateTime(m.occurred_at)} · stock après : {m.quantity_after} · <span className="font-mono">{m.id.slice(0, 8)}</span>
+                        {formatDateTime(m.occurred_at)} · stock après : {m.quantity_after} · <span className="ms-code">{m.id.slice(0, 8)}</span>
                       </div>
                     </li>
                   ))}
@@ -193,6 +201,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           </Card>
         </div>
       </div>
+      </Paper>
     </>
   );
 }

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { canWrite, requireOrgContext } from "@/features/auth/dal";
-import { PageHeader, DescriptionList, Stat, EmptyState, Callout } from "@/components/ui/page";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Callout } from "@/components/ui/page";
+import { Panel } from "@/components/instrument";
+import { cn } from "@/lib/utils";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { formatDateTime } from "@/lib/format";
 import { getSyncRunDetail } from "@/features/integrations/queries";
 import { formatDuration, formatRunSummary, PROVIDER_LABEL, readStats, SYNC_STATUS_LABEL, SYNC_TRIGGER_LABEL } from "@/features/integrations/format";
 import { SyncNowForm } from "@/features/integrations/components/sync-now-form";
+import { SettingsSectionHeader } from "@/features/organizations/components/settings-section-header";
 
 export const metadata: Metadata = { title: "Détail de la synchronisation" };
 
@@ -28,17 +30,16 @@ export default async function SyncRunPage({ params }: { params: Promise<{ runId:
 
   return (
     <>
-      <PageHeader
-        eyebrow="Synchronisation"
-        title={formatRunSummary(run)}
-        description={`${PROVIDER_LABEL[run.provider] ?? run.provider}${connection?.external_username ? ` · ${connection.external_username}` : ""} · déclenchement ${SYNC_TRIGGER_LABEL[run.trigger]?.toLowerCase() ?? run.trigger}`}
-        actions={<ButtonLink href="/settings/sync" variant="secondary">Historique</ButtonLink>}
+      <SettingsSectionHeader
+        back={{ href: "/settings/sync", label: "Synchronisation" }}
+        title={`Passage du ${formatDateTime(run.started_at)}`}
+        description={`${formatRunSummary(run)} — ${PROVIDER_LABEL[run.provider] ?? run.provider}${connection?.external_username ? ` · ${connection.external_username}` : ""} · déclenchement ${SYNC_TRIGGER_LABEL[run.trigger]?.toLowerCase() ?? run.trigger}`}
       />
       {run.status === "failed" || run.status === "partial" ? (
         <Callout
           tone={run.status === "failed" ? "danger" : "warning"}
           title={run.status === "failed" ? "Échec de la synchronisation" : "Synchronisation partielle"}
-          className="mb-5"
+          
           action={
             needsReconnect ? (
               <ButtonLink href="/settings/integrations" variant="secondary" size="sm">
@@ -60,41 +61,58 @@ export default async function SyncRunPage({ params }: { params: Promise<{ runId:
         </Callout>
       ) : null}
       {run.status === "running" ? (
-        <Callout tone="info" title="Synchronisation en cours" className="mb-5">
+        <Callout tone="info" title="Synchronisation en cours">
           Ce run n'est pas terminé. Rechargez la page pour voir son résultat (un run sans fin enregistrée après 15 min est marqué interrompu).
         </Callout>
       ) : null}
 
-      <Card className="mb-6">
-        <CardContent>
-          <DescriptionList
-            items={[
-              { label: "Statut", value: <Badge variant={STATUS_BADGE[run.status] ?? "neutral"}>{SYNC_STATUS_LABEL[run.status] ?? run.status}</Badge> },
-              { label: "Début", value: formatDateTime(run.started_at) },
-              { label: "Fin", value: run.finished_at ? formatDateTime(run.finished_at) : "En cours" },
-              { label: "Durée", value: formatDuration(run.duration_ms) },
-              { label: "Enregistrements traités", value: run.records_processed },
-              { label: "Identifiant", value: <span className="font-mono text-xs">{run.id}</span> },
-            ]}
-          />
-        </CardContent>
-      </Card>
+      <Panel className="p-4 sm:p-5">
+        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3">
+          {[
+            { label: "Statut", value: <Badge variant={STATUS_BADGE[run.status] ?? "neutral"}>{SYNC_STATUS_LABEL[run.status] ?? run.status}</Badge> },
+            { label: "Début", value: formatDateTime(run.started_at) },
+            { label: "Fin", value: run.finished_at ? formatDateTime(run.finished_at) : "En cours" },
+            { label: "Durée", value: formatDuration(run.duration_ms) },
+            { label: "Enregistrements traités", value: run.records_processed },
+            { label: "Identifiant", value: <span className="ms-code break-all text-xs">{run.id}</span> },
+          ].map((it) => (
+            <div key={it.label} className="min-w-0">
+              <dt className="ms-mono text-[10px] leading-[13px] text-ink-3">{it.label}</dt>
+              <dd className="mt-1 text-[14px] font-bold text-foreground tnum">{it.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </Panel>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Listings analysés" value={s.listings_fetched} hint={`${s.listings_upserted} enregistrés · ${s.listings_ended} terminés`} />
-        <Stat label="Associés automatiquement" value={s.listings_auto_mapped} hint={`${s.suggestions_created} suggestion(s) créée(s)`} />
-        <Stat label="Commandes récupérées" value={s.orders_fetched} hint={`${s.orders_created} nouvelles · ${s.orders_updated} mises à jour`} />
-        <Stat label="Lignes sans SKU" value={s.items_unmapped} tone={s.items_unmapped > 0 ? "warning" : "neutral"} hint="Ventes non déduites du stock" />
-        <Stat label="Stocks modifiés" value={s.inventory_changes} hint="Mouvements de stock appliqués" />
-        <Stat label="Quantités envoyées" value={s.inventory_pushed} hint="Vers le canal (si activé)" />
-        <Stat label="Erreurs" value={s.errors} tone={s.errors > 0 ? "danger" : "neutral"} />
-      </div>
+      <Panel className="overflow-hidden">
+        <dl className="grid grid-cols-2 py-1 sm:grid-cols-4">
+          {[
+            { label: "Annonces analysées", value: s.listings_fetched, hint: `${s.listings_upserted} enregistrées · ${s.listings_ended} terminées` },
+            { label: "Associées automatiquement", value: s.listings_auto_mapped, hint: `${s.suggestions_created} suggestion(s) créée(s)` },
+            { label: "Commandes récupérées", value: s.orders_fetched, hint: `${s.orders_created} nouvelles · ${s.orders_updated} mises à jour` },
+            { label: "Lignes sans SKU", value: s.items_unmapped, hint: "Ventes non déduites du stock", tone: s.items_unmapped > 0 ? "warning" : undefined },
+            { label: "Stocks modifiés", value: s.inventory_changes, hint: "Mouvements de stock appliqués" },
+            { label: "Quantités envoyées", value: s.inventory_pushed, hint: "Vers le canal (si activé)" },
+            { label: "Erreurs", value: s.errors, hint: s.errors > 0 ? "Détail ci-dessous" : "Aucune", tone: s.errors > 0 ? "danger" : undefined },
+          ].map((it) => (
+            <div key={it.label} className="min-w-0 px-4 py-3">
+              <dt className="ms-mono truncate text-[10px] leading-[13px] text-ink-3">{it.label}</dt>
+              <dd className={cn("mt-1 text-[20px] font-bold leading-[26px] tnum", it.tone === "danger" ? "text-danger" : it.tone === "warning" ? "text-warning" : "text-foreground")}>{it.value}</dd>
+              <dd className="truncate text-xs font-semibold text-ink-3">{it.hint}</dd>
+            </div>
+          ))}
+        </dl>
+      </Panel>
 
-      <Card>
-        <CardHeader title="Erreurs" description={errors.length === 0 ? "Aucune erreur sur ce run." : `${errors.length} erreur(s) — aucun secret n'est enregistré dans les détails.`} />
-        <CardContent className="p-0">
+      <section aria-labelledby="errors-title" className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 id="errors-title" className="ms-mono text-[11px] leading-[14px] text-muted">
+            Erreurs <span className="ms-code text-foreground">{errors.length}</span>
+          </h3>
+          {errors.length > 0 ? <span className="text-xs font-semibold text-ink-3">Aucun secret n&apos;est enregistré dans les détails.</span> : null}
+        </div>
           {errors.length === 0 ? (
-            <EmptyState title="Aucune erreur" className="border-0" />
+            <Panel className="px-4 py-5 text-sm font-semibold text-muted">Aucune erreur sur ce passage.</Panel>
           ) : (
             <Table className="min-w-[720px]">
               <THead>
@@ -108,11 +126,11 @@ export default async function SyncRunPage({ params }: { params: Promise<{ runId:
               <TBody>
                 {errors.map((e) => (
                   <TR key={e.id} className="align-top">
-                    <TD className="font-mono text-xs">{e.code}</TD>
+                    <TD className="ms-code text-xs">{e.code}</TD>
                     <TD className="max-w-[420px] whitespace-pre-wrap text-sm">{e.message}</TD>
                     <TD className="text-xs text-muted">
                       {e.entity_type ?? "—"}
-                      {e.entity_ref ? <span className="block font-mono">{e.entity_ref}</span> : null}
+                      {e.entity_ref ? <span className="ms-code block">{e.entity_ref}</span> : null}
                     </TD>
                     <TD>
                       {e.details && Object.keys(e.details as object).length > 0 ? (
@@ -129,8 +147,7 @@ export default async function SyncRunPage({ params }: { params: Promise<{ runId:
               </TBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+      </section>
     </>
   );
 }

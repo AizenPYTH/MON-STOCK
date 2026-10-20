@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOrgContext } from "@/features/auth/dal";
-import { PageHeader, EmptyState, Stat, Callout } from "@/components/ui/page";
+import { EmptyState, Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
+import { SceneStatGrid } from "@/features/analytics/components/scene-stats";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Checkbox, Input, Select } from "@/components/ui/form";
@@ -31,20 +33,24 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHeader title="Ventes" description="Commandes importées depuis vos canaux ou saisies manuellement. Les statistiques excluent les commandes annulées et remboursées ; les jours sont comptés à l'heure de Paris." />
-
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Stat label="Aujourd'hui" value={formatMoney(summary.today.revenue, currency)} hint={`${formatNumber(summary.today.orders)} commande(s) · ${formatNumber(summary.today.units)} unité(s)`} />
-        <Stat label="7 derniers jours" value={formatMoney(summary.last7d.revenue, currency)} hint={`${formatNumber(summary.last7d.orders)} commande(s) · ${formatNumber(summary.last7d.units)} unité(s)`} />
-        <Stat label="30 derniers jours" value={formatMoney(summary.last30d.revenue, currency)} hint={`${formatNumber(summary.last30d.orders)} commande(s) · ${formatNumber(summary.last30d.units)} unité(s)`} />
-      </div>
+      <Scene>
+        <SceneHeader eyebrow="Pilotage · ventes" title="Ventes" description="Commandes importées depuis vos canaux ou saisies manuellement. Les statistiques excluent les commandes annulées et remboursées ; les jours sont comptés à l'heure de Paris." />
+        <SceneStatGrid
+          stats={[
+            { label: "Aujourd'hui", value: formatMoney(summary.today.revenue, currency), hint: `${formatNumber(summary.today.orders)} commande(s) · ${formatNumber(summary.today.units)} unité(s)` },
+            { label: "7 derniers jours", value: formatMoney(summary.last7d.revenue, currency), hint: `${formatNumber(summary.last7d.orders)} commande(s) · ${formatNumber(summary.last7d.units)} unité(s)` },
+            { label: "30 derniers jours", value: formatMoney(summary.last30d.revenue, currency), hint: `${formatNumber(summary.last30d.orders)} commande(s) · ${formatNumber(summary.last30d.units)} unité(s)` },
+          ]}
+        />
+      </Scene>
+      <Paper>
       {foreign ? (
         <Callout tone="info" className="mb-5" title="Ventes dans une autre devise">
           Les montants ci-dessus sont en {currency} uniquement. Ventes des 30 derniers jours dans une autre devise, non converties et non additionnées : {foreign}. Les commandes et unités sont, elles, comptées.
         </Callout>
       ) : null}
 
-      <form method="get" action="/sales" className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border bg-surface p-3 md:grid-cols-4 xl:grid-cols-8">
+      <form method="get" action="/sales" className="mb-4 grid grid-cols-2 gap-2 rounded-2xl border border-border bg-surface p-3 md:grid-cols-4 xl:grid-cols-8">
         <Input name="q" defaultValue={params.q ?? ""} placeholder="N° de commande, acheteur…" className="col-span-2" aria-label="Recherche" />
         <Select name="channel" defaultValue={params.channel ?? ""} aria-label="Canal">
           <option value="">Canal</option>
@@ -110,7 +116,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
                     <TD className="text-muted">{formatDateTime(order.placed_at)}</TD>
                     <TD>{channel ? `${PROVIDER_LABEL[channel.provider] ?? channel.provider}` : PROVIDER_LABEL[order.provider] ?? order.provider}</TD>
                     <TD>
-                      <Link href={`/sales/${order.id}` as never} className="font-mono text-xs font-medium hover:underline">
+                      <Link href={`/sales/${order.id}` as never} className="ms-code text-xs hover:underline">
                         {order.order_number ?? order.external_order_id}
                       </Link>
                     </TD>
@@ -147,6 +153,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
           <Pagination page={result.page} pageSize={result.pageSize} total={result.total} makeHref={makeHref} />
         </div>
       )}
+      </Paper>
     </>
   );
 }
