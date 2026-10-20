@@ -13,8 +13,24 @@ const LEVEL_FILL: Record<BarcodeLevel, string> = { ok: "rgba(247,248,250,.86)", 
 export const LEVEL_LABEL: Record<BarcodeLevel, string> = { ok: "En stock", low: "Stock faible", out: "Rupture" };
 
 /** Code-barres du stock : une barre par référence, largeur = ventes 30 j, couleur = niveau. */
-export function StockBarcode({ items, height = 56, href, label }: { items: BarcodeItem[]; height?: number; href?: string; label: string }) {
+export function StockBarcode({ items, height = 56, href, hrefFor, label }: { items: BarcodeItem[]; height?: number; href?: string; hrefFor?: Partial<Record<BarcodeLevel, string>>; label: string }) {
   const bars = barcodeBars(items);
+  if (hrefFor && !href) {
+    // Chaque barre mène au filtre de son niveau (lien non tabulable : la légende porte les liens clavier).
+    return (
+      <span role="img" aria-label={label} className="flex w-full" style={{ height, gap: bars.length > 40 ? 2 : 3 }}>
+        {bars.map((b, i) => {
+          const style = { flexGrow: b.weight, flexBasis: 0, background: LEVEL_FILL[b.level], animationDelay: `${160 + Math.min(i, 30) * 18}ms` };
+          const to = hrefFor[b.level];
+          return to ? (
+            <Link key={b.id} href={to as never} tabIndex={-1} aria-hidden="true" className="ms-grow-y ms-hatch block min-w-px hover:opacity-80" style={style} />
+          ) : (
+            <span key={b.id} aria-hidden="true" className="ms-grow-y ms-hatch block min-w-px" style={style} />
+          );
+        })}
+      </span>
+    );
+  }
   const body = (
     <span className="flex w-full" style={{ height, gap: bars.length > 40 ? 2 : 3 }} aria-hidden="true">
       {bars.map((b, i) => (

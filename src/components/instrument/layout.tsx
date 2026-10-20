@@ -40,7 +40,7 @@ export type StageStat = { label: string; value: ReactNode | null; note?: ReactNo
 
 export function StageStats({ stats, className, size = "md" }: { stats: StageStat[]; className?: string; size?: "md" | "sm" }) {
   return (
-    <dl className={cn("grid border-t border-night-line pt-4", className)} style={{ gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }}>
+    <dl className={cn("grid grid-cols-2 gap-y-3 border-t border-night-line pt-4 sm:grid-cols-[repeat(var(--stat-cols),minmax(0,1fr))] sm:gap-y-0", className)} style={{ ["--stat-cols" as string]: String(stats.length) }}>
       {stats.map((s, i) => {
         const tone = s.tone === "mint" ? "text-mint" : s.tone === "warning" ? "text-amber" : s.tone === "danger" ? "text-danger-on-night" : "text-on-night";
         const body = (
@@ -53,7 +53,7 @@ export function StageStats({ stats, className, size = "md" }: { stats: StageStat
           </>
         );
         return (
-          <div key={s.label} className={cn("min-w-0 pr-4", i > 0 && "border-l border-night-line pl-4")}>
+          <div key={s.label} className={cn("min-w-0 pr-4", i % 2 === 1 && "border-l border-night-line pl-4", i > 0 && "sm:border-l sm:border-night-line sm:pl-4")}>
             {s.href ? (
               <Link href={s.href as never} className="block rounded-lg hover:opacity-80">
                 {body}
