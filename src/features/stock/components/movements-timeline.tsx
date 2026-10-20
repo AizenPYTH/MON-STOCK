@@ -16,29 +16,32 @@ const TYPE_LABEL: Record<string, string> = {
 
 const CHANNEL_LABEL: Record<string, string> = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "manuel" };
 
-export function MovementsTimeline({ movements }: { movements: InventoryMovement[] }) {
-  if (movements.length === 0) return <p className="text-sm text-muted">Aucun mouvement enregistré.</p>;
+/**
+ * Historique des mouvements (v5) : type, date · canal · note · stock après, quantité signée
+ * (vert en entrée, rouge en sortie). Historique non supprimable : affichage seul.
+ */
+export function MovementsTimeline({ movements, limit, className }: { movements: InventoryMovement[]; limit?: number; className?: string }) {
+  if (movements.length === 0) return <p className={cn("px-4 py-3.5 text-sm font-medium text-muted", className)}>Aucun mouvement enregistré.</p>;
+  const shown = limit ? movements.slice(0, limit) : movements;
   return (
-    <ol className="divide-y divide-border">
-      {movements.map((m) => (
-        <li key={m.id} className="flex items-start gap-3 py-2.5 text-sm">
-          <span className={cn("w-14 shrink-0 text-right font-semibold tnum", m.quantity > 0 ? "text-success" : "text-danger")}>
-            {m.quantity > 0 ? "+" : ""}
-            {m.quantity}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="font-medium">
-              {TYPE_LABEL[m.type] ?? m.type}
-              {m.channel ? <span className="text-muted"> · {CHANNEL_LABEL[m.channel] ?? m.channel}</span> : null}
+    <ol className={cn("divide-y divide-line-soft", className)}>
+      {shown.map((m) => {
+        const sub = [formatDateTime(m.occurred_at), m.channel ? CHANNEL_LABEL[m.channel] ?? m.channel : null, m.note, `stock après : ${m.quantity_after}`].filter(Boolean).join(" · ");
+        return (
+          <li key={m.id} className="flex min-h-[58px] items-center gap-3 px-4 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="text-[14.5px] font-semibold leading-5">{TYPE_LABEL[m.type] ?? m.type}</div>
+              <div className="truncate text-[12.5px] font-semibold leading-[17px] text-ink-3" title={sub}>
+                {sub}
+              </div>
             </div>
-            {m.note ? <div className="truncate text-xs text-muted">{m.note}</div> : null}
-          </div>
-          <div className="shrink-0 text-right text-xs text-muted">
-            <div>{formatDateTime(m.occurred_at)}</div>
-            <div>→ {m.quantity_after}</div>
-          </div>
-        </li>
-      ))}
+            <span className={cn("shrink-0 text-[15px] font-extrabold leading-5 tnum", m.quantity > 0 ? "text-success" : m.quantity < 0 ? "text-danger" : "text-muted")}>
+              {m.quantity > 0 ? "+" : m.quantity < 0 ? "−" : ""}
+              {Math.abs(m.quantity)}
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }

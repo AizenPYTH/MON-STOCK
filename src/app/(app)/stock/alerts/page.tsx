@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, EmptyState, Section, Callout } from "@/components/ui/page";
+import { EmptyState, Section, Callout } from "@/components/ui/page";
+import { FilterChip, Paper, Scene, SceneHeader, StageStats } from "@/components/instrument";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
-import { LinkTabs } from "@/components/ui/tabs";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { getStockAnalytics } from "@/features/analytics/stock-analytics";
@@ -39,23 +39,42 @@ export default async function StockAlertsPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <PageHeader
-        title="Alertes"
-        description="Niveaux de stock calculés à la volée à partir de vos ventes réelles (jamais périmés), et alertes d'exploitation (synchronisation, connexions, incohérences)."
-      />
-
+      <Scene>
+        <SceneHeader
+          back={{ href: "/stock", label: "Stock" }}
+          title="Alertes"
+          description="Niveaux de stock calculés à la volée à partir de vos ventes réelles (jamais périmés), et alertes d'exploitation (synchronisation, connexions, incohérences)."
+        />
+        <StageStats
+          className="mt-5 max-w-[760px] max-sm:grid-cols-2! max-sm:gap-y-3"
+          stats={[
+            { label: "À traiter", value: formatNumber(todo.length), href: "/stock/alerts" },
+            { label: "Ruptures", value: formatNumber(analytics.counts.out_of_stock), tone: analytics.counts.out_of_stock > 0 ? "danger" : undefined, href: "/stock/alerts?level=out_of_stock" },
+            { label: "Risque de rupture", value: formatNumber(analytics.counts.at_risk), tone: analytics.counts.at_risk > 0 ? "warning" : undefined, href: "/stock/alerts?level=at_risk" },
+            { label: "Stock faible", value: formatNumber(analytics.counts.low), tone: analytics.counts.low > 0 ? "warning" : undefined, href: "/stock/alerts?level=low" },
+          ]}
+        />
+      </Scene>
+      <Paper>
       {analytics.truncated ? <Callout tone="warning" className="mb-4">Plus de 5 000 SKU actifs : seuls les 5 000 premiers sont analysés ici. Les compteurs sont des minima.</Callout> : null}
 
-      <LinkTabs
-        current={current}
-        items={[
-          { href: "/stock/alerts", label: "À traiter", count: todo.length },
-          { href: "/stock/alerts?level=out_of_stock", label: "🔴 Rupture", count: analytics.counts.out_of_stock },
-          { href: "/stock/alerts?level=at_risk", label: "🟠 Risque de rupture", count: analytics.counts.at_risk },
-          { href: "/stock/alerts?level=low", label: "🟡 Stock faible", count: analytics.counts.low },
-          { href: "/stock/alerts?level=normal", label: "🟢 Stock normal", count: analytics.counts.normal },
-        ]}
-      />
+      <nav aria-label="Niveau de stock" className="mb-4 flex flex-wrap gap-1.5">
+        <FilterChip href="/stock/alerts" selected={params.level === "todo"} count={todo.length}>
+          À traiter
+        </FilterChip>
+        <FilterChip href="/stock/alerts?level=out_of_stock" selected={params.level === "out_of_stock"} dot="var(--red)" count={analytics.counts.out_of_stock}>
+          Rupture
+        </FilterChip>
+        <FilterChip href="/stock/alerts?level=at_risk" selected={params.level === "at_risk"} dot="var(--amber)" count={analytics.counts.at_risk}>
+          Risque de rupture
+        </FilterChip>
+        <FilterChip href="/stock/alerts?level=low" selected={params.level === "low"} dot="var(--amber)" count={analytics.counts.low}>
+          Stock faible
+        </FilterChip>
+        <FilterChip href="/stock/alerts?level=normal" selected={params.level === "normal"} dot="var(--success)" count={analytics.counts.normal}>
+          Stock normal
+        </FilterChip>
+      </nav>
 
       {rows.length === 0 ? (
         <EmptyState
@@ -65,7 +84,7 @@ export default async function StockAlertsPage({ searchParams }: { searchParams: 
         />
       ) : (
         <div className="space-y-3">
-          <Table className="min-w-[1180px]">
+          <Table className="min-w-[1060px]">
             <THead>
               <tr>
                 <TH>Produit</TH>
@@ -117,7 +136,7 @@ export default async function StockAlertsPage({ searchParams }: { searchParams: 
                     </TD>
                     <TD align="right">
                       {qty === null ? <span className="text-xs text-muted">{rec ? "Pas assez de données" : "—"}</span> : qty === 0 ? <span className="text-xs text-muted">Rien à commander</span> : <span className="font-semibold">{formatNumber(qty)}</span>}
-                      {rec?.result.usedDefaultLeadTime && qty ? <div className="text-xs text-amber-700">délai par défaut</div> : null}
+                      {rec?.result.usedDefaultLeadTime && qty ? <div className="text-xs font-semibold text-warning">délai par défaut</div> : null}
                     </TD>
                     <TD>
                       <div className="flex flex-col items-start gap-1">
@@ -184,6 +203,7 @@ export default async function StockAlertsPage({ searchParams }: { searchParams: 
         )}
       </Section>
       </div>
+      </Paper>
     </>
   );
 }

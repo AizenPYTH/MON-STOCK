@@ -112,9 +112,10 @@ export function barcodeLevel(level: StockLevel): BarcodeLevel {
   return level === "out_of_stock" ? "out" : level === "normal" ? "ok" : "low";
 }
 
-/** Lien du stock filtré sur un niveau (filtre `status` de /stock). */
+/** Lien du stock filtré sur un niveau (puces de /stock : `niveau=rupture|faible`). */
 export function stockLevelHref(level: StockLevel | "all"): string {
-  return level === "all" ? "/stock" : `/stock?status=${level}`;
+  if (level === "all" || level === "normal") return "/stock";
+  return level === "out_of_stock" ? "/stock?niveau=rupture" : "/stock?niveau=faible";
 }
 
 /**

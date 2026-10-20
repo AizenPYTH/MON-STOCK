@@ -60,7 +60,7 @@ describe("stock", () => {
     expect(barcodeLevel("out_of_stock")).toBe("out");
     expect(barcodeLevel("at_risk")).toBe("low");
     expect(barcodeLevel("normal")).toBe("ok");
-    expect(stockLevelHref("low")).toBe("/stock?status=low");
+    expect(stockLevelHref("low")).toBe("/stock?niveau=faible");
     expect(stockLevelHref("all")).toBe("/stock");
   });
   it("part des ventes en rupture : null sans vente", () => {
@@ -118,7 +118,7 @@ describe("à traiter", () => {
     expect(tasks.map((t) => t.key)).toEqual(["job-j1", "acc-foxway", "out", "ship", "low"]);
     expect(tasks[0]).toMatchObject({ title: "Import échoué · Brico-Phone", href: "/sourcing/imports/j1", cta: "Rapport" });
     expect(tasks.find((t) => t.key === "ship")).toMatchObject({ title: "4 commandes à expédier", href: "/sales?status=paid" });
-    expect(tasks.find((t) => t.key === "out")?.href).toBe("/stock?status=out_of_stock");
+    expect(tasks.find((t) => t.key === "out")?.href).toBe("/stock?niveau=rupture");
   });
   it("un échec corrigé par un import plus récent n'est plus à traiter ; les imports anciens sont ignorés", () => {
     expect(buildTasks({ ...base, jobs: [job("old", "failed", "2026-10-19T07:00:00Z"), job("new", "completed", "2026-10-20T07:00:00Z")] })).toEqual([]);

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { PageHeader, Callout } from "@/components/ui/page";
+import { Callout } from "@/components/ui/page";
+import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { ProductForm } from "@/features/stock/components/product-form";
 
 export const metadata: Metadata = { title: "Nouveau produit" };
@@ -23,17 +24,30 @@ export default async function NewProductPage({ searchParams }: { searchParams: P
   if (!canWrite(ctx.role)) {
     return (
       <>
-        <PageHeader title="Nouveau produit" />
-        <Callout tone="neutral">Votre rôle (lecture seule) ne permet pas de créer des produits.</Callout>
+        <Scene>
+          <SceneHeader back={{ href: "/stock", label: "Stock" }} title="Nouveau produit" />
+        </Scene>
+        <Paper>
+          <Callout tone="neutral">Votre rôle (lecture seule) ne permet pas de créer des produits.</Callout>
+        </Paper>
       </>
     );
   }
   return (
     <>
-      <PageHeader title={product ? "Nouvelle variante" : "Nouveau produit"} description={product ? `Ajouter une variante et un SKU à « ${product.name} ».` : "Créez un produit, sa première variante et son SKU."} />
-      <div className="max-w-4xl">
-        <ProductForm product={product} suppliers={suppliers ?? []} currency={ctx.organization.default_currency} defaults={defaults} />
-      </div>
+      <Scene>
+        <SceneHeader
+          back={{ href: "/stock", label: "Stock" }}
+          eyebrow={product ? "Variante" : "Produit"}
+          title={product ? "Nouvelle variante" : "Nouveau produit"}
+          description={product ? `Ajouter une variante et un SKU à « ${product.name} ».` : "Créez un produit, sa première variante et son SKU."}
+        />
+      </Scene>
+      <Paper>
+        <div className="max-w-4xl">
+          <ProductForm product={product} suppliers={suppliers ?? []} currency={ctx.organization.default_currency} defaults={defaults} />
+        </div>
+      </Paper>
     </>
   );
 }
