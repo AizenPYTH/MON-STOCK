@@ -3,6 +3,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/db/database.types";
 import { safeInternalPath } from "@/lib/utils";
 
+/** Aperçu visuel (voir src/lib/supabase/preview.ts) : mêmes garde-fous, sans import serveur. */
+function webPreview(): boolean {
+  if (process.env.MONSTOCK_WEB_PREVIEW !== "1") return false;
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host === "preview.invalid";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Routes accessibles sans session. Tout le reste (pages de l'application, /onboarding,
  * routes API non listées) exige une session ; la vraie autorisation est faite dans la
@@ -56,7 +66,7 @@ export function loginRedirectUrl(request: Pick<NextRequest, "nextUrl">): URL {
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
 
-  if (isMachinePath(request.nextUrl.pathname)) {
+  if (isMachinePath(request.nextUrl.pathname) || webPreview()) {
     return response;
   }
 

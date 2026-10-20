@@ -1,56 +1,79 @@
 "use client";
-import { useFormStatus } from "react-dom";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { switchOrganizationAction } from "@/features/organizations/actions";
+import { DemoBadge } from "@/components/instrument/figure";
+import { initials } from "@/components/instrument/pure";
+import { cn } from "@/lib/utils";
 
 type Option = { id: string; name: string; isDemo: boolean };
 
-function SwitcherSelect({ options, currentId }: { options: Option[]; currentId: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <>
-      <select
-        name="organization_id"
-        defaultValue={currentId}
-        disabled={pending}
-        aria-label="Organisation active"
-        onChange={(e) => e.currentTarget.form?.requestSubmit()}
-        className="h-8 max-w-[11rem] appearance-none truncate rounded-lg border border-border bg-surface pl-2.5 pr-7 text-sm font-medium hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:max-w-[16rem]"
-      >
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.isDemo ? "DEMO · " : ""}
-            {o.name}
-          </option>
-        ))}
-      </select>
-      {pending ? (
-        <Loader2 aria-hidden="true" className="pointer-events-none absolute right-2 top-2 h-4 w-4 animate-spin text-muted" />
-      ) : (
-        <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-2 h-4 w-4 text-muted" />
-      )}
-      <span role="status" className="sr-only">
-        {pending ? "Changement d'organisation…" : ""}
-      </span>
-    </>
-  );
-}
-
 /**
- * Sélecteur d'organisation : le changement est envoyé dès la sélection (JS actif).
- * Sans JavaScript, le bouton « Changer » (dans <noscript>) soumet le même formulaire.
+ * Sélecteur d'organisation (barre latérale nuit) : carré d'initiales, nom, badge DÉMO, rôle ·
+ * devise ; menu blanc des organisations, le choix est envoyé au serveur (formulaire).
  */
-export function OrgSwitcher({ options, currentId }: { options: Option[]; currentId: string }) {
+export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed = false }: { options: Option[]; currentId: string; roleLabel: string; currency: string; collapsed?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = options.find((o) => o.id === currentId) ?? options[0];
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  if (!current) return null;
+  const multi = options.length > 1;
   return (
-    <form action={switchOrganizationAction} className="flex min-w-0 items-center">
-      <span className="relative min-w-0">
-        <SwitcherSelect options={options} currentId={currentId} />
-      </span>
-      <noscript>
-        <button type="submit" className="ml-2 text-xs text-muted underline hover:text-foreground">
-          Changer
-        </button>
-      </noscript>
-    </form>
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => multi && setOpen((v) => !v)}
+        aria-expanded={multi ? open : undefined}
+        aria-haspopup={multi ? "menu" : undefined}
+        aria-label={`Organisation active : ${current.name}${multi ? ". Changer" : ""}`}
+        title={current.name}
+        className={cn("flex min-h-[52px] w-full items-center gap-2.5 rounded-xl border border-night-stroke py-2 text-left", collapsed ? "justify-center px-1.5" : "px-2.5", multi ? "hover:bg-night-raised" : "cursor-default")}
+      >
+        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-night-raised text-[11.5px] font-extrabold tracking-[.3px] text-on-night">{initials(current.name)}</span>
+        {collapsed ? null : (
+          <>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-[13.5px] font-bold leading-[18px] text-on-night">{current.name}</span>
+                {current.isDemo ? <DemoBadge /> : null}
+              </span>
+              <span className="ms-mono truncate text-[10px] leading-[13px] text-on-night-subtle">
+                {roleLabel} · {currency}
+              </span>
+            </span>
+            {multi ? <ChevronsUpDown aria-hidden="true" className="h-4 w-4 shrink-0 text-on-night-subtle" /> : null}
+          </>
+        )}
+      </button>
+      {open ? (
+        <div role="menu" className="absolute left-0 top-[58px] z-[60] w-[272px] rounded-[14px] border border-border bg-surface p-1.5 shadow-[0_6px_14px_rgba(16,28,44,.10),0_18px_40px_rgba(10,20,32,.18)]">
+          <div className="ms-mono px-2.5 pb-1.5 pt-2 text-[10px] leading-[13px] text-ink-3">Mes organisations</div>
+          {options.map((o) => (
+            <form key={o.id} action={switchOrganizationAction}>
+              <input type="hidden" name="organization_id" value={o.id} />
+              <button type="submit" role="menuitem" className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left hover:bg-line-soft">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-selection text-[11px] font-extrabold">{initials(o.name)}</span>
+                <span className="flex-1 truncate text-sm font-semibold">{o.name}</span>
+                {o.isDemo ? <DemoBadge onNight={false} /> : null}
+                {o.id === currentId ? <Check aria-label="Organisation active" className="h-4 w-4 text-success" /> : null}
+              </button>
+            </form>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

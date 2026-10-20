@@ -2,24 +2,29 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import Link from "next/link";
 import { cn, safeExternalUrl } from "@/lib/utils";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "link";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "link" | "dark" | "night";
 type Size = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-foreground text-white hover:bg-zinc-800 shadow-sm",
-  secondary: "bg-surface text-foreground border border-border hover:bg-surface-muted shadow-sm",
-  ghost: "text-muted-strong hover:bg-surface-muted hover:text-foreground",
-  danger: "bg-danger text-white hover:bg-red-700 shadow-sm",
-  link: "text-accent hover:underline px-0 h-auto",
+  // v5 : action principale menthe (texte bleu nuit), secondaire blanche à filet, sans ombre.
+  primary: "bg-mint text-night font-extrabold hover:bg-mint-pressed",
+  secondary: "bg-surface text-foreground border border-border hover:bg-line-soft",
+  ghost: "text-muted-strong hover:bg-line-soft hover:text-foreground",
+  danger: "bg-danger text-white hover:bg-[#962f2f]",
+  link: "text-foreground underline-offset-2 hover:underline px-0 h-auto",
+  // bouton sombre sur papier (ex. « Chercher une offre »)
+  dark: "bg-night text-on-night hover:bg-night-raised",
+  // bouton secondaire posé sur la scène nuit
+  night: "bg-night-raised text-on-night hover:bg-night-hover",
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-8 px-3 text-xs",
-  md: "h-9 px-3.5 text-sm",
-  lg: "h-10 px-4 text-sm",
+  sm: "h-8 rounded-[10px] px-3 text-[13px]",
+  md: "h-10 px-4 text-sm",
+  lg: "h-12 px-5 text-[15px]",
 };
 
 export function buttonClasses(variant: Variant = "primary", size: Size = "md", className?: string): string {

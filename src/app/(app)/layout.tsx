@@ -4,16 +4,30 @@ import type { ReactNode } from "react";
 export const dynamic = "force-dynamic";
 import { requireOrgContext } from "@/features/auth/dal";
 import { AppShell } from "@/components/layout/app-shell";
-import { Topbar } from "@/components/layout/topbar";
-import { DemoBanner } from "@/components/layout/demo-banner";
-import { getSidebarCounts } from "@/features/dashboard/queries";
+import { getShellData } from "@/features/shell/queries";
+
+const ROLE_LABEL: Record<string, string> = { owner: "Propriétaire", admin: "Administrateur", member: "Membre", viewer: "Lecture seule" };
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await requireOrgContext();
-  const counts = await getSidebarCounts(ctx);
+  const shell = await getShellData(ctx);
   return (
-    <AppShell topbar={<Topbar ctx={ctx} />} counts={counts}>
-      {ctx.organization.is_demo ? <DemoBanner /> : null}
+    <AppShell
+      org={{
+        id: ctx.organization.id,
+        name: ctx.organization.name,
+        isDemo: ctx.organization.is_demo,
+        currency: ctx.organization.default_currency,
+        roleLabel: ROLE_LABEL[ctx.role] ?? ctx.role,
+        options: ctx.memberships.map((m) => ({ id: m.organization.id, name: m.organization.name, isDemo: m.organization.is_demo })),
+      }}
+      user={{ name: ctx.profile.full_name ?? ctx.user.email ?? "Mon compte", email: ctx.user.email ?? null }}
+      readOnly={ctx.role === "viewer"}
+      counts={{ pendingMatches: shell.counts.pendingMatches, openAlerts: shell.counts.openAlerts + shell.counts.outOfStock, unmappedListings: shell.counts.unmappedListings }}
+      lastEbaySync={shell.lastEbaySync}
+      alerts={shell.alerts}
+      alertTotal={shell.counts.openAlerts}
+    >
       {children}
     </AppShell>
   );

@@ -10,21 +10,21 @@ export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>)
 }
 
 export function THead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("bg-surface-muted/60 text-xs uppercase tracking-wide text-muted", className)} {...props} />;
+  return <thead className={cn("ms-mono text-[10.5px] leading-[14px] text-ink-3", className)} {...props} />;
 }
 
 export function TBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={cn("divide-y divide-border", className)} {...props} />;
+  return <tbody className={cn("divide-y divide-line-soft", className)} {...props} />;
 }
 
 export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("hover:bg-surface-muted/50", className)} {...props} />;
+  return <tr className={cn("hover:bg-line-soft/60", className)} {...props} />;
 }
 
 export function TH({ className, align, ...props }: ThHTMLAttributes<HTMLTableCellElement> & { align?: "left" | "right" | "center" }) {
-  return <th className={cn("px-3 py-2.5 font-medium first:pl-4 last:pr-4", align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left", className)} {...props} />;
+  return <th className={cn("h-10 border-b border-border px-3 font-medium first:pl-4 last:pr-4", align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left", className)} {...props} />;
 }
 
 export function TD({ className, align, ...props }: TdHTMLAttributes<HTMLTableCellElement> & { align?: "left" | "right" | "center" }) {
-  return <td className={cn("px-3 py-2.5 align-middle first:pl-4 last:pr-4", align === "right" ? "text-right tnum" : align === "center" ? "text-center" : "text-left", className)} {...props} />;
+  return <td className={cn("px-3 py-3 align-middle first:pl-4 last:pr-4", align === "right" ? "text-right tnum" : align === "center" ? "text-center" : "text-left", className)} {...props} />;
 }

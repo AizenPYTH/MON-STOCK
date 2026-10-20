@@ -3,10 +3,10 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const control =
-  "block w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 shadow-[0_1px_2px_rgba(0,0,0,0.02)] focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-muted aria-invalid:border-red-300 aria-invalid:focus:ring-red-200";
+  "block w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground placeholder:font-semibold placeholder:text-ink-3 focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:bg-line-soft disabled:text-muted aria-invalid:border-danger-line aria-invalid:focus:ring-danger-line";
 
 export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn("mb-1.5 block text-sm font-medium text-foreground", className)} {...props} />;
+  return <label className={cn("mb-1.5 block text-sm font-bold text-foreground", className)} {...props} />;
 }
 
 /**
@@ -19,7 +19,7 @@ function fallbackLabel(props: { id?: string; placeholder?: string; "aria-label"?
 }
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(control, "h-9", className)} {...props} aria-label={fallbackLabel(props)} />;
+  return <input className={cn(control, "h-10", className)} {...props} aria-label={fallbackLabel(props)} />;
 }
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
@@ -36,14 +36,14 @@ function emptyOptionText(children: ReactNode): string | undefined {
 export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   const label = props["aria-label"] || props["aria-labelledby"] || props.id ? props["aria-label"] : emptyOptionText(children);
   return (
-    <select className={cn(control, "h-9 pr-8", className)} {...props} aria-label={label}>
+    <select className={cn(control, "h-10 pr-8", className)} {...props} aria-label={label}>
       {children}
     </select>
   );
 }
 
 export function Checkbox({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input type="checkbox" className={cn("h-4 w-4 rounded border-border accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", className)} {...props} />;
+  return <input type="checkbox" className={cn("h-4 w-4 rounded border-border accent-night focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", className)} {...props} />;
 }
 
 /**
@@ -94,10 +94,10 @@ export function Field({ label, htmlFor, hint, error, children, className, requir
 export function FormError({ message, action }: { message?: string | null; action?: { label: string; href: string } }) {
   if (!message) return null;
   return (
-    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-danger-soft px-3 py-2 text-sm text-red-700">
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
       <span>{message}</span>
       {action ? (
-        <Link href={action.href as never} className="font-medium underline underline-offset-2 hover:text-red-900">
+        <Link href={action.href as never} className="font-bold underline underline-offset-2">
           {action.label}
         </Link>
       ) : null}
@@ -108,7 +108,7 @@ export function FormError({ message, action }: { message?: string | null; action
 export function FormSuccess({ message }: { message?: string | null }) {
   if (!message) return null;
   return (
-    <div role="status" className="rounded-lg border border-green-200 bg-success-soft px-3 py-2 text-sm text-green-700">
+    <div role="status" className="rounded-xl border border-[#bfe9d3] bg-success-soft px-3 py-2 text-sm font-semibold text-success">
       {message}
     </div>
   );

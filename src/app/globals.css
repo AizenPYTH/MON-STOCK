@@ -72,9 +72,13 @@
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
-html,
-body {
+html {
   height: 100%;
+}
+
+/* min-height (et non height) : le fond nuit de la coquille suit toute la hauteur du contenu. */
+body {
+  min-height: 100%;
 }
 
 body {
@@ -128,4 +132,83 @@ html[data-scroll-locked] {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   v5 « Instrument » web (docs/design/web-handoff) : mouvement, scène / papier.
+   Uniquement transform et opacity ; courbe « instrument » ; tout immédiat si l'utilisateur
+   demande de réduire les animations (règle @media plus haut).
+--------------------------------------------------------------------------- */
+:root {
+  --ease-instrument: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --ink-3: #778292;
+  --ink-4: #9aa6b6;
+  --on-night-subtle: #7d8aa0;
+  --night-stroke: rgba(247, 248, 250, 0.14);
+  --night-hover: #2a3c57;
+  --selection: #e8ebf0;
+  --track: #e4e8ee;
+  --line-soft: #eef1f5;
+  --danger-line: #f3d2d2;
+  --danger-on-night: #f2a3a3;
+  --overlay: rgba(10, 20, 32, 0.45);
+}
+
+@theme inline {
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-on-night-subtle: var(--on-night-subtle);
+  --color-night-stroke: var(--night-stroke);
+  --color-night-line: var(--night-line);
+  --color-night-hover: var(--night-hover);
+  --color-selection: var(--selection);
+  --color-track: var(--track);
+  --color-line-soft: var(--line-soft);
+  --color-danger-line: var(--danger-line);
+  --color-danger-on-night: var(--danger-on-night);
+  --color-overlay: var(--overlay);
+}
+
+@keyframes ms-grow-y {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes ms-grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes ms-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ms-slide {
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ms-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+.ms-grow-y { transform-origin: bottom; animation: ms-grow-y 420ms var(--ease-instrument) both; }
+.ms-grow-x { transform-origin: left; animation: ms-grow-x 420ms var(--ease-instrument) both; }
+.ms-fade { animation: ms-fade 240ms var(--ease-instrument) both; }
+.ms-slide { animation: ms-slide 320ms var(--ease-sheet) both; }
+.ms-pulse { animation: ms-pulse 1.4s ease-in-out infinite; }
+
+/* Mono v5 : titres de section, étiquettes de relevés, codes. */
+.ms-mono { font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+.ms-code { font-family: var(--font-mono); font-weight: 500; }
+
+/* Hachure verticale du code-barres du stock (traits de 2 px tous les 3,5 px). */
+.ms-hatch { -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 3.5px); mask-image: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 3.5px); }
+
+/* Page qui n'a pas (encore) sa scène v5 : tout son contenu est posé sur le papier. */
+.ms-content:not(:has(> .ms-scene)) {
+  background: var(--background);
+  border-radius: 24px 24px 0 0;
+  padding: 28px 40px 64px 32px;
+}
+@media (max-width: 1023px) {
+  .ms-content:not(:has(> .ms-scene)) { padding: 20px 16px 48px; }
 }
