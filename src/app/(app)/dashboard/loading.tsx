@@ -1,24 +1,33 @@
-import { LoadingRegion, PageHeaderSkeleton, Skeleton } from "@/components/ui/page";
+import { LoadingRegion, Skeleton } from "@/components/ui/page";
+import { Paper, Scene } from "@/components/instrument";
 
+/** Squelette de « Aujourd'hui » : scène (chiffre, relevés, 14 jours, stock) puis papier 7/5. */
 export default function DashboardLoading() {
   return (
-    <LoadingRegion label="Chargement du tableau de bord…">
-      <PageHeaderSkeleton />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, i) => (
-          <Skeleton key={i} className="h-[104px] rounded-xl" />
-        ))}
-      </div>
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          <Skeleton className="h-40 rounded-xl" />
-          <Skeleton className="h-72 rounded-xl" />
+    <LoadingRegion label="Chargement de l'écran Aujourd'hui…" className="flex flex-1 flex-col space-y-0">
+      <Scene>
+        <div className="flex flex-wrap items-end gap-x-16 gap-y-6">
+          <div className="min-w-0 flex-[1_1_520px]">
+            <div className="h-3.5 w-64 rounded bg-night-raised" />
+            <div className="mt-3 h-[66px] w-56 rounded-xl bg-night-raised" />
+            <div className="mt-[18px] h-[58px] max-w-[620px] rounded-xl bg-night-raised/60" />
+          </div>
+          <div className="h-[110px] max-w-[480px] flex-[1_1_300px] rounded-xl bg-night-raised/60" />
         </div>
-        <div className="space-y-6">
-          <Skeleton className="h-56 rounded-xl" />
-          <Skeleton className="h-40 rounded-xl" />
+        <div className="mt-7 h-[110px] rounded-xl bg-night-raised/60" />
+      </Scene>
+      <Paper>
+        <div className="flex max-w-[1280px] flex-wrap items-start gap-8">
+          <div className="flex min-w-0 flex-[7_1_560px] flex-col gap-7">
+            <Skeleton className="h-[236px] rounded-2xl" />
+            <Skeleton className="h-[300px] rounded-2xl" />
+          </div>
+          <div className="flex min-w-0 flex-[5_1_340px] flex-col gap-7">
+            <Skeleton className="h-[200px] rounded-2xl" />
+            <Skeleton className="h-[220px] rounded-2xl" />
+          </div>
         </div>
-      </div>
+      </Paper>
     </LoadingRegion>
   );
 }
