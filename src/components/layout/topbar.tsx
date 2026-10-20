@@ -116,7 +116,7 @@ function AddMenu({ readOnly, open, setOpen }: { readOnly: boolean; open: boolean
 }
 
 /** Barre du haut nuit : recherche ⌘K, état de synchro eBay, Conseiller, Alertes, + Ajouter. */
-export function Topbar({ onOpenSearch, onOpenMenu, addOpen, setAddOpen, readOnly, lastEbaySync, alerts, alertTotal, menuButton }: { onOpenSearch: () => void; onOpenMenu: () => void; addOpen: boolean; setAddOpen: (v: boolean) => void; readOnly: boolean; lastEbaySync: string | null; alerts: ShellAlert[]; alertTotal: number; menuButton?: ReactNode }) {
+export function Topbar({ onToggleAdvisor, advisorOpen = false, onOpenSearch, onOpenMenu, addOpen, setAddOpen, readOnly, lastEbaySync, alerts, alertTotal, menuButton }: { onToggleAdvisor?: () => void; advisorOpen?: boolean; onOpenSearch: () => void; onOpenMenu: () => void; addOpen: boolean; setAddOpen: (v: boolean) => void; readOnly: boolean; lastEbaySync: string | null; alerts: ShellAlert[]; alertTotal: number; menuButton?: ReactNode }) {
   const router = useRouter();
   const sync = lastEbaySync ? formatRelativeShort(lastEbaySync) : null;
   return (
@@ -142,7 +142,7 @@ export function Topbar({ onOpenSearch, onOpenMenu, addOpen, setAddOpen, readOnly
           <span className="ms-mono text-[10px] leading-[13px] text-on-night-subtle">eBay · synchro {sync}</span>
         </span>
       ) : null}
-      <button type="button" onClick={() => router.push("/advisor")} aria-label="Ouvrir le conseiller (⌘J)" className="flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] bg-night-raised pl-3 pr-2.5 text-on-night hover:bg-night-hover">
+      <button type="button" onClick={() => (onToggleAdvisor ? onToggleAdvisor() : router.push("/advisor"))} aria-expanded={onToggleAdvisor ? advisorOpen : undefined} aria-label="Ouvrir le conseiller (⌘J)" className="flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] bg-night-raised pl-3 pr-2.5 text-on-night hover:bg-night-hover">
         <Sparkles aria-hidden="true" className="h-[18px] w-[18px] text-mint" />
         <span className="hidden text-[13.5px] font-bold sm:inline">Conseiller</span>
         <Kbd className="hidden lg:inline">⌘ J</Kbd>

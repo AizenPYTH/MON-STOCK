@@ -2,7 +2,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Boxes, LayoutDashboard, Library, MessageSquareText, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, Tag, Wrench, type LucideIcon } from "lucide-react";
+import { BarChart3, Boxes, LayoutDashboard, Library, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, Sparkles, Tag, Wrench, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { activeHref } from "@/components/layout/active-href";
 
@@ -73,7 +73,7 @@ export const NAV: Group[] = [
     label: "Assistance",
     items: [
       { href: "/tools", label: "Outils", icon: Wrench, match: ["/tools"] },
-      { href: "/advisor", label: "Conseiller", icon: MessageSquareText, match: ["/advisor"] },
+      { href: "/advisor", label: "Conseiller", icon: Sparkles, match: ["/advisor"] },
     ],
   },
 ];

@@ -48,10 +48,10 @@ export function ParcelActions({ parcel }: { parcel: { id: string; label: string;
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={refresh} disabled={pending || parcel.archived} aria-busy={pending || undefined} title={parcel.archived ? "Colis archivé : désarchivez-le pour l'actualiser." : undefined}>
+        <Button variant="night" onClick={refresh} disabled={pending || parcel.archived} aria-busy={pending || undefined} title={parcel.archived ? "Colis archivé : désarchivez-le pour l'actualiser." : undefined}>
           <RefreshCw aria-hidden="true" className={pending ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} /> Actualiser
         </Button>
-        <Button variant="secondary" onClick={() => setEditing(true)}>
+        <Button variant="night" onClick={() => setEditing(true)}>
           Modifier
         </Button>
       </div>

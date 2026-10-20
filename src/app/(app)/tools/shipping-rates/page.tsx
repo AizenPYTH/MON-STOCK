@@ -5,12 +5,12 @@ import { formatMoneyDec, parseDecimal } from "@/domain/tools/decimal";
 import { canWrite, requireOrgContext } from "@/features/auth/dal";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Callout, EmptyState, PageHeader } from "@/components/ui/page";
+import { Callout, EmptyState } from "@/components/ui/page";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { toUserMessage } from "@/lib/errors";
 import { fetchRateCards } from "@/features/tools/queries";
 import { frDate, toFrInput, transitText, trackingText } from "@/features/tools/format";
-import { BackToTools } from "@/features/tools/components/tool-page";
+import { ToolScreen } from "@/features/tools/components/tool-page";
 import type { RateCard } from "@/domain/tools/shipping";
 
 export const metadata: Metadata = { title: "Mes grilles tarifaires" };
@@ -27,13 +27,12 @@ export default async function RateCardsPage() {
     error = toUserMessage(e);
   }
   return (
-    <>
-      <PageHeader
-        eyebrow={<BackToTools href="/tools/shipping" label="Port" />}
-        title="Mes grilles tarifaires"
-        description="Vos tarifs par transporteur et par tranche de poids, utilisés quand aucune plateforme n'est connectée (ou en complément)."
-        actions={writer ? <ButtonLink href="/tools/shipping-rates/new">Ajouter une grille</ButtonLink> : null}
-      />
+    <ToolScreen
+      back={{ href: "/tools/shipping", label: "Port" }}
+      title="Mes grilles tarifaires"
+      description="Vos tarifs par transporteur et par tranche de poids, utilisés quand aucune plateforme n'est connectée (ou en complément)."
+      actions={writer ? <ButtonLink href="/tools/shipping-rates/new">Ajouter une grille</ButtonLink> : null}
+    >
       {error ? (
         <Callout tone="danger" title="Grilles indisponibles">
           {error}
@@ -89,6 +88,6 @@ export default async function RateCardsPage() {
         </Card>
       )}
       <p className="mt-4 text-xs text-muted">Indiquez la date de vérification de chaque grille : elle est affichée avec chaque prix.</p>
-    </>
+    </ToolScreen>
   );
 }

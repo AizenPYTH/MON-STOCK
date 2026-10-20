@@ -5,14 +5,14 @@ import { parcelDisplay, relativeFr } from "@/domain/tools/tracking";
 import { canWrite, requireOrgContext } from "@/features/auth/dal";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Callout, EmptyState, PageHeader } from "@/components/ui/page";
-import { LinkTabs } from "@/components/ui/tabs";
+import { Callout, EmptyState } from "@/components/ui/page";
+import { Segmented } from "@/components/instrument";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { toUserMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { fetchParcels, fetchToolsStatus } from "@/features/tools/queries";
 import { carrierText, frDateTime, PARCEL_TONE_CLASS } from "@/features/tools/format";
-import { BackToTools } from "@/features/tools/components/tool-page";
+import { ToolScreen } from "@/features/tools/components/tool-page";
 import type { TrackedParcel } from "@/features/tools/parcels";
 
 export const metadata: Metadata = { title: "Suivi de colis" };
@@ -38,21 +38,20 @@ export default async function TrackingListPage({ searchParams }: { searchParams:
   const parcels: TrackedParcel[] = "parcels" in list ? list.parcels : [];
 
   return (
-    <>
-      <PageHeader
-        eyebrow={<BackToTools />}
-        title={archived ? "Colis archivés" : "Suivi de colis"}
-        description="Statut, étapes et livraison estimée de vos envois."
-        actions={writer ? <ButtonLink href="/tools/tracking/new">Suivre un colis</ButtonLink> : null}
-      />
-      <LinkTabs
-        label="Colis"
-        current={archived ? "/tools/tracking?archives=1" : "/tools/tracking"}
-        items={[
-          { href: "/tools/tracking", label: "En cours" },
-          { href: "/tools/tracking?archives=1", label: "Archivés" },
-        ]}
-      />
+    <ToolScreen
+      title={archived ? "Colis archivés" : "Suivi de colis"}
+      description="Statut, étapes et livraison estimée de vos envois."
+      actions={writer ? <ButtonLink href="/tools/tracking/new">Suivre un colis</ButtonLink> : null}
+      toolbar={
+        <Segmented
+          label="Colis"
+          options={[
+            { href: "/tools/tracking", label: "En cours", selected: !archived },
+            { href: "/tools/tracking?archives=1", label: "Archivés", selected: archived },
+          ]}
+        />
+      }
+    >
       <div className="space-y-4">
         {noApi ? <Callout tone="warning">Suivi automatique pas encore activé sur le serveur : les statuts restent « Non vérifié ». Ouvrez un colis pour le suivre gratuitement sur le site du transporteur.</Callout> : null}
         {"error" in status ? <p className="text-xs text-muted">État des API de suivi indisponible ({status.error}).</p> : null}
@@ -111,6 +110,6 @@ export default async function TrackingListPage({ searchParams }: { searchParams:
         )}
         <p className="text-xs text-muted">Seul le numéro de suivi (et le pays) est transmis à l'API de suivi ; aucune donnée client. MON STOCK n'est affilié à aucun transporteur.</p>
       </div>
-    </>
+    </ToolScreen>
   );
 }

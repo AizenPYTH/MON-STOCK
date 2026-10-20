@@ -3,11 +3,11 @@ import { canWrite, requireOrgContext } from "@/features/auth/dal";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Callout, PageHeader } from "@/components/ui/page";
-import { LinkTabs } from "@/components/ui/tabs";
+import { Callout } from "@/components/ui/page";
+import { Segmented } from "@/components/instrument";
 import { toUserMessage } from "@/lib/errors";
 import { fetchRateCards, fetchToolsStatus } from "@/features/tools/queries";
-import { BackToTools } from "@/features/tools/components/tool-page";
+import { ToolScreen } from "@/features/tools/components/tool-page";
 import { ShippingComparator } from "@/features/tools/components/shipping-comparator";
 import { PortGrid } from "@/features/tools/components/port-grid";
 import type { RateCard } from "@/domain/tools/shipping";
@@ -35,17 +35,24 @@ export default async function ShippingToolPage({ searchParams }: { searchParams:
   const writer = canWrite(ctx.role);
 
   return (
-    <>
-      <PageHeader
-        eyebrow={<BackToTools />}
-        title="Comparateur de frais de port"
-        description="Comparez les transporteurs pour un colis : prix, délai et services."
-        actions={
-          <ButtonLink href="/tools/shipping-rates" variant="secondary">
-            Gérer mes grilles tarifaires
-          </ButtonLink>
-        }
-      />
+    <ToolScreen
+      title="Comparateur de frais de port"
+      description="Comparez les transporteurs pour un colis : prix, délai et services."
+      actions={
+        <ButtonLink href="/tools/shipping-rates" variant="night">
+          Gérer mes grilles tarifaires
+        </ButtonLink>
+      }
+      toolbar={
+        <Segmented
+          label="Vue du comparateur"
+          options={[
+            { href: "/tools/shipping", label: "Comparer un colis", selected: view !== "poids" },
+            { href: "/tools/shipping?vue=poids", label: "Vos tarifs par poids", selected: view === "poids" },
+          ]}
+        />
+      }
+    >
       <Card className="mb-5 space-y-2 px-5 py-4">
         <h2 className="text-sm font-semibold">Sources de tarifs</h2>
         <ul className="flex flex-wrap gap-2" aria-label="État des sources de tarifs">
@@ -68,15 +75,7 @@ export default async function ShippingToolPage({ searchParams }: { searchParams:
           {cardsResult.error}
         </Callout>
       ) : null}
-      <LinkTabs
-        label="Vue du comparateur"
-        current={view === "poids" ? "/tools/shipping?vue=poids" : "/tools/shipping"}
-        items={[
-          { href: "/tools/shipping", label: "Comparer un colis" },
-          { href: "/tools/shipping?vue=poids", label: "Vos tarifs par poids" },
-        ]}
-      />
       {view === "poids" ? <PortGrid cards={cards} canWrite={writer && "cards" in cardsResult} /> : <ShippingComparator cards={cards} configuredProviders={configured} statusAvailable={"status" in status} />}
-    </>
+    </ToolScreen>
   );
 }

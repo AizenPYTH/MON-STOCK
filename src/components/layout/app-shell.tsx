@@ -1,10 +1,11 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { LogOut, X } from "lucide-react";
 import { Sidebar, type SidebarCounts } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { AdvisorPanel } from "@/features/advisor/components/advisor-panel";
 import { OrgSwitcher } from "@/components/layout/org-switcher";
 import { DemoBadge } from "@/components/instrument/figure";
 import { initials } from "@/components/instrument/pure";
@@ -58,11 +59,12 @@ function typing(target: EventTarget | null): boolean {
  */
 export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, alerts, alertTotal }: ShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [drawer, setDrawer] = useState(false);
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
   const [search, setSearch] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [advisorOpen, setAdvisorOpen] = useState(false);
+  const onAdvisorPage = pathname === "/advisor" || pathname.startsWith("/advisor/");
   const [lastPathname, setLastPathname] = useState(pathname);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -70,7 +72,14 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
     setLastPathname(pathname);
     if (drawer) setDrawer(false);
     if (search) setSearch(false);
+    if (advisorOpen && (pathname === "/advisor" || pathname.startsWith("/advisor/"))) setAdvisorOpen(false);
   }
+
+  // Conseiller : panneau ⌘J depuis n'importe quelle page ; sur la page du conseiller, rien à ouvrir.
+  const toggleAdvisor = useCallback(() => {
+    if (onAdvisorPage) return;
+    setAdvisorOpen((v) => !v);
+  }, [onAdvisorPage]);
 
   const toggle = useCallback(() => {
     try {
@@ -91,7 +100,7 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
       }
       if (mod && e.key.toLowerCase() === "j") {
         e.preventDefault();
-        router.push("/advisor");
+        toggleAdvisor();
         return;
       }
       if (mod || e.altKey || typing(e.target) || document.querySelector("dialog[open], [aria-modal='true']")) return;
@@ -108,7 +117,7 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [router, toggle, readOnly]);
+  }, [toggle, toggleAdvisor, readOnly]);
 
   // Tiroir mobile : Échap, défilement bloqué, piège à focus minimal.
   useEffect(() => {
@@ -180,7 +189,7 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onOpenSearch={() => setSearch(true)} onOpenMenu={() => setDrawer(true)} addOpen={addOpen} setAddOpen={setAddOpen} readOnly={readOnly} lastEbaySync={lastEbaySync} alerts={alerts} alertTotal={alertTotal} />
+        <Topbar onToggleAdvisor={onAdvisorPage ? undefined : toggleAdvisor} advisorOpen={advisorOpen} onOpenSearch={() => setSearch(true)} onOpenMenu={() => setDrawer(true)} addOpen={addOpen} setAddOpen={setAddOpen} readOnly={readOnly} lastEbaySync={lastEbaySync} alerts={alerts} alertTotal={alertTotal} />
         <main id="contenu" tabIndex={-1} className="flex min-w-0 flex-1 flex-col focus:outline-none">
           {org.isDemo ? (
             <div className="flex flex-wrap items-center gap-2.5 px-4 pb-2.5 pt-1 sm:px-8 lg:pl-8 lg:pr-10">
@@ -194,6 +203,7 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
         </main>
       </div>
       {search ? <CommandPalette onClose={() => setSearch(false)} readOnly={readOnly} /> : null}
+      {advisorOpen && !onAdvisorPage ? <AdvisorPanel onClose={() => setAdvisorOpen(false)} /> : null}
     </div>
   );
 }

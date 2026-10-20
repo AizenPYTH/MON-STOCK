@@ -3,13 +3,13 @@ import { carrierTrackingUrl, FINAL_STATUSES, parcelDisplay, TRACKING_STATUS_LABE
 import { canWrite, requireOrgContext } from "@/features/auth/dal";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Callout, EmptyState, PageHeader } from "@/components/ui/page";
+import { Callout, EmptyState } from "@/components/ui/page";
 import { toUserMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { fetchParcel } from "@/features/tools/queries";
 import { carrierText, frDateTime, PARCEL_TONE_CLASS, trackingSourceText } from "@/features/tools/format";
 import type { TrackedParcel } from "@/features/tools/parcels";
-import { BackToTools } from "@/features/tools/components/tool-page";
+import { ToolScreen } from "@/features/tools/components/tool-page";
 import { CopyButton } from "@/features/tools/components/ui";
 import { ParcelActions } from "@/features/tools/components/parcel-actions";
 
@@ -35,7 +35,7 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const ctx = await requireOrgContext();
   const writer = canWrite(ctx.role);
-  const back = <BackToTools href="/tools/tracking" label="Colis" />;
+  const back = { href: "/tools/tracking", label: "Colis" };
   let p: TrackedParcel | null = null;
   let error: string | null = null;
   try {
@@ -45,8 +45,7 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
   }
   if (error || !p)
     return (
-      <>
-        <PageHeader eyebrow={back} title="Colis" />
+      <ToolScreen back={back} title="Colis">
         {error ? (
           <Callout tone="danger" title="Colis indisponible">
             {error}
@@ -54,7 +53,7 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
         ) : (
           <EmptyState title="Colis introuvable" description="Il a peut-être été supprimé." action={<ButtonLink href="/tools/tracking" variant="secondary">Retour aux colis</ButtonLink>} />
         )}
-      </>
+      </ToolScreen>
     );
 
   const final = FINAL_STATUSES.has(p.status);
@@ -66,25 +65,25 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
   const orderText = p.order ? `${p.order.orderNumber ?? "—"}${p.order.buyer ? ` · ${p.order.buyer}` : ""}` : null;
 
   return (
-    <>
-      <PageHeader
-        eyebrow={back}
-        title={
-          <span className="inline-flex items-center gap-3">
-            <span aria-hidden="true" className={cn("inline-block h-3 w-3 rounded-full", tone.dot)} />
-            <span className={tone.text}>{d.label}</span>
-          </span>
-        }
-        description={`${p.label || p.trackingNumber} · ${carrierText(p)}${p.archivedAt ? " · archivé" : ""}`}
-        actions={
-          <>
-            <ButtonLink href={siteUrl} variant={d.verified ? "secondary" : "primary"}>
-              Site du transporteur
-            </ButtonLink>
-            {writer ? <ParcelActions parcel={{ id: p.id, label: p.label, carrierCode: p.carrierCode, carrierSource: p.carrierSource, orderId: p.orderId, orderText, archived: p.archivedAt !== null }} /> : null}
-          </>
-        }
-      />
+    <ToolScreen
+      back={back}
+      eyebrow={`Colis · ${carrierText(p)}`}
+      title={
+        <span className="inline-flex items-center gap-3">
+          <span aria-hidden="true" className={cn("inline-block h-3 w-3 rounded-full", d.tone === "progress" ? "bg-on-night" : tone.dot)} />
+          <span>{d.label}</span>
+        </span>
+      }
+      description={`${p.label || p.trackingNumber} · ${carrierText(p)}${p.archivedAt ? " · archivé" : ""}`}
+      actions={
+        <>
+          <ButtonLink href={siteUrl} variant={d.verified ? "night" : "primary"}>
+            Site du transporteur
+          </ButtonLink>
+          {writer ? <ParcelActions parcel={{ id: p.id, label: p.label, carrierCode: p.carrierCode, carrierSource: p.carrierSource, orderId: p.orderId, orderText, archived: p.archivedAt !== null }} /> : null}
+        </>
+      }
+    >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <Card className="px-5 py-5">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted">Étapes</h2>
@@ -121,6 +120,6 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
           <p className="text-xs text-muted">Heures telles que communiquées par le transporteur. Sites publics et gratuits ouverts dans un nouvel onglet ; MON STOCK n'est affilié à aucun transporteur.</p>
         </div>
       </div>
-    </>
+    </ToolScreen>
   );
 }

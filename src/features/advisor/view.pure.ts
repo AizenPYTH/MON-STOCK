@@ -14,6 +14,41 @@ export const ADVISOR_SUGGESTIONS = [
   "Quels produits sont immobilisés depuis longtemps ?",
 ] as const;
 
+/** Élément affiché dans la conversation (message enregistré ou en cours de réception). */
+export type ChatItem = {
+  key: string;
+  role: "user" | "assistant" | "notice";
+  content: string;
+  cards: AdvisorCardDTO[];
+  sources: string[];
+  interrupted?: boolean;
+  error?: boolean;
+  streaming?: boolean;
+};
+
+/** Messages enregistrés → éléments de conversation. */
+export function chatItemsFrom(messages: readonly { id: string; role: "user" | "assistant" | "notice"; content: string; cards: AdvisorCardDTO[]; sources: string[]; interrupted: boolean }[]): ChatItem[] {
+  return messages.map((m) => ({ key: m.id, role: m.role, content: m.content, cards: m.cards, sources: m.sources, interrupted: m.interrupted }));
+}
+
+/** Avertissement affiché en tête de toute conversation. */
+export const ADVISOR_INTRO = "Réponses appuyées sur vos données (ventes, stock, commandes, offres). Le conseiller ne modifie rien sans votre confirmation.";
+
+/**
+ * Quota réel : questions comptées dans l'heure glissante / limite par utilisateur renvoyée par le
+ * serveur. Limite ou compteur inconnus → « — » et jauge vide (jamais une valeur supposée).
+ */
+export function quotaView(used: number | null, limit: number | null): { text: string; ratio: number | null; reached: boolean } {
+  if (used === null || limit === null || limit <= 0) return { text: "—", ratio: null, reached: false };
+  const shown = Math.min(used, limit);
+  return { text: `${shown} / ${limit} questions cette heure`, ratio: shown / limit, reached: used >= limit };
+}
+
+/** Titre donné par le serveur à une nouvelle conversation (première question, 80 caractères). */
+export function conversationTitleFrom(question: string): string {
+  return question.replace(/\s+/g, " ").trim().slice(0, 80) || "Nouvelle conversation";
+}
+
 export const ACTION_STATUS: Record<AdvisorActionStatus, { label: string; tone: "accent" | "neutral" | "success" | "danger" }> = {
   pending: { label: "À confirmer", tone: "accent" },
   executing: { label: "En cours…", tone: "neutral" },
