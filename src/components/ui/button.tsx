@@ -3,7 +3,7 @@ import Link from "next/link";
 import { cn, safeExternalUrl } from "@/lib/utils";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "link" | "dark" | "night";
-type Size = "sm" | "md" | "lg";
+type Size = "sm" | "md" | "lg" | "xl";
 
 const base =
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
@@ -25,6 +25,8 @@ const sizes: Record<Size, string> = {
   sm: "h-8 rounded-[10px] px-3 text-[13px]",
   md: "h-10 px-4 text-sm",
   lg: "h-12 px-5 text-[15px]",
+  // action principale des formulaires v5 (52 px)
+  xl: "h-[52px] px-5 text-[15px]",
 };
 
 export function buttonClasses(variant: Variant = "primary", size: Size = "md", className?: string): string {

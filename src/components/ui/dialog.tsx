@@ -35,24 +35,24 @@ export function Dialog({ open, onClose, title, children, className }: { open: bo
         if (e.target === ref.current) onClose();
       }}
       className={cn(
-        "m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl border border-border bg-surface p-0 text-foreground shadow-xl backdrop:bg-black/30",
+        "m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-3xl border border-border bg-surface p-0 text-foreground shadow-[0_12px_32px_rgba(10,20,32,.35)] backdrop:bg-overlay",
         className,
       )}
     >
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface px-5 py-3">
-        <h2 id={titleId} className="text-sm font-semibold">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line-soft bg-surface px-6 py-4">
+        <h2 id={titleId} className="text-[20px] font-extrabold leading-[26px] tracking-[-0.3px]">
           {title}
         </h2>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md p-1 text-muted hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-9 w-9 items-center justify-center rounded-[10px] text-muted hover:bg-line-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Fermer"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
-      <div className="px-5 py-4">{open ? children : null}</div>
+      <div className="px-6 py-5">{open ? children : null}</div>
     </dialog>
   );
 }

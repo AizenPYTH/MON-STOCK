@@ -186,7 +186,7 @@ export function SplitBar({ segments, height = 12, legend = true, onNight = false
             <li key={s.label} className={cn("flex items-center gap-1.5 text-[13px] font-semibold", onNight ? "text-on-night-muted" : "text-muted")}>
               <span aria-hidden="true" className="h-2 w-2 rounded-[2px]" style={{ background: s.color }} />
               <span className="truncate">{s.label}</span>
-              <span className={cn("ml-auto tnum font-bold", onNight ? "text-on-night" : "text-foreground")}>{s.value}</span>
+              <span className={cn("ml-auto tnum font-bold", onNight ? "text-on-night" : "text-foreground")}>{new Intl.NumberFormat("fr-FR").format(s.value)}</span>
             </li>
           ))}
         </ul>
