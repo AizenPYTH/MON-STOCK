@@ -40,7 +40,8 @@ const sampleOrder = {
       sku: "COQUE-RED",
       title: "Coque silicone",
       quantity: 2,
-      lineItemCost: { value: "10.00", currency: "EUR" },
+      // eBay : lineItemCost = prix unitaire (10,00) × quantité (2)
+      lineItemCost: { value: "20.00", currency: "EUR" },
       total: { value: "20.00", currency: "EUR" },
       variationAspects: [
         { name: "Couleur", value: "Rouge" },
@@ -77,6 +78,9 @@ describe("normalizeEbayOrder", () => {
     expect(variation?.externalVariationId).toBe("COQUE-RED");
     expect(variation?.externalVariationId).toBe(variationKey({ sku: "COQUE-RED", aspects: { Couleur: "Rouge", Taille: "M" } }));
     expect(variation?.quantity).toBe(2);
+    // prix unitaire = lineItemCost / quantité (et non lineItemCost)
+    expect(variation?.unitPrice).toBe(10);
+    expect(variation?.total).toBe(20);
   });
 
   it("utilise les caractéristiques quand la variation n'a pas de SKU, puis l'identifiant legacy", () => {

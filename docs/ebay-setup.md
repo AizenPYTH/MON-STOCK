@@ -64,7 +64,36 @@ Le vendeur s'authentifie **chez eBay** (jamais de mot de passe eBay saisi dans M
 | `https://api.ebay.com/oauth/api_scope` | Scope de base requis par eBay pour tout token ; aussi utilisé en `client_credentials` pour lire les clés publiques des notifications. |
 | `https://api.ebay.com/oauth/api_scope/sell.fulfillment` | Sell Fulfillment API `GET /sell/fulfillment/v1/order` : commandes, statut de paiement/expédition, annulations. |
 | `https://api.ebay.com/oauth/api_scope/sell.inventory` | Trading API `GetMyeBaySelling` (annonces actives) et `ReviseInventoryStatus` (envoi des quantités). |
+| `https://api.ebay.com/oauth/api_scope/sell.account.readonly` | Account API (lecture) : politiques d'expédition / retour / paiement, limites de vente (`privilege`), programmes, abonnement Boutique. |
 | `https://api.ebay.com/oauth/api_scope/commerce.identity.readonly` | Identity API `GET /commerce/identity/v1/user/` : pseudo et identifiant du compte (affichage « Connecté en tant que… », routage des notifications). |
+
+### 4 bis. « Analyse complète » du conseiller (facultative, lecture seule)
+
+Dans **Réglages → Intégrations**, un administrateur peut cliquer **« Autoriser l'analyse complète »** (ou « Connecter avec
+l'analyse complète »). MON STOCK redemande alors l'autorisation eBay avec, **en plus** des scopes standard :
+
+| Scope | Utilisation (GET uniquement) |
+| --- | --- |
+| `https://api.ebay.com/oauth/api_scope/sell.finances` | Finances API (hôte `apiz.ebay.com`) : transactions (ventes, frais par type, remboursements, litiges, frais hors vente), versements, fonds disponibles / en cours / bloqués. eBay ne propose pas de variante `.readonly` de ce scope ; MON STOCK n'appelle que des lectures. |
+| `https://api.ebay.com/oauth/api_scope/sell.analytics.readonly` | Analytics API : rapport de trafic (impressions, vues, taux de clic, conversion), niveau vendeur (`seller_standards_profile`), métriques de service client. |
+| `https://api.ebay.com/oauth/api_scope/sell.marketing.readonly` | Marketing API : campagnes Promoted Listings, annonces sponsorisées, promotions. |
+
+- C'est **opt-in** : la connexion standard reste celle par défaut ; une reconnexion conserve annonces, commandes et associations.
+- L'information « analyse complète » voyage dans l'état OAuth (préfixe `ext_`, état créé et vérifié côté serveur) : **aucune
+  migration**. Les scopes accordés sont enregistrés dans `channel_connections.scopes` (eBay accorde tout ou rien : un code
+  d'autorisation reçu = tous les scopes demandés accordés).
+- Si votre application eBay n'a pas accès à l'une de ces API, eBay renvoie `invalid_scope` dès la page d'autorisation :
+  MON STOCK affiche « eBay a refusé les autorisations demandées » (code `scope_refused`) et la connexion existante n'est pas
+  modifiée. Vérifiez dans le portail développeur (*Application Keys → OAuth Scopes*) que ces scopes sont listés pour le keyset.
+- Mobile (Edge Function) : `POST /api/ebay/connect` accepte le corps `{ "extended": true }` ; `GET /api/integrations` renvoie
+  `extendedAnalysis` par connexion. Le bouton côté application iPhone reste à ajouter (voir docs/ADVISOR.md).
+
+### Rafraîchissement : scopes ACCORDÉS uniquement
+
+Le rafraîchissement d'un access token redemande **exactement les scopes enregistrés sur la connexion**
+(`channel_connections.scopes`), et non la liste courante de l'application : eBay répond `invalid_scope` si l'on demande un
+scope non accordé, ce qui ferait passer toutes les connexions existantes en « Expirée » dès qu'un scope est ajouté au code.
+Une connexion sans scopes enregistrés redemande les scopes standard.
 
 Les tokens :
 - **access token** : valable ~2 h, rafraîchi automatiquement avant chaque appel si nécessaire ;
@@ -189,7 +218,13 @@ synchronisation complète planifiée.
   MON STOCK ; pour retirer l'autorisation côté eBay : *Mon eBay → Compte → Préférences du site → Autorisations tierces*.
 - **Site** : les appels Trading utilisent `X-EBAY-API-SITEID: 0` ; `GetMyeBaySelling` renvoie les annonces de tous les sites du
   compte, les prix sont dans la devise de chaque annonce.
-- **Identity API** : hôte `apiz.ebay.com` (et non `api.ebay.com`).
+- **Identity API** : hôte `apiz.ebay.com` (et non `api.ebay.com`). Même chose pour la **Finances API**.
+- **Lectures du conseiller** (`src/integrations/ebay/insights.ts`, `trading-insights.ts`) : appels en direct au moment de la
+  question, cache mémoire de 60 s par connexion. Quotas partagés avec la synchronisation (Trading ~5 000 appels/jour) : une
+  question en consomme 1 à 10. `GetMyeBaySelling` Sold/Unsold est limité par eBay à 60 jours ; `getOrders` en direct à 90 jours
+  dans MON STOCK ; Finances et trafic à 90 jours.
+- **Non lu par MON STOCK** : demandes de retour (Post-Order API), rapports de performance publicitaire (leur création est une
+  écriture chez eBay), corps des messages sauf demande explicite de l'utilisateur au conseiller.
 
 ## 9. Dépannage
 
@@ -202,6 +237,9 @@ synchronisation complète planifiée.
 | « État de connexion inconnu ou déjà utilisé » | Le lien de retour a été ouvert deux fois ou après 15 min : relancez **Connecter eBay**. |
 | Statut **Expirée** / « le token d'autorisation a expiré » | Refresh token expiré (18 mois), autorisation révoquée par le vendeur, ou `TOKEN_ENCRYPTION_KEY` modifiée : cliquez **Reconnecter eBay**. |
 | « eBay a refusé l'appel GetMyeBaySelling : … » | Message exact d'eBay (ex. scope insuffisant → reconnectez pour accorder `sell.inventory`). |
+| `?error=scope_refused` / « eBay a refusé les autorisations demandées » | L'application eBay n'a pas accès à Finances / Analytics / Marketing : ajoutez ces scopes au keyset dans le portail développeur, ou restez en connexion standard. |
+| Le conseiller répond « reconnectez eBay avec l'analyse complète » | La connexion n'a pas les scopes étendus : **Réglages → Intégrations → Autoriser l'analyse complète** (administrateur). |
+| Le conseiller répond « eBay refuse l'accès à cette donnée » | eBay a répondu 403 pour cette API (compte non éligible, marketplace non pris en charge…) : la donnée n'est pas inventée. |
 | Le challenge du webhook échoue | L'URL saisie chez eBay diffère de `${NEXT_PUBLIC_APP_URL}/api/webhooks/ebay` (slash final, http/https) ou le token n'a pas 32–80 caractères. |
 | Notifications en statut `failed` (401) | Signature invalide : vérifiez que les clés eBay (`EBAY_CLIENT_ID/SECRET`) sont du même environnement que les notifications reçues. |
 | `/api/cron/sync` répond 503 | `CRON_SECRET` absent ou trop court. |

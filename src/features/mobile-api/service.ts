@@ -1,4 +1,5 @@
 import "server-only";
+import { hasExtendedEbayScopes } from "@/integrations/ebay/config";
 import type { OrgContext } from "@/features/auth/dal";
 import { canWrite, isAdmin } from "@/features/auth/dal";
 import { AppError, fromPostgrestError } from "@/lib/errors";
@@ -468,6 +469,7 @@ export async function integrations(ctx: OrgContext): Promise<IntegrationsDTO> {
       lastError: c.last_error,
       autoSync: c.auto_sync,
       lastRun: lastRun ? { id: lastRun.id, status: lastRun.status, startedAt: lastRun.started_at, finishedAt: lastRun.finished_at, errorCount: lastRun.error_count } : null,
+      extendedAnalysis: c.provider === "ebay" && hasExtendedEbayScopes(c.scopes),
     })),
     unmappedCount: o.unmappedCount,
     comingSoon: o.catalog.filter((c) => !c.available).map((c) => c.label),

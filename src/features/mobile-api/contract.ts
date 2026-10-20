@@ -464,6 +464,8 @@ export interface IntegrationDTO {
   lastError: string | null;
   autoSync: boolean;
   lastRun: { id: string; status: string; startedAt: string; finishedAt: string | null; errorCount: number } | null;
+  /** eBay : autorisations de l'« analyse complète » accordées (finances, trafic, marketing en lecture). */
+  extendedAnalysis: boolean;
 }
 
 export interface IntegrationsDTO {

@@ -66,9 +66,11 @@ export interface MarketplaceConnector {
   /** Scopes OAuth demandés, avec leur justification. */
   readonly scopes: ReadonlyArray<{ scope: string; reason: string }>;
 
-  getAuthorizeUrl(state: string): string;
+  /** `extended` : autorisations supplémentaires facultatives (eBay : « analyse complète »). */
+  getAuthorizeUrl(state: string, options?: { extended?: boolean }): string;
   exchangeCode(code: string): Promise<TokenSet>;
-  refreshToken(refreshToken: string): Promise<TokenSet>;
+  /** `grantedScopes` : scopes ACCORDÉS à la connexion, redemandés tels quels au rafraîchissement. */
+  refreshToken(refreshToken: string, grantedScopes?: readonly string[] | null): Promise<TokenSet>;
   getAccountInfo(auth: ConnectorAuth): Promise<AccountInfo>;
   getOrders(auth: ConnectorAuth, params: GetOrdersParams): AsyncIterable<OrdersPage>;
   getListings(auth: ConnectorAuth): AsyncIterable<ListingsPage>;

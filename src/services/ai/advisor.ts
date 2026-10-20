@@ -13,11 +13,17 @@ const log = createLogger("AI_ADVISOR");
  *
  * Un tour = 1 question → boucle d'outils du modèle (lecture / préparation, voir advisor-tools.ts) →
  * réponse diffusée au fil de l'eau (événements NDJSON) → message et cartes enregistrés.
- * Coûts maîtrisés : historique limité (12 derniers messages, 12 000 caractères), au plus 6 étapes
+ * Coûts maîtrisés : historique limité (12 derniers messages, 12 000 caractères), au plus 8 étapes
  * d'outils, réponse ≤ 2 500 jetons, invite système et outils mis en cache, un seul modèle par question.
+ *
+ * 8 étapes (au lieu de 6) : les lectures eBay en direct s'enchaînent souvent (liste → détail : annonce
+ * trouvée par son titre puis GetItem puis trafic ; en-têtes de messages puis texte d'un message ;
+ * commandes en direct puis détail d'une commande). Le coût reste borné par la date limite (100 s),
+ * le quota de questions et le cache de 60 s des lectures eBay ; la plupart des questions n'utilisent
+ * qu'1 ou 2 étapes.
  */
 
-export const ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12_000, maxSteps: 6, maxTokens: 2500, deadlineMs: 100_000 } as const;
+export const ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12_000, maxSteps: 8, maxTokens: 2500, deadlineMs: 100_000 } as const;
 
 /** Partie STABLE de l'invite (mise en cache avec les outils) : aucune donnée variable ici. */
 export const ADVISOR_SYSTEM_STABLE = [
@@ -28,6 +34,14 @@ export const ADVISOR_SYSTEM_STABLE = [
   "- Périodes : utilise le paramètre period des outils (« cette semaine » = this_week, « ce mois-ci » = this_month…). Sans précision : 30 derniers jours, et dis-le.",
   "- Distingue toujours : chiffre d'affaires (CA), marge brute (CA − coût d'achat connu), frais de vente, bénéfice estimé. Rappelle les données manquantes signalées par les outils (coûts d'achat, frais, port payé, retours).",
   "- Recommandations : 1 à 3 actions concrètes, chacune justifiée par un chiffre issu d'un outil.",
+  "",
+  "Compte eBay — deux sources :",
+  "- Données SYNCHRONISÉES dans MON STOCK (business_report, product_profitability, sales_ranking, sales_summary, recent_orders, order_lookup, listings_search, ebay_account) : historique, CA, marges, stock. À privilégier pour les bilans chiffrés.",
+  "- Lecture EN DIRECT chez eBay (outils ebay_*) pour l'état actuel ou ce que MON STOCK ne stocke pas : ebay_order_details (une commande : frais, taxes, remises, remboursements, annulation, suivis, livraison prévue, ville/pays de l'acheteur), ebay_orders_live (commandes récentes, même non synchronisées, à expédier), ebay_listing_details (une annonce : observateurs, offres reçues, quantités, dates, état), ebay_sold_unsold (vendus et invendus ≤ 60 j), ebay_feedback (évaluations, négatives), ebay_messages (en-têtes, non lus), ebay_account_overview (limites de vente, politiques, programmes, réputation).",
+  "- Analyse complète (autorisation eBay supplémentaire) : ebay_finances (frais par type, remboursements, litiges, versements, solde), ebay_traffic (impressions, vues, clic, conversion), ebay_seller_standards (niveau vendeur), ebay_promotions (Promoted Listings, promotions). Si l'outil répond que l'analyse complète manque, dis-le clairement : un administrateur doit « Autoriser l'analyse complète » dans Réglages → Intégrations. Ne remplace jamais ces données par une estimation.",
+  "- Chaque résultat eBay en direct porte readAtParis : cite la source et l'heure (« d'après eBay, lu à 14 h 05 »). Un résultat available=false : explique la raison donnée (non connecté, autorisation expirée, refus d'eBay) sans rien compléter.",
+  "- Messages eBay : ebay_messages donne seulement les en-têtes. N'appelle ebay_message (texte d'un message) que si l'utilisateur demande explicitement le contenu d'un message dans sa question.",
+  "- Données de l'acheteur (pseudo, nom, ville, code postal, pays) : ne cite que ce qui répond à la question.",
   "",
   "Règles absolues :",
   "- Chaque chiffre (montant, quantité, date, pourcentage) doit venir d'un résultat d'outil de cette conversation. N'invente, n'extrapole ni ne complète jamais une donnée absente : dis qu'elle manque.",
@@ -149,7 +163,7 @@ export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, e
   const system = `${ADVISOR_SYSTEM_STABLE}\n\n${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice))}`;
   // Historique + question ; un tour utilisateur resté sans réponse (interruption) est fusionné.
   const convo = historyForModel([...previous, { role: "user", content: req.message }]);
-  const toolCtx: AdvisorToolContext = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now };
+  const toolCtx: AdvisorToolContext = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now, question: req.message };
 
   const cards: AdvisorCardDTO[] = [];
   const sources: string[] = [];

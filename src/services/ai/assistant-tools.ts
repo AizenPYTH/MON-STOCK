@@ -258,7 +258,7 @@ async function recentOrders(ctx: ToolContext, raw: unknown) {
   const input = ordersInput.parse(raw);
   let q = ctx.supabase
     .from("orders")
-    .select("order_number, provider, status, placed_at, total, subtotal, shipping_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)")
+    .select("order_number, provider, status, placed_at, total, subtotal, shipping_total, tax_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, external_sku, external_listing_id, sku_id)")
     .eq("organization_id", ctx.organizationId)
     .gte("placed_at", since(ctx, input.days));
   if (input.status) q = q.eq("status", input.status);
@@ -375,7 +375,7 @@ export const ASSISTANT_TOOLS: Record<string, ToolSpec> = {
     label: "Commandes",
     definition: {
       name: "recent_orders",
-      description: "Dernières commandes (eBay et autres canaux) avec leurs lignes, montants, frais, statut et indication de déduction du stock.",
+      description: "Dernières commandes SYNCHRONISÉES (eBay et autres canaux) avec leurs lignes (SKU eBay, numéro d'objet), montants, taxes, frais, statut et indication de déduction du stock.",
       input_schema: obj({
         days: { type: "integer", description: "Période en jours (défaut 30)." },
         limit: { type: "integer", description: "1 à 30 (défaut 10)." },

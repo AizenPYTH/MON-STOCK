@@ -279,7 +279,9 @@ async function refreshAndStore(connection: ChannelConnection, refreshEnc: string
   const refreshToken = await safeDecrypt(connectionId, refreshEnc);
   let tokens: TokenSet;
   try {
-    tokens = await connector.refreshToken(refreshToken);
+    // Scopes ACCORDÉS à cette connexion (et non la liste courante de l'application) : un scope ajouté
+    // depuis (ex. analyse complète) ne doit pas faire échouer le rafraîchissement des anciennes connexions.
+    tokens = await connector.refreshToken(refreshToken, connection.scopes);
   } catch (e) {
     if (isConnectorError(e) && e.code === "AUTH_EXPIRED") {
       // Une reconnexion a pu remplacer le refresh token pendant l'appel : on ne marque pas expirée

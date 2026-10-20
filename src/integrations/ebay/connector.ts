@@ -3,7 +3,7 @@ import type { ConnectorAuth, GetOrdersParams, ListingsPage, MarketplaceConnector
 import type { AccountInfo, InventoryLevel, ListingRef, TokenSet, UpdateInventoryResult } from "@/integrations/core/types";
 import { createLogger } from "@/lib/logger";
 import { ebayEnv, ebayEnvIssues } from "@/lib/env";
-import { createEbayConfig, EBAY_PROVIDER, EBAY_SCOPES, ebayScopeList, type EbayConfig } from "@/integrations/ebay/config";
+import { createEbayConfig, EBAY_EXTENDED_SCOPES, EBAY_PROVIDER, EBAY_SCOPES, ebayScopeList, type EbayConfig } from "@/integrations/ebay/config";
 import { buildAuthorizeUrl, exchangeAuthorizationCode, refreshAccessToken } from "@/integrations/ebay/oauth";
 import { fetchEbayAccountInfo } from "@/integrations/ebay/identity";
 import { iterateEbayOrders } from "@/integrations/ebay/fulfillment";
@@ -21,6 +21,8 @@ export class EbayConnector implements MarketplaceConnector {
   readonly label = "eBay";
   readonly available = true;
   readonly scopes = EBAY_SCOPES;
+  /** Autorisations supplémentaires de l'« analyse complète » (connexion étendue, sur demande). */
+  readonly extendedScopes = EBAY_EXTENDED_SCOPES;
   private readonly configOverride: EbayConfig | null;
 
   constructor(config?: EbayConfig) {
@@ -53,16 +55,18 @@ export class EbayConnector implements MarketplaceConnector {
     return config;
   }
 
-  getAuthorizeUrl(state: string): string {
-    return buildAuthorizeUrl(this.requireConfig(), state, ebayScopeList());
+  /** `extended` : ajoute les autorisations de l'analyse complète (finances, trafic, marketing — lecture). */
+  getAuthorizeUrl(state: string, options: { extended?: boolean } = {}): string {
+    return buildAuthorizeUrl(this.requireConfig(), state, ebayScopeList(options));
   }
 
   exchangeCode(code: string): Promise<TokenSet> {
     return exchangeAuthorizationCode(this.requireConfig(), code);
   }
 
-  refreshToken(refreshToken: string): Promise<TokenSet> {
-    return refreshAccessToken(this.requireConfig(), refreshToken, ebayScopeList());
+  /** Rafraîchit en redemandant EXACTEMENT les scopes accordés à la connexion (voir ebayRefreshScopes). */
+  refreshToken(refreshToken: string, grantedScopes?: readonly string[] | null): Promise<TokenSet> {
+    return refreshAccessToken(this.requireConfig(), refreshToken, grantedScopes);
   }
 
   getAccountInfo(auth: ConnectorAuth): Promise<AccountInfo> {

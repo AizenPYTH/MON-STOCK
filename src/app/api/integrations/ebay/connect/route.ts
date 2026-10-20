@@ -5,7 +5,7 @@ import { publicEnv } from "@/lib/env";
 import { randomToken } from "@/lib/crypto";
 import { createLogger } from "@/lib/logger";
 import { getEbayConnector } from "@/integrations/core/registry";
-import { isCrossSiteRequest, OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, OAUTH_STATE_TTL_SECONDS, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
+import { buildOAuthState, isCrossSiteRequest, OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, OAUTH_STATE_TTL_SECONDS, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
 
 const log = createLogger("EBAY_OAUTH");
 
@@ -14,7 +14,18 @@ const log = createLogger("EBAY_OAUTH");
  * Réservé aux administrateurs de l'organisation. Un état anti-CSRF aléatoire, lié à
  * l'organisation et à l'utilisateur, est enregistré (15 min) puis le vendeur est redirigé
  * vers la page d'autorisation eBay : il saisit ses identifiants CHEZ eBay, jamais ici.
+ * Champ de formulaire facultatif `extended=1` : « Autoriser l'analyse complète » (autorisations en
+ * lecture supplémentaires : finances, trafic, marketing), mémorisé dans l'état OAuth.
  */
+async function wantsExtended(request: NextRequest): Promise<boolean> {
+  try {
+    const form = await request.formData();
+    return form.get("extended") === "1";
+  } catch {
+    return false; // pas de corps de formulaire : connexion standard
+  }
+}
+
 async function handle(request: NextRequest): Promise<NextResponse> {
   const origin = publicEnv().NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   // 303 : le navigateur suit la redirection en GET (jamais un nouveau POST).
@@ -34,7 +45,8 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   const connector = getEbayConnector();
   if (!connector.isConfigured()) return back("not_configured");
 
-  const state = randomToken(32);
+  const extended = await wantsExtended(request);
+  const state = buildOAuthState(randomToken(32), extended);
   const admin = createAdminSupabaseClient();
   // Ménage opportuniste des états expirés (jamais consommés).
   await admin.from("oauth_states").delete().lt("expires_at", new Date().toISOString());
@@ -51,8 +63,8 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     return back("state_failed");
   }
 
-  log.info("redirection vers eBay", { orgId: ctx.organization.id, userId: ctx.user.id, environment: connector.config()?.environment });
-  const response = NextResponse.redirect(connector.getAuthorizeUrl(state), { status: 303 });
+  log.info("redirection vers eBay", { orgId: ctx.organization.id, userId: ctx.user.id, environment: connector.config()?.environment, extended });
+  const response = NextResponse.redirect(connector.getAuthorizeUrl(state, { extended }), { status: 303 });
   // L'état est aussi lié au navigateur qui a démarré le flux (cookie httpOnly, 15 min) : le callback
   // exige la correspondance cookie ↔ state, ce qu'un tiers ne peut pas forger.
   response.cookies.set(OAUTH_STATE_COOKIE, state, { httpOnly: true, sameSite: "lax", secure: origin.startsWith("https://"), path: OAUTH_STATE_COOKIE_PATH, maxAge: OAUTH_STATE_TTL_SECONDS });

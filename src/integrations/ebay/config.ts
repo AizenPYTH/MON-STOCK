@@ -8,6 +8,10 @@ import type { EbayEnv } from "@/lib/env";
  *  - Fulfillment API :  https://developer.ebay.com/api-docs/sell/fulfillment/resources/order/methods/getOrders
  *  - Trading API :      https://developer.ebay.com/devzone/xml/docs/reference/ebay/GetMyeBaySelling.html
  *  - Notifications :    https://developer.ebay.com/api-docs/commerce/notification/overview.html
+ *  - Lecture pour le conseiller (src/integrations/ebay/insights.ts, trading-insights.ts) :
+ *      Account API (privilege, program, subscription, policies), Finances API (apiz), Analytics API
+ *      (traffic_report, seller_standards_profile, customer_service_metric), Marketing API
+ *      (ad_campaign, promotion), Trading GetItem / GetMyeBaySelling / GetFeedback / GetUser / GetMyMessages.
  */
 export interface EbayConfig {
   environment: "production" | "sandbox";
@@ -18,7 +22,7 @@ export interface EbayConfig {
   authorizeUrl: string;
   tokenUrl: string;
   apiBase: string;   // api.ebay.com
-  apizBase: string;  // apiz.ebay.com (Identity API)
+  apizBase: string;  // apiz.ebay.com (Identity API, Finances API)
   tradingUrl: string; // ws/api.dll
 }
 
@@ -48,8 +52,59 @@ export const EBAY_SCOPES: ReadonlyArray<{ scope: string; reason: string }> = [
   { scope: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly", reason: "Identifiant et pseudo du compte vendeur (Identity API) pour afficher le compte connecté et router les notifications." },
 ];
 
-export function ebayScopeList(): string[] {
-  return EBAY_SCOPES.map((s) => s.scope);
+/**
+ * Autorisations ÉTENDUES (« analyse complète » du conseiller), demandées UNIQUEMENT si l'administrateur
+ * choisit « Autoriser l'analyse complète ». Toutes en lecture seule côté MON STOCK :
+ *  - sell.finances            : Finances API (apiz.ebay.com) → transactions (ventes, frais par type,
+ *                               remboursements, litiges), versements et fonds en attente. eBay ne publie
+ *                               pas de variante « readonly » de ce scope ; MON STOCK n'appelle que des GET.
+ *  - sell.analytics.readonly  : Analytics API → rapport de trafic (impressions, vues, taux de clic,
+ *                               conversion), niveau vendeur et métriques de service client.
+ *  - sell.marketing.readonly  : Marketing API → campagnes Promoted Listings et promotions (lecture).
+ * Docs : https://developer.ebay.com/api-docs/static/oauth-scopes.html
+ */
+export const EBAY_EXTENDED_SCOPES: ReadonlyArray<{ scope: string; reason: string }> = [
+  { scope: "https://api.ebay.com/oauth/api_scope/sell.finances", reason: "Analyse complète : transactions, frais eBay par type, remboursements, litiges, versements et fonds en attente (Finances API, lecture uniquement)." },
+  { scope: "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly", reason: "Analyse complète : trafic des annonces (impressions, vues, taux de clic, conversion), niveau vendeur et métriques de service client (Analytics API)." },
+  { scope: "https://api.ebay.com/oauth/api_scope/sell.marketing.readonly", reason: "Analyse complète : campagnes Promoted Listings et promotions en cours (Marketing API, lecture uniquement)." },
+];
+
+/** Scopes nommés (pour vérifier qu'une connexion a accordé une autorisation précise). */
+export const EBAY_SCOPE = {
+  base: "https://api.ebay.com/oauth/api_scope",
+  fulfillment: "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
+  inventory: "https://api.ebay.com/oauth/api_scope/sell.inventory",
+  accountReadonly: "https://api.ebay.com/oauth/api_scope/sell.account.readonly",
+  identity: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
+  finances: "https://api.ebay.com/oauth/api_scope/sell.finances",
+  analyticsReadonly: "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly",
+  marketingReadonly: "https://api.ebay.com/oauth/api_scope/sell.marketing.readonly",
+} as const;
+
+/** Scopes à demander à l'autorisation : standard, ou standard + étendus (« analyse complète »). */
+export function ebayScopeList(options: { extended?: boolean } = {}): string[] {
+  const base = EBAY_SCOPES.map((s) => s.scope);
+  return options.extended ? [...base, ...EBAY_EXTENDED_SCOPES.map((s) => s.scope)] : base;
+}
+
+/**
+ * Scopes à envoyer au RAFRAÎCHISSEMENT d'un token : exactement ceux ACCORDÉS à la connexion
+ * (channel_connections.scopes). eBay répond invalid_scope si l'on demande un scope non accordé :
+ * demander la liste courante de l'application casserait toutes les connexions existantes dès
+ * qu'un scope est ajouté. Connexion ancienne sans scopes enregistrés → scopes standard.
+ */
+export function ebayRefreshScopes(granted: readonly string[] | null | undefined): string[] {
+  const clean = [...new Set((granted ?? []).map((s) => s.trim()).filter((s) => s.startsWith("https://api.ebay.com/oauth/api_scope")))];
+  return clean.length > 0 ? clean : ebayScopeList();
+}
+
+export function hasEbayScope(granted: readonly string[] | null | undefined, scope: string): boolean {
+  return (granted ?? []).includes(scope);
+}
+
+/** true si la connexion a accordé TOUTES les autorisations de l'analyse complète. */
+export function hasExtendedEbayScopes(granted: readonly string[] | null | undefined): boolean {
+  return EBAY_EXTENDED_SCOPES.every((s) => hasEbayScope(granted, s.scope));
 }
 
 export function createEbayConfig(env: EbayEnv): EbayConfig {

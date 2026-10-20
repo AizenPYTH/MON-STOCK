@@ -3,6 +3,7 @@ import type { OrgContext } from "@/features/auth/dal";
 import type { ChannelConnection, SyncError, SyncRun, UnmappedListingRow, ChannelListing } from "@/db/types";
 import { listConnectorCatalog, type ConnectorCatalogEntry } from "@/integrations/core/registry";
 import { getEbayConnector } from "@/integrations/core/registry";
+import { EBAY_EXTENDED_SCOPES } from "@/integrations/ebay/config";
 import type { MappingParams } from "@/features/integrations/schemas";
 import { toUserMessage } from "@/lib/errors";
 import { orIlikeAny } from "@/lib/postgrest";
@@ -15,7 +16,14 @@ export interface ConnectionView {
 
 export interface IntegrationsOverview {
   catalog: ConnectorCatalogEntry[];
-  ebay: { configured: boolean; issues: string[]; environment: "production" | "sandbox" | null; scopes: ReadonlyArray<{ scope: string; reason: string }> };
+  ebay: {
+    configured: boolean;
+    issues: string[];
+    environment: "production" | "sandbox" | null;
+    scopes: ReadonlyArray<{ scope: string; reason: string }>;
+    /** Autorisations supplémentaires de l'« analyse complète » (connexion étendue, facultative). */
+    extendedScopes: ReadonlyArray<{ scope: string; reason: string }>;
+  };
   connections: ConnectionView[];
   unmappedCount: number;
   queryError: string | null;
@@ -26,7 +34,7 @@ export async function getIntegrationsOverview(ctx: OrgContext): Promise<Integrat
   const config = ebay.config();
   const base: IntegrationsOverview = {
     catalog: listConnectorCatalog(),
-    ebay: { configured: ebay.isConfigured(), issues: ebay.configurationIssues(), environment: config?.environment ?? null, scopes: ebay.scopes },
+    ebay: { configured: ebay.isConfigured(), issues: ebay.configurationIssues(), environment: config?.environment ?? null, scopes: ebay.scopes, extendedScopes: EBAY_EXTENDED_SCOPES },
     connections: [],
     unmappedCount: 0,
     queryError: null,

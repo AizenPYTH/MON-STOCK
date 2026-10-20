@@ -19,6 +19,7 @@ import { connectionTone, intervalLabel, type ConnectionTone } from "@/features/i
 import { SettingsSectionHeader } from "@/features/organizations/components/settings-section-header";
 import { isUuid, oauthErrorMessage } from "@/features/integrations/oauth-flow";
 import { RUNNING_STALE_MINUTES } from "@/services/sync/engine";
+import { hasExtendedEbayScopes } from "@/integrations/ebay/config";
 
 export const metadata: Metadata = { title: "Intégrations" };
 
@@ -131,7 +132,17 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
                 Une précédente connexion ({ebayConnections.map((c) => c.connection.external_username ?? "compte inconnu").join(", ")}) a été déconnectée. Reconnecter le même compte restaure ses annonces et associations.
               </Callout>
             ) : null}
-            {admin ? <ConnectEbayButton /> : <Callout tone="neutral">Seuls les administrateurs de l&apos;organisation peuvent connecter eBay.</Callout>}
+            {admin ? (
+              <div className="flex flex-wrap gap-2.5">
+                <ConnectEbayButton />
+                <ConnectEbayButton extended variant="secondary" label="Connecter avec l'analyse complète" />
+              </div>
+            ) : (
+              <Callout tone="neutral">Seuls les administrateurs de l&apos;organisation peuvent connecter eBay.</Callout>
+            )}
+            <p className="text-xs font-semibold text-ink-3">
+              L&apos;analyse complète autorise en plus, en lecture seule, vos finances eBay (frais, versements), le trafic de vos annonces et vos campagnes publicitaires : le conseiller peut alors répondre à des questions précises sur ces sujets.
+            </p>
           </div>
         ) : (
           activeEbay.map((view, i) => (
@@ -146,6 +157,15 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
           </summary>
           <ul className="mb-3 mt-1 space-y-1.5">
             {overview.ebay.scopes.map((s) => (
+              <li key={s.scope}>
+                <code className="ms-code break-all text-[11px] text-muted-strong">{s.scope}</code>
+                <span className="block text-xs font-semibold text-ink-3">{s.reason}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mb-1 mt-3 text-xs font-bold text-foreground">Analyse complète (facultative, lecture seule) — {overview.ebay.extendedScopes.length} autorisations en plus</p>
+          <ul className="mb-3 space-y-1.5">
+            {overview.ebay.extendedScopes.map((s) => (
               <li key={s.scope}>
                 <code className="ms-code break-all text-[11px] text-muted-strong">{s.scope}</code>
                 <span className="block text-xs font-semibold text-ink-3">{s.reason}</span>
@@ -206,6 +226,8 @@ function EbayConnectionPanel({ view, admin, writer, environment, unmapped, activ
   const c = view.connection;
   const needsReconnect = c.status === "expired" || c.status === "pending";
   const running = runningSince(view);
+  // Une reconnexion conserve le niveau d'autorisation déjà accordé (standard ou analyse complète).
+  const extended = hasExtendedEbayScopes(c.scopes);
   const envMismatch = environment && c.environment !== environment;
   return (
     <div className={cn("flex flex-col gap-4", separated && "border-t border-line-soft pt-4")}>
@@ -232,11 +254,22 @@ function EbayConnectionPanel({ view, admin, writer, environment, unmapped, activ
         </Callout>
       ) : null}
       {c.last_error ? (
-        <Callout tone={c.status === "expired" ? "danger" : "warning"} title={c.status === "expired" ? "Autorisation expirée" : "Dernière erreur"} action={needsReconnect && admin ? <ConnectEbayButton label="Reconnecter eBay" variant="secondary" /> : null}>
+        <Callout tone={c.status === "expired" ? "danger" : "warning"} title={c.status === "expired" ? "Autorisation expirée" : "Dernière erreur"} action={needsReconnect && admin ? <ConnectEbayButton label="Reconnecter eBay" variant="secondary" extended={extended} /> : null}>
           {c.last_error}
           {needsReconnect && !admin ? <span className="block text-xs">Demandez à un administrateur de reconnecter eBay.</span> : null}
         </Callout>
       ) : null}
+
+      {extended ? (
+        <Callout tone="success" title="Analyse complète activée">
+          Le conseiller peut lire, en lecture seule, vos finances eBay (transactions, frais par type, versements), le trafic de vos annonces, votre niveau vendeur et vos campagnes publicitaires.
+        </Callout>
+      ) : (
+        <Callout tone="neutral" title="Analyse complète du conseiller" action={admin && !needsReconnect ? <ConnectEbayButton extended variant="secondary" label="Autoriser l'analyse complète" /> : null}>
+          Le conseiller lit déjà vos commandes, annonces, évaluations et messages eBay. En autorisant l&apos;analyse complète (nouvelle autorisation sur eBay, lecture seule), il pourra aussi répondre sur vos frais et versements, le trafic de vos annonces (vues, taux de clic, conversion), votre niveau vendeur et vos promotions. Rien n&apos;est modifié sur eBay ; vos annonces, commandes et associations sont conservées.
+          {!admin ? <span className="block text-xs">Seul un administrateur peut l&apos;autoriser.</span> : null}
+        </Callout>
+      )}
 
       <ConnectionSettingsForm connection={c} disabled={!admin} />
 
@@ -260,7 +293,7 @@ function EbayConnectionPanel({ view, admin, writer, environment, unmapped, activ
             Mon eBay <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
           </a>
         ) : null}
-        {needsReconnect && admin ? <ConnectEbayButton label="Reconnecter eBay" variant="secondary" /> : null}
+        {needsReconnect && admin ? <ConnectEbayButton label="Reconnecter eBay" variant="secondary" extended={extended} /> : null}
         {admin ? (
           <span className="ml-auto">
             <DisconnectForm connectionId={c.id} username={c.external_username} />

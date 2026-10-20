@@ -20,6 +20,7 @@ export const OAUTH_ERROR_MESSAGES = {
   rate_limited: "Quota d'appels eBay atteint : réessayez dans quelques minutes.",
   ebay_unavailable: "eBay n'a pas répondu correctement pendant la connexion. Réessayez dans quelques minutes.",
   internal: "La connexion eBay n'a pas pu être enregistrée. Réessayez ; si le problème persiste, contactez le support.",
+  scope_refused: "eBay a refusé les autorisations demandées (l'application eBay n'a peut-être pas accès à l'analyse complète : finances, trafic, marketing). Reconnectez eBay avec la connexion standard, ou activez ces API dans le portail développeur eBay.",
 } as const;
 
 export type OAuthErrorCode = keyof typeof OAUTH_ERROR_MESSAGES;
@@ -48,6 +49,31 @@ export function oauthErrorCodeFor(e: unknown): OAuthErrorCode {
     default:
       return "internal";
   }
+}
+
+/**
+ * Connexion « étendue » (analyse complète du conseiller) : l'information voyage DANS l'état OAuth,
+ * généré et enregistré côté serveur (table oauth_states) — un tiers ne peut ni le forger ni le
+ * modifier (l'état doit exister en base, être lié à l'utilisateur et, sur le web, au cookie).
+ * Aucune colonne supplémentaire n'est donc nécessaire.
+ */
+export const OAUTH_EXTENDED_STATE_PREFIX = "ext_";
+
+/** `random` = randomToken() (hexadécimal : ne commence jamais par « ext_ »). Caractères compatibles avec le relais mobile. */
+export function buildOAuthState(random: string, extended: boolean): string {
+  if (extended) return `${OAUTH_EXTENDED_STATE_PREFIX}${random}`;
+  return random.startsWith(OAUTH_EXTENDED_STATE_PREFIX) ? `s${random}` : random;
+}
+
+export function isExtendedOAuthState(state: string | null | undefined): boolean {
+  return typeof state === "string" && state.startsWith(OAUTH_EXTENDED_STATE_PREFIX);
+}
+
+/** Code d'erreur pour le paramètre `error` renvoyé par eBay au retour de l'autorisation. */
+export function oauthCallbackErrorCode(ebayError: string): OAuthErrorCode {
+  if (ebayError === "access_denied") return "access_denied";
+  if (ebayError === "invalid_scope") return "scope_refused";
+  return "ebay_error";
 }
 
 export function isUuid(value: string | null | undefined): value is string {

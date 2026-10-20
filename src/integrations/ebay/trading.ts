@@ -9,6 +9,8 @@ import { EBAY_PROVIDER, EBAY_TRADING_COMPATIBILITY_LEVEL, type EbayConfig } from
  * Trading API (XML) — https://developer.ebay.com/devzone/xml/docs/reference/ebay/index.html
  * Authentification par token OAuth utilisateur via l'en-tête X-EBAY-API-IAF-TOKEN.
  * Appels utilisés : GetMyeBaySelling (annonces actives) et ReviseInventoryStatus (quantités).
+ * Appels en LECTURE pour le conseiller (GetItem, GetMyeBaySelling Sold/Unsold, GetFeedback, GetUser,
+ * GetMyMessages, GetBestOffers) : voir trading-insights.ts, qui réutilise tradingCall et les helpers XML.
  */
 
 export const EBAY_TRADING_NS = "urn:ebay:apis:eBLBaseComponents";
@@ -24,7 +26,7 @@ export const GET_MY_EBAY_SELLING_PAGE_SIZE = 200;
 /** Garde-fou : 50 pages × 200 = 10 000 annonces par run. */
 export const GET_MY_EBAY_SELLING_MAX_PAGES = 50;
 
-type Node = Record<string, unknown>;
+export type Node = Record<string, unknown>;
 
 const ARRAY_PATHS = new Set([
   "GetMyeBaySellingResponse.ActiveList.ItemArray.Item",
@@ -49,14 +51,14 @@ const parser = new XMLParser({
   isArray: (_name, jpath) => ARRAY_PATHS.has(typeof jpath === "string" ? jpath : jpath.toString()),
 });
 
-function node(v: unknown): Node | null {
+export function node(v: unknown): Node | null {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Node) : null;
 }
-function arr(v: unknown): unknown[] {
+export function arr(v: unknown): unknown[] {
   if (v === undefined || v === null) return [];
   return Array.isArray(v) ? v : [v];
 }
-function text(v: unknown): string | null {
+export function text(v: unknown): string | null {
   if (v === undefined || v === null) return null;
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
@@ -64,20 +66,20 @@ function text(v: unknown): string | null {
   if (n && typeof n["#text"] === "string") return n["#text"];
   return null;
 }
-function int(v: unknown): number | null {
+export function int(v: unknown): number | null {
   const t = text(v);
   if (t === null || t === "") return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
-function money(v: unknown): { value: number | null; currency: string | null } {
+export function money(v: unknown): { value: number | null; currency: string | null } {
   const t = text(v);
   const n = t === null || t === "" ? NaN : Number(t);
   const nd = node(v);
   const currency = nd && typeof nd["@_currencyID"] === "string" ? nd["@_currencyID"] : null;
   return { value: Number.isFinite(n) ? n : null, currency: currency && currency.length === 3 ? currency : null };
 }
-function isoOrNull(v: unknown): string | null {
+export function isoOrNull(v: unknown): string | null {
   const t = text(v);
   if (!t) return null;
   const d = new Date(t);
@@ -273,7 +275,8 @@ export function parseReviseInventoryStatusResponse(xml: string): { warnings: str
   return assertTradingAck("ReviseInventoryStatus", response);
 }
 
-async function tradingCall(config: EbayConfig, auth: ConnectorAuth, callName: string, body: string): Promise<string> {
+/** Appel Trading API authentifié (POST XML) ; un token refusé est rafraîchi une fois. Renvoie le XML brut. */
+export async function tradingCall(config: EbayConfig, auth: ConnectorAuth, callName: string, body: string): Promise<string> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
     const res = await fetchWithRetry(

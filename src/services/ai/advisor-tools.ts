@@ -2,7 +2,8 @@ import "server-only";
 import type { LlmTool } from "./llm";
 import { z } from "zod";
 import type { OrgContext } from "@/features/auth/dal";
-import type { AdvisorActionDTO, AdvisorCardDTO, AdvisorCardRowDTO, AdvisorCardTone } from "@/features/mobile-api/contract";
+import type { AdvisorActionDTO, AdvisorCardDTO } from "@/features/mobile-api/contract";
+import { card, row } from "./advisor-cards";
 import { isDeadStock } from "@/features/analytics/stock.pure";
 import { loadStockViews } from "@/features/analytics/stock-analytics";
 import { computeRecommendations } from "@/features/analytics/replenishment";
@@ -12,6 +13,7 @@ import { parseDecimal, toPlainDecimal } from "@/domain/tools/decimal";
 import { quoteShipping } from "@/services/shipping/quotes";
 import { ASSISTANT_TOOLS, runAssistantTool, type ToolContext } from "./assistant-tools";
 import { prepareAdvisorAction } from "./advisor-actions";
+import { EBAY_ADVISOR_TOOLS } from "./advisor-ebay";
 import { ADVISOR_PERIODS, change, computeProfitability, money, percent, periodRange, productProfits, toCents, type MetricLine, type MetricOrder } from "./advisor-metrics";
 
 /**
@@ -32,6 +34,8 @@ export type AdvisorToolCategory = "read" | "prepare";
 export interface AdvisorToolContext extends ToolContext {
   org: OrgContext;
   conversationId: string;
+  /** Question posée par l'utilisateur dans ce tour (garde-fou des outils sensibles, ex. corps d'un message eBay). */
+  question?: string;
 }
 
 export interface AdvisorToolOutput {
@@ -39,7 +43,7 @@ export interface AdvisorToolOutput {
   cards: AdvisorCardDTO[];
 }
 
-interface AdvisorToolSpec {
+export interface AdvisorToolSpec {
   label: string;
   category: AdvisorToolCategory;
   definition: LlmTool;
@@ -51,10 +55,7 @@ const periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "P
 const periodSchema = z.enum(ADVISOR_PERIODS).default("30d");
 const skuRef = z.string().trim().min(1).max(64);
 
-export function card(kind: AdvisorCardDTO["kind"], title: string, rows: AdvisorCardRowDTO[], extra: Partial<AdvisorCardDTO> = {}): AdvisorCardDTO {
-  return { kind, title, subtitle: null, rows: rows.slice(0, 12), warnings: [], action: null, text: null, ...extra };
-}
-export const row = (label: string, value: string, detail: string | null = null, tone: AdvisorCardTone = "neutral"): AdvisorCardRowDTO => ({ label, value, detail, tone });
+export { card, row };
 const units = (n: number) => `${n} u.`;
 const signedPct = (r: number | null) => (r === null ? null : `${r >= 0 ? "+" : ""}${percent(r)}`);
 
@@ -239,7 +240,7 @@ async function orderLookup(ctx: AdvisorToolContext, raw: unknown): Promise<Advis
   const { orderNumber } = z.object({ orderNumber: z.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
   const { data, error } = await ctx.supabase
     .from("orders")
-    .select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)")
+    .select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, tax_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, total, external_sku, external_listing_id, sku_id)")
     .eq("organization_id", ctx.organizationId)
     .or(`order_number.eq.${orderNumber},external_order_id.eq.${orderNumber}`)
     .limit(2);
@@ -249,10 +250,10 @@ async function orderLookup(ctx: AdvisorToolContext, raw: unknown): Promise<Advis
   const { data: parcels } = await ctx.supabase.from("tracked_parcels").select("tracking_number, carrier_code, status, estimated_delivery, delivered_at, last_checked_at").eq("organization_id", ctx.organizationId).eq("order_id", order.id).limit(5);
   const c = order.currency;
   const fmt = (v: number | null) => (v === null ? "—" : money(toCents(v) ?? 0, c));
-  const result = { found: true, order: { ...order, id: undefined }, parcels: parcels ?? [], note: "Seul le pseudo de l'acheteur est stocké (pas d'adresse)." };
+  const result = { found: true, order: { ...order, id: undefined }, parcels: parcels ?? [], note: "Données synchronisées dans MON STOCK (seul le pseudo de l'acheteur est stocké). Pour le détail en direct chez eBay (frais, remboursements, suivis, livraison prévue), utilisez ebay_order_details." };
   const rows = [
     row("Statut", order.status, [order.payment_status, order.fulfillment_status].filter(Boolean).join(" · ") || null),
-    row("Total", fmt(order.total), `dont port ${fmt(order.shipping_total)} — frais canal ${fmt(order.fee_total)}`),
+    row("Total", fmt(order.total), `dont port ${fmt(order.shipping_total)}${order.tax_total !== null ? ` — taxes ${fmt(order.tax_total)}` : ""} — frais canal ${fmt(order.fee_total)}`),
     ...(order.order_items ?? []).slice(0, 6).map((i) => row(i.title, `${i.quantity} × ${fmt(i.unit_price)}`, i.sku_id ? "lié au stock" : "non lié au stock", i.sku_id ? "neutral" : "warning")),
     ...(parcels ?? []).map((p) => row(`Colis ${p.tracking_number}`, p.status, p.estimated_delivery ? `livraison estimée par le transporteur : ${p.estimated_delivery}` : null)),
   ];
@@ -489,7 +490,7 @@ export const ADVISOR_TOOLS: Record<string, AdvisorToolSpec> = {
   order_lookup: {
     label: "Commande",
     category: "read",
-    definition: { name: "order_lookup", description: "Détail d'une commande par son numéro : lignes, montants, frais, statut, colis suivis liés.", input_schema: obj({ orderNumber: { type: "string" } }, ["orderNumber"]) },
+    definition: { name: "order_lookup", description: "Détail d'une commande SYNCHRONISÉE dans MON STOCK par son numéro : lignes (SKU eBay, numéro d'objet), montants, taxes, frais, statut, déduction du stock, colis suivis liés. Pour les données en direct chez eBay, préférez ebay_order_details.", input_schema: obj({ orderNumber: { type: "string" } }, ["orderNumber"]) },
     run: orderLookup,
   },
   parcels_overview: {
@@ -556,6 +557,8 @@ export const ADVISOR_TOOLS: Record<string, AdvisorToolSpec> = {
     },
     run: draftBuyerMessage,
   },
+  // Lecture EN DIRECT du compte eBay (lecture seule ; certaines exigent l'« analyse complète »).
+  ...EBAY_ADVISOR_TOOLS,
 };
 
 export const ADVISOR_TOOL_DEFINITIONS: LlmTool[] = Object.values(ADVISOR_TOOLS).map((t) => t.definition);
@@ -563,8 +566,9 @@ export const ADVISOR_TOOL_DEFINITIONS: LlmTool[] = Object.values(ADVISOR_TOOLS).
 /** Extensions futures (données ou intégration non disponibles) : citées au modèle, jamais simulées. */
 export const ADVISOR_FUTURE_CAPABILITIES = [
   "achat d'étiquette d'expédition (Sendcloud est branché en consultation seulement)",
-  "envoi de messages aux acheteurs eBay",
-  "modification des annonces eBay (prix, quantité)",
+  "envoi de messages ou de réponses aux acheteurs eBay, acceptation ou refus d'offres",
+  "modification des annonces, campagnes ou promotions eBay (prix, quantité, taux)",
+  "détail des demandes de retour eBay et rapports de performance publicitaire (non lus par MON STOCK)",
   "passage de commandes fournisseurs",
 ];
 

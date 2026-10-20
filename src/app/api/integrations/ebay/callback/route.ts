@@ -7,7 +7,7 @@ import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
 import { upsertOAuthConnection } from "@/services/channels/connection-store";
-import { OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, oauthErrorCodeFor, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
+import { isExtendedOAuthState, OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, oauthCallbackErrorCode, oauthErrorCodeFor, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
 
 const log = createLogger("EBAY_OAUTH");
 
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   if (ebayError) {
     log.warn("autorisation eBay refusée", { error: ebayError.slice(0, 100), description: scrubSecrets(params.get("error_description") ?? "").slice(0, 300) });
-    return fail(ebayError === "access_denied" ? "access_denied" : "ebay_error");
+    return fail(oauthCallbackErrorCode(ebayError));
   }
   if (!code || !state || state.length > 200) return fail("incomplete");
 
@@ -71,7 +71,8 @@ export async function GET(request: NextRequest) {
       environment: config.environment,
       account,
       tokens,
-      scopes: ebayScopeList(),
+      // eBay accorde tout ou rien : un code reçu = tous les scopes demandés accordés (standard ou analyse complète).
+      scopes: ebayScopeList({ extended: isExtendedOAuthState(stateRow.state) }),
     });
     log.info("connexion eBay établie", { connectionId: connection.id, orgId: stateRow.organization_id, username: account.username, isNew, environment: config.environment });
     const target = isNew || !connection.last_successful_sync_at ? `/settings/integrations/ebay/setup?connection=${connection.id}` : `/settings/integrations?connected=${connection.id}`;

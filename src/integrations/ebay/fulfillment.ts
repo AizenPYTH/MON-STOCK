@@ -96,8 +96,11 @@ function stableHash(raw: unknown): string {
 
 function normalizeLineItem(li: z.infer<typeof lineItemSchema>, orderCurrency: string): NormalizedOrderItem {
   const isVariation = Boolean(li.legacyVariationId) || (li.variationAspects?.length ?? 0) > 0;
-  const unitPrice = li.lineItemCost?.value ?? null;
-  const total = li.total?.value ?? (unitPrice !== null ? Math.round(unitPrice * li.quantity * 100) / 100 : null);
+  // lineItemCost = prix unitaire × quantité, avant remises (doc Sell Fulfillment, type LineItem) :
+  // le prix unitaire s'en déduit ; lineItem.total inclut en plus port et taxes de la ligne.
+  const lineCost = li.lineItemCost?.value ?? null;
+  const unitPrice = lineCost !== null && li.quantity > 0 ? Math.round((lineCost / li.quantity) * 10000) / 10000 : null;
+  const total = li.total?.value ?? lineCost;
   return {
     externalLineItemId: li.lineItemId,
     externalListingId: li.legacyItemId ?? null,

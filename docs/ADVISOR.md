@@ -29,6 +29,9 @@
   | Préparation (aucun effet) | `restock_plan` (proposition, aucune commande), `prepare_stock_adjustment`, `prepare_price_change` (prix MON STOCK, annonces eBay non modifiées), `draft_buyer_message` (brouillon, jamais envoyé) |
   | Exécution | **aucun outil du modèle**. Seule la route `POST /advisor/actions/confirm`, déclenchée par le bouton « Confirmer », exécute une action préparée |
 
+- **Compte eBay en direct** (`src/services/ai/advisor-ebay.ts`, ajouté le 20 octobre 2026) : 12 outils de **lecture seule**
+  qui interrogent eBay au moment de la question (cache mémoire de 60 s), voir §1 ter.
+
 - **Calculs définis** (`src/services/ai/advisor-metrics.ts`) :
   - montants en centimes entiers ;
   - périodes au calendrier de Paris (`this_week` = depuis lundi, `this_month` = depuis le 1er) ;
@@ -38,6 +41,54 @@
   - frais de port payés par le vendeur, retours et remboursements partiels : **non connus, donc signalés**.
 
   Rien n'est extrapolé : une donnée absente est comptée et listée.
+
+## 1 ter. Ce que le conseiller sait de votre compte eBay
+
+Deux sources, citées comme telles par le conseiller :
+1. **Données synchronisées dans MON STOCK** (commandes, lignes, annonces) : historique, CA, marges. `recent_orders` et
+   `order_lookup` exposent désormais aussi les **taxes** (`tax_total`), le **SKU eBay** (`external_sku`) et le numéro d'objet des lignes.
+2. **Lecture EN DIRECT chez eBay** (aucune écriture, aucune action) : chaque résultat porte `readAt` / `readAtParis` (date de
+   lecture) et le conseiller doit la citer. Un champ inconnu vaut `null`. eBay non connecté, autorisation expirée, API refusée
+   (401/403), quota : réponse `available: false` avec la raison, jamais de chiffre inventé.
+
+| Outil | API eBay | Données renvoyées | Autorisation |
+| --- | --- | --- | --- |
+| `ebay_order_details` | Fulfillment `getOrder` (+ `fieldGroups=TAX_BREAKDOWN`), `getShippingFulfillments` ; Finances `getTransactions` (filtre `orderId`) si analyse complète | statuts paiement / expédition (commande et ligne), prix, remises et promotions, port, taxes (dont taxes collectées par eBay), frais eBay (total ; par ligne et par type avec l'analyse complète), net vendeur, paiements et fonds bloqués, remboursements, demandes d'annulation, date limite d'expédition, livraison estimée, suivis (transporteur, numéro, date) ; acheteur : pseudo, nom du destinataire, ville, code postal, pays | standard |
+| `ebay_orders_live` | Fulfillment `getOrders` (≤ 90 j, filtres création / expédition ; paiement filtré côté serveur) | commandes récentes même non synchronisées, totaux et frais par devise, payées à expédier, « pas encore dans MON STOCK » | standard |
+| `ebay_account_overview` | Identity `getUser`, Account `privilege`, `get_opted_in_programs`, `subscription`, politiques expédition / retour / paiement, Inventory `location`, Trading `GetUser`, `GetMyeBaySelling` (résumé) | pseudo, type de compte, score et % positives, Top Fiabilité, limites de vente et restant du mois, vendus 30 j, programmes, abonnement Boutique, politiques détaillées, emplacements, autorisations accordées | standard |
+| `ebay_listing_details` | Trading `GetItem` (`IncludeWatchCount`), `GetBestOffers` si des offres existent | prix actuel / avant promotion, quantités, observateurs, offres reçues (montant, statut, pseudo), état, catégorie, dates, délai d'expédition, politiques, caractéristiques, variations ; frais d'insertion : `null` (non renvoyés par GetItem) | standard |
+| `ebay_sold_unsold` | Trading `GetMyeBaySelling` SoldList / UnsoldList (≤ 60 j) | ventes (objet, quantité, prix, date, payé / expédié, pseudo) et annonces terminées sans vente | standard |
+| `ebay_feedback` | Trading `GetFeedback` (récentes + négatives / neutres), `GetUser` | score, % positives, compteurs 1 / 6 / 12 mois, notes détaillées, commentaires et réponses | standard |
+| `ebay_messages` | Trading `GetMyMessages` `ReturnSummary` + `ReturnHeaders` (boîte de réception) | non lus, en-têtes : expéditeur, sujet, date, lu / répondu, objet et lien | standard |
+| `ebay_message` | Trading `GetMyMessages` `ReturnMessages` | texte d'UN message (HTML → texte, e-mails et téléphones masqués) — **uniquement si la question le demande explicitement** (garde-fou serveur sur les mots de la question) | standard |
+| `ebay_finances` | Finances `transaction`, `payout`, `seller_funds_summary` | transactions par type, frais eBay par type, frais hors vente, remboursements, litiges, net, versements, solde | analyse complète |
+| `ebay_traffic` | Analytics `traffic_report` (par annonce ou par jour, ≤ 90 j) | impressions, vues, taux de clic, conversion, ventes ; titres des annonces de MON STOCK | analyse complète |
+| `ebay_seller_standards` | Analytics `seller_standards_profile`, `customer_service_metric` | niveau vendeur actuel / projeté, métriques et seuils, objets non reçus / non conformes | analyse complète |
+| `ebay_promotions` | Marketing `ad_campaign`, `ad_campaign/{id}/ad`, `promotion` | campagnes Promoted Listings (statut, modèle, taux, budget), annonces sponsorisées, promotions | analyse complète |
+
+**Analyse complète** : un administrateur clique **« Autoriser l'analyse complète »** dans Réglages → Intégrations
+(nouvelle autorisation eBay, lecture seule ; voir docs/ebay-setup.md §4 bis). Sans elle, ces 4 outils répondent
+« reconnectez eBay avec l'analyse complète dans Réglages → Intégrations » sans appeler eBay.
+
+**Droits** : la connexion est cherchée avec la session de l'utilisateur (RLS) et filtrée sur SON organisation ; le token est
+obtenu par le mécanisme commun (`connectorAuthFor` : déchiffrement, rafraîchissement avec les scopes accordés). Aucun token
+n'atteint le modèle.
+
+**Vie privée** : les résultats partent chez OpenAI (déclaré dans la politique de confidentialité, `src/content/legal.ts`).
+Acheteur limité au pseudo, nom du destinataire, ville, code postal et pays ; jamais rue, téléphone, e-mail ; coordonnées
+masquées dans les textes libres (notes d'achat, commentaires, offres, messages).
+
+**Exemples de questions** : « La commande 12-34567-89012 est-elle payée, expédiée, et combien eBay m'a pris dessus ? » ·
+« Quelles commandes payées dois-je encore expédier aujourd'hui ? » · « Combien de personnes surveillent mon iPhone 13 et
+quelles offres ai-je reçues ? » · « Qu'est-ce qui n'a pas vendu ce mois-ci ? » · « Ai-je reçu des évaluations négatives
+récemment, et pourquoi ? » · « Ai-je des messages non lus ? Que dit celui de acheteur_4 ? » · « Quelle est ma limite de vente
+restante ? » · « Quelle est ma politique de retour ? » · avec l'analyse complète : « Combien eBay m'a facturé en frais
+publicitaires ce mois-ci ? », « Quand arrive mon prochain virement ? », « Quelles annonces sont vues mais ne vendent pas ? »,
+« Suis-je toujours Top Fiabilité ? », « Quelles promotions sont en cours ? ».
+
+**À faire côté iPhone** (non modifié) : dans l'écran Intégrations, afficher l'état `extendedAnalysis` (renvoyé par
+`GET /api/integrations`) et un bouton « Autoriser l'analyse complète » qui appelle `connectEbay` avec le corps
+`{ extended: true }` sur `POST /api/ebay/connect` (le reste du flux — finalisation, synchronisation — est inchangé).
 
 ## 2. Architecture retenue et pourquoi
 
@@ -104,12 +155,13 @@ Il s'agit de **lire les réponses** avec une voix naturelle. Ce n'est **pas** la
   - l'objet (stock ou prix inchangé depuis la préparation), sinon rien n'est fait.
 
   Un « oui » écrit ou oral n'exécute rien. Une confirmation ne vaut que pour cette action.
-- **Achats** : aucune étiquette ni aucun paiement. L'achat d'étiquettes, l'envoi de messages eBay, la modification d'annonces et les commandes fournisseurs sont des **extensions futures**, déclarées au modèle comme indisponibles.
+- **Achats** : aucune étiquette ni aucun paiement. L'achat d'étiquettes, l'envoi de messages eBay (et les réponses aux offres), la modification d'annonces, de campagnes ou de promotions et les commandes fournisseurs sont des **extensions futures**, déclarées au modèle comme indisponibles.
+- **eBay en lecture seule** : les outils `ebay_*` n'appellent que des GET REST et des appels Trading `Get*` (vérifié par les tests : aucun autre nom d'appel).
 - **Limites** :
   - par utilisateur : 40 questions par heure (quota existant `ai_usage_events`) ; par organisation : 400 par jour ;
   - message : 2 000 caractères ;
   - historique envoyé : 12 messages et 12 000 caractères ;
-  - au plus 6 étapes d'outils, 2 500 jetons de réponse et 100 s par tour.
+  - au plus 8 étapes d'outils (6 auparavant : les lectures eBay en direct s'enchaînent souvent, liste → détail), 2 500 jetons de réponse et 100 s par tour.
 - **Journaux** : identifiants techniques seulement (organisation, action, outil), jamais le contenu des messages ni de clé.
 
 ## 4. Coûts estimés (à confirmer sur votre facture)
@@ -141,6 +193,8 @@ Un modèle plus puissant (par exemple `gpt-5.5`, environ 5 $ / 30 $ par million 
 - `src/services/ai/llm.ts` : accès au modèle (interface neutre + adaptateur OpenAI, flux, erreurs).
 - `src/services/ai/advisor.ts` : boucle de conversation, flux, historique.
 - `src/services/ai/advisor-tools.ts` : outils.
+- `src/services/ai/advisor-ebay.ts` : outils eBay en direct (connexion de l'organisation, scopes, cache, erreurs, cartes).
+- `src/integrations/ebay/insights.ts`, `trading-insights.ts`, `insights-common.ts` : appels et parseurs eBay (lecture seule).
 - `src/services/ai/advisor-actions.ts` : préparation et confirmation.
 - `src/services/ai/advisor-metrics.ts` : calculs et périodes.
 - `server/edge/api.ts` : routes.
@@ -160,6 +214,7 @@ Un modèle plus puissant (par exemple `gpt-5.5`, environ 5 $ / 30 $ par million 
 
 **Tests**
 - `tests/unit/ai-advisor.test.ts` (34) ;
+- `tests/unit/ai-advisor-ebay.test.ts`, `ebay-insights.test.ts`, `ebay-trading-insights.test.ts`, `ebay-scopes.test.ts` (réponses eBay simulées) ;
 - `tests/integration/advisor.test.ts` (3, PostgreSQL réel) ;
 - `apps/mobile/tests/advisor-data.test.ts` (9) et `advisor-screen.test.tsx` (12).
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ConnectorError } from "@/integrations/core/errors";
 import { fetchWithRetry, readJson } from "@/integrations/core/http";
 import type { TokenSet } from "@/integrations/core/types";
-import { EBAY_PROVIDER, ebayScopeList, type EbayConfig } from "@/integrations/ebay/config";
+import { EBAY_PROVIDER, ebayRefreshScopes, ebayScopeList, type EbayConfig } from "@/integrations/ebay/config";
 
 /**
  * OAuth 2.0 « authorization code grant » eBay.
@@ -108,9 +108,14 @@ export async function exchangeAuthorizationCode(config: EbayConfig, code: string
   return toTokenSet(data, now);
 }
 
-/** Rafraîchit l'access token (durée ~2 h). eBay ne renvoie pas de nouveau refresh token. */
-export async function refreshAccessToken(config: EbayConfig, refreshToken: string, scopes: string[] = ebayScopeList(), now: Date = new Date()): Promise<TokenSet> {
-  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, scope: scopes.join(" ") });
+/**
+ * Rafraîchit l'access token (durée ~2 h). eBay ne renvoie pas de nouveau refresh token.
+ * `grantedScopes` = scopes ACCORDÉS à la connexion (channel_connections.scopes) : ce sont eux, et eux
+ * seuls, qui sont redemandés (un scope non accordé → invalid_scope → connexion « expirée »).
+ * Absent ou vide (connexion ancienne) → scopes standard.
+ */
+export async function refreshAccessToken(config: EbayConfig, refreshToken: string, grantedScopes?: readonly string[] | null, now: Date = new Date()): Promise<TokenSet> {
+  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, scope: ebayRefreshScopes(grantedScopes).join(" ") });
   const data = await tokenRequest(config, body, "oauth:refresh_token");
   return toTokenSet(data, now, { token: refreshToken, expiresAt: null });
 }

@@ -19,7 +19,7 @@ export function ebayCallbackTarget(url: URL): string {
   const error = url.searchParams.get("error");
   if (error) {
     // Seul un code d'erreur connu circule (jamais un texte libre).
-    target.searchParams.set("error", error === "access_denied" ? "access_denied" : "ebay_error");
+    target.searchParams.set("error", error === "access_denied" ? "access_denied" : error === "invalid_scope" ? "scope_refused" : "ebay_error");
   } else if (code && state && SAFE_CODE.test(code) && SAFE_STATE.test(state)) {
     target.searchParams.set("code", code);
     target.searchParams.set("state", state);

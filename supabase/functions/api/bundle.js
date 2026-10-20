@@ -981,17 +981,17 @@ function normalizeProduct(text3, hints = {}) {
   }
   const storages = [];
   work = work.replace(/(?<![a-z0-9])(\d{1,4})\s?(tb|to|gb|go|g)(?![a-z0-9])/g, (full, n, unit) => {
-    const num3 = Number(n);
-    if (unit === "g" && !STORAGE_SIZES_GB.has(num3)) return full;
+    const num4 = Number(n);
+    if (unit === "g" && !STORAGE_SIZES_GB.has(num4)) return full;
     const isTb = unit === "tb" || unit === "to";
-    storages.push({ value: isTb ? `${num3}TB` : `${num3}GB`, gb: isTb ? num3 * 1024 : num3 });
+    storages.push({ value: isTb ? `${num4}TB` : `${num4}GB`, gb: isTb ? num4 * 1024 : num4 });
     return " ";
   });
   if (storages.length === 0) {
     work = work.replace(/(?<![a-z0-9.,])(\d{2,4})(?![a-z0-9.,])/g, (full, n) => {
-      const num3 = Number(n);
-      if (storages.length === 0 && STORAGE_SIZES_GB.has(num3)) {
-        storages.push({ value: `${num3}GB`, gb: num3 });
+      const num4 = Number(n);
+      if (storages.length === 0 && STORAGE_SIZES_GB.has(num4)) {
+        storages.push({ value: `${num4}GB`, gb: num4 });
         return " ";
       }
       return full;
@@ -1579,10 +1579,10 @@ var init_types = __esm({
 import { parse as parseCsv } from "npm:csv-parse@7.0.3/sync";
 import { XMLParser } from "npm:fast-xml-parser@5.11.2";
 import { z as z3 } from "npm:zod@4.6.5";
-function getPath(obj3, path) {
-  if (!path) return obj3;
+function getPath(obj4, path) {
+  if (!path) return obj4;
   const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".").filter((p) => p.length > 0);
-  let cur = obj3;
+  let cur = obj4;
   for (const p of parts) {
     if (cur === null || cur === void 0) return void 0;
     if (Array.isArray(cur)) {
@@ -1594,10 +1594,10 @@ function getPath(obj3, path) {
   }
   return cur;
 }
-function findFirstArray(obj3, depth = 0, path = "") {
-  if (depth > 6 || obj3 === null || typeof obj3 !== "object") return null;
-  if (Array.isArray(obj3)) return obj3.length > 0 && typeof obj3[0] === "object" ? { path, items: obj3 } : null;
-  for (const [k, v2] of Object.entries(obj3)) {
+function findFirstArray(obj4, depth = 0, path = "") {
+  if (depth > 6 || obj4 === null || typeof obj4 !== "object") return null;
+  if (Array.isArray(obj4)) return obj4.length > 0 && typeof obj4[0] === "object" ? { path, items: obj4 } : null;
+  for (const [k, v2] of Object.entries(obj4)) {
     const found = findFirstArray(v2, depth + 1, path ? `${path}.${k}` : k);
     if (found) return found;
   }
@@ -1617,12 +1617,12 @@ function detectDelimiter(sample) {
   }
   return best;
 }
-function flatten(obj3, prefix = "", out = {}, depth = 0) {
-  if (depth > 4 || obj3 === null || typeof obj3 !== "object" || Array.isArray(obj3)) {
-    if (prefix) out[prefix] = obj3;
+function flatten(obj4, prefix = "", out = {}, depth = 0) {
+  if (depth > 4 || obj4 === null || typeof obj4 !== "object" || Array.isArray(obj4)) {
+    if (prefix) out[prefix] = obj4;
     return out;
   }
-  for (const [k, v2] of Object.entries(obj3)) {
+  for (const [k, v2] of Object.entries(obj4)) {
     const key2 = prefix ? `${prefix}.${k}` : k;
     if (v2 !== null && typeof v2 === "object" && !Array.isArray(v2)) flatten(v2, key2, out, depth + 1);
     else out[key2] = v2;
@@ -1655,8 +1655,8 @@ function parseFeedContent(content, format, options = {}) {
   } else {
     let doc;
     if (format === "xml") {
-      const parser4 = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: true, cdataPropName: false });
-      doc = parser4.parse(text3);
+      const parser5 = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true, parseTagValue: false, trimValues: true, cdataPropName: false });
+      doc = parser5.parse(text3);
     } else {
       doc = JSON.parse(text3);
     }
@@ -1733,15 +1733,15 @@ function toVatRegime(v2) {
 }
 function toDateOnly(v2) {
   if (v2 === null || v2 === void 0 || v2 === "") return null;
-  const iso = (y, m2, d) => {
+  const iso2 = (y, m2, d) => {
     const dt = new Date(Date.UTC(y, m2 - 1, d));
     return dt.getUTCFullYear() === y && dt.getUTCMonth() === m2 - 1 && dt.getUTCDate() === d ? dt.toISOString().slice(0, 10) : null;
   };
   const s = String(v2).trim();
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
-  if (m) return iso(Number(m[1]), Number(m[2]), Number(m[3]));
+  if (m) return iso2(Number(m[1]), Number(m[2]), Number(m[3]));
   m = /^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/.exec(s);
-  if (m) return iso(Number(m[3]), Number(m[2]), Number(m[1]));
+  if (m) return iso2(Number(m[3]), Number(m[2]), Number(m[1]));
   if (/^\d{5}(\.\d+)?$/.test(s)) {
     const serial = Math.floor(Number(s));
     if (serial >= 36526 && serial <= 73050) return new Date(Date.UTC(1899, 11, 30) + serial * 864e5).toISOString().slice(0, 10);
@@ -1969,8 +1969,8 @@ var init_feed_parsers = __esm({
 import { z as z4 } from "npm:zod@4.6.5";
 function typeIncludes(t, wanted) {
   if (!t) return false;
-  const list = Array.isArray(t) ? t : [t];
-  return list.some((x) => x.toLowerCase().endsWith(wanted.toLowerCase()));
+  const list2 = Array.isArray(t) ? t : [t];
+  return list2.some((x) => x.toLowerCase().endsWith(wanted.toLowerCase()));
 }
 function collectNodes(node2, out, depth = 0) {
   if (depth > 8 || node2 === null || typeof node2 !== "object") return;
@@ -1978,10 +1978,10 @@ function collectNodes(node2, out, depth = 0) {
     for (const n of node2) collectNodes(n, out, depth + 1);
     return;
   }
-  const obj3 = node2;
-  out.push(obj3);
+  const obj4 = node2;
+  out.push(obj4);
   for (const key2 of ["@graph", "itemListElement", "mainEntity", "item", "hasVariant", "isVariantOf"]) {
-    if (obj3[key2] !== void 0) collectNodes(obj3[key2], out, depth + 1);
+    if (obj4[key2] !== void 0) collectNodes(obj4[key2], out, depth + 1);
   }
 }
 function extractJsonLdBlocks(html) {
@@ -2014,9 +2014,9 @@ function resolveUrl(url, base) {
 }
 function offersOf(p) {
   if (!p.offers) return [];
-  const list = Array.isArray(p.offers) ? p.offers : [p.offers];
+  const list2 = Array.isArray(p.offers) ? p.offers : [p.offers];
   const out = [];
-  for (const o of list) {
+  for (const o of list2) {
     const nested = o.offers;
     if (nested && typeIncludes(o["@type"], "AggregateOffer")) {
       const inner = Array.isArray(nested) ? nested : [nested];
@@ -2834,16 +2834,16 @@ function parseGmcPrice(raw) {
   if (!m || !m[1]) return null;
   const numeric = m[1].replace(/\s/g, "");
   const normalized = /,\d{1,2}$/.test(numeric) && numeric.includes(".") ? numeric.replace(/\./g, "").replace(",", ".") : /\.\d{1,2}$/.test(numeric) && numeric.includes(",") ? numeric.replace(/,/g, "") : numeric.replace(",", ".");
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount)) return null;
-  return { amount, currency: m[2] ? m[2].toUpperCase() : null };
+  const amount2 = Number(normalized);
+  if (!Number.isFinite(amount2)) return null;
+  return { amount: amount2, currency: m[2] ? m[2].toUpperCase() : null };
 }
 function linkOf(item) {
   const g = textOf(field(item, "link"));
   if (g && /^https?:\/\//i.test(g)) return g;
   const raw = item.link;
-  const list = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
-  for (const l of list) {
+  const list2 = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
+  for (const l of list2) {
     if (l && typeof l === "object") {
       const href = l["@_href"];
       if (typeof href === "string" && /^https?:\/\//i.test(href)) return href;
@@ -2853,12 +2853,12 @@ function linkOf(item) {
 }
 function shippingOf(item) {
   const raw = field(item, "shipping");
-  const list = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
+  const list2 = Array.isArray(raw) ? raw : raw !== void 0 ? [raw] : [];
   const out = [];
-  for (const s of list) {
+  for (const s of list2) {
     if (!s || typeof s !== "object") continue;
-    const rec = s;
-    out.push({ country: textOf(field(rec, "country"))?.toUpperCase().slice(0, 2) ?? null, price: parseGmcPrice(textOf(field(rec, "price"))) });
+    const rec2 = s;
+    out.push({ country: textOf(field(rec2, "country"))?.toUpperCase().slice(0, 2) ?? null, price: parseGmcPrice(textOf(field(rec2, "price"))) });
   }
   return out;
 }
@@ -2894,16 +2894,16 @@ function toItem(record) {
   };
 }
 function parseGmcXml(text3) {
-  const parser4 = new XMLParser2({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
-  const doc = parser4.parse(text3.replace(/^\uFEFF/, ""));
+  const parser5 = new XMLParser2({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: false, parseTagValue: false, trimValues: true, cdataPropName: false });
+  const doc = parser5.parse(text3.replace(/^\uFEFF/, ""));
   const rss = doc.rss;
   const channel = rss?.channel;
   const feed = doc.feed;
   const rawItems = channel?.item ?? feed?.entry ?? null;
   if (rawItems === null || rawItems === void 0) throw new Error("Flux non reconnu : ni <rss><channel><item>, ni <feed><entry>.");
-  const list = Array.isArray(rawItems) ? rawItems : [rawItems];
+  const list2 = Array.isArray(rawItems) ? rawItems : [rawItems];
   const items = [];
-  for (const entry of list.slice(0, MAX_FEED_ITEMS)) {
+  for (const entry of list2.slice(0, MAX_FEED_ITEMS)) {
     const parsed = gmcItemSchema.safeParse(entry);
     if (!parsed.success) continue;
     const item = toItem(parsed.data);
@@ -2915,7 +2915,7 @@ function parseGmcTsv(text3) {
   const clean = text3.replace(/^\uFEFF/, "");
   const firstLine = clean.split(/\r?\n/)[0] ?? "";
   const delimiter = firstLine.includes("	") ? "	" : firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
-  const rows = parseCsv2(clean, { columns: (header) => header.map((h) => h.trim().toLowerCase().replace(/^g:/, "")), delimiter, bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true, to: MAX_FEED_ITEMS + 1 });
+  const rows = parseCsv2(clean, { columns: (header2) => header2.map((h) => h.trim().toLowerCase().replace(/^g:/, "")), delimiter, bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true, to: MAX_FEED_ITEMS + 1 });
   const items = [];
   for (const row2 of rows) {
     const parsed = gmcItemSchema.safeParse(row2);
@@ -4118,9 +4118,9 @@ async function loadIndex(base, ctx, http, settings) {
     read.push(sm);
     const parsed = parseSitemapXml(res.text);
     if (parsed.kind === "index") {
-      const children = rankChildSitemaps(parsed.locs);
-      if (children.length > SITEMAP_MAX_CHILDREN) partial = `${children.length - SITEMAP_MAX_CHILDREN} sous-plan(s) du site au-del\xE0 de la limite de ${SITEMAP_MAX_CHILDREN}`;
-      queue.push(...children.slice(0, SITEMAP_MAX_CHILDREN));
+      const children2 = rankChildSitemaps(parsed.locs);
+      if (children2.length > SITEMAP_MAX_CHILDREN) partial = `${children2.length - SITEMAP_MAX_CHILDREN} sous-plan(s) du site au-del\xE0 de la limite de ${SITEMAP_MAX_CHILDREN}`;
+      queue.push(...children2.slice(0, SITEMAP_MAX_CHILDREN));
     } else for (const u of parsed.locs) if (urls.length < SITEMAP_MAX_URLS) urls.push(u);
   }
   if (!partial && queue.length > 0) partial = `${queue.length} sous-plan(s) du site non lu(s) (limites de taille ou de nombre)`;
@@ -4355,11 +4355,11 @@ function parseStoredProvenance(raw) {
   const r = configObject(raw);
   const p = configObject(r.provenance ?? r._provenance);
   if (Object.keys(p).length === 0) return null;
-  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2 : null;
-  const method = str3(p.method);
-  const adapterKey = str3(p.adapter_key) ?? str3(p.adapterKey) ?? str3(p.adapter);
+  const str4 = (v2) => typeof v2 === "string" && v2.trim() ? v2 : null;
+  const method = str4(p.method);
+  const adapterKey = str4(p.adapter_key) ?? str4(p.adapterKey) ?? str4(p.adapter);
   if (!method && !adapterKey) return null;
-  return { method: method && METHODS.has(method) ? method : null, adapterKey, retrievedAt: str3(p.retrieved_at) ?? str3(p.retrievedAt), requestUrl: str3(p.request_url) ?? str3(p.requestUrl) };
+  return { method: method && METHODS.has(method) ? method : null, adapterKey, retrievedAt: str4(p.retrieved_at) ?? str4(p.retrievedAt), requestUrl: str4(p.request_url) ?? str4(p.requestUrl) };
 }
 function hostOf(url) {
   if (!url) return null;
@@ -4525,19 +4525,19 @@ var init_validation = __esm({
 import { XMLParser as XMLParser3 } from "npm:fast-xml-parser@5.11.2";
 import { z as z12 } from "npm:zod@4.6.5";
 function parseEcbXml(xml) {
-  const parser4 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true });
-  const doc = parser4.parse(xml);
+  const parser5 = new XMLParser3({ ignoreAttributes: false, attributeNamePrefix: "@_", removeNSPrefix: true });
+  const doc = parser5.parse(xml);
   const envelope = doc.Envelope ?? doc;
   const outer = envelope.Cube;
   const dated = outer?.Cube;
-  const day = Array.isArray(dated) ? dated[0] : dated;
-  if (!day || typeof day !== "object") throw new Error("Flux BCE illisible : structure Cube absente.");
-  const date = String(day["@_time"] ?? "");
+  const day2 = Array.isArray(dated) ? dated[0] : dated;
+  if (!day2 || typeof day2 !== "object") throw new Error("Flux BCE illisible : structure Cube absente.");
+  const date = String(day2["@_time"] ?? "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Flux BCE illisible : date absente.");
-  const inner = day.Cube;
-  const list = Array.isArray(inner) ? inner : inner ? [inner] : [];
+  const inner = day2.Cube;
+  const list2 = Array.isArray(inner) ? inner : inner ? [inner] : [];
   const rates = { EUR: 1 };
-  for (const c of list) {
+  for (const c of list2) {
     const parsed = cubeSchema.safeParse(c);
     if (parsed.success) rates[parsed.data["@_currency"].toUpperCase()] = parsed.data["@_rate"];
   }
@@ -4619,8 +4619,8 @@ var init_postgrest = __esm({
 });
 
 // src/services/sourcing/offer-query.ts
-function baseOfferQuery(client2, organizationId, filters, skuIdsForCategory) {
-  let q = client2.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");
+function baseOfferQuery(client3, organizationId, filters, skuIdsForCategory) {
+  let q = client3.from("sourcing_offers").select(OFFER_SELECT).eq("organization_id", organizationId).eq("status", "active");
   if (filters.brand) q = q.ilike("brand", escapeLike(filters.brand));
   if (filters.model) q = q.ilike("model", `%${escapeLike(filters.model)}%`);
   if (filters.storage) q = q.ilike("storage", escapeLike(filters.storage));
@@ -4640,9 +4640,9 @@ function baseOfferQuery(client2, organizationId, filters, skuIdsForCategory) {
   if (skuIdsForCategory) q = skuIdsForCategory.length > 0 ? q.in("sku_id", skuIdsForCategory.slice(0, 1e3)) : q.eq("id", "00000000-0000-0000-0000-000000000000");
   return q;
 }
-async function findOffers(client2, organizationId, parsed, filters, options = {}) {
+async function findOffers(client3, organizationId, parsed, filters, options = {}) {
   const skuIds = options.skuIdsForCategory ?? null;
-  const build = () => baseOfferQuery(client2, organizationId, filters, skuIds);
+  const build = () => baseOfferQuery(client3, organizationId, filters, skuIds);
   const run = async (q) => {
     const { data, error } = await q.order("normalized_price", { ascending: true, nullsFirst: false }).limit(OFFER_FETCH_LIMIT);
     if (error) throw error;
@@ -4733,7 +4733,7 @@ function compareAttributes(o, c) {
   let cap2 = 0.95;
   const reasons = [];
   const UNKNOWN_CAP = MATCH_HIGH_THRESHOLD - 0.01;
-  const cmp2 = (label, a, b, equalPts, unknownPts, mismatchCap, unknownCap) => {
+  const cmp3 = (label, a, b, equalPts, unknownPts, mismatchCap, unknownCap) => {
     if (a && b) {
       if (a === b) {
         score += equalPts;
@@ -4748,16 +4748,16 @@ function compareAttributes(o, c) {
       reasons.push(`${label} non renseign\xE9${!a && !b ? " des deux c\xF4t\xE9s" : !a ? " c\xF4t\xE9 offre" : " c\xF4t\xE9 SKU"}`);
     }
   };
-  cmp2("Marque", o.brand, c.brand, 0.2, 0.1, 0.2, UNKNOWN_CAP);
+  cmp3("Marque", o.brand, c.brand, 0.2, 0.1, 0.2, UNKNOWN_CAP);
   const oModel = o.inferred.includes("model") ? null : o.model;
   const cModel = c.inferred.includes("model") ? null : c.model;
-  cmp2("Mod\xE8le", oModel, cModel, 0.45, 0.15, 0.2, 0.55);
-  cmp2("Stockage", o.storage, c.storage, 0.15, 0.07, 0.5, UNKNOWN_CAP);
-  cmp2("Couleur", o.color, c.color, 0.1, 0.05, 0.75, UNKNOWN_CAP);
-  cmp2("Grade", o.grade, c.grade, 0.07, 0.035, 0.8, UNKNOWN_CAP);
+  cmp3("Mod\xE8le", oModel, cModel, 0.45, 0.15, 0.2, 0.55);
+  cmp3("Stockage", o.storage, c.storage, 0.15, 0.07, 0.5, UNKNOWN_CAP);
+  cmp3("Couleur", o.color, c.color, 0.1, 0.05, 0.75, UNKNOWN_CAP);
+  cmp3("Grade", o.grade, c.grade, 0.07, 0.035, 0.8, UNKNOWN_CAP);
   const oCond = o.condition === "unknown" ? null : o.condition;
   const cCond = c.condition === "unknown" ? null : c.condition;
-  cmp2("\xC9tat", oCond, cCond, 0.03, 0.015, 0.8, 0.95);
+  cmp3("\xC9tat", oCond, cCond, 0.03, 0.015, 0.8, 0.95);
   return { score: Math.min(score, cap2), cap: cap2, reasons };
 }
 function matchOfferToSkus(offer, candidates) {
@@ -4832,7 +4832,7 @@ function toCandidate(r) {
     barcode: r.barcode
   };
 }
-async function loadMatchCandidates(client2, organizationId, hints, limit = MATCH_CANDIDATE_LIMIT) {
+async function loadMatchCandidates(client3, organizationId, hints, limit = MATCH_CANDIDATE_LIMIT) {
   const out = /* @__PURE__ */ new Map();
   const add = (rows) => {
     for (const r of rows ?? []) {
@@ -4840,7 +4840,7 @@ async function loadMatchCandidates(client2, organizationId, hints, limit = MATCH
       if (c && !out.has(c.skuId)) out.set(c.skuId, c);
     }
   };
-  const base = () => client2.from("skus").select(SELECT).eq("organization_id", organizationId).eq("is_active", true);
+  const base = () => client3.from("skus").select(SELECT).eq("organization_id", organizationId).eq("is_active", true);
   if (hints.ean) {
     const [{ data: byEan }, { data: byBarcode }] = await Promise.all([base().eq("variant.ean", hints.ean).limit(20), base().eq("barcode", hints.ean).limit(20)]);
     add(byEan);
@@ -4867,14 +4867,14 @@ async function loadMatchCandidates(client2, organizationId, hints, limit = MATCH
   }
   return Array.from(out.values()).slice(0, limit);
 }
-async function suggestMatchesForOffer(client2, organizationId, offer, options = {}) {
+async function suggestMatchesForOffer(client3, organizationId, offer, options = {}) {
   const normalized = normalizeProduct(offer.title_original, { ean: offer.ean, mpn: offer.mpn, brand: offer.brand });
-  const candidates = await loadMatchCandidates(client2, organizationId, { ean: normalized.ean, mpn: normalized.mpn, supplierSku: offer.external_product_id, brand: normalized.brandDisplay ?? normalized.brand, text: normalized.remainingText || offer.title_original });
+  const candidates = await loadMatchCandidates(client3, organizationId, { ean: normalized.ean, mpn: normalized.mpn, supplierSku: offer.external_product_id, brand: normalized.brandDisplay ?? normalized.brand, text: normalized.remainingText || offer.title_original });
   if (candidates.length === 0) return { suggestions: [], confirmedSkuId: null };
   const matches = matchOfferToSkus({ title: offer.title_original, normalized, ean: offer.ean, mpn: offer.mpn, supplierSku: offer.external_product_id }, candidates);
   const top = matches.slice(0, 3);
   if (top.length === 0) return { suggestions: [], confirmedSkuId: null };
-  const { data: existing } = await client2.from("product_matches").select("id, sku_id, status").eq("organization_id", organizationId).eq("offer_id", offer.id);
+  const { data: existing } = await client3.from("product_matches").select("id, sku_id, status").eq("organization_id", organizationId).eq("offer_id", offer.id);
   const existingBySku = new Map((existing ?? []).map((m) => [m.sku_id, m]));
   let confirmedSkuId = null;
   for (const m of top) {
@@ -4883,12 +4883,12 @@ async function suggestMatchesForOffer(client2, organizationId, offer, options = 
     if (prior) {
       if (prior.status === "rejected") continue;
       if (autoConfirm && prior.status === "suggested") {
-        await client2.from("product_matches").update({ status: "confirmed", decided_at: (/* @__PURE__ */ new Date()).toISOString(), confidence: m.confidence, method: m.method, reasons: m.reasons }).eq("id", prior.id);
+        await client3.from("product_matches").update({ status: "confirmed", decided_at: (/* @__PURE__ */ new Date()).toISOString(), confidence: m.confidence, method: m.method, reasons: m.reasons }).eq("id", prior.id);
         confirmedSkuId = m.skuId;
       }
       continue;
     }
-    const { error } = await client2.from("product_matches").insert({
+    const { error } = await client3.from("product_matches").insert({
       organization_id: organizationId,
       offer_id: offer.id,
       sourcing_product_id: offer.normalized_product_id,
@@ -4906,13 +4906,13 @@ async function suggestMatchesForOffer(client2, organizationId, offer, options = 
     }
     if (autoConfirm) confirmedSkuId = m.skuId;
   }
-  if (confirmedSkuId) await applyConfirmedMatch(client2, organizationId, { offerId: offer.id, skuId: confirmedSkuId, sourcingProductId: offer.normalized_product_id });
+  if (confirmedSkuId) await applyConfirmedMatch(client3, organizationId, { offerId: offer.id, skuId: confirmedSkuId, sourcingProductId: offer.normalized_product_id });
   return { suggestions: top, confirmedSkuId };
 }
-async function applyConfirmedMatch(client2, organizationId, link) {
-  if (link.offerId) await client2.from("sourcing_offers").update({ sku_id: link.skuId }).eq("id", link.offerId).eq("organization_id", organizationId);
+async function applyConfirmedMatch(client3, organizationId, link) {
+  if (link.offerId) await client3.from("sourcing_offers").update({ sku_id: link.skuId }).eq("id", link.offerId).eq("organization_id", organizationId);
   if (link.sourcingProductId) {
-    await client2.from("sourcing_products").update({ sku_id: link.skuId }).eq("id", link.sourcingProductId).eq("organization_id", organizationId).is("sku_id", null);
+    await client3.from("sourcing_products").update({ sku_id: link.skuId }).eq("id", link.sourcingProductId).eq("organization_id", organizationId).is("sku_id", null);
   }
 }
 var log3, MATCH_CANDIDATE_LIMIT, SELECT;
@@ -5274,6 +5274,561 @@ var init_errors2 = __esm({
   }
 });
 
+// apps/mobile/preview/demo-db.ts
+var demo_db_exports = {};
+__export(demo_db_exports, {
+  DEMO_ORG_ID: () => DEMO_ORG_ID,
+  DEMO_USER: () => DEMO_USER,
+  DemoQuery: () => DemoQuery,
+  createDemoClient: () => createDemoClient,
+  demoTables: () => demoTables,
+  parseSelect: () => parseSelect
+});
+function splitTop(s) {
+  const out = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur);
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+function parseSelect(s) {
+  return splitTop(s.replace(/\s+/g, " ")).map((tok) => {
+    if (tok === "*") return { kind: "star" };
+    if (tok === "count") return { kind: "count" };
+    const open = tok.indexOf("(");
+    if (open >= 0) {
+      const head = tok.slice(0, open).trim();
+      const inner = tok.slice(open + 1, tok.lastIndexOf(")"));
+      const [aliasPart, rest] = head.includes(":") ? head.split(":", 2) : [null, head];
+      const [table, hint] = (rest ?? "").split("!");
+      const t = (table ?? "").trim();
+      return { kind: "rel", alias: (aliasPart ?? t).trim(), table: t, inner: hint === "inner", fields: parseSelect(inner) };
+    }
+    const [a, b] = tok.includes(":") ? tok.split(":", 2) : [tok, tok];
+    return { kind: "col", alias: (a ?? tok).trim(), name: (b ?? tok).trim() };
+  });
+}
+function project(db, table, row2, fields) {
+  const out = { ...row2 };
+  for (const f of fields) {
+    if (f.kind === "col") out[f.alias] = row2[f.name];
+    if (f.kind !== "rel") continue;
+    const target = db[f.table] ?? [];
+    const fkCandidates = [`${f.alias}_id`, `${singular(f.table)}_id`];
+    const fk = fkCandidates.find((k) => k in row2);
+    let value;
+    if (fk) {
+      const ref = row2[fk];
+      const hit = ref == null ? void 0 : target.find((r) => r.id === ref);
+      value = hit ? project(db, f.table, hit, f.fields) : null;
+    } else {
+      const back = `${singular(table)}_id`;
+      const children2 = target.filter((r) => r[back] === row2.id);
+      value = f.fields.some((x) => x.kind === "count") ? [{ count: children2.length }] : children2.map((c) => project(db, f.table, c, f.fields));
+    }
+    if (f.inner && (value == null || Array.isArray(value) && value.length === 0)) return null;
+    out[f.alias] = value;
+  }
+  return out;
+}
+function valuesAt(row2, path) {
+  const [head, ...rest] = path.split(".");
+  const v2 = row2[head ?? ""];
+  if (rest.length === 0) return [v2];
+  const items = Array.isArray(v2) ? v2 : [v2];
+  return items.flatMap((x) => x && typeof x === "object" ? valuesAt(x, rest.join(".")) : []);
+}
+function createDemoClient(db, user) {
+  const session3 = { access_token: "preview-token", refresh_token: "preview", expires_in: 3600, token_type: "bearer", user: { id: user.id, email: user.email, app_metadata: {}, user_metadata: {}, aud: "authenticated", created_at: "2026-01-01T00:00:00Z" } };
+  return {
+    from: (table) => new DemoQuery(db, table),
+    rpc: async () => ({ data: null, error: null }),
+    auth: {
+      getSession: async () => ({ data: { session: session3 }, error: null }),
+      getUser: async () => ({ data: { user: session3.user }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => void 0 } } }),
+      startAutoRefresh: async () => void 0,
+      stopAutoRefresh: async () => void 0,
+      signOut: async () => ({ error: null }),
+      signInWithPassword: async () => ({ data: { session: session3 }, error: null }),
+      updateUser: async () => ({ data: { user: session3.user }, error: null })
+    }
+  };
+}
+function demoTables(now = /* @__PURE__ */ new Date()) {
+  const iso2 = (msAgo) => new Date(now.getTime() - msAgo).toISOString();
+  const H = 36e5;
+  const D = 24 * H;
+  const org = DEMO_ORG_ID;
+  const db = {};
+  db.organizations = [{ id: org, name: "Atelier D\xE9mo", slug: "atelier-demo", is_demo: true, default_currency: "EUR", country: "FR", settings: { costs: { packagingCost: 1.2, shippingCost: 6.5 } }, created_at: iso2(200 * D) }];
+  db.organization_members = [{ id: uid(3, 1), user_id: DEMO_USER.id, organization_id: org, role: "owner" }];
+  db.user_profiles = [{ user_id: DEMO_USER.id, current_organization_id: org }];
+  db.sales_channels = [
+    { id: uid(4, 1), organization_id: org, provider: "ebay", name: "eBay", currency: "EUR", is_active: true, fee_percent: 11.9, payment_fee_percent: 0, payment_fee_fixed: 0.35, default_shipping_cost: 6.5 },
+    { id: uid(4, 2), organization_id: org, provider: "manual", name: "Boutique", currency: "EUR", is_active: true, fee_percent: 0, payment_fee_percent: 1.4, payment_fee_fixed: 0.25, default_shipping_cost: 0 }
+  ];
+  db.products = [];
+  db.product_variants = [];
+  db.skus = [];
+  db.v_stock_overview = [];
+  db.channel_listings = [];
+  const productIds = /* @__PURE__ */ new Map();
+  SKUS.forEach((s, i) => {
+    let pid = productIds.get(s.product);
+    if (!pid) {
+      pid = uid(5, productIds.size + 1);
+      productIds.set(s.product, pid);
+      db.products.push({ id: pid, organization_id: org, name: s.product, brand: s.brand, category: s.category, description: null, attributes: {}, image_url: null, is_archived: false, updated_at: iso2(3 * D) });
+    }
+    const vid = uid(6, i + 1);
+    const sid = uid(7, i + 1);
+    db.product_variants.push({ id: vid, organization_id: org, product_id: pid, name: s.variant, condition: s.condition, grade: s.grade, ean: null, attributes: {}, updated_at: iso2(3 * D) });
+    db.skus.push({ id: sid, organization_id: org, product_id: pid, variant_id: vid, code: s.code, cost_price: s.cost, sale_price: s.price, currency: "EUR", location: i % 2 ? "\xC9tag\xE8re B" : "\xC9tag\xE8re A", reorder_point: s.reorder, safety_stock: 1, barcode: null, is_active: true, updated_at: iso2(2 * D) });
+    db.v_stock_overview.push({
+      organization_id: org,
+      sku_id: sid,
+      code: s.code,
+      product_id: pid,
+      product_name: s.product,
+      variant_id: vid,
+      variant_name: s.variant,
+      brand: s.brand,
+      category: s.category,
+      condition: s.condition,
+      grade: s.grade,
+      image_url: null,
+      is_active: true,
+      product_archived: false,
+      location: i % 2 ? "\xC9tag\xE8re B" : "\xC9tag\xE8re A",
+      barcode: null,
+      quantity_on_hand: s.qty,
+      quantity_reserved: 0,
+      quantity_available: s.qty,
+      reorder_point: s.reorder,
+      safety_stock: 1,
+      cost_price: s.cost,
+      sale_price: s.price,
+      currency: "EUR",
+      stock_value: Math.round(s.qty * s.cost * 100) / 100,
+      unit_margin: Math.round((s.price - s.cost) * 100) / 100,
+      units_7d: Math.round(s.units30 / 4),
+      units_30d: s.units30,
+      units_90d: s.units30 * 3,
+      units_prev_7d: Math.round(s.units30 / 4.5),
+      units_prev_30d: Math.round(s.units30 * 0.85),
+      revenue_30d: Math.round(s.units30 * s.price),
+      avg_sale_price_30d: Math.round(s.price * 0.97 * 100) / 100,
+      foreign_currency_units_30d: 0,
+      active_listings_count: s.ebay ? 1 : 0,
+      channel_providers: s.ebay ? ["ebay"] : [],
+      last_sale_at: iso2((i + 1) * 5 * H),
+      first_sale_at: iso2(180 * D),
+      last_movement_at: iso2((i + 1) * 4 * H),
+      lead_time_days: 5,
+      default_supplier_id: null,
+      supplier_ids: [],
+      supplier_offers_count: 0,
+      best_supplier_price: null
+    });
+    if (s.ebay)
+      db.channel_listings.push({ id: uid(8, i + 1), organization_id: org, provider: "ebay", sales_channel_id: uid(4, 1), sku_id: sid, title: `${s.product} ${s.variant}`, price: s.price, currency: "EUR", quantity_available: s.qty, quantity_listed: s.qty, quantity_sold: s.units30, status: s.qty > 0 ? "active" : "out_of_stock", external_listing_id: String(2049e8 + i), external_sku: s.code, mapping_status: "mapped", last_synced_at: iso2(40 * 6e4), listing_url: null, image_url: null });
+  });
+  db.orders = [];
+  db.order_items = [];
+  let n = 0;
+  for (let day2 = 0; day2 < 30; day2++) {
+    const perDay = 2 + day2 * 7 % 5;
+    for (let k = 0; k < perDay; k++) {
+      const s = SKUS[(day2 * 3 + k * 5) % SKUS.length];
+      const sku = db.skus[(day2 * 3 + k * 5) % SKUS.length];
+      n++;
+      const oid = uid(9, n);
+      const qty = s.price < 40 && k % 2 === 0 ? 2 : 1;
+      const placed = iso2(day2 * D + (k + 1) * 1.7 * H);
+      const status = day2 === 0 && k < 2 ? "paid" : "shipped";
+      db.orders.push({ id: oid, organization_id: org, provider: k % 3 === 0 ? "manual" : "ebay", sales_channel_id: k % 3 === 0 ? uid(4, 2) : uid(4, 1), order_number: `MS-${String(4810 - n)}`, external_order_id: `${17 - n % 9}-${12e3 + n}-${55e3 + n * 3}`, buyer_username: ["lucas_r", "amelie.m", "techshop75", "jordanb", "sophie_l", "karim.d"][n % 6], status, placed_at: placed, total: Math.round(s.price * qty * 100) / 100, currency: "EUR", fee_total: k % 3 === 0 ? 0 : Math.round(s.price * qty * 0.119 * 100) / 100, inventory_applied: !(day2 === 0 && k === 0), created_at: placed });
+      db.order_items.push({ id: uid(10, n), organization_id: org, order_id: oid, sku_id: sku.id, title: `${s.product} ${s.variant}`, quantity: qty, unit_price: s.price, currency: "EUR", total: s.price * qty, inventory_applied: !(day2 === 0 && k === 0) });
+    }
+  }
+  const byDay = /* @__PURE__ */ new Map();
+  for (const o of db.orders) {
+    const d = String(o.placed_at).slice(0, 10);
+    const cur = byDay.get(d) ?? { revenue: 0, orders: 0, units: 0 };
+    cur.revenue += Number(o.total);
+    cur.orders += 1;
+    cur.units += db.order_items.filter((it) => it.order_id === o.id).reduce((a, it) => a + Number(it.quantity), 0);
+    byDay.set(d, cur);
+  }
+  db.v_daily_sales = [...byDay.entries()].map(([day2, v2]) => ({ organization_id: org, day: day2, currency: "EUR", revenue: Math.round(v2.revenue * 100) / 100, orders_count: v2.orders, units: v2.units }));
+  db.inventory_movements = db.skus.slice(0, 8).map((s, i) => ({ id: uid(11, i + 1), organization_id: org, sku_id: s.id, type: i % 3 === 0 ? "purchase" : "sale", quantity: i % 3 === 0 ? 5 : -1, quantity_after: SKUS[i].qty, note: null, channel: i % 3 === 0 ? null : "ebay", occurred_at: iso2((i + 1) * 3 * H), created_at: iso2((i + 1) * 3 * H) }));
+  db.alerts = [
+    { id: uid(12, 1), organization_id: org, type: "stockout", severity: "critical", status: "open", title: "Rupture : iPhone 12 64 Go", message: "7 ventes sur 30 jours, plus aucune unit\xE9 disponible.", entity_type: "sku", entity_id: db.skus[2].id, action_href: null, created_at: iso2(5 * H) },
+    { id: uid(12, 2), organization_id: org, type: "low_stock", severity: "warning", status: "open", title: "Stock faible : Batterie iPhone 12", message: "1 unit\xE9 restante pour 18 ventes sur 30 jours.", entity_type: "sku", entity_id: db.skus[6].id, action_href: null, created_at: iso2(9 * H) }
+  ];
+  db.suppliers = SUPPLIERS.map((s, i) => ({ id: uid(13, i + 1), organization_id: org, name: s.name, website: s.website, country: s.country, currency: "EUR", is_archived: false, created_at: iso2(60 * D) }));
+  const sup = (key2) => db.suppliers[SUPPLIERS.findIndex((s) => s.key === key2)];
+  db.supplier_sources = [
+    { id: uid(14, 1), organization_id: org, supplier_id: sup("foxway").id, name: "Foxway \u2014 liste de stock", source_type: "CSV", status: "active", config: {}, automated_access_confirmed: false, robots_allowed: null, sync_frequency: "manual", base_url: null, country: "EE", last_sync_at: iso2(2 * D), last_successful_sync_at: iso2(2 * D), last_error: null, next_run_at: null, consecutive_failures: 0 },
+    { id: uid(14, 2), organization_id: org, supplier_id: sup("brico-phone").id, name: "Brico-phone", source_type: "PUBLIC_WEB", status: "active", config: { library_key: "brico-phone" }, automated_access_confirmed: true, robots_allowed: true, sync_frequency: "weekly", base_url: "https://www.brico-phone.com", country: "FR", last_sync_at: iso2(1 * D), last_successful_sync_at: iso2(1 * D), last_error: null, next_run_at: iso2(-6 * D), consecutive_failures: 0 },
+    { id: uid(14, 3), organization_id: org, supplier_id: sup("refreshed-apples").id, name: "Refreshed Apples", source_type: "PUBLIC_WEB", status: "active", config: { library_key: "refreshed-apples" }, automated_access_confirmed: true, robots_allowed: true, sync_frequency: "weekly", base_url: "https://refreshedapples.com", country: "NL", last_sync_at: iso2(3 * D), last_successful_sync_at: iso2(3 * D), last_error: null, next_run_at: iso2(-4 * D), consecutive_failures: 0 },
+    { id: uid(14, 4), organization_id: org, supplier_id: sup("bigbuy").id, name: "BigBuy \u2014 API", source_type: "API", status: "error", config: {}, automated_access_confirmed: true, robots_allowed: null, sync_frequency: "daily", base_url: null, country: "ES", last_sync_at: iso2(6 * H), last_successful_sync_at: null, last_error: "Cl\xE9 API refus\xE9e par BigBuy (HTTP 401).", next_run_at: null, consecutive_failures: 3 },
+    { id: uid(14, 5), organization_id: org, supplier_id: sup("ebay").id, name: "eBay France", source_type: "API", status: "active", config: { adapter: "ebay-browse", kind: "marketplace" }, automated_access_confirmed: true, robots_allowed: null, sync_frequency: "manual", base_url: null, country: "FR", last_sync_at: iso2(30 * 6e4), last_successful_sync_at: iso2(30 * 6e4), last_error: null, next_run_at: null, consecutive_failures: 0 }
+  ];
+  db.supplier_connections = [{ id: uid(15, 1), organization_id: org, supplier_id: sup("bigbuy").id, connector_key: "bigbuy", status: "error", source_id: uid(14, 4), last_sync_at: iso2(6 * H), last_error: "Cl\xE9 API refus\xE9e par BigBuy (HTTP 401).", config: {} }];
+  db.supplier_feeds = [];
+  db.sync_runs = [];
+  const offers = [
+    { src: 1, sup: "foxway", title: "Apple iPhone 13 128GB Midnight Grade A", price: 279, qty: 40, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "CSV", sku: 0 },
+    { src: 1, sup: "foxway", title: "Apple iPhone 13 128GB Blue Grade B", price: 251, qty: 65, model: "iphone 13", storage: "128", grade: "B", condition: "refurbished", type: "CSV", sku: 1 },
+    { src: 1, sup: "foxway", title: "Apple iPhone 12 64GB Black Grade A", price: 199, qty: 22, model: "iphone 12", storage: "64", grade: "A", condition: "refurbished", type: "CSV", sku: 2 },
+    { src: 1, sup: "foxway", title: "Apple iPhone 14 Pro 256GB Gold Grade A", price: 569, qty: 8, model: "iphone 14 pro", storage: "256", grade: "A", condition: "refurbished", type: "CSV", sku: 3 },
+    { src: 3, sup: "refreshed-apples", title: "iPhone 13 128GB Midnight - Grade A", price: 299, qty: 12, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "PUBLIC_WEB", sku: 0 },
+    { src: 3, sup: "refreshed-apples", title: "iPhone 12 64GB Black - Grade B", price: 185, qty: 9, model: "iphone 12", storage: "64", grade: "B", condition: "refurbished", type: "PUBLIC_WEB" },
+    { src: 2, sup: "brico-phone", title: "\xC9cran OLED iPhone 13 qualit\xE9 origine", price: 84.9, qty: null, model: "iphone 13", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB", sku: 5 },
+    { src: 2, sup: "brico-phone", title: "Batterie iPhone 12 compatible 2815 mAh", price: 9.9, qty: null, model: "iphone 12", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB", sku: 6 },
+    { src: 2, sup: "brico-phone", title: "Batterie iPhone 11 compatible 3110 mAh", price: 9.5, qty: null, model: "iphone 11", storage: null, grade: null, condition: "new", type: "PUBLIC_WEB", sku: 7 },
+    { src: 5, sup: "ebay", title: "Apple iPhone 13 128 Go Minuit - Tr\xE8s bon \xE9tat", price: 419, qty: 1, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "iPhone 13 128Go Minuit reconditionn\xE9 grade A", price: 435, qty: 1, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "iPhone 13 bleu 128 Go bon \xE9tat", price: 389, qty: 1, model: "iphone 13", storage: "128", grade: "B", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "Apple iPhone 12 64 Go noir \xE9tat correct", price: 289, qty: 1, model: "iphone 12", storage: "64", grade: "A", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "iPhone 13 128 Go noir minuit grade A comme neuf", price: 409, qty: 1, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "Apple iPhone 13 128Go Midnight excellent \xE9tat", price: 445, qty: 2, model: "iphone 13", storage: "128", grade: "A", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "iPhone 13 128 Go bleu reconditionn\xE9", price: 375, qty: 1, model: "iphone 13", storage: "128", grade: "B", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "Apple iPhone 13 bleu 128Go \xE9tat correct", price: 395, qty: 1, model: "iphone 13", storage: "128", grade: "B", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "iPhone 12 64 Go noir tr\xE8s bon \xE9tat", price: 279, qty: 1, model: "iphone 12", storage: "64", grade: "A", condition: "refurbished", type: "API" },
+    { src: 5, sup: "ebay", title: "Apple iPhone 12 64Go black reconditionn\xE9 grade A", price: 299, qty: 1, model: "iphone 12", storage: "64", grade: "A", condition: "refurbished", type: "API" }
+  ];
+  db.sourcing_offers = offers.map((o, i) => {
+    const supplier = sup(o.sup);
+    return {
+      id: uid(16, i + 1),
+      organization_id: org,
+      source_id: uid(14, o.src),
+      supplier_id: supplier.id,
+      source_type: o.type,
+      status: "active",
+      title_original: o.title,
+      original_price: o.price,
+      original_currency: "EUR",
+      normalized_price: o.price,
+      normalized_currency: "EUR",
+      fx_rate: 1,
+      tax_type: o.src === 5 ? "ttc" : "ht",
+      available_quantity: o.qty,
+      stock_status: o.qty === null ? "unknown" : o.qty > 5 ? "in_stock" : "low",
+      source_url: `${String(supplier.website)}/p/${i + 1}`,
+      last_seen_at: iso2((i + 1) * 2 * H),
+      first_seen_at: iso2(10 * D),
+      brand: "Apple",
+      model: o.model,
+      storage: o.storage,
+      condition: o.condition,
+      grade: o.grade,
+      shipping_cost: o.src === 5 ? 0 : 9,
+      shipping_currency: "EUR",
+      moq: o.type === "CSV" ? 5 : 1,
+      ship_from_country: String(supplier.country),
+      sku_id: o.sku === void 0 ? null : db.skus[o.sku]?.id ?? null,
+      confidence: 0.82
+    };
+  });
+  db.sourcing_import_jobs = [
+    { id: uid(17, 1), organization_id: org, supplier_id: sup("foxway").id, source_id: uid(14, 1), origin: "file", file_name: "foxway-stocklist-semaine-41.xlsx", file_size: 482113, format: "xlsx", mode: "snapshot", status: "partial", rows_read: 1284, rows_valid: 1241, offers_created: 312, offers_updated: 874, offers_unchanged: 55, duplicates: 9, rows_invalid: 34, offers_rejected: 0, products_unrecognized: 18, offers_expired: 41, truncated: false, message: null, created_by: DEMO_USER.id, started_at: iso2(2 * D), finished_at: iso2(2 * D - 41e3) },
+    { id: uid(17, 2), organization_id: org, supplier_id: sup("mobilax").id, source_id: null, origin: "file", file_name: "mobilax-tarifs.csv", file_size: 88412, format: "csv", mode: "partial", status: "failed", rows_read: 0, rows_valid: 0, offers_created: 0, offers_updated: 0, offers_unchanged: 0, duplicates: 0, rows_invalid: 0, offers_rejected: 0, products_unrecognized: 0, offers_expired: 0, truncated: false, message: "Aucune colonne de prix reconnue : associez la colonne \xAB Prix HT \xBB au prix.", created_by: DEMO_USER.id, started_at: iso2(5 * D), finished_at: iso2(5 * D - 3e3) },
+    { id: uid(17, 3), organization_id: org, supplier_id: sup("foxway").id, source_id: uid(14, 1), origin: "file", file_name: "foxway-stocklist-semaine-40.xlsx", file_size: 470002, format: "xlsx", mode: "snapshot", status: "completed", rows_read: 1190, rows_valid: 1190, offers_created: 1190, offers_updated: 0, offers_unchanged: 0, duplicates: 0, rows_invalid: 0, offers_rejected: 0, products_unrecognized: 0, offers_expired: 0, truncated: false, message: null, created_by: DEMO_USER.id, started_at: iso2(9 * D), finished_at: iso2(9 * D - 38e3) }
+  ];
+  db.sourcing_import_issues = [
+    { id: uid(18, 1), organization_id: org, job_id: uid(17, 1), line: 14, kind: "invalid", reference: "FX-IP13-128-MID-A", message: "Prix manquant.", excerpt: { model: "iPhone 13", price: "" } },
+    { id: uid(18, 2), organization_id: org, job_id: uid(17, 1), line: 87, kind: "duplicate", reference: "FX-IP12-64-BLK-B", message: "R\xE9f\xE9rence d\xE9j\xE0 pr\xE9sente \xE0 la ligne 86 : seule la premi\xE8re est conserv\xE9e.", excerpt: null },
+    { id: uid(18, 3), organization_id: org, job_id: uid(17, 1), line: 203, kind: "unrecognized", reference: "FX-ACC-0042", message: "Produit non reconnu (mod\xE8le absent).", excerpt: { title: "Coque silicone premium" } },
+    { id: uid(18, 4), organization_id: org, job_id: uid(17, 1), line: 377, kind: "warning", reference: "FX-IPAD9-64", message: "Devise absente : EUR appliqu\xE9 par d\xE9faut.", excerpt: null }
+  ];
+  db.purchase_orders = [{ id: uid(19, 1), organization_id: org, supplier_id: sup("foxway").id, reference: "PO-2026-018", status: "sent", currency: "EUR", total: 2790, expected_at: iso2(-3 * D), created_at: iso2(4 * D) }];
+  db.purchase_order_items = [{ id: uid(20, 1), organization_id: org, purchase_order_id: uid(19, 1), sku_id: db.skus[0].id, quantity_ordered: 10, quantity_received: 0, unit_cost: 279, currency: "EUR" }];
+  db.tracked_parcels = [];
+  db.shipping_rate_cards = [];
+  db.sourcing_saved_offers = [];
+  db.advisor_conversations = [];
+  db.advisor_messages = [];
+  db.fx_rates = [{ base_currency: "EUR", quote_currency: "USD", rate: 1.09, rate_date: iso2(D).slice(0, 10), source: "ECB" }];
+  db.supplier_directory_checks = [];
+  db.sourcing_library_checks = [];
+  return db;
+}
+var singular, likeToRegExp, cmp, OPS, seq, newId, DemoQuery, DEMO_USER, DEMO_ORG_ID, SKUS, SUPPLIERS, uid;
+var init_demo_db = __esm({
+  "apps/mobile/preview/demo-db.ts"() {
+    "use strict";
+    singular = (t) => t.endsWith("ies") ? `${t.slice(0, -3)}y` : t.endsWith("s") ? t.slice(0, -1) : t;
+    likeToRegExp = (pattern, flags) => new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, flags);
+    cmp = (a, b) => a == null && b == null ? 0 : a == null ? 1 : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0;
+    OPS = {
+      eq: (v2, x) => v2 === x || String(v2) === String(x),
+      neq: (v2, x) => v2 !== x && String(v2) !== String(x),
+      gt: (v2, x) => v2 != null && cmp(v2, x) > 0,
+      gte: (v2, x) => v2 != null && cmp(v2, x) >= 0,
+      lt: (v2, x) => v2 != null && cmp(v2, x) < 0,
+      lte: (v2, x) => v2 != null && cmp(v2, x) <= 0,
+      is: (v2, x) => x === null ? v2 == null : v2 === x,
+      in: (v2, x) => Array.isArray(x) && x.some((y) => y === v2 || String(y) === String(v2)),
+      ilike: (v2, x) => typeof v2 === "string" && likeToRegExp(String(x), "i").test(v2),
+      like: (v2, x) => typeof v2 === "string" && likeToRegExp(String(x), "").test(v2)
+    };
+    seq = 0;
+    newId = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
+    DemoQuery = class {
+      constructor(db, table) {
+        this.db = db;
+        this.table = table;
+      }
+      db;
+      table;
+      preds = [];
+      fields = [{ kind: "star" }];
+      orders = [];
+      from = 0;
+      to = Number.POSITIVE_INFINITY;
+      mode = "many";
+      head = false;
+      counting = false;
+      write = null;
+      select(cols = "*", opts) {
+        this.fields = parseSelect(cols);
+        this.head = Boolean(opts?.head);
+        this.counting = Boolean(opts?.count);
+        return this;
+      }
+      add(op, col, x, negate = false) {
+        const fn = OPS[op];
+        if (fn) this.preds.push((r) => valuesAt(r, col).some((v2) => fn(v2, x)) !== negate);
+        return this;
+      }
+      eq(c, v2) {
+        return this.add("eq", c, v2);
+      }
+      neq(c, v2) {
+        return this.add("neq", c, v2);
+      }
+      gt(c, v2) {
+        return this.add("gt", c, v2);
+      }
+      gte(c, v2) {
+        return this.add("gte", c, v2);
+      }
+      lt(c, v2) {
+        return this.add("lt", c, v2);
+      }
+      lte(c, v2) {
+        return this.add("lte", c, v2);
+      }
+      is(c, v2) {
+        return this.add("is", c, v2);
+      }
+      in(c, v2) {
+        return this.add("in", c, v2);
+      }
+      ilike(c, v2) {
+        return this.add("ilike", c, v2);
+      }
+      like(c, v2) {
+        return this.add("like", c, v2);
+      }
+      not(c, op, v2) {
+        const parsed = op === "in" && typeof v2 === "string" ? v2.replace(/^\(|\)$/g, "").split(",").map((s) => s.replace(/"/g, "")) : v2 === "null" ? null : v2;
+        return op in OPS ? this.add(op, c, parsed, true) : this;
+      }
+      /** Filtres « or » non interprétés : sans effet dans l'aperçu. */
+      or() {
+        return this;
+      }
+      filter(c, op, v2) {
+        return op in OPS ? this.add(op, c, v2) : this;
+      }
+      match(obj4) {
+        for (const [k, v2] of Object.entries(obj4)) this.add("eq", k, v2);
+        return this;
+      }
+      contains() {
+        return this;
+      }
+      overlaps() {
+        return this;
+      }
+      textSearch() {
+        return this;
+      }
+      order(col, opts) {
+        this.orders.push({ col, asc: opts?.ascending !== false });
+        return this;
+      }
+      limit(n) {
+        this.to = Math.min(this.to, this.from + n - 1);
+        return this;
+      }
+      range(a, b) {
+        this.from = a;
+        this.to = b;
+        return this;
+      }
+      single() {
+        this.mode = "single";
+        return this;
+      }
+      maybeSingle() {
+        this.mode = "maybe";
+        return this;
+      }
+      abortSignal() {
+        return this;
+      }
+      returns() {
+        return this;
+      }
+      insert(values) {
+        this.write = { kind: "insert", values };
+        return this;
+      }
+      upsert(values) {
+        this.write = { kind: "upsert", values };
+        return this;
+      }
+      update(values) {
+        this.write = { kind: "update", values };
+        return this;
+      }
+      delete() {
+        this.write = { kind: "delete", values: null };
+        return this;
+      }
+      run() {
+        const rows = this.db[this.table] ??= [];
+        if (this.write?.kind === "insert" || this.write?.kind === "upsert") {
+          const list2 = (Array.isArray(this.write.values) ? this.write.values : [this.write.values ?? {}]).map((v2) => ({ id: newId(), created_at: (/* @__PURE__ */ new Date()).toISOString(), ...v2 }));
+          rows.push(...list2);
+          return this.shape(list2);
+        }
+        if (this.write?.kind === "update") {
+          const hit = rows.filter((r) => this.preds.every((p) => p(r)));
+          for (const r of hit) Object.assign(r, this.write.values);
+          return this.shape(hit);
+        }
+        if (this.write?.kind === "delete") {
+          this.db[this.table] = rows.filter((r) => !this.preds.every((p) => p(r)));
+          return { data: null, error: null, count: null };
+        }
+        let out = rows.map((r) => project(this.db, this.table, r, this.fields)).filter((r) => r !== null && this.preds.every((p) => p(r)));
+        for (const o of [...this.orders].reverse()) out = [...out].sort((a, b) => cmp(a[o.col], b[o.col]) * (o.asc ? 1 : -1));
+        const total = out.length;
+        out = out.slice(this.from, Number.isFinite(this.to) ? this.to + 1 : void 0);
+        if (this.head) return { data: null, error: null, count: total };
+        return { ...this.shape(out), count: this.counting ? total : null };
+      }
+      shape(list2) {
+        if (this.mode === "many") return { data: list2, error: null, count: null };
+        return { data: list2[0] ?? null, error: null, count: null };
+      }
+      then(onOk, onErr) {
+        return Promise.resolve().then(() => this.run()).then(onOk, onErr);
+      }
+    };
+    DEMO_USER = { id: "11111111-1111-4111-8111-111111111111", email: "demo@monstock.app" };
+    DEMO_ORG_ID = "22222222-2222-4222-8222-222222222222";
+    SKUS = [
+      { code: "IP13-128-A-MID", product: "iPhone 13", brand: "Apple", category: "Smartphones", variant: "128 Go \xB7 Minuit \xB7 Grade A", condition: "refurbished", grade: "A", qty: 6, reorder: 3, cost: 318, price: 449, units30: 14, ebay: true },
+      { code: "IP13-128-B-BLU", product: "iPhone 13", brand: "Apple", category: "Smartphones", variant: "128 Go \xB7 Bleu \xB7 Grade B", condition: "refurbished", grade: "B", qty: 2, reorder: 3, cost: 289, price: 399, units30: 9, ebay: true },
+      { code: "IP12-64-A-BLK", product: "iPhone 12", brand: "Apple", category: "Smartphones", variant: "64 Go \xB7 Noir \xB7 Grade A", condition: "refurbished", grade: "A", qty: 0, reorder: 2, cost: 225, price: 319, units30: 7, ebay: true },
+      { code: "IP14P-256-A-GLD", product: "iPhone 14 Pro", brand: "Apple", category: "Smartphones", variant: "256 Go \xB7 Or \xB7 Grade A", condition: "refurbished", grade: "A", qty: 3, reorder: 1, cost: 612, price: 789, units30: 4, ebay: true },
+      { code: "SGS21-128-A-GRY", product: "Galaxy S21", brand: "Samsung", category: "Smartphones", variant: "128 Go \xB7 Gris \xB7 Grade A", condition: "refurbished", grade: "A", qty: 4, reorder: 2, cost: 199, price: 289, units30: 5, ebay: true },
+      { code: "ECR-IP13-OLED", product: "\xC9cran OLED iPhone 13", brand: "Apple", category: "Pi\xE8ces d\xE9tach\xE9es", variant: "Qualit\xE9 origine", condition: "new", grade: null, qty: 11, reorder: 5, cost: 92, price: 149, units30: 12, ebay: true },
+      { code: "BAT-IP12", product: "Batterie iPhone 12", brand: "Apple", category: "Pi\xE8ces d\xE9tach\xE9es", variant: "Compatible \xB7 2815 mAh", condition: "new", grade: null, qty: 1, reorder: 6, cost: 11.5, price: 29.9, units30: 18, ebay: true },
+      { code: "BAT-IP11", product: "Batterie iPhone 11", brand: "Apple", category: "Pi\xE8ces d\xE9tach\xE9es", variant: "Compatible \xB7 3110 mAh", condition: "new", grade: null, qty: 0, reorder: 6, cost: 10.9, price: 27.9, units30: 15, ebay: false },
+      { code: "IPAD9-64-A-SLV", product: "iPad 9e g\xE9n\xE9ration", brand: "Apple", category: "Tablettes", variant: "64 Go \xB7 Argent \xB7 Wi-Fi", condition: "refurbished", grade: "A", qty: 5, reorder: 2, cost: 199, price: 279, units30: 3, ebay: true },
+      { code: "APP2-CASE", product: "AirPods Pro 2", brand: "Apple", category: "Audio", variant: "Bo\xEEtier MagSafe USB-C", condition: "refurbished", grade: "A", qty: 7, reorder: 3, cost: 129, price: 189, units30: 6, ebay: false },
+      { code: "CHG-USBC-20W", product: "Chargeur USB-C 20 W", brand: "G\xE9n\xE9rique", category: "Accessoires", variant: "Blanc", condition: "new", grade: null, qty: 42, reorder: 10, cost: 3.2, price: 12.9, units30: 21, ebay: false },
+      { code: "MBA-M1-256", product: "MacBook Air M1", brand: "Apple", category: "Ordinateurs", variant: "8 Go \xB7 256 Go \xB7 Gris sid\xE9ral", condition: "refurbished", grade: "B", qty: 2, reorder: 1, cost: 489, price: 649, units30: 2, ebay: true }
+    ];
+    SUPPLIERS = [
+      { key: "foxway", name: "Foxway", website: "https://www.foxway.com", country: "EE" },
+      { key: "brico-phone", name: "Brico-phone", website: "https://www.brico-phone.com", country: "FR" },
+      { key: "bigbuy", name: "BigBuy", website: "https://www.bigbuy.eu", country: "ES" },
+      { key: "mobilax", name: "Mobilax", website: "https://www.mobilax.fr", country: "FR" },
+      { key: "refreshed-apples", name: "Refreshed Apples", website: "https://refreshedapples.com", country: "NL" },
+      { key: "ebay", name: "eBay France", website: "https://www.ebay.fr", country: "FR" }
+    ];
+    uid = (prefix, n) => `${String(prefix).padStart(8, "0")}-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  }
+});
+
+// src/integrations/ebay/config.ts
+function ebayScopeList(options = {}) {
+  const base = EBAY_SCOPES.map((s) => s.scope);
+  return options.extended ? [...base, ...EBAY_EXTENDED_SCOPES.map((s) => s.scope)] : base;
+}
+function ebayRefreshScopes(granted) {
+  const clean = [...new Set((granted ?? []).map((s) => s.trim()).filter((s) => s.startsWith("https://api.ebay.com/oauth/api_scope")))];
+  return clean.length > 0 ? clean : ebayScopeList();
+}
+function hasEbayScope(granted, scope) {
+  return (granted ?? []).includes(scope);
+}
+function hasExtendedEbayScopes(granted) {
+  return EBAY_EXTENDED_SCOPES.every((s) => hasEbayScope(granted, s.scope));
+}
+function createEbayConfig(env) {
+  const sandbox = env.EBAY_ENV === "sandbox";
+  return {
+    environment: env.EBAY_ENV,
+    clientId: env.EBAY_CLIENT_ID,
+    clientSecret: env.EBAY_CLIENT_SECRET,
+    ruName: env.EBAY_RU_NAME,
+    webhookVerificationToken: env.EBAY_WEBHOOK_VERIFICATION_TOKEN ?? null,
+    authorizeUrl: sandbox ? "https://auth.sandbox.ebay.com/oauth2/authorize" : "https://auth.ebay.com/oauth2/authorize",
+    tokenUrl: sandbox ? "https://api.sandbox.ebay.com/identity/v1/oauth2/token" : "https://api.ebay.com/identity/v1/oauth2/token",
+    apiBase: sandbox ? "https://api.sandbox.ebay.com" : "https://api.ebay.com",
+    apizBase: sandbox ? "https://apiz.sandbox.ebay.com" : "https://apiz.ebay.com",
+    tradingUrl: sandbox ? "https://api.sandbox.ebay.com/ws/api.dll" : "https://api.ebay.com/ws/api.dll"
+  };
+}
+var EBAY_PROVIDER, EBAY_TRADING_COMPATIBILITY_LEVEL, EBAY_SCOPES, EBAY_EXTENDED_SCOPES, EBAY_SCOPE;
+var init_config = __esm({
+  "src/integrations/ebay/config.ts"() {
+    "use strict";
+    EBAY_PROVIDER = "ebay";
+    EBAY_TRADING_COMPATIBILITY_LEVEL = "1225";
+    EBAY_SCOPES = [
+      { scope: "https://api.ebay.com/oauth/api_scope", reason: "Scope de base requis par eBay pour tout token OAuth." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.fulfillment", reason: "Lecture des commandes (Sell Fulfillment API) : cr\xE9ation, paiement, exp\xE9dition, annulations." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.inventory", reason: "Lecture des annonces actives (GetMyeBaySelling) et mise \xE0 jour des quantit\xE9s (ReviseInventoryStatus)." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.account.readonly", reason: "Lecture des politiques m\xE9tier (paiement, retour, exp\xE9dition) n\xE9cessaires pour pr\xE9parer une annonce (Account API)." },
+      { scope: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly", reason: "Identifiant et pseudo du compte vendeur (Identity API) pour afficher le compte connect\xE9 et router les notifications." }
+    ];
+    EBAY_EXTENDED_SCOPES = [
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.finances", reason: "Analyse compl\xE8te : transactions, frais eBay par type, remboursements, litiges, versements et fonds en attente (Finances API, lecture uniquement)." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly", reason: "Analyse compl\xE8te : trafic des annonces (impressions, vues, taux de clic, conversion), niveau vendeur et m\xE9triques de service client (Analytics API)." },
+      { scope: "https://api.ebay.com/oauth/api_scope/sell.marketing.readonly", reason: "Analyse compl\xE8te : campagnes Promoted Listings et promotions en cours (Marketing API, lecture uniquement)." }
+    ];
+    EBAY_SCOPE = {
+      base: "https://api.ebay.com/oauth/api_scope",
+      fulfillment: "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
+      inventory: "https://api.ebay.com/oauth/api_scope/sell.inventory",
+      accountReadonly: "https://api.ebay.com/oauth/api_scope/sell.account.readonly",
+      identity: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
+      finances: "https://api.ebay.com/oauth/api_scope/sell.finances",
+      analyticsReadonly: "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly",
+      marketingReadonly: "https://api.ebay.com/oauth/api_scope/sell.marketing.readonly"
+    };
+  }
+});
+
 // src/lib/supabase/paginate.ts
 async function fetchRowsUpTo(page2, limit, options = {}) {
   const size = Math.max(1, options.pageSize ?? DB_PAGE_SIZE);
@@ -5302,48 +5857,13 @@ var init_paginate = __esm({
   }
 });
 
-// src/integrations/ebay/config.ts
-function ebayScopeList() {
-  return EBAY_SCOPES.map((s) => s.scope);
-}
-function createEbayConfig(env) {
-  const sandbox = env.EBAY_ENV === "sandbox";
-  return {
-    environment: env.EBAY_ENV,
-    clientId: env.EBAY_CLIENT_ID,
-    clientSecret: env.EBAY_CLIENT_SECRET,
-    ruName: env.EBAY_RU_NAME,
-    webhookVerificationToken: env.EBAY_WEBHOOK_VERIFICATION_TOKEN ?? null,
-    authorizeUrl: sandbox ? "https://auth.sandbox.ebay.com/oauth2/authorize" : "https://auth.ebay.com/oauth2/authorize",
-    tokenUrl: sandbox ? "https://api.sandbox.ebay.com/identity/v1/oauth2/token" : "https://api.ebay.com/identity/v1/oauth2/token",
-    apiBase: sandbox ? "https://api.sandbox.ebay.com" : "https://api.ebay.com",
-    apizBase: sandbox ? "https://apiz.sandbox.ebay.com" : "https://apiz.ebay.com",
-    tradingUrl: sandbox ? "https://api.sandbox.ebay.com/ws/api.dll" : "https://api.ebay.com/ws/api.dll"
-  };
-}
-var EBAY_PROVIDER, EBAY_TRADING_COMPATIBILITY_LEVEL, EBAY_SCOPES;
-var init_config = __esm({
-  "src/integrations/ebay/config.ts"() {
-    "use strict";
-    EBAY_PROVIDER = "ebay";
-    EBAY_TRADING_COMPATIBILITY_LEVEL = "1225";
-    EBAY_SCOPES = [
-      { scope: "https://api.ebay.com/oauth/api_scope", reason: "Scope de base requis par eBay pour tout token OAuth." },
-      { scope: "https://api.ebay.com/oauth/api_scope/sell.fulfillment", reason: "Lecture des commandes (Sell Fulfillment API) : cr\xE9ation, paiement, exp\xE9dition, annulations." },
-      { scope: "https://api.ebay.com/oauth/api_scope/sell.inventory", reason: "Lecture des annonces actives (GetMyeBaySelling) et mise \xE0 jour des quantit\xE9s (ReviseInventoryStatus)." },
-      { scope: "https://api.ebay.com/oauth/api_scope/sell.account.readonly", reason: "Lecture des politiques m\xE9tier (paiement, retour, exp\xE9dition) n\xE9cessaires pour pr\xE9parer une annonce (Account API)." },
-      { scope: "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly", reason: "Identifiant et pseudo du compte vendeur (Identity API) pour afficher le compte connect\xE9 et router les notifications." }
-    ];
-  }
-});
-
 // src/integrations/core/http.ts
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
-function parseRetryAfterMs(header, now = Date.now()) {
-  if (!header) return null;
-  const trimmed = header.trim();
+function parseRetryAfterMs(header2, now = Date.now()) {
+  if (!header2) return null;
+  const trimmed = header2.trim();
   if (trimmed === "") return null;
   const seconds = Number(trimmed);
   if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
@@ -5527,8 +6047,8 @@ async function exchangeAuthorizationCode(config, code, now = /* @__PURE__ */ new
   const data = await tokenRequest(config, body, "oauth:exchange_code");
   return toTokenSet(data, now);
 }
-async function refreshAccessToken(config, refreshToken, scopes = ebayScopeList(), now = /* @__PURE__ */ new Date()) {
-  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, scope: scopes.join(" ") });
+async function refreshAccessToken(config, refreshToken, grantedScopes, now = /* @__PURE__ */ new Date()) {
+  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, scope: ebayRefreshScopes(grantedScopes).join(" ") });
   const data = await tokenRequest(config, body, "oauth:refresh_token");
   return toTokenSet(data, now, { token: refreshToken, expiresAt: null });
 }
@@ -5800,8 +6320,9 @@ function stableHash(raw) {
 }
 function normalizeLineItem(li, orderCurrency) {
   const isVariation = Boolean(li.legacyVariationId) || (li.variationAspects?.length ?? 0) > 0;
-  const unitPrice = li.lineItemCost?.value ?? null;
-  const total = li.total?.value ?? (unitPrice !== null ? Math.round(unitPrice * li.quantity * 100) / 100 : null);
+  const lineCost = li.lineItemCost?.value ?? null;
+  const unitPrice = lineCost !== null && li.quantity > 0 ? Math.round(lineCost / li.quantity * 1e4) / 1e4 : null;
+  const total = li.total?.value ?? lineCost;
   return {
     externalLineItemId: li.lineItemId,
     externalListingId: li.legacyItemId ?? null,
@@ -6244,6 +6765,8 @@ var init_connector = __esm({
       label = "eBay";
       available = true;
       scopes = EBAY_SCOPES;
+      /** Autorisations supplémentaires de l'« analyse complète » (connexion étendue, sur demande). */
+      extendedScopes = EBAY_EXTENDED_SCOPES;
       configOverride;
       constructor(config) {
         this.configOverride = config ?? null;
@@ -6270,14 +6793,16 @@ var init_connector = __esm({
         }
         return config;
       }
-      getAuthorizeUrl(state) {
-        return buildAuthorizeUrl(this.requireConfig(), state, ebayScopeList());
+      /** `extended` : ajoute les autorisations de l'analyse complète (finances, trafic, marketing — lecture). */
+      getAuthorizeUrl(state, options = {}) {
+        return buildAuthorizeUrl(this.requireConfig(), state, ebayScopeList(options));
       }
       exchangeCode(code) {
         return exchangeAuthorizationCode(this.requireConfig(), code);
       }
-      refreshToken(refreshToken) {
-        return refreshAccessToken(this.requireConfig(), refreshToken, ebayScopeList());
+      /** Rafraîchit en redemandant EXACTEMENT les scopes accordés à la connexion (voir ebayRefreshScopes). */
+      refreshToken(refreshToken, grantedScopes) {
+        return refreshAccessToken(this.requireConfig(), refreshToken, grantedScopes);
       }
       getAccountInfo(auth) {
         return fetchEbayAccountInfo(this.requireConfig(), auth);
@@ -6609,8 +7134,8 @@ async function testSupplierConnection(connectionId, options = {}) {
   if (!descriptor) return { ok: false, message: `Connecteur \xAB ${connection.connector_key} \xBB indisponible.` };
   const credentials = await loadConnectionCredentials(connection.id);
   if (!credentials) return { ok: false, message: "Identifiants introuvables : reconnectez le compte." };
-  const source = await ensureConnectionSource(admin, connection, descriptor);
-  const config = adapterConfigFromSource(source);
+  const source2 = await ensureConnectionSource(admin, connection, descriptor);
+  const config = adapterConfigFromSource(source2);
   const result = await descriptor.adapter.testConnection(config, runContext(credentials, { fetchImpl: options.fetchImpl, resolver: options.resolver, timeoutMs: 2e4 }));
   await admin.from("supplier_connections").update({ status: result.ok ? "connected" : "error", connected_at: result.ok ? (/* @__PURE__ */ new Date()).toISOString() : null, last_error: result.ok ? null : result.message }).eq("id", connection.id);
   return result;
@@ -6625,13 +7150,13 @@ async function syncSupplierConnection(connectionId, options = {}) {
   if (!descriptor.adapter.fetchCatalog) return { ...base, status: "refused", message: `Le connecteur \xAB ${descriptor.label} \xBB ne propose pas de parcours de catalogue.` };
   const credentials = await loadConnectionCredentials(connection.id);
   if (!credentials) return { ...base, status: "refused", message: "Identifiants introuvables : reconnectez le compte fournisseur." };
-  const source = await ensureConnectionSource(admin, connection, descriptor);
+  const source2 = await ensureConnectionSource(admin, connection, descriptor);
   const { data: org } = await admin.from("organizations").select("default_currency").eq("id", connection.organization_id).maybeSingle();
   const run = await startSyncRun(admin, { organizationId: connection.organization_id, sourceKind: "supplier_connection", sourceRef: connection.id, provider: descriptor.key, trigger: options.trigger ?? "manual", createdBy: options.createdBy ?? null });
   const errors = [];
-  const config = adapterConfigFromSource(source);
+  const config = adapterConfigFromSource(source2);
   const ctx = runContext(credentials, { fetchImpl: options.fetchImpl, sleep: options.sleep, resolver: options.resolver });
-  const storage = { supabase: admin, organizationId: connection.organization_id, organizationCurrency: org?.default_currency ?? "EUR", supplierId: connection.supplier_id, sourceId: source.id, sourceType: source.source_type, defaultCurrency: source.default_currency, defaultTaxType: source.default_tax_type, defaultCountry: source.country, createdBy: options.createdBy ?? null, now: run.startedAt };
+  const storage = { supabase: admin, organizationId: connection.organization_id, organizationCurrency: org?.default_currency ?? "EUR", supplierId: connection.supplier_id, sourceId: source2.id, sourceType: source2.source_type, defaultCurrency: source2.default_currency, defaultTaxType: source2.default_tax_type, defaultCountry: source2.country, createdBy: options.createdBy ?? null, now: run.startedAt };
   const maxPages = Math.min(options.maxPages ?? MAX_CONNECTION_CATALOG_PAGES, 200);
   let pages = 0;
   let found = 0;
@@ -6681,16 +7206,16 @@ async function syncSupplierConnection(connectionId, options = {}) {
     await recordSyncErrors(admin, run, errors);
     await finishSyncRun(admin, run, { status, recordsProcessed: found, errorCount: errors.length, stats: { pages, found, stored, rejected, expired: expired2, truncated, requests: requests.slice(0, 100), adapter: descriptor.key }, errorSummary: status === "failed" ? message : null });
     await admin.from("supplier_connections").update({ status: status === "failed" ? "error" : "connected", last_sync_at: run.startedAt.toISOString(), last_error: status === "failed" ? message : null, connected_at: status === "failed" ? null : (/* @__PURE__ */ new Date()).toISOString() }).eq("id", connection.id);
-    await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source.id);
-    return { connectionId, sourceId: source.id, runId: run.id, status, pages, found, stored, rejected, expired: expired2, message };
+    await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source2.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source2.id);
+    return { connectionId, sourceId: source2.id, runId: run.id, status, pages, found, stored, rejected, expired: expired2, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
     log13.error("connection sync failed", { connectionId, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "SYNC_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: found, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_connections").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", connection.id);
-    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
-    return { connectionId, sourceId: source.id, runId: run.id, status: "failed", pages, found, stored, rejected, expired: expired2, message };
+    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source2.id);
+    return { connectionId, sourceId: source2.id, runId: run.id, status: "failed", pages, found, stored, rejected, expired: expired2, message };
   }
 }
 var log13, MAX_CONNECTION_CATALOG_PAGES, CONNECTION_MIN_DELAY_MS;
@@ -7328,7 +7853,7 @@ async function refreshAndStore(connection, refreshEnc) {
   const refreshToken = await safeDecrypt(connectionId, refreshEnc);
   let tokens;
   try {
-    tokens = await connector.refreshToken(refreshToken);
+    tokens = await connector.refreshToken(refreshToken, connection.scopes);
   } catch (e) {
     if (isConnectorError(e) && e.code === "AUTH_EXPIRED") {
       const latest = await loadTokenState(connectionId).catch(() => null);
@@ -7536,12 +8061,12 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
   const admin = options.admin ?? createAdminSupabaseClient();
   const { data: feed, error: feedErr } = await admin.from("supplier_feeds").select("*, source:supplier_sources(id, source_type, default_currency, default_tax_type, country, status), organization:organizations(default_currency)").eq("id", feedId).maybeSingle();
   if (feedErr || !feed) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Flux introuvable." };
-  const source = feed.source;
+  const source2 = feed.source;
   const organizationCurrency = feed.organization?.default_currency ?? "EUR";
-  if (!source) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Source du flux introuvable." };
+  if (!source2) return { feedId, runId: null, status: "failed", processed: 0, stored: 0, rejected: 0, invalidRows: 0, expired: 0, fxUnavailable: 0, message: "Source du flux introuvable." };
   const run = await startSyncRun(admin, { organizationId: feed.organization_id, sourceKind: "supplier_feed", sourceRef: feed.id, provider: feed.format, trigger: options.trigger, createdBy: options.createdBy ?? null });
   const { mapping, options: feedOptions } = parseFeedConfig(feed);
-  const defaults = { currency: source.default_currency, taxType: source.default_tax_type, country: source.country };
+  const defaults = { currency: source2.default_currency, taxType: source2.default_tax_type, country: source2.country };
   const errors = [];
   let processed = 0;
   let stored = 0;
@@ -7570,12 +8095,12 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
       organizationId: feed.organization_id,
       organizationCurrency,
       supplierId: feed.supplier_id,
-      sourceId: source.id,
-      sourceType: source.source_type,
+      sourceId: source2.id,
+      sourceType: source2.source_type,
       feedId: feed.id,
-      defaultCurrency: source.default_currency,
-      defaultTaxType: source.default_tax_type,
-      defaultCountry: source.country,
+      defaultCurrency: source2.default_currency,
+      defaultTaxType: source2.default_tax_type,
+      defaultCountry: source2.country,
       createdBy: options.createdBy ?? null,
       now: run.startedAt,
       importJobId: options.importJobId ?? null
@@ -7600,7 +8125,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
       invalidRows: mappedRows.filter((m) => !m.offer).length,
       duplicateRows: duplicateIdx.size,
       previousRecordCount: feed.last_successful_sync_at ? feed.last_record_count : null,
-      priceRatios: await knownPriceRatios(admin, source.id, validOffers)
+      priceRatios: await knownPriceRatios(admin, source2.id, validOffers)
     });
     if (quality.decision === "quarantine" && !options.force) {
       const message2 = `Import suspendu, rien n'a \xE9t\xE9 modifi\xE9 (le catalogue pr\xE9c\xE9dent est conserv\xE9) : ${quality.issues.map((q) => q.message).join(" ")}`;
@@ -7656,7 +8181,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     await recordSyncErrors(admin, run, errors);
     await finishSyncRun(admin, run, { status, recordsProcessed: processed, errorCount: errors.length, stats: { stored, created, updated, unchanged, unrecognized, rejected, invalidRows, expired: expired2, fxUnavailable, truncated, mode, totalRows: parsed.rows.length, columns: parsed.columns.slice(0, 50) }, errorSummary: status === "failed" ? message : null });
     await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : feed.last_successful_sync_at, last_record_count: status !== "failed" ? processed : feed.last_record_count, last_error: status === "failed" ? message : null, status: status === "failed" ? "error" : "active" }).eq("id", feed.id);
-    if (status !== "failed") await admin.from("supplier_sources").update({ status: "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: (/* @__PURE__ */ new Date()).toISOString(), last_error: null }).eq("id", source.id);
+    if (status !== "failed") await admin.from("supplier_sources").update({ status: "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: (/* @__PURE__ */ new Date()).toISOString(), last_error: null }).eq("id", source2.id);
     return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, duplicates: duplicateIdx.size, quarantined: false, quality, created, updated, unchanged, unrecognized, totalRows: parsed.rows.length, truncated, mode, issues };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
@@ -7664,7 +8189,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     await recordSyncErrors(admin, run, [...errors, { code: "FEED_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: processed, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message, status: "error" }).eq("id", feed.id);
-    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
+    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source2.id);
     return { feedId, runId: run.id, status: "failed", processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, created, updated, unchanged, unrecognized, mode, issues };
   }
 }
@@ -8267,14 +8792,14 @@ async function checkLibrarySource(s, runtime = {}) {
 async function checkLibrarySourceDetect(s, runtime = {}) {
   const first = await checkLibrarySource(s, runtime);
   if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access === "official_api") return first;
-  const messages = [first.message];
+  const messages2 = [first.message];
   const order = ["shopify-storefront", "woocommerce-store", "sitemap-jsonld"];
   for (const other of order.filter((a) => a !== s.adapter)) {
     const next = await checkLibrarySource({ ...s, adapter: other }, runtime);
     if (next.status === "ok") return next;
-    messages.push(`${other} : ${next.message}`);
+    messages2.push(`${other} : ${next.message}`);
   }
-  return { ...first, message: messages.join(" | ").slice(0, 500) };
+  return { ...first, message: messages2.join(" | ").slice(0, 500) };
 }
 async function runLibraryChecks(keys) {
   const admin = createAdminSupabaseClient();
@@ -8357,7 +8882,7 @@ async function activateLibrarySourceFor(db, organizationId, key2, attestation, o
   const country = s.country.length === 2 && s.country !== "EU" ? s.country : null;
   const { data: supplier, error: supErr } = await db.from("suppliers").insert({ organization_id: organizationId, name: s.name.slice(0, 200), website: s.website, country, currency: s.currency, notes: `Ajout\xE9 depuis la biblioth\xE8que de sources MON STOCK (${s.key}). ${s.notes}` }).select("id").single();
   if (supErr || !supplier) throw supErr ?? new AppError("INTERNAL", "Fournisseur non cr\xE9\xE9.");
-  const { data: source, error: srcErr } = await db.from("supplier_sources").insert({
+  const { data: source2, error: srcErr } = await db.from("supplier_sources").insert({
     organization_id: organizationId,
     supplier_id: supplier.id,
     name: s.name.slice(0, 200),
@@ -8375,12 +8900,12 @@ async function activateLibrarySourceFor(db, organizationId, key2, attestation, o
     // Adaptateur ayant réellement répondu lors de la vérification (détection de plateforme).
     config: { adapter: opts.adapter ?? check.adapter ?? s.adapter, library_key: s.key }
   }).select("id").single();
-  if (srcErr || !source) {
+  if (srcErr || !source2) {
     await db.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", organizationId);
     throw srcErr ?? new AppError("INTERNAL", "Source non cr\xE9\xE9e.");
   }
   log25.info("source de biblioth\xE8que activ\xE9e", { orgId: organizationId, key: key2 });
-  return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
+  return { sourceId: source2.id, supplierId: supplier.id, alreadyActive: false };
 }
 var log25, shopifyTerms, SOURCE_LIBRARY;
 var init_source_library = __esm({
@@ -9406,7 +9931,7 @@ async function buildRadar(ctx, options = {}) {
   const items = offers.map((o) => {
     const sku = skus.get(o.sku_id);
     const supplier = one2(o.supplier);
-    const source = one2(o.source);
+    const source2 = one2(o.source);
     const input = {
       offerId: o.id,
       supplierName: supplier?.name ?? "Fournisseur",
@@ -9422,7 +9947,7 @@ async function buildRadar(ctx, options = {}) {
       availableQuantity: o.available_quantity,
       stockStatus: o.stock_status,
       lastSeenAt: o.last_seen_at,
-      priceOrigin: priceOriginOf(source?.source_type ?? "", source?.config ?? null),
+      priceOrigin: priceOriginOf(source2?.source_type ?? "", source2?.config ?? null),
       previousPrice: previous.get(o.id) ?? null,
       saved: saved.has(o.id)
     };
@@ -9435,7 +9960,7 @@ async function buildRadar(ctx, options = {}) {
     }
     const s = saved.get(o.id);
     const details = { shipFromCountry: o.ship_from_country ?? null, warrantyMonths: o.warranty_months ?? null, vatRegime: o.vat_regime ?? null, orderMultiple: o.order_multiple ?? null, condition: o.condition ?? null, grade: o.grade ?? null, deliveryMaxDays: o.delivery_max_days ?? null };
-    meta.set(o.id, { sourceId: o.source_id, supplierScore: supplier?.internal_score ?? null, failures: source?.consecutive_failures ?? 0 });
+    meta.set(o.id, { sourceId: o.source_id, supplierScore: supplier?.internal_score ?? null, failures: source2?.consecutive_failures ?? 0 });
     return { supplierId: o.supplier_id, sku: { id: sku.skuId, code: sku.code, name: sku.name, currency: sku.currency, units30d: sku.units30d, quantityAvailable: sku.quantityAvailable }, offer: input, savedAt: s?.created_at ?? null, priceAtSave: s?.price_at_save ?? null, evaluation, offersForSku: competing.length, details, assessment: void 0 };
   });
   const history = await loadSourceHistory(ctx, [...new Set(offers.map((o) => o.source_id))], [...new Set(offers.map((o) => o.supplier_id))]);
@@ -9443,7 +9968,7 @@ async function buildRadar(ctx, options = {}) {
     const peers = items.filter((x) => x.sku.id === raw.sku.id && x.offer.offerId !== raw.offer.offerId).map((x) => x.evaluation.landedCost).filter((c) => c !== null);
     const m = meta.get(raw.offer.offerId);
     const h = history.get(m.sourceId);
-    const source = { runs: h?.runs ?? 0, successfulRuns: h?.success ?? 0, consecutiveFailures: m.failures, receivedPurchaseOrders: history.get(`po:${raw.supplierId}`)?.runs ?? 0, supplierScore: m.supplierScore };
+    const source2 = { runs: h?.runs ?? 0, successfulRuns: h?.success ?? 0, consecutiveFailures: m.failures, receivedPurchaseOrders: history.get(`po:${raw.supplierId}`)?.runs ?? 0, supplierScore: m.supplierScore };
     raw.assessment = assessOffer({
       landedUnitCost: raw.evaluation.landedCost,
       peerLandedCosts: peers,
@@ -9460,7 +9985,7 @@ async function buildRadar(ctx, options = {}) {
       deliveryKnown: raw.details.deliveryMaxDays !== null,
       gradeOrCondition: Boolean(raw.details.grade) || raw.details.condition !== null && raw.details.condition !== "unknown",
       warrantyKnown: raw.details.warrantyMonths !== null,
-      source
+      source: source2
     });
   }
   items.sort(compareRadar(options.sort ?? "score"));
@@ -9778,10 +10303,10 @@ async function prefillListing(ctx, skuId) {
   const product = Array.isArray(sku.product) ? sku.product[0] : sku.product;
   const variant = Array.isArray(sku.variant) ? sku.variant[0] : sku.variant;
   const attrs = { ...product?.attributes ?? {}, ...variant?.attributes ?? {} };
-  const str3 = (v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : null;
-  const model = str3(attrs.model);
-  const storage = str3(attrs.storage);
-  const color = str3(attrs.color);
+  const str4 = (v2) => typeof v2 === "string" && v2.trim() ? v2.trim() : null;
+  const model = str4(attrs.model);
+  const storage = str4(attrs.storage);
+  const color = str4(attrs.color);
   const aspects = {};
   if (product?.brand) aspects.Marque = [product.brand];
   if (model) aspects["Mod\xE8le"] = [model];
@@ -19755,7 +20280,7 @@ function priorityOf(e) {
     s += 15;
     reasons.push("Fournisseur fran\xE7ais");
   }
-  if (e.deliveryZones.some((z50) => z50 === "FR" || z50 === "EU")) {
+  if (e.deliveryZones.some((z51) => z51 === "FR" || z51 === "EU")) {
     s += 10;
     reasons.push("Livre la France");
   }
@@ -20742,9 +21267,9 @@ function computeDeals(targets, pool, input) {
     const sg = sigOf(r);
     const key2 = comparableBucket(sg);
     if (!key2) continue;
-    const list = buckets.get(key2) ?? [];
-    list.push({ offerId: r.id, supplierId: r.supplier_id, title: r.title_original, price: orgPrice(r, input.orgCurrency), marketplace: isMarketplaceSource(r.source?.config), stockStatus: r.stock_status, signature: sg });
-    buckets.set(key2, list);
+    const list2 = buckets.get(key2) ?? [];
+    list2.push({ offerId: r.id, supplierId: r.supplier_id, title: r.title_original, price: orgPrice(r, input.orgCurrency), marketplace: isMarketplaceSource(r.source?.config), stockStatus: r.stock_status, signature: sg });
+    buckets.set(key2, list2);
   }
   const out = /* @__PURE__ */ new Map();
   for (const r of targets) {
@@ -20789,11 +21314,11 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
   const query = q.trim().slice(0, 120);
   const tokens = queryTokens2(query);
   if (tokens.length === 0) throw new AppError("VALIDATION", "Tapez ce que vous cherchez, par exemple \xAB iPhone 13 \xBB ou \xAB batterie trottinette \xBB.");
-  const live = deps.live ?? ((c, text3) => runLiveSearch(c, { rawQuery: text3, parsed: parseQuery(text3) }));
+  const live2 = deps.live ?? ((c, text3) => runLiveSearch(c, { rawQuery: text3, parsed: parseQuery(text3) }));
   let summary = null;
   let partial = false;
   try {
-    const r = await withBudget(live(ctx, query), deps.budgetMs ?? SIMPLE_SEARCH_LIVE_BUDGET_MS);
+    const r = await withBudget(live2(ctx, query), deps.budgetMs ?? SIMPLE_SEARCH_LIVE_BUDGET_MS);
     if (r === "timeout") partial = true;
     else summary = r;
   } catch (e) {
@@ -20881,7 +21406,7 @@ init_errors();
 init_logger();
 init_crypto();
 init_admin();
-import { z as z49 } from "npm:zod@4.6.5";
+import { z as z50 } from "npm:zod@4.6.5";
 
 // src/services/sourcing/crawler/crawler-manager.ts
 init_empty();
@@ -20989,47 +21514,47 @@ var CRAWL_BUDGET_MS = 9e4;
 async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
   const admin = options.admin ?? createAdminSupabaseClient();
   const userAgent = serverEnv().SOURCING_USER_AGENT;
-  const { data: source } = await admin.from("supplier_sources").select("*, organization:organizations(default_currency)").eq("id", sourceId).maybeSingle();
-  if (!source) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Source introuvable." };
-  if (source.source_type !== "PUBLIC_WEB") return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Cette source n'est pas une page publique." };
-  if (!source.automated_access_confirmed) {
+  const { data: source2 } = await admin.from("supplier_sources").select("*, organization:organizations(default_currency)").eq("id", sourceId).maybeSingle();
+  if (!source2) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Source introuvable." };
+  if (source2.source_type !== "PUBLIC_WEB") return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Cette source n'est pas une page publique." };
+  if (!source2.automated_access_confirmed) {
     return { sourceId, runId: null, status: "refused", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Acc\xE8s automatis\xE9 non attest\xE9 : le crawl est refus\xE9 tant que vous n'avez pas confirm\xE9 que les conditions d'utilisation l'autorisent." };
   }
-  const config = parseCrawlConfig(source.config);
-  const adapterKey = adapterKeyOf(source.config);
+  const config = parseCrawlConfig(source2.config);
+  const adapterKey = adapterKeyOf(source2.config);
   const adapter = adapterKey ? getSourceAdapter(adapterKey) : null;
   if (adapterKey && !adapter) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Adaptateur \xAB ${adapterKey} \xBB inconnu.` };
-  const adapterConfig2 = adapter ? adapterConfigFromSource(source) : null;
+  const adapterConfig2 = adapter ? adapterConfigFromSource(source2) : null;
   const useAdapterCatalog = Boolean(adapter && adapterConfig2 && adapter.capabilities.catalog && adapter.fetchCatalog);
   const robotsUrls = Array.from(/* @__PURE__ */ new Set([...adapter && adapterConfig2 && useAdapterCatalog ? adapter.urlsForCatalog?.(adapterConfig2) ?? [] : [], ...config.urls]));
   if (robotsUrls.length === 0) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: "Aucune URL configur\xE9e pour cette source." };
-  const parser4 = useAdapterCatalog ? null : adapter?.htmlParser ?? getParser(config.parser);
-  if (!useAdapterCatalog && !parser4) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser \xAB ${config.parser} \xBB inconnu.` };
-  const run = await startSyncRun(admin, { organizationId: source.organization_id, sourceKind: "supplier_source", sourceRef: source.id, provider: adapter?.key ?? "public_web", trigger: options.trigger, createdBy: options.createdBy ?? null });
+  const parser5 = useAdapterCatalog ? null : adapter?.htmlParser ?? getParser(config.parser);
+  if (!useAdapterCatalog && !parser5) return { sourceId, runId: null, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: `Parser \xAB ${config.parser} \xBB inconnu.` };
+  const run = await startSyncRun(admin, { organizationId: source2.organization_id, sourceKind: "supplier_source", sourceRef: source2.id, provider: adapter?.key ?? "public_web", trigger: options.trigger, createdBy: options.createdBy ?? null });
   const errors = [];
   try {
-    const robots = await checkRobotsForUrls(source.base_url ?? robotsUrls[0], robotsUrls, userAgent, options.fetchImpl);
-    await admin.from("supplier_sources").update({ robots_checked_at: (/* @__PURE__ */ new Date()).toISOString(), robots_allowed: robots.allowed, crawl_delay_seconds: robots.crawlDelay === null ? source.crawl_delay_seconds : Math.ceil(robots.crawlDelay) }).eq("id", source.id);
+    const robots = await checkRobotsForUrls(source2.base_url ?? robotsUrls[0], robotsUrls, userAgent, options.fetchImpl);
+    await admin.from("supplier_sources").update({ robots_checked_at: (/* @__PURE__ */ new Date()).toISOString(), robots_allowed: robots.allowed, crawl_delay_seconds: robots.crawlDelay === null ? source2.crawl_delay_seconds : Math.ceil(robots.crawlDelay) }).eq("id", source2.id);
     if (!robots.allowed) {
       const message2 = `robots.txt : ${robots.details}`;
       await recordSyncErrors(admin, run, [{ code: "ROBOTS_DISALLOW", message: message2, details: { disallowed: robots.disallowedUrls } }]);
       await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: 1, errorSummary: message2 });
-      await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message2 }).eq("id", source.id);
+      await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message2 }).eq("id", source2.id);
       return { sourceId, runId: run.id, status: "refused", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message: message2 };
     }
-    const crawl = useAdapterCatalog && adapter && adapterConfig2 ? await crawlWithAdapter(adapter, adapterConfig2, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls, budgetMs: options.budgetMs ?? CRAWL_BUDGET_MS }) : { ...await crawlSource({ baseUrl: source.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser4, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls }), complete: true };
+    const crawl = useAdapterCatalog && adapter && adapterConfig2 ? await crawlWithAdapter(adapter, adapterConfig2, { userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, robotsCrawlDelay: robots.crawlDelay, configDelay: config.delay_seconds ?? 0, maxPages: config.max_pages ?? 20, disallowedUrls: robots.disallowedUrls, budgetMs: options.budgetMs ?? CRAWL_BUDGET_MS }) : { ...await crawlSource({ baseUrl: source2.base_url, config, robotsCrawlDelay: robots.crawlDelay, parser: parser5, userAgent, fetchImpl: options.fetchImpl, sleep: options.sleep, disallowedUrls: robots.disallowedUrls }), complete: true };
     for (const p of crawl.pages) if (p.error) errors.push({ code: "PAGE_FAILED", message: p.error, entityType: "page", entityRef: p.url });
     for (const u of crawl.skippedUrls) errors.push({ code: "URL_SKIPPED", message: "URL ignor\xE9e (h\xF4te diff\xE9rent, interdite ou au-del\xE0 de la limite de pages).", entityType: "page", entityRef: u });
     const ctx = {
       supabase: admin,
-      organizationId: source.organization_id,
-      organizationCurrency: source.organization?.default_currency ?? "EUR",
-      supplierId: source.supplier_id,
-      sourceId: source.id,
-      sourceType: source.source_type,
-      defaultCurrency: source.default_currency,
-      defaultTaxType: source.default_tax_type,
-      defaultCountry: source.country,
+      organizationId: source2.organization_id,
+      organizationCurrency: source2.organization?.default_currency ?? "EUR",
+      supplierId: source2.supplier_id,
+      sourceId: source2.id,
+      sourceType: source2.source_type,
+      defaultCurrency: source2.default_currency,
+      defaultTaxType: source2.default_tax_type,
+      defaultCountry: source2.country,
       createdBy: options.createdBy ?? null,
       now: run.startedAt
     };
@@ -21053,15 +21578,15 @@ async function runSourceCrawl(sourceId, options = { trigger: "manual" }) {
     const status = okPages === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
     const message = `${okPages}/${crawl.pages.length} page(s) lue(s), ${crawl.offers.length} offre(s) trouv\xE9e(s), ${stored} enregistr\xE9e(s), ${rejected} rejet\xE9e(s), ${expired2} expir\xE9e(s)${crawl.complete ? "" : " \u2014 collecte partielle (catalogue non parcouru en entier) : aucune offre expir\xE9e"}.`;
     await recordSyncErrors(admin, run, errors);
-    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired: expired2, complete: crawl.complete, delaySeconds: crawl.delaySeconds, parser: parser4?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" }, errorSummary: status === "failed" ? message : null });
-    await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source.id);
+    await finishSyncRun(admin, run, { status, recordsProcessed: crawl.offers.length, errorCount: errors.length, stats: { pages: crawl.pages, stored, rejected, expired: expired2, complete: crawl.complete, delaySeconds: crawl.delaySeconds, parser: parser5?.key ?? null, adapter: adapter?.key ?? null, method: adapter?.method ?? "public_html" }, errorSummary: status === "failed" ? message : null });
+    await admin.from("supplier_sources").update({ status: status === "failed" ? "error" : "active", last_sync_at: run.startedAt.toISOString(), last_successful_sync_at: status !== "failed" ? (/* @__PURE__ */ new Date()).toISOString() : source2.last_successful_sync_at, last_error: status === "failed" ? message : null }).eq("id", source2.id);
     return { sourceId, runId: run.id, status, pages: crawl.pages.length, found: crawl.offers.length, stored, rejected, expired: expired2, message };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
     log6.error("crawl failed", { sourceId, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "CRAWL_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: errors.length + 1, errorSummary: message });
-    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source.id);
+    await admin.from("supplier_sources").update({ status: "error", last_sync_at: run.startedAt.toISOString(), last_error: message }).eq("id", source2.id);
     return { sourceId, runId: run.id, status: "failed", pages: 0, found: 0, stored: 0, rejected: 0, expired: 0, message };
   }
 }
@@ -21321,24 +21846,24 @@ function safeHost(url) {
     return null;
   }
 }
-async function collectionPass(admin, source, decision, deadline, deps = {}) {
+async function collectionPass(admin, source2, decision, deadline, deps = {}) {
   const nowFn = deps.now ?? (() => /* @__PURE__ */ new Date());
   const clock = deps.clock ?? Date.now;
-  const adapter = catalogAdapter(source);
-  const base = { sourceId: source.id, name: source.name, action: decision.action === "continue" ? "continued" : "started", result: null, pagesThisPass: 0, storedThisPass: 0, totals: null, message: "" };
+  const adapter = catalogAdapter(source2);
+  const base = { sourceId: source2.id, name: source2.name, action: decision.action === "continue" ? "continued" : "started", result: null, pagesThisPass: 0, storedThisPass: 0, totals: null, message: "" };
   let run;
   try {
-    run = await startSyncRun(admin, { organizationId: source.organization_id, sourceKind: "supplier_source", sourceRef: source.id, provider: adapter.key, trigger: "scheduled" });
+    run = await startSyncRun(admin, { organizationId: source2.organization_id, sourceKind: "supplier_source", sourceRef: source2.id, provider: adapter.key, trigger: "scheduled" });
   } catch (e) {
     return { ...base, action: "skipped", result: "locked", message: e instanceof Error ? e.message : String(e) };
   }
-  let startedAt = source.collection_started_at;
-  let stats = parseStats(source.last_collection_stats);
-  let cursor = decision.action === "continue" ? parseCursor(source.collect_cursor) : { ...EMPTY_CURSOR };
+  let startedAt = source2.collection_started_at;
+  let stats = parseStats(source2.last_collection_stats);
+  let cursor = decision.action === "continue" ? parseCursor(source2.collect_cursor) : { ...EMPTY_CURSOR };
   if (decision.action === "start") {
     startedAt = nowFn().toISOString();
     stats = { slot: decision.slot, attempts: decision.attempt, result: "running", attemptStartedAt: startedAt, finishedAt: null, message: null };
-    const { data: claimed } = await admin.from("supplier_sources").update({ collection_started_at: startedAt, collect_cursor: cursor, last_collection_stats: stats }).eq("id", source.id).is("collection_started_at", null).select("id");
+    const { data: claimed } = await admin.from("supplier_sources").update({ collection_started_at: startedAt, collect_cursor: cursor, last_collection_stats: stats }).eq("id", source2.id).is("collection_started_at", null).select("id");
     if (!claimed?.length) {
       await finishSyncRun(admin, run, { status: "failed", recordsProcessed: 0, errorCount: 0, errorSummary: "Collecte d\xE9j\xE0 d\xE9marr\xE9e par un autre passage." });
       return { ...base, action: "skipped", result: "locked", message: "Collecte d\xE9j\xE0 d\xE9marr\xE9e par un autre passage." };
@@ -21346,26 +21871,26 @@ async function collectionPass(admin, source, decision, deadline, deps = {}) {
   }
   const errors = [];
   const userAgent = deps.userAgent ?? process.env.SOURCING_USER_AGENT ?? "MonStockBot/0.1";
-  const config = adapterConfigFromSource(source);
+  const config = adapterConfigFromSource(source2);
   const storageCtx = {
     supabase: admin,
-    organizationId: source.organization_id,
-    organizationCurrency: source.organization?.default_currency ?? "EUR",
-    supplierId: source.supplier_id,
-    sourceId: source.id,
+    organizationId: source2.organization_id,
+    organizationCurrency: source2.organization?.default_currency ?? "EUR",
+    supplierId: source2.supplier_id,
+    sourceId: source2.id,
     sourceType: "PUBLIC_WEB",
-    defaultCurrency: source.default_currency,
-    defaultTaxType: source.default_tax_type,
-    defaultCountry: source.country
+    defaultCurrency: source2.default_currency,
+    defaultTaxType: source2.default_tax_type,
+    defaultCountry: source2.country
   };
-  const saveCursor = () => admin.from("supplier_sources").update({ collect_cursor: cursor, last_sync_at: nowFn().toISOString() }).eq("id", source.id);
+  const saveCursor = () => admin.from("supplier_sources").update({ collect_cursor: cursor, last_sync_at: nowFn().toISOString() }).eq("id", source2.id);
   try {
     const urls = adapter.urlsForCatalog?.(config) ?? [];
     const robots = await checkRobotsForUrls(config.baseUrl ?? urls[0] ?? "", urls.length ? urls : [`${config.baseUrl}/`], userAgent, deps.fetchImpl);
     if (!robots.allowed) {
-      return await abortCollection(admin, source, run, stats, cursor, `robots.txt : ${robots.details}`, [...errors, { code: "ROBOTS_DISALLOW", message: robots.details }], nowFn, base);
+      return await abortCollection(admin, source2, run, stats, cursor, `robots.txt : ${robots.details}`, [...errors, { code: "ROBOTS_DISALLOW", message: robots.details }], nowFn, base);
     }
-    const delaySeconds = Math.max(MIN_DELAY_SECONDS, robots.crawlDelay ?? 0, source.crawl_delay_seconds ?? 0);
+    const delaySeconds = Math.max(MIN_DELAY_SECONDS, robots.crawlDelay ?? 0, source2.crawl_delay_seconds ?? 0);
     const scheduler = new HostScheduler(delaySeconds * 1e3, deps.sleep);
     const ctxBase = { userAgent, fetchImpl: scheduler.wrapFetch(deps.fetchImpl), sleep: deps.sleep, minDelayMs: delaySeconds * 1e3, disallowedUrls: robots.disallowedUrls };
     let finished = false;
@@ -21378,7 +21903,7 @@ async function collectionPass(admin, source, decision, deadline, deps = {}) {
         cursor = { ...cursor, consecutiveFailures: cursor.consecutiveFailures + 1, requestErrors: cursor.requestErrors + 1 };
         errors.push({ code: "CATALOG_PAGE_FAILED", message, entityType: "page", entityRef: cursor.cursor ?? "d\xE9but" });
         await saveCursor();
-        if (cursor.consecutiveFailures >= ABORT_AFTER_FAILURES) return await abortCollection(admin, source, run, stats, cursor, `${ABORT_AFTER_FAILURES} pages de catalogue en \xE9chec d'affil\xE9e : ${message}`, errors, nowFn, base);
+        if (cursor.consecutiveFailures >= ABORT_AFTER_FAILURES) return await abortCollection(admin, source2, run, stats, cursor, `${ABORT_AFTER_FAILURES} pages de catalogue en \xE9chec d'affil\xE9e : ${message}`, errors, nowFn, base);
         break;
       }
       const retrievedAt = nowFn().toISOString();
@@ -21442,17 +21967,17 @@ async function collectionPass(admin, source, decision, deadline, deps = {}) {
     if (!finished) {
       await saveCursor();
       stats = { ...stats, result: "running", pages: cursor.pages, offers: cursor.offers, stored: cursor.stored, rejected: cursor.rejected, requestErrors: cursor.requestErrors };
-      await admin.from("supplier_sources").update({ last_collection_stats: stats, status: "active", last_error: null }).eq("id", source.id);
+      await admin.from("supplier_sources").update({ last_collection_stats: stats, status: "active", last_error: null }).eq("id", source2.id);
       await recordSyncErrors(admin, run, errors);
       await finishSyncRun(admin, run, { status: errors.length ? "partial" : "success", recordsProcessed: base.storedThisPass, errorCount: errors.length, stats: { weekly: true, pass: "continue", cursor } });
       return { ...base, result: "running", totals: totals(cursor), message: `Passage termin\xE9 (collecte en cours) : ${base.pagesThisPass} page(s), ${base.storedThisPass} offre(s) enregistr\xE9e(s) ; total ${cursor.stored}.` };
     }
-    const previous = parseStats(source.last_collection_stats);
+    const previous = parseStats(source2.last_collection_stats);
     const verdict = endOfCatalogResult(cursor, previous.result === "complete" && typeof previous.seen === "number" ? previous.seen : null);
     const finishedAt = nowFn().toISOString();
     let closing = null;
     if (verdict.result === "complete") {
-      const { data: rows, error } = await admin.rpc("sourcing_close_full_collection", { p_source_id: source.id, p_started_at: startedAt });
+      const { data: rows, error } = await admin.rpc("sourcing_close_full_collection", { p_source_id: source2.id, p_started_at: startedAt });
       if (error) throw new Error(`Cl\xF4ture impossible : ${error.message}`);
       const row2 = Array.isArray(rows) ? rows[0] : rows;
       closing = { seen: Number(row2?.seen ?? 0), missed: Number(row2?.missed ?? 0), expired: Number(row2?.expired ?? 0) };
@@ -21470,14 +21995,14 @@ async function collectionPass(admin, source, decision, deadline, deps = {}) {
       ...closing ?? {},
       message: verdict.result === "complete" ? `Collecte compl\xE8te : ${cursor.stored} offres, ${closing.missed} absente(s), ${closing.expired} expir\xE9e(s).` : `Collecte termin\xE9e mais incompl\xE8te (${verdict.reason}) : aucune offre d\xE9clar\xE9e absente.`
     };
-    await admin.from("supplier_sources").update({ collection_started_at: null, collect_cursor: null, last_collection_stats: stats, status: "active", last_error: null, last_sync_at: finishedAt, last_successful_sync_at: finishedAt }).eq("id", source.id);
-    await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: true });
+    await admin.from("supplier_sources").update({ collection_started_at: null, collect_cursor: null, last_collection_stats: stats, status: "active", last_error: null, last_sync_at: finishedAt, last_successful_sync_at: finishedAt }).eq("id", source2.id);
+    await recordSourceOutcome(admin, { sourceId: source2.id, organizationId: source2.organization_id, sourceName: source2.name, frequency: source2.sync_frequency, previousFailures: source2.consecutive_failures, ok: true });
     await recordSyncErrors(admin, run, errors);
     await finishSyncRun(admin, run, { status: verdict.result === "complete" && errors.length === 0 ? "success" : "partial", recordsProcessed: base.storedThisPass, errorCount: errors.length, stats: { weekly: true, pass: "end", result: verdict.result, cursor, closing } });
     return { ...base, result: verdict.result, totals: totals(cursor), message: stats.message ?? "" };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    log9.error("weekly pass failed", { sourceId: source.id, error: message });
+    log9.error("weekly pass failed", { sourceId: source2.id, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "PASS_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: base.storedThisPass, errorCount: errors.length + 1, errorSummary: message });
     return { ...base, result: "running", totals: totals(cursor), message: `Passage interrompu : ${message}` };
@@ -21486,11 +22011,11 @@ async function collectionPass(admin, source, decision, deadline, deps = {}) {
 function totals(c) {
   return { pages: c.pages, offers: c.offers, stored: c.stored, rejected: c.rejected, requestErrors: c.requestErrors };
 }
-async function abortCollection(admin, source, run, stats, cursor, message, errors, nowFn, base) {
+async function abortCollection(admin, source2, run, stats, cursor, message, errors, nowFn, base) {
   const finishedAt = nowFn().toISOString();
   const next = { ...stats, result: "failed", finishedAt, pages: cursor.pages, offers: cursor.offers, stored: cursor.stored, rejected: cursor.rejected, requestErrors: cursor.requestErrors, message };
-  await admin.from("supplier_sources").update({ collection_started_at: null, collect_cursor: null, last_collection_stats: next, last_error: message.slice(0, 1e3), last_sync_at: finishedAt }).eq("id", source.id);
-  await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: false, error: message });
+  await admin.from("supplier_sources").update({ collection_started_at: null, collect_cursor: null, last_collection_stats: next, last_error: message.slice(0, 1e3), last_sync_at: finishedAt }).eq("id", source2.id);
+  await recordSourceOutcome(admin, { sourceId: source2.id, organizationId: source2.organization_id, sourceName: source2.name, frequency: source2.sync_frequency, previousFailures: source2.consecutive_failures, ok: false, error: message });
   await recordSyncErrors(admin, run, errors);
   await finishSyncRun(admin, run, { status: "failed", recordsProcessed: base.storedThisPass, errorCount: errors.length, errorSummary: message.slice(0, 1e3) });
   return { ...base, result: errors.some((e) => e.code === "ROBOTS_DISALLOW") ? "refused" : "failed", totals: totals(cursor), message };
@@ -21517,7 +22042,7 @@ var NextResponse = class _NextResponse extends Response {
 
 // src/lib/cron-auth.ts
 var CRON_SECRET_MIN_LENGTH = 16;
-function authorizeCron(request) {
+function authorizeCron(request2) {
   const secret = process.env.CRON_SECRET;
   if (!secret || secret.length < CRON_SECRET_MIN_LENGTH) {
     return {
@@ -21525,9 +22050,9 @@ function authorizeCron(request) {
       response: NextResponse.json({ ok: false, error: `CRON_SECRET n'est pas configur\xE9 sur ce serveur (au moins ${CRON_SECRET_MIN_LENGTH} caract\xE8res) : les t\xE2ches planifi\xE9es sont d\xE9sactiv\xE9es. Voir .env.example.` }, { status: 503 })
     };
   }
-  const header = request.headers.get("authorization") ?? "";
+  const header2 = request2.headers.get("authorization") ?? "";
   const expected = `Bearer ${secret}`;
-  const a = createHash4("sha256").update(header, "utf8").digest();
+  const a = createHash4("sha256").update(header2, "utf8").digest();
   const b = createHash4("sha256").update(expected, "utf8").digest();
   const valid = timingSafeEqual(a, b);
   if (!valid) return { ok: false, response: NextResponse.json({ ok: false, error: "Non autoris\xE9 : en-t\xEAte Authorization Bearer invalide." }, { status: 401 }) };
@@ -21572,20 +22097,20 @@ async function handle(fn, status = 200) {
     return errorResponse(e);
   }
 }
-function parseQuery2(request, schema) {
-  const url = new URL(request.url);
+function parseQuery2(request2, schema) {
+  const url = new URL(request2.url);
   const flat = {};
   for (const [k, v2] of url.searchParams.entries()) if (v2 !== "") flat[k] = v2;
   const parsed = schema.safeParse(flat);
   if (!parsed.success) throw new AppError("VALIDATION", parsed.error.issues[0]?.message ?? "Param\xE8tres invalides.");
   return parsed.data;
 }
-async function parseBody(request, schema, maxBytes = 64e3) {
-  const length = Number(request.headers.get("content-length") ?? "0");
+async function parseBody(request2, schema, maxBytes = 64e3) {
+  const length = Number(request2.headers.get("content-length") ?? "0");
   if (length > maxBytes) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
   let body;
   try {
-    const text3 = await request.text();
+    const text3 = await request2.text();
     if (text3.length > maxBytes) throw new AppError("VALIDATION", "Requ\xEAte trop volumineuse.");
     body = text3 ? JSON.parse(text3) : {};
   } catch (e) {
@@ -21638,8 +22163,30 @@ function createServerClient() {
 
 // src/lib/supabase/server.ts
 init_env();
+
+// src/lib/supabase/preview.ts
+init_empty();
+function isWebPreview() {
+  if (process.env.MONSTOCK_WEB_PREVIEW !== "1") return false;
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host === "preview.invalid";
+  } catch {
+    return false;
+  }
+}
+var client = null;
+async function previewClient() {
+  if (!client) {
+    const m = await Promise.resolve().then(() => (init_demo_db(), demo_db_exports));
+    client = m.createDemoClient(m.demoTables(), m.DEMO_USER);
+  }
+  return client;
+}
+
+// src/lib/supabase/server.ts
 async function createServerSupabaseClient() {
   const cookieStore = await cookies();
+  if (isWebPreview()) return await previewClient();
   const env = publicEnv();
   return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
     cookies: {
@@ -21799,15 +22346,15 @@ var trackingRefreshSchema = z15.object({ parcelId: z15.string().uuid() });
 // src/features/mobile-api/context.ts
 var MAX_TOKEN_LENGTH = 8192;
 var MOBILE_SESSION_EXPIRED = "Votre session a expir\xE9. Reconnectez-vous pour continuer.";
-function bearerTokenOf(request) {
-  const header = request.headers.get("authorization");
-  if (!header) return null;
-  const match = header.match(/^Bearer\s+([A-Za-z0-9\-_.=]+)$/);
+function bearerTokenOf(request2) {
+  const header2 = request2.headers.get("authorization");
+  if (!header2) return null;
+  const match = header2.match(/^Bearer\s+([A-Za-z0-9\-_.=]+)$/);
   if (!match?.[1] || match[1].length > MAX_TOKEN_LENGTH) return null;
   return match[1];
 }
-async function requireMobileUser(request, factory = createBearerSupabaseClient) {
-  const token = bearerTokenOf(request);
+async function requireMobileUser(request2, factory = createBearerSupabaseClient) {
+  const token = bearerTokenOf(request2);
   if (!token) throw new AppError("AUTH_REQUIRED", "Connexion requise.");
   const supabase = factory(token);
   const { data, error } = await supabase.auth.getUser(token);
@@ -21815,15 +22362,15 @@ async function requireMobileUser(request, factory = createBearerSupabaseClient) 
   return { supabase, user: data.user };
 }
 var orgIdSchema = z16.string().uuid();
-async function requireMobileOrgContext(request, options = {}, factory = createBearerSupabaseClient) {
-  const rawOrg = request.headers.get(ORGANIZATION_HEADER);
+async function requireMobileOrgContext(request2, options = {}, factory = createBearerSupabaseClient) {
+  const rawOrg = request2.headers.get(ORGANIZATION_HEADER);
   let orgId = null;
   if (rawOrg !== null) {
     const parsed = orgIdSchema.safeParse(rawOrg.trim());
     if (!parsed.success) throw new AppError("VALIDATION", "Organisation invalide.");
     orgId = parsed.data;
   }
-  const { supabase, user } = await requireMobileUser(request, factory);
+  const { supabase, user } = await requireMobileUser(request2, factory);
   const ctx = await resolveOrgContext(supabase, user, orgId);
   if (!ctx) {
     throw new AppError(
@@ -21842,6 +22389,7 @@ async function requireMobileOrgContext(request, options = {}, factory = createBe
 
 // src/features/mobile-api/service.ts
 init_empty();
+init_config();
 init_errors();
 
 // src/domain/inventory/velocity.ts
@@ -22453,9 +23001,9 @@ async function computeRecommendations(ctx) {
   const offerSuppliers = /* @__PURE__ */ new Map();
   for (const o of offersRes.data ?? []) {
     if (!o.sku_id) continue;
-    const list = offersBySku.get(o.sku_id) ?? [];
-    list.push(o);
-    offersBySku.set(o.sku_id, list);
+    const list2 = offersBySku.get(o.sku_id) ?? [];
+    list2.push(o);
+    offersBySku.set(o.sku_id, list2);
     const s = one(o.supplier);
     if (s) offerSuppliers.set(o.supplier_id, s);
   }
@@ -22655,28 +23203,28 @@ function rankOffers(offers, mode, scores) {
   const s = scores ?? scoreOffers(offers);
   const score = (o) => s.get(o.id)?.total ?? null;
   const tieBreak = byNullable(score, false);
-  let cmp2;
+  let cmp3;
   switch (mode) {
     case "lowest_price":
-      cmp2 = byNullable((o) => o.comparablePrice, true);
+      cmp3 = byNullable((o) => o.comparablePrice, true);
       break;
     case "best_margin":
-      cmp2 = byNullable((o) => o.potentialMargin ?? null, false);
+      cmp3 = byNullable((o) => o.potentialMargin ?? null, false);
       break;
     case "fastest_delivery":
-      cmp2 = byNullable((o) => o.deliveryDays, true);
+      cmp3 = byNullable((o) => o.deliveryDays, true);
       break;
     case "lowest_moq":
-      cmp2 = byNullable((o) => o.moq, true);
+      cmp3 = byNullable((o) => o.moq, true);
       break;
     case "best_supplier":
-      cmp2 = byNullable((o) => o.supplierScore, false);
+      cmp3 = byNullable((o) => o.supplierScore, false);
       break;
     case "best_offer":
     default:
-      cmp2 = tieBreak;
+      cmp3 = tieBreak;
   }
-  return [...offers].sort((a, b) => cmp2(a, b) || tieBreak(a, b));
+  return [...offers].sort((a, b) => cmp3(a, b) || tieBreak(a, b));
 }
 function computeDataCompleteness(fields) {
   const keys = Object.keys(fields);
@@ -22692,6 +23240,7 @@ function computeDataCompleteness(fields) {
 init_empty();
 init_registry2();
 init_registry2();
+init_config();
 init_errors();
 init_postgrest();
 async function getIntegrationsOverview(ctx) {
@@ -22699,7 +23248,7 @@ async function getIntegrationsOverview(ctx) {
   const config = ebay2.config();
   const base = {
     catalog: listConnectorCatalog(),
-    ebay: { configured: ebay2.isConfigured(), issues: ebay2.configurationIssues(), environment: config?.environment ?? null, scopes: ebay2.scopes },
+    ebay: { configured: ebay2.isConfigured(), issues: ebay2.configurationIssues(), environment: config?.environment ?? null, scopes: ebay2.scopes, extendedScopes: EBAY_EXTENDED_SCOPES },
     connections: [],
     unmappedCount: 0,
     queryError: null
@@ -23508,7 +24057,7 @@ function computeSourcingStatus(input) {
   const adapters = new Map(input.adapters.map((a) => [a.key, a]));
   const connected = input.sources.filter(isConnectedSource);
   const liveVerified = input.adapters.filter((a) => a.verification === "live").length;
-  const count = (list, pred) => list.filter(pred).length;
+  const count = (list2, pred) => list2.filter(pred).length;
   const orphans = input.orphanConnections ?? [];
   return [
     { key: "documented", scope: "catalog", label: "Document\xE9es", value: input.catalog.length, detail: null, definition: "Sources d\xE9crites dans le catalogue (docs/sourcing-sources.md) d'apr\xE8s leur documentation publique. Document\xE9 \u2260 v\xE9rifi\xE9 : rien n'a \xE9t\xE9 interrog\xE9." },
@@ -23615,8 +24164,8 @@ var sourcingSearchParamsSchema = z24.object({
 });
 function parseCountries(text3) {
   if (!text3) return void 0;
-  const list = text3.split(/[,\s;]+/).map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
-  return list.length > 0 ? Array.from(new Set(list)) : void 0;
+  const list2 = text3.split(/[,\s;]+/).map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
+  return list2.length > 0 ? Array.from(new Set(list2)) : void 0;
 }
 function toOfferFilters(p) {
   const clean = (s) => s && s.length > 0 ? s : void 0;
@@ -23677,11 +24226,11 @@ function toHt(ttc, vatRatePercent) {
 function toTtc(ht, vatRatePercent) {
   return round4(ht * (1 + vatRatePercent / 100));
 }
-function normalizeTax(amount, taxType, target, vatRatePercent) {
-  if (taxType === "unknown") return { amount, taxType: "unknown", converted: false, note: "HT/TTC non communiqu\xE9 : prix affich\xE9 tel quel" };
-  if (taxType === target) return { amount, taxType: target, converted: false, note: null };
-  if (vatRatePercent === null || !Number.isFinite(vatRatePercent)) return { amount, taxType, converted: false, note: "Taux de TVA non renseign\xE9 dans les param\xE8tres : conversion HT/TTC impossible" };
-  const converted = target === "ht" ? toHt(amount, vatRatePercent) : toTtc(amount, vatRatePercent);
+function normalizeTax(amount2, taxType, target, vatRatePercent) {
+  if (taxType === "unknown") return { amount: amount2, taxType: "unknown", converted: false, note: "HT/TTC non communiqu\xE9 : prix affich\xE9 tel quel" };
+  if (taxType === target) return { amount: amount2, taxType: target, converted: false, note: null };
+  if (vatRatePercent === null || !Number.isFinite(vatRatePercent)) return { amount: amount2, taxType, converted: false, note: "Taux de TVA non renseign\xE9 dans les param\xE8tres : conversion HT/TTC impossible" };
+  const converted = target === "ht" ? toHt(amount2, vatRatePercent) : toTtc(amount2, vatRatePercent);
   return { amount: converted, taxType: target, converted: true, note: `Converti ${taxType.toUpperCase()} \u2192 ${target.toUpperCase()} avec une TVA de ${vatRatePercent} %` };
 }
 function comparablePrice(input) {
@@ -23936,7 +24485,7 @@ function expandQuery(parsed, options = {}) {
     }
   }
   const seen = /* @__PURE__ */ new Set();
-  const uniq = (list) => list.filter((d) => {
+  const uniq = (list2) => list2.filter((d) => {
     if (!d.text) return false;
     const k = dedupeKey2(d.text);
     if (seen.has(k)) return false;
@@ -24194,11 +24743,11 @@ function round23(n) {
 function known(n) {
   return n !== null && n !== void 0 && Number.isFinite(n);
 }
-function formatMoney(amount, currency = "EUR") {
+function formatMoney(amount2, currency = "EUR") {
   try {
-    return new Intl.NumberFormat("fr-FR", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+    return new Intl.NumberFormat("fr-FR", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount2);
   } catch {
-    return `${amount.toFixed(2)} ${currency}`;
+    return `${amount2.toFixed(2)} ${currency}`;
   }
 }
 function computeProcurement(offer, requestedQuantity, currentUnitCost = null, currency = "EUR") {
@@ -24360,9 +24909,9 @@ function rankOpportunities(offers, context) {
     }
     return { key: key2, ...AWARD_META[key2], offerId: null, reason, ...basis ? { basis } : {} };
   };
-  const pick = (candidates, cmp2, podium2) => {
+  const pick = (candidates, cmp3, podium2) => {
     const pool = podium2 && distinct ? candidates.filter((c) => !podiumTaken.has(c.offer.id)) : candidates;
-    const sorted = [...pool].sort(chain(cmp2, tieBreak));
+    const sorted = [...pool].sort(chain(cmp3, tieBreak));
     const w2 = sorted[0] ?? null;
     if (w2 && podium2) podiumTaken.add(w2.offer.id);
     return { winner: w2, hadCandidates: candidates.length > 0 };
@@ -24639,11 +25188,11 @@ function groupPriceHistory(rows, orgCurrency) {
   for (const r of rows) {
     const price = r.normalized_price !== null && (r.normalized_currency ?? "").toUpperCase() === cur ? Number(r.normalized_price) : r.original_currency.toUpperCase() === cur ? Number(r.original_price) : null;
     if (price === null || !Number.isFinite(price) || price <= 0) continue;
-    const list = map.get(r.offer_id) ?? [];
-    list.push({ price, recordedAt: r.recorded_at, offerId: r.offer_id });
-    map.set(r.offer_id, list);
+    const list2 = map.get(r.offer_id) ?? [];
+    list2.push({ price, recordedAt: r.recorded_at, offerId: r.offer_id });
+    map.set(r.offer_id, list2);
   }
-  for (const list of map.values()) list.sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
+  for (const list2 of map.values()) list2.sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
   return map;
 }
 
@@ -24955,18 +25504,18 @@ function hasJsonLdProduct(html) {
       for (const n of node2) visit(n, depth + 1);
       return;
     }
-    const obj3 = node2;
-    const t = obj3["@type"];
+    const obj4 = node2;
+    const t = obj4["@type"];
     const types = Array.isArray(t) ? t : [t];
     if (types.some((x) => x === "Product" || x === "ProductGroup")) {
       product = true;
-      const offers = obj3.offers;
-      const list = Array.isArray(offers) ? offers : offers ? [offers] : [];
-      for (const o of list) {
+      const offers = obj4.offers;
+      const list2 = Array.isArray(offers) ? offers : offers ? [offers] : [];
+      for (const o of list2) {
         if (o && typeof o === "object" && ("price" in o || "lowPrice" in o || "priceSpecification" in o)) price = true;
       }
     }
-    for (const v2 of Object.values(obj3)) if (v2 && typeof v2 === "object") visit(v2, depth + 1);
+    for (const v2 of Object.values(obj4)) if (v2 && typeof v2 === "object") visit(v2, depth + 1);
   };
   for (const block of extractJsonLdBlocks(html)) visit(block, 0);
   return { product, price };
@@ -25323,7 +25872,7 @@ function createSupabaseDiscoveryStore(supabase) {
         validation: "pending"
       };
       const robotsChecked = c.robots === "allowed" || c.robots === "missing" || c.robots === "disallowed";
-      const { data: source, error: sourceError } = await supabase.from("supplier_sources").insert({
+      const { data: source2, error: sourceError } = await supabase.from("supplier_sources").insert({
         organization_id: organizationId,
         supplier_id: supplier.id,
         name: `${c.name.slice(0, 160)} \u2014 d\xE9couverte \xE0 valider`,
@@ -25336,11 +25885,11 @@ function createSupabaseDiscoveryStore(supabase) {
         crawl_delay_seconds: c.crawlDelaySeconds !== null ? Math.ceil(c.crawlDelaySeconds) : null,
         config
       }).select("id").single();
-      if (sourceError || !source) {
+      if (sourceError || !source2) {
         await supabase.from("suppliers").delete().eq("organization_id", organizationId).eq("id", supplier.id);
         throw new Error(`Source non cr\xE9\xE9e : ${sourceError?.message ?? "inconnu"}`);
       }
-      return { supplierId: supplier.id, sourceId: source.id };
+      return { supplierId: supplier.id, sourceId: source2.id };
     }
   };
 }
@@ -25382,9 +25931,9 @@ function reportFromCandidate(c, status, reason, ids = null) {
 function unprobed(c) {
   return { ...c, robots: "not_checked", robotsDetail: "", crawlDelaySeconds: null, probed: false, httpStatus: null, platform: "unknown", access: "unknown", priceVisibility: "unknown", suggestedAdapter: null, probeSignals: [], probeError: null };
 }
-function countStatuses(list) {
+function countStatuses(list2) {
   const counts = { new: 0, already_known: 0, rejected: 0, skipped: 0 };
-  for (const c of list) counts[c.status]++;
+  for (const c of list2) counts[c.status]++;
   return counts;
 }
 async function discoverSources(ctx, parsedQuery) {
@@ -25569,19 +26118,19 @@ async function searchOffers(ctx, input) {
   const admin = isAdmin(ctx.role);
   const decision = discoveryDecision({ config: discoveryConfig, canWrite: canWrite(ctx.role), isAdmin: admin, parsed, live: input.live !== false && input.discover !== false });
   const discoveryPromise = decision.run ? runDiscoveryWithTimeout(() => discoverSources({ organizationId: orgId }, parsed), { isAdmin: admin, provider: discoveryConfig.provider, onLateError: (e) => log16.warn("late discovery failed", { orgId, error: e instanceof Error ? e.message : String(e) }) }) : Promise.resolve(decision.panel);
-  let live = null;
+  let live2 = null;
   if (liveWanted) {
     try {
       const summary = await runLiveSearch(ctx, { rawQuery: liveQuery, parsed, variants, skuId: sku?.id ?? null });
-      live = summary.sources.length > 0 ? summary : null;
+      live2 = summary.sources.length > 0 ? summary : null;
     } catch (e) {
       log16.warn("live search failed", { orgId, error: e instanceof Error ? e.message : String(e) });
     }
   }
   const [{ offers, stage }, marginCtx, sources] = await Promise.all([findOffers(ctx.supabase, orgId, parsed, filters, { skuIdsForCategory, includeSkuId: sku?.id ?? null }), getMarginContext(ctx), listSourceStatuses(ctx)]);
-  if (live && live.offerIds.length > 0) {
+  if (live2 && live2.offerIds.length > 0) {
     const known2 = new Set(offers.map((o) => o.id));
-    const missing = live.offerIds.filter((id) => !known2.has(id)).slice(0, 200);
+    const missing = live2.offerIds.filter((id) => !known2.has(id)).slice(0, 200);
     if (missing.length > 0) {
       const { data: extra } = await baseOfferQuery(ctx.supabase, orgId, filters, skuIdsForCategory).in("id", missing).limit(200);
       for (const o of extra ?? []) if (!known2.has(o.id)) offers.push(o);
@@ -25776,7 +26325,7 @@ async function searchOffers(ctx, input) {
     connectedSources: sources.filter((s) => s.connected).length,
     vatRate,
     requestedQuantity,
-    live,
+    live: live2,
     expandedQueries,
     rejected,
     podium: pipeline.ranking.podium,
@@ -25854,8 +26403,8 @@ function sourcingOfferDTO(v2) {
 }
 async function sourcingSearch(ctx, q) {
   const params = sourcingSearchParamsSchema.parse({ q: q.q, sku: q.sku, qty: q.qty, max_price: q.max_price, page: q.page, live: q.live });
-  const live = params.live !== "0";
-  const r = await searchOffers(ctx, { query: params.q ?? "", skuCode: params.sku ?? null, filters: toOfferFilters(params), live });
+  const live2 = params.live !== "0";
+  const r = await searchOffers(ctx, { query: params.q ?? "", skuCode: params.sku ?? null, filters: toOfferFilters(params), live: live2 });
   return {
     query: params.q ?? "",
     sku: r.sku ? { id: r.sku.id, code: r.sku.code, label: skuLabel({ product_name: `${r.sku.brand ? `${r.sku.brand} ` : ""}${r.sku.productName}`, variant_name: r.sku.variantName }), costPrice: r.sku.costPrice, currency: r.sku.currency } : null,
@@ -25903,7 +26452,8 @@ async function integrations(ctx) {
       lastSuccessfulSyncAt: c.last_successful_sync_at,
       lastError: c.last_error,
       autoSync: c.auto_sync,
-      lastRun: lastRun ? { id: lastRun.id, status: lastRun.status, startedAt: lastRun.started_at, finishedAt: lastRun.finished_at, errorCount: lastRun.error_count } : null
+      lastRun: lastRun ? { id: lastRun.id, status: lastRun.status, startedAt: lastRun.started_at, finishedAt: lastRun.finished_at, errorCount: lastRun.error_count } : null,
+      extendedAnalysis: c.provider === "ebay" && hasExtendedEbayScopes(c.scopes)
     })),
     unmappedCount: o.unmappedCount,
     comingSoon: o.catalog.filter((c) => !c.available).map((c) => c.label)
@@ -26203,8 +26753,8 @@ async function syncListings(ctx, result = emptyListingsResult()) {
     if (page2.truncated) truncated = true;
     const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
     for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
-    for (const part of chunk2(rows, UPSERT_CHUNK)) {
-      const { data, error } = await admin.from("channel_listings").upsert(part, { onConflict: "sales_channel_id,external_listing_id,external_variation_id" }).select("id");
+    for (const part2 of chunk2(rows, UPSERT_CHUNK)) {
+      const { data, error } = await admin.from("channel_listings").upsert(part2, { onConflict: "sales_channel_id,external_listing_id,external_variation_id" }).select("id");
       if (error) throw fromPostgrestError(error);
       result.upserted += data?.length ?? 0;
     }
@@ -26296,8 +26846,8 @@ async function computeSuggestions(ctx) {
     if (scores.length > 0) suggestedListingIds.add(l.id);
   }
   let created = 0;
-  for (const part of chunk2(rows, 500)) {
-    const { data, error: insError } = await admin.from("mapping_suggestions").upsert(part, { onConflict: "listing_id,sku_id", ignoreDuplicates: true }).select("id");
+  for (const part2 of chunk2(rows, 500)) {
+    const { data, error: insError } = await admin.from("mapping_suggestions").upsert(part2, { onConflict: "listing_id,sku_id", ignoreDuplicates: true }).select("id");
     if (insError) throw fromPostgrestError(insError);
     created += data?.length ?? 0;
   }
@@ -26694,9 +27244,9 @@ async function runChannelSync(connectionId, options) {
   const durationMs = finishedAt.getTime() - startedAt.getTime();
   const status = state.fatal || state.phasesCompleted === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
   const errorSummary = errors.length === 0 ? null : sanitizeMessage(`${errors[0]?.message ?? "Erreur"}${errors.length > 1 ? ` (+${errors.length - 1} autre(s))` : ""}`, 1e3);
-  for (const part of chunk2(errors, 200)) {
+  for (const part2 of chunk2(errors, 200)) {
     const { error } = await admin.from("sync_errors").insert(
-      part.map((e) => ({
+      part2.map((e) => ({
         organization_id: connection.organization_id,
         sync_run_id: runId,
         code: e.code,
@@ -26784,27 +27334,27 @@ function formatNumber(value, decimals = 0) {
 var SYNC_STATUS_LABEL = { running: "En cours", success: "R\xE9ussie", partial: "Partielle", failed: "\xC9chou\xE9e" };
 function readStats(stats) {
   const s = stats && typeof stats === "object" && !Array.isArray(stats) ? stats : {};
-  const num3 = (k) => {
+  const num4 = (k) => {
     const v2 = s[k];
     return typeof v2 === "number" && Number.isFinite(v2) ? v2 : 0;
   };
   return {
-    listings_fetched: num3("listings_fetched"),
-    listings_upserted: num3("listings_upserted"),
-    listings_ended: num3("listings_ended"),
-    listings_auto_mapped: num3("listings_auto_mapped"),
-    suggestions_created: num3("suggestions_created"),
-    orders_fetched: num3("orders_fetched"),
-    orders_created: num3("orders_created"),
-    orders_updated: num3("orders_updated"),
-    items_unmapped: num3("items_unmapped"),
-    inventory_changes: num3("inventory_changes"),
-    inventory_pushed: num3("inventory_pushed"),
-    errors: num3("errors")
+    listings_fetched: num4("listings_fetched"),
+    listings_upserted: num4("listings_upserted"),
+    listings_ended: num4("listings_ended"),
+    listings_auto_mapped: num4("listings_auto_mapped"),
+    suggestions_created: num4("suggestions_created"),
+    orders_fetched: num4("orders_fetched"),
+    orders_created: num4("orders_created"),
+    orders_updated: num4("orders_updated"),
+    items_unmapped: num4("items_unmapped"),
+    inventory_changes: num4("inventory_changes"),
+    inventory_pushed: num4("inventory_pushed"),
+    errors: num4("errors")
   };
 }
-function plural3(n, singular, pluralForm = `${singular}s`) {
-  return `${formatNumber(n)} ${n > 1 ? pluralForm : singular}`;
+function plural3(n, singular2, pluralForm = `${singular2}s`) {
+  return `${formatNumber(n)} ${n > 1 ? pluralForm : singular2}`;
 }
 function formatRunSummary(run) {
   const stats = readStats(run.stats);
@@ -26846,6 +27396,14 @@ function oauthErrorCodeFor(e) {
       return "internal";
   }
 }
+var OAUTH_EXTENDED_STATE_PREFIX = "ext_";
+function buildOAuthState(random, extended) {
+  if (extended) return `${OAUTH_EXTENDED_STATE_PREFIX}${random}`;
+  return random.startsWith(OAUTH_EXTENDED_STATE_PREFIX) ? `s${random}` : random;
+}
+function isExtendedOAuthState(state) {
+  return typeof state === "string" && state.startsWith(OAUTH_EXTENDED_STATE_PREFIX);
+}
 var OAUTH_STATE_TTL_SECONDS = 15 * 60;
 
 // server/edge/api.ts
@@ -26866,10 +27424,10 @@ var ebaySignatureHeaderSchema = z27.object({
   signature: z27.string().min(1),
   digest: z27.string().optional()
 });
-function parseSignatureHeader(header) {
-  if (!header) return null;
+function parseSignatureHeader(header2) {
+  if (!header2) return null;
   try {
-    const json2 = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
+    const json2 = JSON.parse(Buffer.from(header2, "base64").toString("utf8"));
     const parsed = ebaySignatureHeaderSchema.safeParse(json2);
     return parsed.success ? parsed.data : null;
   } catch {
@@ -26906,13 +27464,13 @@ function digestAlgorithm(name) {
       return "sha256";
   }
 }
-function verifyNotificationSignature(rawBody, header, publicKey) {
+function verifyNotificationSignature(rawBody, header2, publicKey) {
   try {
-    const algo = digestAlgorithm(publicKey.digest ?? header.digest);
+    const algo = digestAlgorithm(publicKey.digest ?? header2.digest);
     const verifier = createVerify(algo);
     verifier.update(rawBody);
     const key2 = typeof publicKey.key === "string" ? formatPem(publicKey.key) : publicKey.key;
-    return verifier.verify(key2, header.signature, "base64");
+    return verifier.verify(key2, header2.signature, "base64");
   } catch {
     return false;
   }
@@ -27025,11 +27583,11 @@ var DELETED_ACCOUNT_LABEL = "[compte eBay supprim\xE9]";
 function json(body, status = 200) {
   return Response.json(body, { status });
 }
-async function readBodyLimited(request, limit) {
-  const declared = Number(request.headers.get("content-length") ?? "");
+async function readBodyLimited(request2, limit) {
+  const declared = Number(request2.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > limit) return null;
-  if (!request.body) return Buffer.alloc(0);
-  const reader = request.body.getReader();
+  if (!request2.body) return Buffer.alloc(0);
+  const reader = request2.body.getReader();
   const chunks = [];
   let total = 0;
   for (; ; ) {
@@ -27061,11 +27619,11 @@ async function claimForRetry(admin, eventId) {
   const { data: stale } = await admin.from("webhook_events").update({ status: "received", error: null, received_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("provider", "ebay").eq("event_id", eventId).eq("status", "received").lt("received_at", cutoff).select("id").maybeSingle();
   return stale?.id ?? null;
 }
-async function handleEbayNotification(request, deps) {
+async function handleEbayNotification(request2, deps) {
   const { admin } = deps;
   const clock = deps.now ?? Date.now;
   const deadlineAt = clock() + (deps.processingBudgetMs ?? WEBHOOK_PROCESSING_BUDGET_MS);
-  const raw = await readBodyLimited(request, WEBHOOK_MAX_BODY_BYTES);
+  const raw = await readBodyLimited(request2, WEBHOOK_MAX_BODY_BYTES);
   if (raw === null) {
     log20.warn("notification refus\xE9e : corps trop volumineux", { limit: WEBHOOK_MAX_BODY_BYTES });
     return json({ error: `Notification trop volumineuse (limite ${Math.round(WEBHOOK_MAX_BODY_BYTES / 1024)} Ko).` }, 413);
@@ -27085,15 +27643,15 @@ async function handleEbayNotification(request, deps) {
   const topic = notification.data.metadata.topic;
   const eventId = notificationEventId(notification.data, payloadHash);
   const isDeletion = topic === "MARKETPLACE_ACCOUNT_DELETION";
-  const header = parseSignatureHeader(request.headers.get("x-ebay-signature"));
+  const header2 = parseSignatureHeader(request2.headers.get("x-ebay-signature"));
   let signatureValid = false;
   let signatureError = null;
-  if (!header) {
+  if (!header2) {
     signatureError = "En-t\xEAte x-ebay-signature absent ou illisible.";
   } else {
     try {
-      const key2 = await deps.getPublicKey(header.kid);
-      signatureValid = verifyNotificationSignature(raw, header, key2);
+      const key2 = await deps.getPublicKey(header2.kid);
+      signatureValid = verifyNotificationSignature(raw, header2, key2);
       if (!signatureValid) signatureError = "Signature invalide.";
     } catch (e) {
       if (e instanceof PublicKeyNotFoundError) {
@@ -27315,13 +27873,13 @@ var METHOD_LABEL = {
   connection: "API fournisseur (compte)",
   manual: "Saisie manuelle"
 };
-async function runSourceOnce(admin, source, kind, trigger, createdBy) {
+async function runSourceOnce(admin, source2, kind, trigger, createdBy) {
   if (kind === "public_web") {
-    const r = await runSourceCrawl(source.id, { trigger, createdBy, admin });
+    const r = await runSourceCrawl(source2.id, { trigger, createdBy, admin });
     return { ok: r.status === "success" || r.status === "partial", status: r.status, message: r.message, runIds: r.runId ? [r.runId] : [] };
   }
   if (kind === "remote_feed") {
-    const { data: feeds } = await admin.from("supplier_feeds").select("id, options, field_mapping").eq("source_id", source.id).not("url", "is", null).neq("status", "paused").limit(10);
+    const { data: feeds } = await admin.from("supplier_feeds").select("id, options, field_mapping").eq("source_id", source2.id).not("url", "is", null).neq("status", "paused").limit(10);
     if (!feeds?.length) return { ok: false, status: "failed", message: "Aucun flux distant actif pour cette source.", runIds: [] };
     const results = [];
     for (const f of feeds) {
@@ -27332,7 +27890,7 @@ async function runSourceOnce(admin, source, kind, trigger, createdBy) {
     return { ok: failed.length === 0, status: failed.length === 0 ? results.some((r) => r.status === "partial") ? "partial" : "success" : failed.length === results.length ? "failed" : "partial", message: results.map((r) => r.message).join(" "), runIds: results.flatMap((r) => r.runId ? [r.runId] : []) };
   }
   if (kind === "connection") {
-    const { data: conns } = await admin.from("supplier_connections").select("id").eq("source_id", source.id).limit(5);
+    const { data: conns } = await admin.from("supplier_connections").select("id").eq("source_id", source2.id).limit(5);
     if (!conns?.length) return { ok: false, status: "failed", message: "Aucune connexion fournisseur pour cette source.", runIds: [] };
     const r = await syncSupplierConnection(conns[0].id, { trigger, createdBy, admin });
     return { ok: r.status === "success" || r.status === "partial", status: r.status, message: r.message, runIds: r.runId ? [r.runId] : [] };
@@ -27349,22 +27907,22 @@ async function syncSourceNow(ctx, sourceId, admin = createAdminSupabaseClient(),
   const { data, error } = await ctx.supabase.from("supplier_sources").select(SOURCE_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", sourceId).maybeSingle();
   if (error) throw fromPostgrestError(error);
   if (!data) throw new AppError("NOT_FOUND", "Source introuvable dans cette organisation.");
-  const source = data;
-  if (source.status === "paused") throw new AppError("VALIDATION", "Source d\xE9sactiv\xE9e : r\xE9activez-la avant de la synchroniser.");
-  if (source.last_sync_at && now.getTime() - new Date(source.last_sync_at).getTime() < MANUAL_SYNC_COOLDOWN_MS) throw new AppError("RATE_LIMITED", "Synchronisation lanc\xE9e il y a moins de 2 minutes : patientez un peu.");
-  const { urlFeeds, connections } = await sourceContext(admin, [source.id]);
-  const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+  const source2 = data;
+  if (source2.status === "paused") throw new AppError("VALIDATION", "Source d\xE9sactiv\xE9e : r\xE9activez-la avant de la synchroniser.");
+  if (source2.last_sync_at && now.getTime() - new Date(source2.last_sync_at).getTime() < MANUAL_SYNC_COOLDOWN_MS) throw new AppError("RATE_LIMITED", "Synchronisation lanc\xE9e il y a moins de 2 minutes : patientez un peu.");
+  const { urlFeeds, connections } = await sourceContext(admin, [source2.id]);
+  const kind = kindOf(source2, urlFeeds.has(source2.id), connections.has(source2.id));
   if (kind === "live_search") throw new AppError("VALIDATION", LIVE_SEARCH_MESSAGE);
   if (kind === "file_import" || kind === "manual") throw new AppError("VALIDATION", kind === "file_import" ? "Cette source est aliment\xE9e par fichier : importez la nouvelle liste du fournisseur." : "Source manuelle : rien \xE0 synchroniser.");
   let outcome;
   try {
-    outcome = await runSourceOnce(admin, source, kind, "manual", ctx.user.id);
+    outcome = await runSourceOnce(admin, source2, kind, "manual", ctx.user.id);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (/déjà en cours/.test(message)) throw new AppError("CONFLICT", message);
     outcome = { ok: false, status: "failed", message, runIds: [] };
   }
-  const health = await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
+  const health = await recordSourceOutcome(admin, { sourceId: source2.id, organizationId: source2.organization_id, sourceName: source2.name, frequency: source2.sync_frequency, previousFailures: source2.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
   return { status: outcome.status, message: outcome.message, ...health };
 }
 async function runScheduledSources(now = /* @__PURE__ */ new Date(), admin = createAdminSupabaseClient(), limit = 40) {
@@ -27373,20 +27931,20 @@ async function runScheduledSources(now = /* @__PURE__ */ new Date(), admin = cre
   const { urlFeeds, connections } = await sourceContext(admin, sources.map((s) => s.id));
   const out = [];
   sources.sort((a, b) => (a.next_run_at ?? a.last_sync_at ?? "").localeCompare(b.next_run_at ?? b.last_sync_at ?? ""));
-  for (const source of sources.slice(0, limit)) {
-    const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+  for (const source2 of sources.slice(0, limit)) {
+    const kind = kindOf(source2, urlFeeds.has(source2.id), connections.has(source2.id));
     if (kind === "file_import" || kind === "manual" || kind === "live_search") continue;
-    if (kind === "public_web" && !source.automated_access_confirmed) continue;
-    if (kind === "public_web" && source.sync_frequency === "weekly") continue;
+    if (kind === "public_web" && !source2.automated_access_confirmed) continue;
+    if (kind === "public_web" && source2.sync_frequency === "weekly") continue;
     let outcome;
     try {
-      outcome = await runSourceOnce(admin, source, kind, "scheduled", null);
+      outcome = await runSourceOnce(admin, source2, kind, "scheduled", null);
     } catch (e) {
       outcome = { ok: false, status: "failed", message: e instanceof Error ? e.message : String(e), runIds: [] };
     }
     if (!outcome.ok && /déjà en cours/.test(outcome.message)) continue;
-    await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
-    out.push({ sourceId: source.id, status: outcome.status, message: outcome.message });
+    await recordSourceOutcome(admin, { sourceId: source2.id, organizationId: source2.organization_id, sourceName: source2.name, frequency: source2.sync_frequency, previousFailures: source2.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
+    out.push({ sourceId: source2.id, status: outcome.status, message: outcome.message });
   }
   log22.info("scheduled sources", { due: sources.length, ran: out.length });
   return out;
@@ -27401,24 +27959,24 @@ async function setSourceSchedule(ctx, input, admin = createAdminSupabaseClient()
   const { data, error } = await ctx.supabase.from("supplier_sources").select(SOURCE_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", input.sourceId).maybeSingle();
   if (error) throw fromPostgrestError(error);
   if (!data) throw new AppError("NOT_FOUND", "Source introuvable dans cette organisation.");
-  const source = data;
-  const { urlFeeds, connections } = await sourceContext(admin, [source.id]);
-  const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
+  const source2 = data;
+  const { urlFeeds, connections } = await sourceContext(admin, [source2.id]);
+  const kind = kindOf(source2, urlFeeds.has(source2.id), connections.has(source2.id));
   const patch = {};
   if (input.frequency) {
     if (input.frequency !== "manual" && (kind === "file_import" || kind === "manual")) throw new AppError("VALIDATION", "Une source aliment\xE9e par fichier ne se synchronise pas automatiquement : demandez au fournisseur un flux (URL CSV / XML) ou une API.");
     if (input.frequency !== "manual" && kind === "live_search") throw new AppError("VALIDATION", LIVE_SEARCH_MESSAGE);
-    if (input.frequency !== "manual" && kind === "public_web" && !source.automated_access_confirmed) throw new AppError("VALIDATION", "Acc\xE8s automatis\xE9 non attest\xE9 pour cette page publique.");
+    if (input.frequency !== "manual" && kind === "public_web" && !source2.automated_access_confirmed) throw new AppError("VALIDATION", "Acc\xE8s automatis\xE9 non attest\xE9 pour cette page publique.");
     patch.sync_frequency = input.frequency;
     patch.next_run_at = input.frequency === "manual" ? null : now.toISOString();
   }
-  if (input.enabled !== void 0) patch.status = input.enabled ? source.last_successful_sync_at ? "active" : "not_connected" : "paused";
+  if (input.enabled !== void 0) patch.status = input.enabled ? source2.last_successful_sync_at ? "active" : "not_connected" : "paused";
   if (Object.keys(patch).length) {
-    const { error: upErr } = await admin.from("supplier_sources").update(patch).eq("id", source.id).eq("organization_id", ctx.organization.id);
+    const { error: upErr } = await admin.from("supplier_sources").update(patch).eq("id", source2.id).eq("organization_id", ctx.organization.id);
     if (upErr) throw fromPostgrestError(upErr);
   }
-  const list = await listSourcesForOrg(ctx, admin);
-  const updated = list.find((s) => s.id === source.id);
+  const list2 = await listSourcesForOrg(ctx, admin);
+  const updated = list2.find((s) => s.id === source2.id);
   if (!updated) throw new AppError("NOT_FOUND", "Source introuvable apr\xE8s mise \xE0 jour.");
   return updated;
 }
@@ -27569,11 +28127,11 @@ async function evaluateAlert(admin, alert, orgCurrency, now) {
   const priceHistoryResult = offerIds.length ? await loadRecentPriceHistory(admin, alert.organization_id, offerIds, historySince, { perOffer: 60 }) : { rows: [], failedOfferIds: [], cappedOfferIds: [] };
   const priceByOffer = /* @__PURE__ */ new Map();
   for (const p of priceHistoryResult.rows) {
-    const list = priceByOffer.get(p.offer_id) ?? [];
-    list.push({ price: Number(p.original_price), recordedAt: p.recorded_at });
-    priceByOffer.set(p.offer_id, list);
+    const list2 = priceByOffer.get(p.offer_id) ?? [];
+    list2.push({ price: Number(p.original_price), recordedAt: p.recorded_at });
+    priceByOffer.set(p.offer_id, list2);
   }
-  for (const list of priceByOffer.values()) list.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+  for (const list2 of priceByOffer.values()) list2.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
   const stockByOffer = /* @__PURE__ */ new Map();
   let nextStock = 0;
   const stockWorker = async () => {
@@ -27619,11 +28177,11 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
   for (const a of alerts ?? []) byOrg.set(a.organization_id, [...byOrg.get(a.organization_id) ?? [], a]);
   let totalEvents = 0;
   let totalAlerts = 0;
-  for (const [orgId, list] of byOrg) {
+  for (const [orgId, list2] of byOrg) {
     const run = await startSyncRun(admin, { organizationId: orgId, sourceKind: "sourcing_alerts", provider: "sourcing_alerts", trigger: organizationId ? "manual" : "scheduled" });
     let events = 0;
     let errors = 0;
-    for (const a of list) {
+    for (const a of list2) {
       try {
         const r = await evaluateAlert(admin, a, a.organization?.default_currency ?? "EUR", now);
         events += r.created;
@@ -27634,7 +28192,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
       }
     }
     totalEvents += events;
-    await finishSyncRun(admin, run, { status: errors === 0 ? "success" : errors === list.length ? "failed" : "partial", recordsProcessed: list.length, errorCount: errors, stats: { events } });
+    await finishSyncRun(admin, run, { status: errors === 0 ? "success" : errors === list2.length ? "failed" : "partial", recordsProcessed: list2.length, errorCount: errors, stats: { events } });
   }
   return { organizations: byOrg.size, alerts: totalAlerts, events: totalEvents };
 }
@@ -27814,7 +28372,7 @@ async function runImportSelfTest() {
   if (orgErr || !org) return { ok: false, result: null, offers: 0, runStatus: null, error: orgErr?.message ?? "organisation non cr\xE9\xE9e", cleaned: true };
   const cleanup = async () => !(await admin.from("organizations").delete().eq("id", org.id)).error;
   try {
-    const header = "R\xE9f.;D\xE9signation article;Prix HT (\u20AC);Qt\xE9 dispo";
+    const header2 = "R\xE9f.;D\xE9signation article;Prix HT (\u20AC);Qt\xE9 dispo";
     const base = [
       ["TEST-IMPORT-1", "Article de contr\xF4le A (test serveur)", "10,50", "3"],
       ["TEST-IMPORT-2", "Article de contr\xF4le B (test serveur)", "1 249,00", "1"],
@@ -27824,7 +28382,7 @@ async function runImportSelfTest() {
       ["TEST-IMPORT-6", "Article de contr\xF4le F (test serveur)", "230,00", "1"]
     ];
     const toFile = (rows, name) => {
-      const csv = [header, ...rows.map((r) => r.join(";"))].join("\r\n");
+      const csv = [header2, ...rows.map((r) => r.join(";"))].join("\r\n");
       return { fileName: name, contentBase64: btoa(String.fromCharCode(...new TextEncoder().encode(csv))) };
     };
     const ctx = {
@@ -28070,15 +28628,15 @@ async function supplierOffers(ctx, supplierId, limit = 30) {
   ]);
   if (offersRes.error) throw fromPostgrestError(offersRes.error);
   if (countRes.error) throw fromPostgrestError(countRes.error);
-  const num3 = (v2) => v2 === null || v2 === void 0 || v2 === "" ? null : Number.isFinite(Number(v2)) ? Number(v2) : null;
+  const num4 = (v2) => v2 === null || v2 === void 0 || v2 === "" ? null : Number.isFinite(Number(v2)) ? Number(v2) : null;
   return {
     total: countRes.count ?? 0,
     offers: (offersRes.data ?? []).map((r) => ({
       id: r.id,
       title: r.title_original,
-      price: num3(r.original_price),
+      price: num4(r.original_price),
       currency: r.original_currency,
-      priceConverted: num3(r.normalized_price),
+      priceConverted: num4(r.normalized_price),
       taxType: r.tax_type === "ht" || r.tax_type === "ttc" ? r.tax_type : "unknown",
       stock: r.stock_status === "in_stock" || r.stock_status === "low" || r.stock_status === "out_of_stock" ? r.stock_status : "unknown",
       quantity: r.available_quantity,
@@ -28268,7 +28826,7 @@ async function createRemoteFeed(ctx, input, admin = createAdminSupabaseClient(),
   }
   const host = new URL(input.url).host;
   const attestation = `Accord du fournisseur attest\xE9 par l'utilisateur ${ctx.user.id} le ${now.toISOString()} pour la lecture automatis\xE9e du flux ${host}.`;
-  const { data: source, error: srcErr } = await ctx.supabase.from("supplier_sources").insert({
+  const { data: source2, error: srcErr } = await ctx.supabase.from("supplier_sources").insert({
     organization_id: orgId,
     supplier_id: supplierId,
     name: `Flux ${input.format.toUpperCase()} \u2014 ${supplierName}`.slice(0, 200),
@@ -28284,15 +28842,15 @@ async function createRemoteFeed(ctx, input, admin = createAdminSupabaseClient(),
     next_run_at: input.frequency === "manual" ? null : now.toISOString(),
     config: { kind: "remote_feed", mode: input.mode }
   }).select("id").single();
-  if (srcErr || !source) throw fromPostgrestError(srcErr ?? { message: "Source non cr\xE9\xE9e" });
+  if (srcErr || !source2) throw fromPostgrestError(srcErr ?? { message: "Source non cr\xE9\xE9e" });
   const options = { mode: input.mode, ...input.rootPath ? { root_path: input.rootPath } : {} };
-  const { data: feed, error: feedErr } = await ctx.supabase.from("supplier_feeds").insert({ organization_id: orgId, supplier_id: supplierId, source_id: source.id, type: "catalog", url: input.url, format: input.format, field_mapping: input.mapping, options, sync_frequency: input.frequency, status: "not_connected" }).select("id").single();
+  const { data: feed, error: feedErr } = await ctx.supabase.from("supplier_feeds").insert({ organization_id: orgId, supplier_id: supplierId, source_id: source2.id, type: "catalog", url: input.url, format: input.format, field_mapping: input.mapping, options, sync_frequency: input.frequency, status: "not_connected" }).select("id").single();
   if (feedErr || !feed) throw fromPostgrestError(feedErr ?? { message: "Flux non cr\xE9\xE9" });
   if (input.auth.kind !== "none") {
     const { error } = await admin.from("supplier_feed_secrets").upsert({ feed_id: feed.id, organization_id: orgId, credentials_enc: encryptSecret(JSON.stringify(input.auth)), key_version: 1, updated_at: now.toISOString() });
     if (error) throw new AppError("INTERNAL", "Identifiants du flux non enregistr\xE9s.");
   }
-  return { supplierId, sourceId: source.id, feedId: feed.id };
+  return { supplierId, sourceId: source2.id, feedId: feed.id };
 }
 
 // src/services/ai/llm.ts
@@ -28310,9 +28868,9 @@ var AI_NOT_CONFIGURED = "L'assistant IA n'est pas encore activ\xE9 sur le serveu
 function aiConfigured(env = process.env) {
   return Boolean(env.OPENAI_API_KEY && env.OPENAI_API_KEY.length > 20);
 }
-function toOpenAIMessages(system, messages) {
+function toOpenAIMessages(system, messages2) {
   const out = [{ role: "developer", content: system }];
-  for (const m of messages) {
+  for (const m of messages2) {
     if (m.role === "user") out.push({ role: "user", content: m.content });
     else if (m.role === "tool") out.push({ role: "tool", tool_call_id: m.toolCallId, content: m.content });
     else
@@ -28411,15 +28969,15 @@ function openAILlm(sdk2, model) {
   };
 }
 var sdk = null;
-var client = null;
+var client2 = null;
 function openAISdk() {
   if (!aiConfigured()) throw new AppError("NOT_CONFIGURED", AI_NOT_CONFIGURED);
   sdk ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: 55e3 });
   return sdk;
 }
 function llmClient() {
-  client ??= openAILlm(openAISdk(), aiModel());
-  return client;
+  client2 ??= openAILlm(openAISdk(), aiModel());
+  return client2;
 }
 function aiError(e) {
   if (e instanceof AppError) return e;
@@ -28485,10 +29043,10 @@ var TTS_RATE = { perUserPerHour: 60 };
 var recent = /* @__PURE__ */ new Map();
 function checkSpeechRate(userId, now = Date.now()) {
   const hourAgo = now - 36e5;
-  const list = (recent.get(userId) ?? []).filter((t) => t > hourAgo);
-  if (list.length >= TTS_RATE.perUserPerHour) throw new AppError("RATE_LIMITED", "Trop de lectures vocales demand\xE9es : r\xE9essayez dans quelques minutes.");
-  list.push(now);
-  recent.set(userId, list);
+  const list2 = (recent.get(userId) ?? []).filter((t) => t > hourAgo);
+  if (list2.length >= TTS_RATE.perUserPerHour) throw new AppError("RATE_LIMITED", "Trop de lectures vocales demand\xE9es : r\xE9essayez dans quelques minutes.");
+  list2.push(now);
+  recent.set(userId, list2);
   if (recent.size > 5e3) recent.clear();
 }
 async function synthesize(input, voice, deps, what) {
@@ -28756,10 +29314,10 @@ function since(ctx, days) {
 function round26(n) {
   return Math.round(n * 100) / 100;
 }
-function addMoney(map, currency, amount) {
-  if (amount === null || amount === void 0 || !Number.isFinite(amount)) return;
+function addMoney(map, currency, amount2) {
+  if (amount2 === null || amount2 === void 0 || !Number.isFinite(amount2)) return;
   const c = currency || "?";
-  map[c] = round26((map[c] ?? 0) + amount);
+  map[c] = round26((map[c] ?? 0) + amount2);
 }
 async function fetchAll(page2) {
   const rows = [];
@@ -28907,7 +29465,7 @@ async function stockSearch(ctx, raw) {
 var ordersInput = z40.object({ days: daysSchema, limit: limitSchema(30, 10), status: z40.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
 async function recentOrders(ctx, raw) {
   const input = ordersInput.parse(raw);
-  let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
+  let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, tax_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, external_sku, external_listing_id, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
   if (input.status) q = q.eq("status", input.status);
   const { data, error } = await q.order("placed_at", { ascending: false }).limit(input.limit);
   if (error) throw new Error(error.message);
@@ -28998,7 +29556,7 @@ var ASSISTANT_TOOLS = {
     label: "Commandes",
     definition: {
       name: "recent_orders",
-      description: "Derni\xE8res commandes (eBay et autres canaux) avec leurs lignes, montants, frais, statut et indication de d\xE9duction du stock.",
+      description: "Derni\xE8res commandes SYNCHRONIS\xC9ES (eBay et autres canaux) avec leurs lignes (SKU eBay, num\xE9ro d'objet), montants, taxes, frais, statut et indication de d\xE9duction du stock.",
       input_schema: obj({
         days: { type: "integer", description: "P\xE9riode en jours (d\xE9faut 30)." },
         limit: { type: "integer", description: "1 \xE0 30 (d\xE9faut 10)." },
@@ -29076,18 +29634,18 @@ function assistantSystemPrompt(org, today) {
     "Style : fran\xE7ais, direct et concis, adapt\xE9 \xE0 un \xE9cran de t\xE9l\xE9phone. R\xE9ponds d'abord \xE0 la question en une phrase, puis au besoin quelques lignes de d\xE9tail (listes avec \xAB \u2013 \xBB, sans tableau, sans titres, sans gras)."
   ].join("\n");
 }
-async function askAssistant(ctx, request, deps = {}) {
-  const client2 = deps.client ?? llmClient();
+async function askAssistant(ctx, request2, deps = {}) {
+  const client3 = deps.client ?? llmClient();
   const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeZone: "Europe/Paris" }).format(ctx.now ?? /* @__PURE__ */ new Date());
   const system = assistantSystemPrompt({ name: ctx.organizationName, currency: ctx.currency }, today);
-  const messages = request.messages.map((m) => ({ role: m.role, content: m.content }));
+  const messages2 = request2.messages.map((m) => ({ role: m.role, content: m.content }));
   const used = [];
   let model = "";
   const started = Date.now();
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (Date.now() - started > ASSISTANT_DEADLINE_MS) throw new AppError("EXTERNAL_API", "La r\xE9ponse prend trop de temps : posez une question plus pr\xE9cise.");
-      const response = await client2.complete({ system, tools: ASSISTANT_TOOL_DEFINITIONS, messages, maxTokens: 8e3, effort: "medium", cacheKey: "mon-stock-assistant" });
+      const response = await client3.complete({ system, tools: ASSISTANT_TOOL_DEFINITIONS, messages: messages2, maxTokens: 8e3, effort: "medium", cacheKey: "mon-stock-assistant" });
       model = response.model;
       if (response.finish === "refusal") return { answer: "Je ne peux pas r\xE9pondre \xE0 cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
       const text3 = response.text.trim();
@@ -29098,7 +29656,7 @@ async function askAssistant(ctx, request, deps = {}) {
 
 (r\xE9ponse interrompue : posez une question plus pr\xE9cise)` : text3, sources: used, model };
       }
-      messages.push({ role: "assistant", content: response.text, toolCalls: calls });
+      messages2.push({ role: "assistant", content: response.text, toolCalls: calls });
       const results = await Promise.all(
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
@@ -29107,7 +29665,7 @@ async function askAssistant(ctx, request, deps = {}) {
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
-      messages.push(...results);
+      messages2.push(...results);
     }
   } catch (e) {
     throw aiError(e);
@@ -29122,7 +29680,13 @@ init_logger();
 
 // src/services/ai/advisor-tools.ts
 init_empty();
-import { z as z45 } from "npm:zod@4.6.5";
+import { z as z46 } from "npm:zod@4.6.5";
+
+// src/services/ai/advisor-cards.ts
+function card(kind, title, rows, extra = {}) {
+  return { kind, title, subtitle: null, rows: rows.slice(0, 12), warnings: [], action: null, text: null, ...extra };
+}
+var row = (label, value, detail = null, tone = "neutral") => ({ label, value, detail, tone });
 
 // src/domain/tools/decimal.ts
 var abs = (x) => x < 0n ? -x : x;
@@ -29144,15 +29708,15 @@ function make(n, d) {
 var dec = (n, d = 1n) => make(BigInt(n), BigInt(d));
 var neg = (a) => ({ n: -a.n, d: a.d });
 var isZero = (a) => a.n === 0n;
-var cmp = (a, b) => {
+var cmp2 = (a, b) => {
   const x = a.n * b.d - b.n * a.d;
   return x < 0n ? -1 : x > 0n ? 1 : 0;
 };
 function roundScaled(a, places = 2) {
   const scale = 10n ** BigInt(places);
-  const num3 = abs(a.n) * scale;
-  let q = num3 / a.d;
-  if (num3 % a.d * 2n >= a.d) q += 1n;
+  const num4 = abs(a.n) * scale;
+  let q = num4 / a.d;
+  if (num4 % a.d * 2n >= a.d) q += 1n;
   return a.n < 0n ? -q : q;
 }
 function parseDecimal(input, opts = {}) {
@@ -29233,12 +29797,12 @@ function parseParcel(input) {
   const lengthCm = read("lengthCm", 600);
   const widthCm = read("widthCm", 600);
   const heightCm = read("heightCm", 600);
-  const iso = (v2) => v2.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(iso(input.fromCountry))) errors.fromCountry = "Code pays \xE0 2 lettres (ex. FR).";
-  if (!/^[A-Z]{2}$/.test(iso(input.toCountry))) errors.toCountry = "Code pays \xE0 2 lettres (ex. DE).";
+  const iso2 = (v2) => v2.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(iso2(input.fromCountry))) errors.fromCountry = "Code pays \xE0 2 lettres (ex. FR).";
+  if (!/^[A-Z]{2}$/.test(iso2(input.toCountry))) errors.toCountry = "Code pays \xE0 2 lettres (ex. DE).";
   if (Object.keys(errors).length > 0) return { parcel: null, errors };
   return {
-    parcel: { weightKg, lengthCm, widthCm, heightCm, fromCountry: iso(input.fromCountry), toCountry: iso(input.toCountry), fromPostcode: input.fromPostcode?.trim() || null, toPostcode: input.toPostcode?.trim() || null },
+    parcel: { weightKg, lengthCm, widthCm, heightCm, fromCountry: iso2(input.fromCountry), toCountry: iso2(input.toCountry), fromPostcode: input.fromPostcode?.trim() || null, toPostcode: input.toPostcode?.trim() || null },
     errors
   };
 }
@@ -29287,7 +29851,7 @@ function sortOptions(options, sort) {
   const speed = (o) => o.transitDaysMax ?? o.transitDaysMin ?? Number.POSITIVE_INFINITY;
   return [...options].sort((a, b) => {
     if (a.currency !== b.currency && sort === "price") return a.currency.localeCompare(b.currency);
-    const byPrice2 = cmp(a.price, b.price);
+    const byPrice2 = cmp2(a.price, b.price);
     const bySpeed = speed(a) - speed(b);
     if (sort === "price") return byPrice2 !== 0 ? byPrice2 : bySpeed;
     return bySpeed !== 0 ? bySpeed : byPrice2;
@@ -29631,8 +30195,8 @@ function mapSendcloudOptions(body, quotedAt) {
     for (const f of o.requirements?.fields ?? []) restrictions.push(REQUIREMENT_LABEL[f] ?? `Champ requis pour l'\xE9tiquette : ${f}.`);
     for (const b of quote.price?.breakdown ?? []) {
       if (b.type === "price_without_insurance") continue;
-      const amount = positiveAmount(b.price?.value);
-      if (amount) restrictions.push(`Dont ${b.label?.trim() || b.type || "suppl\xE9ment"} : ${amountLabel(amount, currency)}.`);
+      const amount2 = positiveAmount(b.price?.value);
+      if (amount2) restrictions.push(`Dont ${b.label?.trim() || b.type || "suppl\xE9ment"} : ${amountLabel(amount2, currency)}.`);
     }
     const transitDays = typeof quote.lead_time === "number" && quote.lead_time > 0 ? Math.ceil(quote.lead_time / 24) : null;
     const firstMile = o.functionalities?.first_mile ?? null;
@@ -29901,6 +30465,886 @@ async function decideAdvisorAction(ctx, actionId, decision, deps = {}) {
   }
 }
 
+// src/services/ai/advisor-ebay.ts
+init_empty();
+init_errors2();
+init_registry2();
+init_config();
+init_identity();
+import { z as z45 } from "npm:zod@4.6.5";
+
+// src/integrations/ebay/insights-common.ts
+function rec(v2) {
+  return v2 && typeof v2 === "object" && !Array.isArray(v2) ? v2 : null;
+}
+function list(v2) {
+  return Array.isArray(v2) ? v2 : v2 === void 0 || v2 === null ? [] : [v2];
+}
+function recs(v2) {
+  return list(v2).map(rec).filter((x) => x !== null);
+}
+function str3(v2) {
+  if (typeof v2 === "string") return v2.trim() === "" ? null : v2;
+  if (typeof v2 === "number" && Number.isFinite(v2)) return String(v2);
+  return null;
+}
+function num3(v2) {
+  if (typeof v2 === "number") return Number.isFinite(v2) ? v2 : null;
+  if (typeof v2 === "string" && v2.trim() !== "") {
+    const n = Number(v2);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+function bool(v2) {
+  if (typeof v2 === "boolean") return v2;
+  if (v2 === "true") return true;
+  if (v2 === "false") return false;
+  return null;
+}
+function iso(v2) {
+  const s = str3(v2);
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+function amount(v2) {
+  const r = rec(v2);
+  if (!r) return null;
+  const value = num3(r.value);
+  const currency = str3(r.currency);
+  if (value === null && !currency) return null;
+  return { value, currency: currency && currency.length === 3 ? currency.toUpperCase() : null };
+}
+function round27(n) {
+  return Math.round(n * 100) / 100;
+}
+function addTo(totals2, m, sign = 1) {
+  if (!m || m.value === null) return;
+  const c = m.currency ?? "?";
+  totals2[c] = round27((totals2[c] ?? 0) + sign * m.value);
+}
+function clip(s, max) {
+  if (s === null) return null;
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1)}\u2026` : t;
+}
+var EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+var PHONE = /(?<![\w-])(?:\+\d{1,3}[ .]?|0)\d(?:[ .]?\d){7,10}(?![\w-])/g;
+function maskPersonalData(s) {
+  if (s === null) return null;
+  return s.replace(EMAIL, "[e-mail masqu\xE9]").replace(PHONE, "[t\xE9l\xE9phone masqu\xE9]");
+}
+var ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'" };
+function htmlToText(html) {
+  if (html === null) return null;
+  const t = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|tr|li|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/&(#?\w+);/g, (m, e) => ENTITIES[e] ?? (e.startsWith("#") && /^#\d+$/.test(e) ? String.fromCharCode(Number(e.slice(1))) : m)).replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n+/g, "\n").trim();
+  return t === "" ? null : t;
+}
+function yyyymmdd(d) {
+  return d.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+// src/integrations/ebay/insights.ts
+init_rest();
+var DEFAULT_MARKETPLACE = "EBAY_FR";
+function taxList(v2) {
+  return recs(v2).map((t) => ({ type: str3(t.taxType), amount: amount(t.amount) }));
+}
+function collectedTaxList(v2) {
+  return recs(v2).map((t) => ({ type: str3(t.taxType), amount: amount(t.amount), method: str3(t.collectionMethod) }));
+}
+function parseLine(li) {
+  const instr = rec(li.lineItemFulfillmentInstructions);
+  const props = rec(li.properties);
+  const delivery = rec(li.deliveryCost);
+  return {
+    lineItemId: str3(li.lineItemId),
+    itemId: str3(li.legacyItemId),
+    sku: str3(li.sku),
+    title: str3(li.title),
+    quantity: num3(li.quantity),
+    variation: recs(li.variationAspects).map((a) => ({ name: str3(a.name) ?? "", value: str3(a.value) ?? "" })).filter((a) => a.name && a.value),
+    priceBeforeDiscounts: amount(li.lineItemCost),
+    total: amount(li.total),
+    shippingCost: amount(delivery?.shippingCost),
+    fulfillmentStatus: str3(li.lineItemFulfillmentStatus),
+    promotions: recs(li.appliedPromotions).map((p) => ({ id: str3(p.promotionId), description: clip(str3(p.description), 120), discount: amount(p.discountAmount) })),
+    taxes: taxList(li.taxes),
+    ebayCollectedTaxes: collectedTaxList(li.ebayCollectAndRemitTaxes),
+    refunds: recs(li.refunds).map((r) => ({ date: iso(r.refundDate), amount: amount(r.amount) })),
+    shipBy: iso(instr?.shipByDate),
+    estimatedDelivery: { min: iso(instr?.minEstimatedDeliveryDate), max: iso(instr?.maxEstimatedDeliveryDate) },
+    guaranteedDelivery: bool(instr?.guaranteedDelivery),
+    soldViaAdCampaign: bool(props?.soldViaAdCampaign)
+  };
+}
+function parseOrderDetails(raw) {
+  const o = rec(raw) ?? {};
+  const ps = rec(o.pricingSummary);
+  const pay = rec(o.paymentSummary);
+  const cancel = rec(o.cancelStatus);
+  const instr = recs(o.fulfillmentStartInstructions)[0] ?? null;
+  const step = rec(instr?.shippingStep);
+  const shipTo = rec(step?.shipTo);
+  const address = rec(shipTo?.contactAddress);
+  const buyer = rec(o.buyer);
+  return {
+    orderId: str3(o.orderId),
+    legacyOrderId: str3(o.legacyOrderId),
+    salesRecordReference: str3(o.salesRecordReference),
+    createdAt: iso(o.creationDate),
+    lastModifiedAt: iso(o.lastModifiedDate),
+    status: { payment: str3(o.orderPaymentStatus), fulfillment: str3(o.orderFulfillmentStatus), cancel: str3(cancel?.cancelState) },
+    buyer: {
+      username: str3(buyer?.username),
+      recipientName: str3(shipTo?.fullName),
+      city: str3(address?.city),
+      postalCode: str3(address?.postalCode),
+      country: str3(address?.countryCode)
+    },
+    pricing: {
+      subtotal: amount(ps?.priceSubtotal),
+      discount: amount(ps?.priceDiscount ?? ps?.priceDiscountSubtotal),
+      deliveryCost: amount(ps?.deliveryCost),
+      deliveryDiscount: amount(ps?.deliveryDiscount),
+      tax: amount(ps?.tax),
+      adjustment: amount(ps?.adjustment),
+      total: amount(ps?.total)
+    },
+    marketplaceFee: { total: amount(o.totalMarketplaceFee) ?? amount(ps?.fee), feeBasis: amount(o.totalFeeBasisAmount) },
+    totalDueSeller: amount(pay?.totalDueSeller),
+    ebayCollectedTaxes: collectedTaxList(o.ebayCollectAndRemitTax),
+    payments: recs(pay?.payments).map((p) => ({
+      method: str3(p.paymentMethod),
+      status: str3(p.paymentStatus),
+      date: iso(p.paymentDate),
+      amount: amount(p.amount),
+      holds: recs(p.paymentHolds).map((h) => ({ reason: str3(h.holdReason), state: str3(h.holdState), amount: amount(h.holdAmount), expectedReleaseDate: iso(h.expectedReleaseDate), releasedAt: iso(h.releaseDate) }))
+    })),
+    refunds: recs(pay?.refunds).map((r) => ({ date: iso(r.refundDate), amount: amount(r.amount), status: str3(r.refundStatus) })),
+    cancellation: {
+      state: str3(cancel?.cancelState),
+      cancelledAt: iso(cancel?.cancelledDate),
+      requests: recs(cancel?.cancelRequests).map((r) => ({ requestedAt: iso(r.cancelRequestedDate), completedAt: iso(r.cancelCompletedDate), initiator: str3(r.cancelInitiator), reason: str3(r.cancelReason), state: str3(r.cancelRequestState) }))
+    },
+    delivery: {
+      type: str3(instr?.fulfillmentInstructionsType),
+      carrierCode: str3(step?.shippingCarrierCode),
+      serviceCode: str3(step?.shippingServiceCode),
+      estimatedMin: iso(instr?.minEstimatedDeliveryDate),
+      estimatedMax: iso(instr?.maxEstimatedDeliveryDate),
+      ebaySupportedFulfillment: bool(instr?.ebaySupportedFulfillment)
+    },
+    buyerCheckoutNotes: clip(maskPersonalData(str3(o.buyerCheckoutNotes)), 300),
+    lineItems: recs(o.lineItems).map(parseLine)
+  };
+}
+function parseShippingFulfillments(raw) {
+  return recs(rec(raw)?.fulfillments).map((f) => ({
+    fulfillmentId: str3(f.fulfillmentId),
+    carrier: str3(f.shippingCarrierCode),
+    trackingNumber: str3(f.shipmentTrackingNumber),
+    service: str3(f.shippingServiceCode),
+    shippedAt: iso(f.shippedDate),
+    lineItems: recs(f.lineItems).map((l) => ({ lineItemId: str3(l.lineItemId), quantity: num3(l.quantity) }))
+  }));
+}
+var EBAY_ORDER_ID = /^[0-9A-Za-z!-]{5,64}$/;
+async function fetchOrderDetails(config, auth, orderId) {
+  const json2 = await ebayRestGet(auth, `${config.apiBase}/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}?fieldGroups=TAX_BREAKDOWN`, "fulfillment:getOrder");
+  return parseOrderDetails(json2);
+}
+async function fetchShippingFulfillments(config, auth, orderId) {
+  const json2 = await ebayRestGet(auth, `${config.apiBase}/sell/fulfillment/v1/order/${encodeURIComponent(orderId)}/shipping_fulfillment`, "fulfillment:getShippingFulfillments");
+  return parseShippingFulfillments(json2);
+}
+function parseLiveOrder(raw) {
+  const o = rec(raw) ?? {};
+  const ps = rec(o.pricingSummary);
+  const instr = recs(o.fulfillmentStartInstructions)[0] ?? null;
+  const shipTo = rec(rec(instr?.shippingStep)?.shipTo);
+  const lines = recs(o.lineItems);
+  const shipBy = lines.map((l) => iso(rec(l.lineItemFulfillmentInstructions)?.shipByDate)).filter((d) => d !== null).sort()[0] ?? null;
+  return {
+    orderId: str3(o.orderId),
+    legacyOrderId: str3(o.legacyOrderId),
+    createdAt: iso(o.creationDate),
+    payment: str3(o.orderPaymentStatus),
+    fulfillment: str3(o.orderFulfillmentStatus),
+    cancel: str3(rec(o.cancelStatus)?.cancelState),
+    buyer: str3(rec(o.buyer)?.username),
+    country: str3(rec(shipTo?.contactAddress)?.countryCode),
+    total: amount(ps?.total),
+    marketplaceFee: amount(o.totalMarketplaceFee) ?? amount(ps?.fee),
+    shipBy,
+    items: lines.map((l) => ({ title: clip(str3(l.title), 90), sku: str3(l.sku), itemId: str3(l.legacyItemId), quantity: num3(l.quantity), total: amount(l.total) }))
+  };
+}
+function buildLiveOrdersUrl(config, params) {
+  const url = new URL(`${config.apiBase}/sell/fulfillment/v1/order`);
+  const filters = [`creationdate:[${params.since.toISOString()}..]`];
+  if (params.shipping === "not_shipped") filters.push("orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}");
+  if (params.shipping === "shipped") filters.push("orderfulfillmentstatus:{FULFILLED}");
+  url.searchParams.set("filter", filters.join(","));
+  url.searchParams.set("limit", String(params.limit));
+  url.searchParams.set("offset", String(params.offset));
+  return url.toString();
+}
+async function fetchLiveOrders(config, auth, params) {
+  const orders = [];
+  let total = null;
+  for (let offset = 0; offset < params.maxOrders; ) {
+    const limit = Math.min(200, params.maxOrders - offset);
+    const json2 = rec(await ebayRestGet(auth, buildLiveOrdersUrl(config, { since: params.since, shipping: params.shipping, limit, offset }), "fulfillment:getOrders"));
+    total = num3(json2?.total);
+    const page2 = recs(json2?.orders);
+    orders.push(...page2.map(parseLiveOrder));
+    if (!str3(json2?.next) || page2.length === 0) return { orders, total, truncated: false };
+    offset += page2.length;
+  }
+  return { orders, total, truncated: total !== null && total > orders.length };
+}
+function parsePrivilege(raw) {
+  const r = rec(raw);
+  const lim = rec(r?.sellingLimit);
+  return { sellerRegistrationCompleted: bool(r?.sellerRegistrationCompleted), sellingLimit: { amount: amount(lim?.amount), quantity: num3(lim?.quantity) } };
+}
+function parseOptedInPrograms(raw) {
+  return recs(rec(raw)?.programs).map((p) => str3(p.programType)).filter((x) => x !== null);
+}
+function parseSubscriptions(raw) {
+  return recs(rec(raw)?.subscriptions).map((s) => {
+    const term = rec(s.term);
+    return { marketplaceId: str3(s.marketplaceId), level: str3(s.subscriptionLevel), type: str3(s.subscriptionType), term: term ? [str3(term.value), str3(term.unit)].filter(Boolean).join(" ") || null : null };
+  });
+}
+function duration(v2) {
+  const d = rec(v2);
+  if (!d) return null;
+  return [str3(d.value), str3(d.unit)].filter(Boolean).join(" ") || null;
+}
+function parseFulfillmentPolicies(raw) {
+  return recs(rec(raw)?.fulfillmentPolicies).map((p) => {
+    const options = recs(p.shippingOptions);
+    const services = (type) => options.filter((o) => str3(o.optionType) === type).flatMap((o) => recs(o.shippingServices)).slice(0, 5).map((s) => ({ carrier: str3(s.shippingCarrierCode), service: str3(s.shippingServiceCode), cost: amount(s.shippingCost), free: bool(s.freeShipping) }));
+    return { id: str3(p.fulfillmentPolicyId), name: str3(p.name), handlingTime: duration(p.handlingTime), domestic: services("DOMESTIC"), international: services("INTERNATIONAL"), localPickup: bool(p.localPickup) };
+  });
+}
+function parseReturnPolicies(raw) {
+  return recs(rec(raw)?.returnPolicies).map((p) => {
+    const intl = rec(p.internationalOverride);
+    return {
+      id: str3(p.returnPolicyId),
+      name: str3(p.name),
+      returnsAccepted: bool(p.returnsAccepted),
+      period: duration(p.returnPeriod),
+      shippingCostPayer: str3(p.returnShippingCostPayer),
+      refundMethod: str3(p.refundMethod),
+      international: intl ? { returnsAccepted: bool(intl.returnsAccepted), period: duration(intl.returnPeriod), shippingCostPayer: str3(intl.returnShippingCostPayer) } : null
+    };
+  });
+}
+function parsePaymentPolicies(raw) {
+  return recs(rec(raw)?.paymentPolicies).map((p) => ({ id: str3(p.paymentPolicyId), name: str3(p.name), immediatePay: bool(p.immediatePay) }));
+}
+function parseLocations(raw) {
+  return recs(rec(raw)?.locations).map((l) => {
+    const address = rec(rec(l.location)?.address);
+    return { key: str3(l.merchantLocationKey), name: str3(l.name), status: str3(l.merchantLocationStatus), city: str3(address?.city), postalCode: str3(address?.postalCode), country: str3(address?.country) };
+  });
+}
+function accountUrls(config, marketplaceId) {
+  const m = encodeURIComponent(marketplaceId);
+  return {
+    privilege: `${config.apiBase}/sell/account/v1/privilege`,
+    programs: `${config.apiBase}/sell/account/v1/program/get_opted_in_programs`,
+    subscription: `${config.apiBase}/sell/account/v1/subscription`,
+    fulfillmentPolicies: `${config.apiBase}/sell/account/v1/fulfillment_policy?marketplace_id=${m}`,
+    returnPolicies: `${config.apiBase}/sell/account/v1/return_policy?marketplace_id=${m}`,
+    paymentPolicies: `${config.apiBase}/sell/account/v1/payment_policy?marketplace_id=${m}`,
+    locations: `${config.apiBase}/sell/inventory/v1/location?limit=100`
+  };
+}
+function parseTransaction(raw) {
+  const t = rec(raw) ?? {};
+  const lines = recs(t.orderLineItems).map((li) => ({ lineItemId: str3(li.lineItemId), feeBasis: amount(li.feeBasisAmount), fees: recs(li.marketplaceFees).map((f) => ({ type: str3(f.feeType), amount: amount(f.amount) })) }));
+  const fees = lines.flatMap((l) => l.fees);
+  return {
+    id: str3(t.transactionId),
+    type: str3(t.transactionType),
+    status: str3(t.transactionStatus),
+    date: iso(t.transactionDate),
+    bookingEntry: str3(t.bookingEntry),
+    amount: amount(t.amount),
+    orderId: str3(t.orderId),
+    buyer: str3(rec(t.buyer)?.username),
+    totalFee: amount(t.totalFeeAmount),
+    lines,
+    fees,
+    feeType: str3(t.feeType),
+    memo: clip(str3(t.transactionMemo), 160),
+    payoutId: str3(t.payoutId)
+  };
+}
+function summarizeTransactions(txs) {
+  const out = { transactions: txs.length, byType: {}, saleFeesByType: {}, nonSaleChargesByType: {}, totalSaleFees: {}, net: {} };
+  for (const t of txs) {
+    const type = t.type ?? "UNKNOWN";
+    const g = out.byType[type] ??= { count: 0, credits: {}, debits: {} };
+    g.count += 1;
+    const debit = t.bookingEntry === "DEBIT";
+    addTo(debit ? g.debits : g.credits, t.amount);
+    addTo(out.net, t.amount, debit ? -1 : 1);
+    if (type === "NON_SALE_CHARGE") addTo(out.nonSaleChargesByType[t.feeType ?? "AUTRE"] ??= {}, t.amount);
+    for (const f of t.fees) addTo(out.saleFeesByType[f.type ?? "AUTRE"] ??= {}, f.amount);
+    if (type === "SALE") addTo(out.totalSaleFees, t.totalFee);
+  }
+  return out;
+}
+function buildTransactionsUrl(config, params) {
+  const url = new URL(`${config.apizBase}/sell/finances/v1/transaction`);
+  const filters = [`transactionDate:[${params.from.toISOString()}..${params.to.toISOString()}]`];
+  if (params.orderId) filters.push(`orderId:{${params.orderId}}`);
+  url.searchParams.set("filter", filters.join(","));
+  url.searchParams.set("limit", String(params.limit));
+  url.searchParams.set("offset", String(params.offset));
+  return url.toString();
+}
+async function fetchTransactions(config, auth, params) {
+  const transactions = [];
+  let total = null;
+  for (let offset = 0; offset < params.maxTransactions; ) {
+    const limit = Math.min(200, params.maxTransactions - offset);
+    const json2 = rec(await ebayRestGet(auth, buildTransactionsUrl(config, { ...params, limit, offset }), "finances:getTransactions", { marketplaceId: params.marketplaceId }));
+    total = num3(json2?.total);
+    const page2 = recs(json2?.transactions);
+    transactions.push(...page2.map(parseTransaction));
+    if (!str3(json2?.next) || page2.length === 0) return { transactions, total, truncated: false };
+    offset += page2.length;
+  }
+  return { transactions, total, truncated: total !== null && total > transactions.length };
+}
+function parsePayouts(raw) {
+  return recs(rec(raw)?.payouts).map((p) => ({ id: str3(p.payoutId), status: str3(p.payoutStatus), date: iso(p.payoutDate), amount: amount(p.amount), transactionCount: num3(p.transactionCount), instrumentType: str3(rec(p.payoutInstrument)?.instrumentType) })).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+}
+function buildPayoutsUrl(config, params) {
+  const url = new URL(`${config.apizBase}/sell/finances/v1/payout`);
+  url.searchParams.set("filter", `payoutDate:[${params.from.toISOString()}..${params.to.toISOString()}]`);
+  url.searchParams.set("limit", String(params.limit));
+  return url.toString();
+}
+function parseFundsSummary(raw) {
+  const r = rec(raw);
+  return { available: amount(r?.availableFunds), processing: amount(r?.processingFunds), onHold: amount(r?.fundsOnHold), total: amount(r?.totalFunds) };
+}
+var TRAFFIC_METRICS = ["LISTING_IMPRESSION_TOTAL", "LISTING_VIEWS_TOTAL", "CLICK_THROUGH_RATE", "SALES_CONVERSION_RATE", "TRANSACTION"];
+function buildTrafficReportUrl(config, params) {
+  const url = new URL(`${config.apiBase}/sell/analytics/v1/traffic_report`);
+  const filters = [`marketplace_ids:{${params.marketplaceId}}`, `date_range:[${yyyymmdd(params.from)}..${yyyymmdd(params.to)}]`];
+  if (params.listingIds?.length) filters.push(`listing_ids:{${params.listingIds.join("|")}}`);
+  url.searchParams.set("dimension", params.dimension);
+  url.searchParams.set("filter", filters.join(","));
+  url.searchParams.set("metric", TRAFFIC_METRICS.join(","));
+  return url.toString();
+}
+function parseTrafficReport(raw) {
+  const r = rec(raw) ?? {};
+  const header2 = rec(r.header);
+  const metrics = recs(header2?.metrics).map((m) => str3(m.key) ?? "?");
+  return {
+    startDate: iso(r.startDate),
+    endDate: iso(r.endDate),
+    lastUpdated: iso(r.lastUpdatedDate),
+    metrics,
+    rows: recs(r.records).map((rowRaw) => {
+      const values = {};
+      recs(rowRaw.metricValues).forEach((v2, i) => {
+        values[metrics[i] ?? `metric_${i}`] = bool(v2.applicable) === false ? null : num3(v2.value);
+      });
+      return { key: str3(recs(rowRaw.dimensionValues)[0]?.value), values };
+    }),
+    warnings: recs(r.warnings).map((w2) => str3(w2.message) ?? str3(w2.longMessage)).filter((x) => x !== null)
+  };
+}
+function metricValue(v2) {
+  const r = rec(v2);
+  if (r) return { value: num3(r.value) ?? str3(r.value), numerator: num3(r.numerator), denominator: num3(r.denominator) };
+  return { value: num3(v2) ?? str3(v2), numerator: null, denominator: null };
+}
+function parseSellerStandards(raw) {
+  return recs(rec(raw)?.standardsProfiles).map((p) => {
+    const cycle = rec(p.cycle);
+    return {
+      program: str3(p.program),
+      cycle: str3(cycle?.cycleType),
+      evaluatedAt: iso(cycle?.evaluationDate) ?? str3(cycle?.evaluationMonth),
+      level: str3(p.standardsLevel),
+      defaultProgram: bool(p.defaultProgram),
+      evaluationReason: str3(p.evaluationReason),
+      metrics: recs(p.metrics).map((m) => {
+        const lookback = rec(m.lookback);
+        return {
+          key: str3(m.metricKey),
+          name: str3(m.name),
+          level: str3(m.level),
+          value: metricValue(m.value),
+          thresholdLower: m.thresholdLowerBound === void 0 ? null : metricValue(m.thresholdLowerBound),
+          thresholdUpper: m.thresholdUpperBound === void 0 ? null : metricValue(m.thresholdUpperBound),
+          lookback: lookback ? [str3(lookback.value), str3(lookback.unit)].filter(Boolean).join(" ") || null : null
+        };
+      })
+    };
+  });
+}
+function parseCustomerServiceMetric(type, raw) {
+  const r = rec(raw) ?? {};
+  const cycle = rec(r.evaluationCycle);
+  return {
+    type,
+    marketplaceId: str3(r.marketplaceId),
+    evaluation: { type: str3(cycle?.evaluationType), start: iso(cycle?.startDate), end: iso(cycle?.endDate) },
+    dimensions: recs(r.dimensionMetrics).slice(0, 10).map((d) => {
+      const dim = rec(d.dimension);
+      return {
+        name: str3(dim?.name) ?? str3(dim?.dimensionKey),
+        value: str3(dim?.value),
+        metrics: recs(d.metrics).map((m) => ({ key: str3(m.metricKey), value: metricValue(m.value).value, rating: str3(rec(m.benchmark)?.rating) }))
+      };
+    })
+  };
+}
+var CUSTOMER_SERVICE_METRIC_TYPES = ["ITEM_NOT_AS_DESCRIBED", "ITEM_NOT_RECEIVED"];
+function customerServiceMetricUrl(config, type, marketplaceId) {
+  return `${config.apiBase}/sell/analytics/v1/customer_service_metric/${encodeURIComponent(type)}/${encodeURIComponent(marketplaceId)}?evaluation_type=CURRENT`;
+}
+function parseCampaigns(raw) {
+  return recs(rec(raw)?.campaigns).map((c) => {
+    const funding = rec(c.fundingStrategy);
+    return {
+      id: str3(c.campaignId),
+      name: str3(c.campaignName),
+      status: str3(c.campaignStatus),
+      marketplaceId: str3(c.marketplaceId),
+      start: iso(c.startDate),
+      end: iso(c.endDate),
+      fundingModel: str3(funding?.fundingModel),
+      bidPercentage: num3(funding?.bidPercentage),
+      dailyBudget: amount(rec(rec(c.budget)?.daily)?.amount)
+    };
+  });
+}
+function parseAds(raw) {
+  return recs(rec(raw)?.ads).map((a) => ({ listingId: str3(a.listingId), bidPercentage: num3(a.bidPercentage), status: str3(a.adStatus) }));
+}
+function parsePromotions(raw) {
+  return recs(rec(raw)?.promotions).map((p) => ({
+    id: str3(p.promotionId),
+    name: str3(p.name),
+    type: str3(p.promotionType),
+    status: str3(p.promotionStatus),
+    start: iso(p.startDate),
+    end: iso(p.endDate),
+    priority: str3(p.priority),
+    description: clip(str3(p.description), 160)
+  }));
+}
+function marketingUrls(config, marketplaceId) {
+  return {
+    campaigns: `${config.apiBase}/sell/marketing/v1/ad_campaign?limit=50`,
+    ads: (campaignId) => `${config.apiBase}/sell/marketing/v1/ad_campaign/${encodeURIComponent(campaignId)}/ad?limit=100`,
+    promotions: `${config.apiBase}/sell/marketing/v1/promotion?marketplace_id=${encodeURIComponent(marketplaceId)}&limit=50`
+  };
+}
+async function restGet(auth, url, label, marketplaceId) {
+  return ebayRestGet(auth, url, label, marketplaceId ? { marketplaceId } : {});
+}
+
+// src/integrations/ebay/trading-insights.ts
+import { XMLParser as XMLParser7 } from "npm:fast-xml-parser@5.11.2";
+init_trading();
+var parser4 = new XMLParser7({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  textNodeName: "#text",
+  removeNSPrefix: true,
+  parseTagValue: false,
+  parseAttributeValue: false,
+  trimValues: true
+});
+function parseCall(xml, callName) {
+  const doc = node(parser4.parse(xml));
+  const response = node(doc?.[`${callName}Response`]);
+  const { warnings } = assertTradingAck(callName, response);
+  return { response: response ?? {}, warnings };
+}
+function xmlEscape2(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+function request(callName, inner) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<${callName}Request xmlns="${EBAY_TRADING_NS}">
+  <ErrorLanguage>fr_FR</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+${inner}
+</${callName}Request>`;
+}
+function flag(v2) {
+  const t = text(v2);
+  return t === "true" ? true : t === "false" ? false : null;
+}
+function amt(v2) {
+  const m = money2(v2);
+  return m.value === null && m.currency === null ? null : m;
+}
+function children(parent, key2) {
+  return arr(node(parent)?.[key2]).map(node).filter((x) => x !== null);
+}
+var EBAY_ITEM_ID = /^\d{9,19}$/;
+function buildGetItemRequest(itemId) {
+  return request(
+    "GetItem",
+    `  <ItemID>${xmlEscape2(itemId)}</ItemID>
+  <DetailLevel>ReturnAll</DetailLevel>
+  <IncludeWatchCount>true</IncludeWatchCount>
+  <IncludeItemSpecifics>true</IncludeItemSpecifics>`
+  );
+}
+function nameValues(container, max) {
+  const out = {};
+  for (const nv of children(container, "NameValueList").slice(0, max)) {
+    const name = text(nv.Name);
+    const value = arr(nv.Value).map(text).filter((x) => Boolean(x)).join(", ");
+    if (name && value) out[name] = clip(value, 80) ?? value;
+  }
+  return out;
+}
+function parseGetItemResponse(xml) {
+  const { response } = parseCall(xml, "GetItem");
+  const item = node(response.Item) ?? {};
+  const selling = node(item.SellingStatus);
+  const details = node(item.ListingDetails);
+  const bo = node(item.BestOfferDetails);
+  const promo = node(selling?.PromotionalSaleDetails);
+  const profiles = node(item.SellerProfiles);
+  const ret = node(item.ReturnPolicy);
+  const listed = int(item.Quantity);
+  const sold = int(selling?.QuantitySold);
+  return {
+    itemId: text(item.ItemID),
+    title: text(item.Title),
+    sku: text(item.SKU),
+    listingType: text(item.ListingType),
+    listingDuration: text(item.ListingDuration),
+    status: text(selling?.ListingStatus),
+    site: text(item.Site),
+    startTime: isoOrNull(details?.StartTime),
+    endTime: isoOrNull(details?.EndTime),
+    url: text(details?.ViewItemURL),
+    price: { current: amt(selling?.CurrentPrice), start: amt(item.StartPrice), buyItNow: amt(item.BuyItNowPrice), beforeMarkdown: amt(promo?.OriginalPrice), markdownEnds: isoOrNull(promo?.EndTime) },
+    quantity: { listed, sold, available: listed !== null ? Math.max(0, listed - (sold ?? 0)) : null },
+    watchCount: int(item.WatchCount),
+    hitCount: int(item.HitCount),
+    bidCount: int(selling?.BidCount),
+    bestOffer: { enabled: flag(bo?.BestOfferEnabled) ?? flag(item.BestOfferEnabled), offersReceived: int(bo?.BestOfferCount), autoAcceptPrice: amt(details?.BestOfferAutoAcceptPrice), minimumPrice: amt(details?.MinimumBestOfferPrice) },
+    condition: { id: text(item.ConditionID), name: text(item.ConditionDisplayName), description: clip(text(item.ConditionDescription), 300) },
+    category: { id: text(node(item.PrimaryCategory)?.CategoryID), name: text(node(item.PrimaryCategory)?.CategoryName) },
+    dispatchTimeMaxDays: int(item.DispatchTimeMax),
+    itemLocation: { city: text(item.Location), country: text(item.Country) },
+    businessPolicies: {
+      shipping: text(node(profiles?.SellerShippingProfile)?.ShippingProfileName),
+      returns: text(node(profiles?.SellerReturnProfile)?.ReturnProfileName),
+      payment: text(node(profiles?.SellerPaymentProfile)?.PaymentProfileName)
+    },
+    returns: { accepted: text(ret?.ReturnsAcceptedOption), within: text(ret?.ReturnsWithinOption), shippingPaidBy: text(ret?.ShippingCostPaidByOption) },
+    shipping: children(item.ShippingDetails, "ShippingServiceOptions").slice(0, 5).map((s) => ({ service: text(s.ShippingService), cost: amt(s.ShippingServiceCost), free: flag(s.FreeShipping) })),
+    itemSpecifics: nameValues(item.ItemSpecifics, 20),
+    variations: children(item.Variations, "Variation").slice(0, 30).map((v2) => ({ sku: text(v2.SKU), specifics: nameValues(v2.VariationSpecifics, 5), quantity: int(v2.Quantity), sold: int(node(v2.SellingStatus)?.QuantitySold), price: amt(v2.StartPrice) })),
+    pictures: arr(node(item.PictureDetails)?.PictureURL).length,
+    insertionFees: null
+  };
+}
+function buildGetBestOffersRequest(itemId) {
+  return request(
+    "GetBestOffers",
+    `  <ItemID>${xmlEscape2(itemId)}</ItemID>
+  <BestOfferStatus>All</BestOfferStatus>
+  <DetailLevel>ReturnAll</DetailLevel>`
+  );
+}
+function parseGetBestOffersResponse(xml) {
+  const { response } = parseCall(xml, "GetBestOffers");
+  return children(response.BestOfferArray, "BestOffer").map((b) => ({
+    id: text(b.BestOfferID),
+    status: text(b.Status),
+    price: amt(b.Price),
+    quantity: int(b.Quantity),
+    buyer: text(node(b.Buyer)?.UserID),
+    expiresAt: isoOrNull(b.ExpirationTime),
+    buyerMessage: clip(maskPersonalData(text(b.BuyerMessage)), 200)
+  }));
+}
+async function fetchItemDetails(config, auth, itemId) {
+  return parseGetItemResponse(await tradingCall(config, auth, "GetItem", buildGetItemRequest(itemId)));
+}
+async function fetchBestOffers(config, auth, itemId) {
+  return parseGetBestOffersResponse(await tradingCall(config, auth, "GetBestOffers", buildGetBestOffersRequest(itemId)));
+}
+var SOLD_UNSOLD_MAX_DAYS = 60;
+function buildSoldUnsoldRequest(params) {
+  const days = Math.max(1, Math.min(SOLD_UNSOLD_MAX_DAYS, Math.trunc(params.days)));
+  const pagination = `<Pagination><EntriesPerPage>${Math.max(1, Math.min(200, Math.trunc(params.entriesPerPage)))}</EntriesPerPage><PageNumber>${Math.max(1, Math.trunc(params.page ?? 1))}</PageNumber></Pagination>`;
+  return request(
+    "GetMyeBaySelling",
+    `  <DetailLevel>ReturnAll</DetailLevel>
+  <ActiveList><Include>false</Include></ActiveList>
+  <ScheduledList><Include>false</Include></ScheduledList>
+  <DeletedFromSoldList><Include>false</Include></DeletedFromSoldList>
+  <DeletedFromUnsoldList><Include>false</Include></DeletedFromUnsoldList>
+  <SellingSummary><Include>true</Include></SellingSummary>
+  <SoldList><Include>true</Include><DurationInDays>${days}</DurationInDays>${pagination}</SoldList>
+  <UnsoldList><Include>true</Include><DurationInDays>${days}</DurationInDays>${pagination}</UnsoldList>`
+  );
+}
+function soldEntry(t, orderId) {
+  const item = node(t.Item);
+  const qty = int(t.QuantityPurchased);
+  const unit = amt(t.TransactionPrice) ?? amt(node(item?.SellingStatus)?.CurrentPrice);
+  return {
+    orderId: orderId ?? text(node(t.ContainingOrder)?.OrderID),
+    orderLineItemId: text(t.OrderLineItemID),
+    itemId: text(item?.ItemID),
+    title: text(item?.Title),
+    sku: text(item?.SKU) ?? text(node(t.Variation)?.SKU),
+    quantity: qty,
+    unitPrice: unit,
+    total: amt(t.TotalTransactionPrice) ?? amt(t.TotalPrice),
+    soldAt: isoOrNull(t.CreatedDate),
+    paidAt: isoOrNull(t.PaidTime),
+    shippedAt: isoOrNull(t.ShippedTime),
+    buyer: text(node(t.Buyer)?.UserID),
+    feedbackReceived: text(node(t.FeedbackReceived)?.CommentType)
+  };
+}
+function parseSoldUnsoldResponse(xml) {
+  const { response, warnings } = parseCall(xml, "GetMyeBaySelling");
+  const summary = node(response.Summary);
+  const soldList = node(response.SoldList);
+  const unsoldList = node(response.UnsoldList);
+  const sold = [];
+  for (const ot of children(soldList?.OrderTransactionArray, "OrderTransaction")) {
+    const order = node(ot.Order);
+    if (order) {
+      const orderId = text(order.OrderID);
+      for (const t of children(order.TransactionArray, "Transaction")) sold.push(soldEntry(t, orderId));
+    }
+    const single = node(ot.Transaction);
+    if (single) sold.push(soldEntry(single, null));
+  }
+  const unsold = children(unsoldList?.ItemArray, "Item").map((i) => {
+    const details = node(i.ListingDetails);
+    const selling = node(i.SellingStatus);
+    return {
+      itemId: text(i.ItemID),
+      title: text(i.Title),
+      sku: text(i.SKU),
+      price: amt(selling?.CurrentPrice) ?? amt(i.BuyItNowPrice) ?? amt(i.StartPrice),
+      quantity: int(i.Quantity),
+      watchCount: int(i.WatchCount),
+      bidCount: int(selling?.BidCount),
+      startTime: isoOrNull(details?.StartTime),
+      endTime: isoOrNull(details?.EndTime),
+      listingType: text(i.ListingType)
+    };
+  });
+  return {
+    summary: {
+      totalSoldCount: int(summary?.TotalSoldCount),
+      totalSoldValue: amt(summary?.TotalSoldValue),
+      soldDurationInDays: int(summary?.SoldDurationInDays),
+      amountLimitRemaining: amt(summary?.AmountLimitRemaining),
+      quantityLimitRemaining: int(summary?.QuantityLimitRemaining),
+      activeAuctions: int(summary?.ActiveAuctionCount)
+    },
+    sold: { totalEntries: int(node(soldList?.PaginationResult)?.TotalNumberOfEntries), entries: sold.sort((a, b) => (b.soldAt ?? "").localeCompare(a.soldAt ?? "")) },
+    unsold: { totalEntries: int(node(unsoldList?.PaginationResult)?.TotalNumberOfEntries), entries: unsold.sort((a, b) => (b.endTime ?? "").localeCompare(a.endTime ?? "")) },
+    warnings
+  };
+}
+async function fetchSoldUnsold(config, auth, params) {
+  return parseSoldUnsoldResponse(await tradingCall(config, auth, "GetMyeBaySelling", buildSoldUnsoldRequest(params)));
+}
+function buildGetFeedbackRequest(params) {
+  const types = (params.commentTypes ?? []).map((t) => `  <CommentType>${t}</CommentType>`).join("\n");
+  return request(
+    "GetFeedback",
+    `  <DetailLevel>ReturnAll</DetailLevel>
+  <FeedbackType>FeedbackReceivedAsSeller</FeedbackType>${types ? `
+${types}` : ""}
+  <Pagination><EntriesPerPage>${Math.max(25, Math.min(200, params.entriesPerPage ?? 25))}</EntriesPerPage><PageNumber>1</PageNumber></Pagination>`
+  );
+}
+function periodCounts(container) {
+  const out = /* @__PURE__ */ new Map();
+  for (const p of children(container, "FeedbackPeriod")) {
+    const days = text(p.PeriodInDays);
+    if (days) out.set(days, int(p.Count));
+  }
+  return out;
+}
+function parseGetFeedbackResponse(xml) {
+  const { response } = parseCall(xml, "GetFeedback");
+  const summary = node(response.FeedbackSummary);
+  const pos = periodCounts(summary?.PositiveFeedbackPeriodArray);
+  const neu = periodCounts(summary?.NeutralFeedbackPeriodArray);
+  const neg2 = periodCounts(summary?.NegativeFeedbackPeriodArray);
+  const tot = periodCounts(summary?.TotalFeedbackPeriodArray);
+  const periods = {};
+  for (const days of /* @__PURE__ */ new Set([...pos.keys(), ...neu.keys(), ...neg2.keys(), ...tot.keys()])) {
+    periods[`${days}j`] = { positive: pos.get(days) ?? null, neutral: neu.get(days) ?? null, negative: neg2.get(days) ?? null, total: tot.get(days) ?? null };
+  }
+  const detailedRatings = children(summary?.SellerRatingSummaryArray, "AverageRatingSummary").flatMap(
+    (s) => children(s, "AverageRatingDetails").map((d) => {
+      const rating = text(d.Rating);
+      return { period: text(s.FeedbackSummaryPeriod), criterion: text(d.RatingDetail), rating: rating !== null && Number.isFinite(Number(rating)) ? Number(rating) : null, count: int(d.RatingCount) };
+    })
+  );
+  return {
+    score: int(response.FeedbackScore),
+    periods,
+    detailedRatings,
+    uniqueCounts: { positive: int(summary?.UniquePositiveFeedbackCount), neutral: int(summary?.UniqueNeutralFeedbackCount), negative: int(summary?.UniqueNegativeFeedbackCount) },
+    totalEntries: int(node(response.PaginationResult)?.TotalNumberOfEntries) ?? int(response.FeedbackDetailItemTotal),
+    entries: children(response.FeedbackDetailArray, "FeedbackDetail").map((f) => ({
+      type: text(f.CommentType),
+      comment: clip(maskPersonalData(text(f.CommentText)), 300),
+      at: isoOrNull(f.CommentTime),
+      buyer: text(f.CommentingUser),
+      buyerScore: int(f.CommentingUserScore),
+      itemId: text(f.ItemID),
+      itemTitle: text(f.ItemTitle),
+      itemPrice: amt(f.ItemPrice),
+      sellerResponse: clip(text(f.FeedbackResponse), 200)
+    }))
+  };
+}
+function buildGetUserRequest() {
+  return request("GetUser", "  <DetailLevel>ReturnAll</DetailLevel>");
+}
+function parseGetUserResponse(xml) {
+  const { response } = parseCall(xml, "GetUser");
+  const user = node(response.User) ?? {};
+  const seller = node(user.SellerInfo);
+  const pct3 = text(user.PositiveFeedbackPercent);
+  return {
+    userId: text(user.UserID),
+    feedbackScore: int(user.FeedbackScore),
+    positiveFeedbackPercent: pct3 !== null && Number.isFinite(Number(pct3)) ? Number(pct3) : null,
+    feedbackStar: text(user.FeedbackRatingStar),
+    registeredAt: isoOrNull(user.RegistrationDate),
+    site: text(user.Site),
+    status: text(user.Status),
+    topRatedSeller: flag(seller?.TopRatedSeller),
+    storeOwner: flag(seller?.StoreOwner),
+    storeUrl: text(seller?.StoreURL),
+    businessType: text(seller?.SellerBusinessType)
+  };
+}
+async function fetchFeedback(config, auth, commentTypes) {
+  return parseGetFeedbackResponse(await tradingCall(config, auth, "GetFeedback", buildGetFeedbackRequest({ commentTypes })));
+}
+async function fetchSellerProfile(config, auth) {
+  return parseGetUserResponse(await tradingCall(config, auth, "GetUser", buildGetUserRequest()));
+}
+var EBAY_INBOX_FOLDER_ID = "0";
+function buildMessagesSummaryRequest() {
+  return request("GetMyMessages", "  <DetailLevel>ReturnSummary</DetailLevel>");
+}
+function buildMessageHeadersRequest(params) {
+  return request(
+    "GetMyMessages",
+    `  <DetailLevel>ReturnHeaders</DetailLevel>
+  <FolderID>${EBAY_INBOX_FOLDER_ID}</FolderID>
+  <StartTime>${params.from.toISOString()}</StartTime>
+  <EndTime>${params.to.toISOString()}</EndTime>
+  <Pagination><EntriesPerPage>${Math.max(1, Math.min(200, params.entriesPerPage))}</EntriesPerPage><PageNumber>${Math.max(1, params.page)}</PageNumber></Pagination>`
+  );
+}
+var EBAY_MESSAGE_ID = /^\d{1,20}$/;
+function buildMessageBodyRequest(messageId) {
+  return request(
+    "GetMyMessages",
+    `  <DetailLevel>ReturnMessages</DetailLevel>
+  <MessageIDs><MessageID>${xmlEscape2(messageId)}</MessageID></MessageIDs>`
+  );
+}
+function parseMessagesSummaryResponse(xml) {
+  const { response } = parseCall(xml, "GetMyMessages");
+  const s = node(response.Summary);
+  return {
+    newMessages: int(s?.NewMessageCount),
+    totalMessages: int(s?.TotalMessageCount),
+    flagged: int(s?.FlaggedMessageCount),
+    newHighPriority: int(s?.NewHighPriorityCount),
+    folders: children(s, "FolderSummary").map((f) => ({ id: text(f.FolderID), name: text(f.FolderName), newMessages: int(f.NewMessageCount), total: int(f.TotalMessageCount) }))
+  };
+}
+function header(m, itemBase) {
+  const itemId = text(m.ItemID);
+  return {
+    messageId: text(m.MessageID),
+    sender: text(m.Sender),
+    subject: clip(maskPersonalData(text(m.Subject)), 160),
+    receivedAt: isoOrNull(m.ReceiveDate),
+    read: flag(m.Read),
+    replied: flag(m.Replied),
+    flagged: flag(m.Flagged),
+    highPriority: flag(m.HighPriority),
+    messageType: text(m.MessageType),
+    itemId,
+    itemTitle: text(m.ItemTitle),
+    itemUrl: itemId && /^\d+$/.test(itemId) ? `${itemBase}/itm/${itemId}` : null,
+    responseEnabled: flag(node(m.ResponseDetails)?.ResponseEnabled)
+  };
+}
+function parseMessageHeadersResponse(xml, itemBase = "https://www.ebay.fr") {
+  const { response } = parseCall(xml, "GetMyMessages");
+  const pagination = node(response.PaginationResult);
+  return {
+    headers: children(response.Messages, "Message").map((m) => header(m, itemBase)),
+    totalPages: int(pagination?.TotalNumberOfPages),
+    totalEntries: int(pagination?.TotalNumberOfEntries)
+  };
+}
+function parseMessageBodyResponse(xml, itemBase = "https://www.ebay.fr") {
+  const { response } = parseCall(xml, "GetMyMessages");
+  const m = children(response.Messages, "Message")[0];
+  if (!m) return null;
+  const raw = text(m.Content) ?? text(m.Text);
+  const body = maskPersonalData(htmlToText(raw));
+  return { ...header(m, itemBase), body: body && body.length > 3e3 ? `${body.slice(0, 2999)}\u2026` : body };
+}
+async function fetchMessagesSummary(config, auth) {
+  return parseMessagesSummaryResponse(await tradingCall(config, auth, "GetMyMessages", buildMessagesSummaryRequest()));
+}
+async function fetchMessageHeaders(config, auth, params) {
+  const headers = [];
+  let totalEntries = null;
+  for (let page2 = 1; page2 <= params.maxPages; page2++) {
+    const parsed = parseMessageHeadersResponse(await tradingCall(config, auth, "GetMyMessages", buildMessageHeadersRequest({ from: params.from, to: params.to, entriesPerPage: 100, page: page2 })), params.itemBase);
+    headers.push(...parsed.headers);
+    totalEntries = parsed.totalEntries;
+    if ((parsed.totalPages ?? 1) <= page2 || parsed.headers.length === 0) return { headers, totalEntries, truncated: false };
+  }
+  return { headers, totalEntries, truncated: totalEntries !== null && totalEntries > headers.length };
+}
+async function fetchMessageBody(config, auth, messageId, itemBase) {
+  return parseMessageBodyResponse(await tradingCall(config, auth, "GetMyMessages", buildMessageBodyRequest(messageId)), itemBase);
+}
+
+// src/services/ai/advisor-ebay.ts
+init_connection_store();
+
 // src/services/ai/advisor-metrics.ts
 function toCents(v2) {
   if (v2 === null || v2 === void 0 || v2 === "") return null;
@@ -29933,9 +31377,9 @@ function allocateFees(lines, orders) {
     let allocated = 0;
     ls.forEach((l, i) => {
       const share = known2 ? (amounts[i] ?? 0) / total : 1 / total;
-      const part = i === ls.length - 1 ? fee - allocated : Math.round(fee * share);
-      allocated += part;
-      out.set(l, part);
+      const part2 = i === ls.length - 1 ? fee - allocated : Math.round(fee * share);
+      allocated += part2;
+      out.set(l, part2);
     });
   }
   return out;
@@ -30042,33 +31486,33 @@ function parisDay(d) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: PARIS, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 function parisOffsetMinutes(d) {
-  const part = new Intl.DateTimeFormat("en-US", { timeZone: PARIS, timeZoneName: "shortOffset" }).formatToParts(d).find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
-  const m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(part);
+  const part2 = new Intl.DateTimeFormat("en-US", { timeZone: PARIS, timeZoneName: "shortOffset" }).formatToParts(d).find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
+  const m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(part2);
   if (!m) return 0;
   const sign = m[1] === "-" ? -1 : 1;
   return sign * (Number(m[2]) * 60 + Number(m[3] ?? 0));
 }
-function parisMidnight(day) {
-  const guess = /* @__PURE__ */ new Date(`${day}T00:00:00Z`);
+function parisMidnight(day2) {
+  const guess = /* @__PURE__ */ new Date(`${day2}T00:00:00Z`);
   const offset = parisOffsetMinutes(new Date(guess.getTime() - 12 * 36e5 + 24 * 36e5));
   return new Date(guess.getTime() - offset * 6e4);
 }
-function addDays(day, n) {
-  const d = /* @__PURE__ */ new Date(`${day}T12:00:00Z`);
+function addDays(day2, n) {
+  const d = /* @__PURE__ */ new Date(`${day2}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
-var frDay = (day) => day.split("-").reverse().join("/");
+var frDay = (day2) => day2.split("-").reverse().join("/");
 function periodRange(period, now) {
   const today = parisDay(now);
   const tomorrow = addDays(today, 1);
-  const iso = (day) => parisMidnight(day).toISOString();
+  const iso2 = (day2) => parisMidnight(day2).toISOString();
   const range = (fromDay, toDayExcl, label, prevFrom, prevTo, prevLabel) => ({
     period,
     label,
-    from: iso(fromDay),
-    to: iso(toDayExcl),
-    previous: { from: iso(prevFrom), to: iso(prevTo), label: prevLabel }
+    from: iso2(fromDay),
+    to: iso2(toDayExcl),
+    previous: { from: iso2(prevFrom), to: iso2(prevTo), label: prevLabel }
   });
   const weekday = ((/* @__PURE__ */ new Date(`${today}T12:00:00Z`)).getUTCDay() + 6) % 7;
   const monthStart = `${today.slice(0, 8)}01`;
@@ -30117,15 +31561,688 @@ function periodRange(period, now) {
   }
 }
 
-// src/services/ai/advisor-tools.ts
-var obj2 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
-var periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "P\xE9riode (calendrier de Paris). \xAB this_week \xBB = depuis lundi, \xAB this_month \xBB = depuis le 1er. D\xE9faut : 30d." };
-var periodSchema = z45.enum(ADVISOR_PERIODS).default("30d");
-var skuRef = z45.string().trim().min(1).max(64);
-function card(kind, title, rows, extra = {}) {
-  return { kind, title, subtitle: null, rows: rows.slice(0, 12), warnings: [], action: null, text: null, ...extra };
+// src/services/ai/advisor-ebay.ts
+var CACHE_TTL_MS2 = 6e4;
+var CACHE_MAX_ENTRIES = 300;
+var cache5 = /* @__PURE__ */ new Map();
+async function live(link, key2, load, ttlMs = CACHE_TTL_MS2) {
+  const k = `${link.connectionId}|${key2}`;
+  const hit = cache5.get(k);
+  if (hit && hit.expires > Date.now()) return { value: hit.value, readAt: hit.readAt, cached: true };
+  const value = await load();
+  const readAt = (/* @__PURE__ */ new Date()).toISOString();
+  if (cache5.size >= CACHE_MAX_ENTRIES) {
+    const oldest = cache5.keys().next().value;
+    if (oldest !== void 0) cache5.delete(oldest);
+  }
+  cache5.set(k, { expires: Date.now() + ttlMs, readAt, value });
+  return { value, readAt, cached: false };
 }
-var row = (label, value, detail = null, tone = "neutral") => ({ label, value, detail, tone });
+var EXTENDED_REQUIRED = "Donn\xE9e accessible uniquement avec l'analyse compl\xE8te eBay : reconnectez eBay avec l'analyse compl\xE8te dans R\xE9glages \u2192 Int\xE9grations (bouton \xAB Autoriser l'analyse compl\xE8te \xBB, r\xE9serv\xE9 aux administrateurs).";
+var RECONNECT = "Reconnectez eBay dans R\xE9glages \u2192 Int\xE9grations (administrateur).";
+function unavailable(reason, whatToDo = null) {
+  return { available: false, reason, whatToDo };
+}
+async function resolveEbayLink(ctx) {
+  const config = getEbayConnector().config();
+  if (!config) return unavailable("L'int\xE9gration eBay n'est pas configur\xE9e sur le serveur (cl\xE9s de l'application eBay absentes) : aucune lecture eBay possible.");
+  const { data, error } = await ctx.supabase.from("channel_connections").select("id, status, external_username, environment, scopes").eq("organization_id", ctx.organizationId).eq("provider", "ebay").neq("status", "disconnected").order("connected_at", { ascending: false, nullsFirst: false }).limit(5);
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  const usable = rows.find((c) => c.status === "connected") ?? rows.find((c) => c.status === "error");
+  if (!usable) {
+    if (rows.some((c) => c.status === "expired" || c.status === "pending")) return unavailable("L'autorisation eBay de cette organisation a expir\xE9 (ou n'a pas \xE9t\xE9 finalis\xE9e) : le compte ne peut pas \xEAtre consult\xE9.", RECONNECT);
+    return unavailable("Aucun compte eBay n'est connect\xE9 \xE0 cette organisation.", "Connectez eBay dans R\xE9glages \u2192 Int\xE9grations (administrateur).");
+  }
+  return {
+    connectionId: usable.id,
+    username: usable.external_username,
+    environment: usable.environment,
+    scopes: usable.scopes ?? [],
+    config,
+    auth: connectorAuthFor(usable.id),
+    itemBase: usable.environment === "sandbox" ? "https://www.sandbox.ebay.com" : "https://www.ebay.fr"
+  };
+}
+function isUnavailable(x) {
+  return "available" in x;
+}
+function ebayFailure(e) {
+  if (isConnectorError(e)) {
+    switch (e.code) {
+      case "AUTH_EXPIRED":
+        return e.httpStatus === 403 ? unavailable(`eBay refuse l'acc\xE8s \xE0 cette donn\xE9e (autorisation insuffisante pour ce compte ou cette API) : ${e.message.slice(0, 200)}`, RECONNECT) : unavailable("L'autorisation eBay a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9e : lecture impossible.", RECONNECT);
+      case "RATE_LIMITED":
+        return unavailable("Quota d'appels eBay atteint : r\xE9essayez dans quelques minutes.");
+      case "NOT_CONFIGURED":
+        return unavailable("L'int\xE9gration eBay n'est pas configur\xE9e correctement sur le serveur.");
+      case "INVALID_RESPONSE":
+        return unavailable("eBay a renvoy\xE9 une r\xE9ponse illisible : donn\xE9e non disponible pour le moment.");
+      default:
+        return unavailable(`eBay a refus\xE9 ou n'a pas pu traiter la demande${e.httpStatus ? ` (HTTP ${e.httpStatus})` : ""} : ${e.message.slice(0, 200)}`);
+    }
+  }
+  return unavailable(`Lecture eBay impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur inconnue"}`);
+}
+async function part(errors, label, load) {
+  try {
+    return await load();
+  } catch (e) {
+    errors.push(`${label} : ${ebayFailure(e).reason}`);
+    return null;
+  }
+}
+function withEbay(run, requiredScope) {
+  return async (ctx, input) => {
+    const link = await resolveEbayLink(ctx);
+    if (isUnavailable(link)) return { result: link, cards: [] };
+    if (requiredScope && !hasEbayScope(link.scopes, requiredScope)) {
+      return { result: unavailable(EXTENDED_REQUIRED, "R\xE9glages \u2192 Int\xE9grations \u2192 \xAB Autoriser l'analyse compl\xE8te \xBB."), cards: [] };
+    }
+    try {
+      return await run(ctx, link, input);
+    } catch (e) {
+      if (e instanceof z45.ZodError) throw e;
+      return { result: ebayFailure(e), cards: [] };
+    }
+  };
+}
+var obj2 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
+var marketplaceProp = { type: "string", description: "Marketplace eBay (ex. EBAY_FR, EBAY_DE, EBAY_GB). D\xE9faut : EBAY_FR." };
+var marketplaceSchema = z45.string().trim().toUpperCase().regex(/^EBAY_[A-Z]{2}(_[A-Z]{2,10})?$/, "Marketplace eBay invalide (ex. EBAY_FR).").default(DEFAULT_MARKETPLACE);
+function fm(m, fallbackCurrency) {
+  if (!m || m.value === null) return "\u2014";
+  return money7(toCents(m.value) ?? 0, m.currency ?? fallbackCurrency);
+}
+function fmTotals(t, fallbackCurrency) {
+  const entries = Object.entries(t);
+  if (!entries.length) return "\u2014";
+  return entries.map(([c, v2]) => money7(toCents(v2) ?? 0, c === "?" ? fallbackCurrency : c)).join(" + ");
+}
+var day = (iso2) => iso2 ? iso2.slice(0, 10).split("-").reverse().join("/") : "\u2014";
+var DAY_MS3 = 864e5;
+var PARIS2 = new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" });
+function readAtParis(readAt) {
+  return PARIS2.format(new Date(readAt));
+}
+function source(link, api, readAt, cached2) {
+  return { source: `eBay en direct \u2014 ${api}`, account: link.username, environment: link.environment, readAt, readAtParis: readAtParis(readAt), ...cached2 ? { fromShortCache: true } : {} };
+}
+function liveCard(kind, title, rows, readAt, extra = {}) {
+  return card(kind, title, rows, { subtitle: `eBay, lu le ${readAtParis(readAt)}`, ...extra });
+}
+var orderInput = z45.object({ order: z45.string().trim().min(3).max(64) });
+async function orderDetails(ctx, link, raw) {
+  const { order } = orderInput.parse(raw);
+  const ref = order.replace(/[^0-9A-Za-z!-]/g, "");
+  const { data } = await ctx.supabase.from("orders").select("external_order_id").eq("organization_id", ctx.organizationId).eq("provider", "ebay").or(`order_number.eq.${ref},external_order_id.eq.${ref}`).limit(1);
+  const orderId = data?.[0]?.external_order_id ?? ref;
+  if (!EBAY_ORDER_ID.test(orderId)) return { result: { found: false, order, note: "Num\xE9ro de commande eBay invalide (ex. 12-34567-89012)." }, cards: [] };
+  let details;
+  try {
+    details = await live(link, `order:${orderId}`, () => fetchOrderDetails(link.config, link.auth, orderId));
+  } catch (e) {
+    if (isConnectorError(e) && e.httpStatus === 404) return { result: { found: false, order, note: "eBay ne trouve pas cette commande sur le compte connect\xE9 (num\xE9ro erron\xE9, autre compte, ou commande de plus de 2 ans)." }, cards: [] };
+    throw e;
+  }
+  const errors = [];
+  const o = details.value;
+  const finances = hasEbayScope(link.scopes, EBAY_SCOPE.finances);
+  const [tracking, txs] = await Promise.all([
+    part(errors, "Suivis d'exp\xE9dition", () => live(link, `tracking:${orderId}`, () => fetchShippingFulfillments(link.config, link.auth, orderId))),
+    finances ? part(
+      errors,
+      "Frais par ligne (Finances)",
+      () => live(
+        link,
+        `order-fees:${orderId}`,
+        () => fetchTransactions(link.config, link.auth, { from: new Date((o.createdAt ? new Date(o.createdAt).getTime() : Date.now()) - DAY_MS3), to: /* @__PURE__ */ new Date(), orderId, marketplaceId: DEFAULT_MARKETPLACE, maxTransactions: 50 })
+      )
+    ) : Promise.resolve(null)
+  ]);
+  const feesByLine = /* @__PURE__ */ new Map();
+  for (const t of txs?.value.transactions ?? []) for (const l of t.lines) if (l.lineItemId) feesByLine.set(l.lineItemId, [...feesByLine.get(l.lineItemId) ?? [], ...l.fees]);
+  const inMonStock = Boolean(data?.[0]);
+  const result = {
+    ...source(link, "Sell Fulfillment getOrder", details.readAt, details.cached),
+    found: true,
+    inMonStock,
+    order: {
+      ...o,
+      lineItems: o.lineItems.map((l) => ({ ...l, marketplaceFees: l.lineItemId && finances ? feesByLine.get(l.lineItemId) ?? [] : null }))
+    },
+    shipments: tracking?.value ?? null,
+    financeTransactions: txs ? txs.value.transactions.map((t) => ({ type: t.type, status: t.status, date: t.date, bookingEntry: t.bookingEntry, amount: t.amount, totalFee: t.totalFee, payoutId: t.payoutId })) : null,
+    errors,
+    note: finances ? "Frais par ligne : Finances API (marketplaceFees). Donn\xE9es acheteur limit\xE9es au pseudo, nom, ville, code postal et pays." : `Frais par ligne non disponibles sans l'analyse compl\xE8te (seul le total des frais de la commande est connu). ${EXTENDED_REQUIRED} Donn\xE9es acheteur limit\xE9es au pseudo, nom, ville, code postal et pays.`
+  };
+  const c = ctx.currency;
+  const rows = [
+    row("Statut", [o.status.payment, o.status.fulfillment].filter(Boolean).join(" \xB7 ") || "\u2014", o.status.cancel && o.status.cancel !== "NONE_REQUESTED" ? `annulation : ${o.status.cancel}` : null, o.status.cancel === "CANCELED" ? "danger" : "neutral"),
+    row("Total", fm(o.pricing.total, c), `frais eBay ${fm(o.marketplaceFee.total, c)} \u2014 net vendeur ${fm(o.totalDueSeller, c)}`),
+    row("Acheteur", o.buyer.username ?? "\u2014", [o.buyer.city, o.buyer.postalCode, o.buyer.country].filter(Boolean).join(" ") || null),
+    ...o.lineItems.slice(0, 5).map((l) => row(l.title ?? l.itemId ?? "Article", `${l.quantity ?? "?"} \xD7 ${fm(l.total, c)}`, [l.fulfillmentStatus, l.shipBy ? `\xE0 exp\xE9dier avant le ${day(l.shipBy)}` : null].filter(Boolean).join(" \xB7 ") || null)),
+    ...(tracking?.value ?? []).slice(0, 3).map((t) => row(`Suivi ${t.carrier ?? ""}`.trim(), t.trackingNumber ?? "\u2014", t.shippedAt ? `exp\xE9di\xE9 le ${day(t.shippedAt)}` : null, "success")),
+    ...o.refunds.slice(0, 2).map((r) => row("Remboursement", fm(r.amount, c), `${r.status ?? ""} ${day(r.date)}`.trim(), "warning"))
+  ];
+  return { result, cards: [liveCard("list", `Commande eBay ${o.legacyOrderId ?? o.orderId ?? orderId}`, rows, details.readAt, { warnings: errors.slice(0, 3) })] };
+}
+var PAYMENT_STATUSES = ["PAID", "PENDING", "FAILED", "PARTIALLY_REFUNDED", "FULLY_REFUNDED"];
+var liveOrdersInput = z45.object({
+  days: z45.coerce.number().int().min(1).max(90).default(7),
+  payment: z45.enum(PAYMENT_STATUSES).optional(),
+  shipping: z45.enum(["all", "not_shipped", "shipped"]).default("all"),
+  limit: z45.coerce.number().int().min(1).max(30).default(15)
+});
+async function ordersLive(ctx, link, raw) {
+  const input = liveOrdersInput.parse(raw);
+  const since2 = new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime() - input.days * DAY_MS3);
+  since2.setUTCMinutes(0, 0, 0);
+  const res = await live(link, `orders:${since2.toISOString()}:${input.shipping}`, () => fetchLiveOrders(link.config, link.auth, { since: since2, shipping: input.shipping, maxOrders: 400 }));
+  const all = res.value.orders.filter((o) => !input.payment || o.payment === input.payment).sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  const ids = all.map((o) => o.orderId).filter((x) => Boolean(x));
+  const known2 = /* @__PURE__ */ new Set();
+  if (ids.length) {
+    const { data } = await ctx.supabase.from("orders").select("external_order_id").eq("organization_id", ctx.organizationId).eq("provider", "ebay").in("external_order_id", ids.slice(0, 400));
+    for (const r of data ?? []) known2.add(r.external_order_id);
+  }
+  const totals2 = {};
+  const fees = {};
+  for (const o of all) {
+    addTo(totals2, o.total);
+    addTo(fees, o.marketplaceFee);
+  }
+  const toShip = all.filter((o) => o.payment === "PAID" && o.fulfillment !== "FULFILLED" && o.cancel !== "CANCELED");
+  const result = {
+    ...source(link, "Sell Fulfillment getOrders", res.readAt, res.cached),
+    period: { days: input.days, since: since2.toISOString() },
+    filters: { payment: input.payment ?? "tous", shipping: input.shipping },
+    count: all.length,
+    totalsByCurrency: totals2,
+    marketplaceFeesByCurrency: fees,
+    paidAwaitingShipment: toShip.length,
+    notYetInMonStock: all.filter((o) => o.orderId && !known2.has(o.orderId)).length,
+    orders: all.slice(0, input.limit).map((o) => ({ ...o, inMonStock: o.orderId ? known2.has(o.orderId) : false })),
+    truncated: res.value.truncated,
+    note: "Lecture directe chez eBay (y compris les commandes pas encore synchronis\xE9es). Totaux = commandes lues, par devise, annulations comprises si elles ne sont pas filtr\xE9es."
+  };
+  const c = ctx.currency;
+  const rows = [
+    row("Commandes", String(all.length), `${input.days} derniers jours`),
+    row("Montant total", fmTotals(totals2, c), `frais eBay : ${fmTotals(fees, c)}`),
+    row("Pay\xE9es \xE0 exp\xE9dier", String(toShip.length), null, toShip.length ? "warning" : "success"),
+    ...all.slice(0, 6).map((o) => row(o.items[0]?.title ?? o.orderId ?? "Commande", fm(o.total, c), `${o.legacyOrderId ?? o.orderId ?? ""} \xB7 ${o.payment ?? "?"} \xB7 ${o.fulfillment ?? "?"}${o.orderId && !known2.has(o.orderId) ? " \xB7 pas encore synchronis\xE9e" : ""}`))
+  ];
+  return { result, cards: [liveCard("list", "Commandes eBay (en direct)", rows, res.readAt)] };
+}
+async function accountOverview(ctx, link, raw) {
+  const { marketplace } = z45.object({ marketplace: marketplaceSchema }).parse(raw);
+  const errors = [];
+  const u = accountUrls(link.config, marketplace);
+  const get = (key2, url, label) => live(link, `account:${key2}:${marketplace}`, () => restGet(link.auth, url, label, marketplace));
+  const [identity, privilege, programs, subscription, fulfillment, returns, payment, locations, seller, selling] = await Promise.all([
+    part(errors, "Identit\xE9", () => live(link, "identity", () => fetchEbayAccountInfo(link.config, link.auth))),
+    part(errors, "Limites de vente", () => get("privilege", u.privilege, "account:getPrivileges")),
+    part(errors, "Programmes", () => get("programs", u.programs, "account:getOptedInPrograms")),
+    part(errors, "Abonnement Boutique", () => get("subscription", u.subscription, "account:getSubscription")),
+    part(errors, "Politiques d'exp\xE9dition", () => get("fulfillment", u.fulfillmentPolicies, "account:getFulfillmentPolicies")),
+    part(errors, "Politiques de retour", () => get("returns", u.returnPolicies, "account:getReturnPolicies")),
+    part(errors, "Politiques de paiement", () => get("payment", u.paymentPolicies, "account:getPaymentPolicies")),
+    part(errors, "Emplacements", () => get("locations", u.locations, "inventory:getInventoryLocations")),
+    part(errors, "Profil vendeur (GetUser)", () => live(link, "trading:GetUser", () => fetchSellerProfile(link.config, link.auth))),
+    part(errors, "R\xE9sum\xE9 des ventes (GetMyeBaySelling)", () => live(link, "trading:summary30", () => fetchSoldUnsold(link.config, link.auth, { days: 30, entriesPerPage: 1 })))
+  ]);
+  const readAt = [identity, privilege, programs, subscription, fulfillment, returns, payment, locations, seller, selling].map((p) => p?.readAt).filter((x) => Boolean(x)).sort()[0] ?? (/* @__PURE__ */ new Date()).toISOString();
+  const lim = privilege ? parsePrivilege(privilege.value) : null;
+  const result = {
+    ...source(link, "Identity, Account, Inventory, Trading GetUser / GetMyeBaySelling", readAt, false),
+    marketplace,
+    identity: identity ? { username: identity.value.username, accountType: identity.value.accountType, registrationMarketplace: identity.value.registrationMarketplaceId } : null,
+    sellerProfile: seller?.value ?? null,
+    sellingLimits: lim,
+    remainingThisMonth: selling ? { amount: selling.value.summary.amountLimitRemaining, quantity: selling.value.summary.quantityLimitRemaining } : null,
+    soldLast30Days: selling ? { count: selling.value.summary.totalSoldCount, value: selling.value.summary.totalSoldValue } : null,
+    optedInPrograms: programs ? parseOptedInPrograms(programs.value) : null,
+    storeSubscriptions: subscription ? parseSubscriptions(subscription.value) : null,
+    policies: {
+      shipping: fulfillment ? parseFulfillmentPolicies(fulfillment.value) : null,
+      returns: returns ? parseReturnPolicies(returns.value) : null,
+      payment: payment ? parsePaymentPolicies(payment.value) : null
+    },
+    inventoryLocations: locations ? parseLocations(locations.value) : null,
+    extendedAnalysis: {
+      finances: hasEbayScope(link.scopes, EBAY_SCOPE.finances),
+      analytics: hasEbayScope(link.scopes, EBAY_SCOPE.analyticsReadonly),
+      marketing: hasEbayScope(link.scopes, EBAY_SCOPE.marketingReadonly)
+    },
+    errors,
+    note: "\xAB remainingThisMonth \xBB = limites de vente restantes renvoy\xE9es par GetMyeBaySelling (null si eBay ne les fournit pas pour ce compte)."
+  };
+  const c = ctx.currency;
+  const s = seller?.value;
+  const rows = [
+    row("Compte", identity?.value.username ?? link.username ?? "\u2014", [identity?.value.accountType, identity?.value.registrationMarketplaceId].filter(Boolean).join(" \xB7 ") || null),
+    ...s ? [row("\xC9valuations", s.feedbackScore === null ? "\u2014" : String(s.feedbackScore), s.positiveFeedbackPercent === null ? null : `${String(s.positiveFeedbackPercent).replace(".", ",")} % positives${s.topRatedSeller ? " \xB7 Top Fiabilit\xE9" : ""}`, "success")] : [],
+    ...lim ? [row("Limite de vente", fm(lim.sellingLimit.amount, c), lim.sellingLimit.quantity === null ? null : `${lim.sellingLimit.quantity} objets`)] : [],
+    ...selling ? [row("Restant ce mois-ci", fm(selling.value.summary.amountLimitRemaining, c), selling.value.summary.quantityLimitRemaining === null ? null : `${selling.value.summary.quantityLimitRemaining} objets`)] : [],
+    ...(result.policies.shipping ?? []).slice(0, 2).map((p) => row(`Exp\xE9dition : ${p.name ?? "\u2014"}`, p.handlingTime ?? "\u2014", p.domestic.map((d) => d.service).filter(Boolean).slice(0, 2).join(", ") || null)),
+    ...(result.policies.returns ?? []).slice(0, 2).map((p) => row(`Retours : ${p.name ?? "\u2014"}`, p.returnsAccepted === false ? "refus\xE9s" : p.period ?? "\u2014", p.shippingCostPayer ? `port retour pay\xE9 par ${p.shippingCostPayer === "SELLER" ? "le vendeur" : "l'acheteur"}` : null))
+  ];
+  return { result, cards: [liveCard("kpis", "Compte eBay", rows, readAt, { warnings: errors.slice(0, 3) })] };
+}
+var listingInput = z45.object({ itemId: z45.string().trim().max(32).optional(), query: z45.string().trim().max(80).optional() }).refine((v2) => Boolean(v2.itemId || v2.query), "Indiquez un num\xE9ro d'objet eBay (itemId) ou un mot du titre / SKU (query).");
+async function listingDetails(ctx, link, raw) {
+  const input = listingInput.parse(raw);
+  let itemId = input.itemId?.replace(/\D/g, "") ?? "";
+  if (!EBAY_ITEM_ID.test(itemId)) {
+    const q = (input.query ?? input.itemId ?? "").replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim();
+    if (!q) return { result: { found: false, note: "Num\xE9ro d'objet eBay invalide." }, cards: [] };
+    const { data, error } = await ctx.supabase.from("channel_listings").select("external_listing_id, title, external_sku, status").eq("organization_id", ctx.organizationId).eq("provider", "ebay").or(`title.ilike.%${q}%,external_sku.ilike.%${q}%`).order("last_synced_at", { ascending: false }).limit(6);
+    if (error) throw new Error(error.message);
+    const ids = [...new Set((data ?? []).map((l) => l.external_listing_id))];
+    if (ids.length !== 1) {
+      return { result: { found: false, query: q, candidates: (data ?? []).map((l) => ({ itemId: l.external_listing_id, title: l.title, sku: l.external_sku, status: l.status })), note: ids.length ? "Plusieurs annonces correspondent : demandez laquelle (ou rappelez l'outil avec son itemId)." : "Aucune annonce synchronis\xE9e ne correspond : demandez le num\xE9ro d'objet eBay." }, cards: [] };
+    }
+    itemId = ids[0];
+  }
+  const res = await live(link, `item:${itemId}`, () => fetchItemDetails(link.config, link.auth, itemId));
+  const item = res.value;
+  const errors = [];
+  const offers = (item.bestOffer.offersReceived ?? 0) > 0 ? await part(errors, "Offres re\xE7ues (GetBestOffers)", () => live(link, `offers:${itemId}`, () => fetchBestOffers(link.config, link.auth, itemId))) : null;
+  const result = {
+    ...source(link, "Trading GetItem", res.readAt, res.cached),
+    item,
+    bestOffersReceived: offers?.value ?? null,
+    errors,
+    note: "Frais d'insertion : non renvoy\xE9s par GetItem (null). hitCount = compteur de visites eBay s'il est activ\xE9, sinon null ; pour vues/impressions d\xE9taill\xE9es, voir ebay_traffic (analyse compl\xE8te)."
+  };
+  const c = ctx.currency;
+  const rows = [
+    row("Prix", fm(item.price.current, c), item.price.beforeMarkdown ? `avant promotion : ${fm(item.price.beforeMarkdown, c)}` : item.listingType),
+    row("Quantit\xE9s", `${item.quantity.available ?? "?"} dispo`, `${item.quantity.sold ?? 0} vendu(s) sur ${item.quantity.listed ?? "?"}`),
+    row("Observateurs", item.watchCount === null ? "\u2014" : String(item.watchCount), item.hitCount === null ? null : `${item.hitCount} visites`),
+    row("Offres", item.bestOffer.enabled ? `${item.bestOffer.offersReceived ?? 0} re\xE7ue(s)` : "d\xE9sactiv\xE9es", item.bestOffer.autoAcceptPrice ? `acceptation auto \u2265 ${fm(item.bestOffer.autoAcceptPrice, c)}` : null),
+    row("\xC9tat", item.condition.name ?? "\u2014", item.category.name),
+    row("Dates", `${day(item.startTime)} \u2192 ${day(item.endTime)}`, item.status)
+  ];
+  return { result, cards: [liveCard("list", item.title ?? `Annonce ${itemId}`, rows, res.readAt, { warnings: errors.slice(0, 2) })] };
+}
+var soldInput = z45.object({ days: z45.coerce.number().int().min(1).max(SOLD_UNSOLD_MAX_DAYS).default(30), limit: z45.coerce.number().int().min(1).max(30).default(15), show: z45.enum(["both", "sold", "unsold"]).default("both") });
+async function soldUnsold(ctx, link, raw) {
+  const input = soldInput.parse(raw);
+  const res = await live(link, `trading:soldunsold:${input.days}`, () => fetchSoldUnsold(link.config, link.auth, { days: input.days, entriesPerPage: 100 }));
+  const v2 = res.value;
+  const result = {
+    ...source(link, "Trading GetMyeBaySelling (SoldList / UnsoldList)", res.readAt, res.cached),
+    days: input.days,
+    summary: v2.summary,
+    sold: input.show === "unsold" ? void 0 : { totalEntries: v2.sold.totalEntries, entries: v2.sold.entries.slice(0, input.limit) },
+    unsold: input.show === "sold" ? void 0 : { totalEntries: v2.unsold.totalEntries, entries: v2.unsold.entries.slice(0, input.limit) },
+    warnings: v2.warnings,
+    note: `Vendus = transactions des ${input.days} derniers jours ; invendus = annonces termin\xE9es sans vente sur la m\xEAme p\xE9riode (eBay limite \xE0 ${SOLD_UNSOLD_MAX_DAYS} jours). Acheteur : pseudo uniquement.`
+  };
+  const c = ctx.currency;
+  const cards = [];
+  if (input.show !== "unsold") cards.push(liveCard("list", `Vendus (${input.days} j)`, v2.sold.entries.slice(0, 8).map((s) => row(s.title ?? s.itemId ?? "Objet", fm(s.total ?? s.unitPrice, c), `${s.quantity ?? "?"} u. \xB7 ${day(s.soldAt)}${s.shippedAt ? " \xB7 exp\xE9di\xE9" : s.paidAt ? " \xB7 pay\xE9, \xE0 exp\xE9dier" : ""}`, "success")), res.readAt, { subtitle: `${v2.sold.totalEntries ?? v2.sold.entries.length} vente(s) \u2014 eBay, lu le ${readAtParis(res.readAt)}` }));
+  if (input.show !== "sold") cards.push(liveCard("list", `Invendus (${input.days} j)`, v2.unsold.entries.slice(0, 8).map((u) => row(u.title ?? u.itemId ?? "Objet", fm(u.price, c), `fin le ${day(u.endTime)}${u.watchCount ? ` \xB7 ${u.watchCount} observateur(s)` : ""}`, "warning")), res.readAt, { subtitle: `${v2.unsold.totalEntries ?? v2.unsold.entries.length} annonce(s) termin\xE9e(s) sans vente \u2014 eBay, lu le ${readAtParis(res.readAt)}` }));
+  return { result, cards };
+}
+async function feedback(_ctx, link, raw) {
+  const { limit } = z45.object({ limit: z45.coerce.number().int().min(1).max(25).default(10) }).parse(raw);
+  const errors = [];
+  const [all, bad, profile] = await Promise.all([
+    live(link, "trading:feedback", () => fetchFeedback(link.config, link.auth)),
+    part(errors, "\xC9valuations n\xE9gatives / neutres", () => live(link, "trading:feedback:bad", () => fetchFeedback(link.config, link.auth, ["Negative", "Neutral"]))),
+    part(errors, "Profil (GetUser)", () => live(link, "trading:GetUser", () => fetchSellerProfile(link.config, link.auth)))
+  ]);
+  const f = all.value;
+  const result = {
+    ...source(link, "Trading GetFeedback / GetUser", all.readAt, all.cached),
+    score: f.score ?? profile?.value.feedbackScore ?? null,
+    positivePercent: profile?.value.positiveFeedbackPercent ?? null,
+    topRatedSeller: profile?.value.topRatedSeller ?? null,
+    periods: f.periods,
+    detailedRatings: f.detailedRatings,
+    recent: f.entries.slice(0, limit),
+    negativeAndNeutral: bad ? bad.value.entries.slice(0, limit) : null,
+    errors,
+    note: "positivePercent = valeur eBay (GetUser, 12 derniers mois). periods = nombres d'\xE9valuations re\xE7ues par p\xE9riode (30/180/365 jours) tels que renvoy\xE9s par eBay. Commentaires : coordonn\xE9es masqu\xE9es."
+  };
+  const p365 = f.periods["365j"];
+  const rows = [
+    row("Score", result.score === null ? "\u2014" : String(result.score), result.positivePercent === null ? null : `${String(result.positivePercent).replace(".", ",")} % positives`, "success"),
+    ...p365 ? [row("12 derniers mois", `${p365.positive ?? 0} / ${p365.neutral ?? 0} / ${p365.negative ?? 0}`, "positives / neutres / n\xE9gatives", (p365.negative ?? 0) > 0 ? "warning" : "success")] : [],
+    ...(bad?.value.entries ?? []).slice(0, 4).map((e) => row(`${e.type === "Negative" ? "N\xE9gative" : "Neutre"} \u2014 ${e.buyer ?? "?"}`, day(e.at), e.comment, e.type === "Negative" ? "danger" : "warning"))
+  ];
+  return { result, cards: [liveCard("list", "\xC9valuations eBay", rows, all.readAt, { warnings: errors.slice(0, 2) })] };
+}
+var messagesInput = z45.object({ days: z45.coerce.number().int().min(1).max(60).default(14), limit: z45.coerce.number().int().min(1).max(30).default(15), unreadOnly: z45.boolean().default(false) });
+async function messages(ctx, link, raw) {
+  const input = messagesInput.parse(raw);
+  const to = new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime());
+  to.setUTCSeconds(0, 0);
+  const from = new Date(to.getTime() - input.days * DAY_MS3);
+  const errors = [];
+  const [summary, headers] = await Promise.all([
+    part(errors, "R\xE9sum\xE9 de la messagerie", () => live(link, "trading:messages:summary", () => fetchMessagesSummary(link.config, link.auth))),
+    live(link, `trading:messages:${input.days}:${to.toISOString().slice(0, 15)}`, () => fetchMessageHeaders(link.config, link.auth, { from, to, maxPages: 3, itemBase: link.itemBase }))
+  ]);
+  const list2 = headers.value.headers.filter((h) => !input.unreadOnly || h.read === false).sort((a, b) => (b.receivedAt ?? "").localeCompare(a.receivedAt ?? ""));
+  const result = {
+    ...source(link, "Trading GetMyMessages (en-t\xEAtes uniquement)", headers.readAt, headers.cached),
+    period: { days: input.days, from: from.toISOString() },
+    inbox: summary?.value ?? null,
+    count: list2.length,
+    unread: headers.value.headers.filter((h) => h.read === false).length,
+    messages: list2.slice(0, input.limit),
+    truncated: headers.value.truncated,
+    errors,
+    note: "En-t\xEAtes seulement (exp\xE9diteur = pseudo, sujet, date, lu/non lu, objet concern\xE9). Le texte d'un message n'est lu qu'avec ebay_message, si l'utilisateur le demande explicitement."
+  };
+  const rows = list2.slice(0, 8).map((m) => row(m.subject ?? "(sans sujet)", m.read === false ? "non lu" : m.replied ? "r\xE9pondu" : "lu", `${m.sender ?? "?"} \xB7 ${day(m.receivedAt)}${m.itemTitle ? ` \xB7 ${m.itemTitle}` : ""}`, m.read === false ? "warning" : "neutral"));
+  return { result, cards: [liveCard("list", input.unreadOnly ? "Messages eBay non lus" : "Messages eBay", rows, headers.readAt, { warnings: errors.slice(0, 2) })] };
+}
+function questionAsksForMessageContent(question) {
+  if (!question) return false;
+  const words = question.toLowerCase().normalize("NFC").split(/[^\p{L}\p{N}-]+/u);
+  const triggers = /^(message|mail|e-?mail|courriel|écrit|ecrit|écrite|ecrite|dit|disent|contenu|lis|lire|lis-moi|texte|corps|demande|demandé|demandait|veut|voulait|réclame|réclamation|raconte|explique)$/u;
+  return words.some((w2) => triggers.test(w2));
+}
+async function messageBody(ctx, link, raw) {
+  const { messageId } = z45.object({ messageId: z45.string().trim().regex(EBAY_MESSAGE_ID, "Identifiant de message eBay invalide.") }).parse(raw);
+  if (!questionAsksForMessageContent(ctx.question)) {
+    return { result: { read: false, reason: "Le contenu d'un message n'est lu que si l'utilisateur le demande explicitement (\xAB que dit le message de\u2026 \xBB). Proposez-lui de le demander." }, cards: [] };
+  }
+  const res = await live(link, `trading:message:${messageId}`, () => fetchMessageBody(link.config, link.auth, messageId, link.itemBase));
+  if (!res.value) return { result: { ...source(link, "Trading GetMyMessages", res.readAt, res.cached), found: false, note: "Message introuvable sur le compte eBay connect\xE9." }, cards: [] };
+  const m = res.value;
+  return {
+    result: { ...source(link, "Trading GetMyMessages (ReturnMessages)", res.readAt, res.cached), found: true, message: m, note: "Coordonn\xE9es (e-mail, t\xE9l\xE9phone) masqu\xE9es. Lecture seule : aucune r\xE9ponse n'est envoy\xE9e." },
+    cards: [liveCard("draft", m.subject ?? "Message eBay", [row("De", m.sender ?? "?", day(m.receivedAt))], res.readAt, { text: m.body })]
+  };
+}
+var financesInput = z45.object({ days: z45.coerce.number().int().min(1).max(90).default(30), limit: z45.coerce.number().int().min(0).max(30).default(10), marketplace: marketplaceSchema });
+async function financesTool(ctx, link, raw) {
+  const input = financesInput.parse(raw);
+  const to = new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime());
+  to.setUTCMinutes(0, 0, 0);
+  const from = new Date(to.getTime() - input.days * DAY_MS3);
+  const errors = [];
+  const m = input.marketplace;
+  const [txs, payouts, funds] = await Promise.all([
+    live(link, `finances:tx:${input.days}:${to.toISOString()}:${m}`, () => fetchTransactions(link.config, link.auth, { from, to, marketplaceId: m, maxTransactions: 1e3 })),
+    part(errors, "Versements", () => live(link, `finances:payouts:${input.days}:${to.toISOString()}:${m}`, () => restGet(link.auth, buildPayoutsUrl(link.config, { from, to, limit: 50 }), "finances:getPayouts", m))),
+    part(errors, "Fonds (solde)", () => live(link, `finances:funds:${m}`, () => restGet(link.auth, `${link.config.apizBase}/sell/finances/v1/seller_funds_summary`, "finances:getSellerFundsSummary", m)))
+  ]);
+  const list2 = [...txs.value.transactions].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  const summary = summarizeTransactions(list2);
+  const payoutList = payouts ? parsePayouts(payouts.value) : null;
+  const result = {
+    ...source(link, "Sell Finances (transactions, versements, fonds)", txs.readAt, txs.cached),
+    period: { days: input.days, from: from.toISOString(), to: to.toISOString() },
+    marketplace: m,
+    funds: funds ? parseFundsSummary(funds.value) : null,
+    summary,
+    payouts: payoutList ? payoutList.slice(0, 10) : null,
+    recentTransactions: list2.slice(0, input.limit).map((t) => ({ type: t.type, date: t.date, bookingEntry: t.bookingEntry, amount: t.amount, orderId: t.orderId, totalFee: t.totalFee, feeType: t.feeType, status: t.status, memo: t.memo })),
+    truncated: txs.value.truncated,
+    errors,
+    note: "summary.byType : nombre et montants (cr\xE9dits / d\xE9bits) par type de transaction (SALE, REFUND, DISPUTE, NON_SALE_CHARGE = frais hors vente, SHIPPING_LABEL\u2026). saleFeesByType : frais eBay pr\xE9lev\xE9s sur les ventes, par type. net = cr\xE9dits \u2212 d\xE9bits des transactions lues. funds : solde disponible, en cours, bloqu\xE9."
+  };
+  const c = ctx.currency;
+  const sale = summary.byType.SALE;
+  const refund = summary.byType.REFUND;
+  const dispute = summary.byType.DISPUTE;
+  const rows = [
+    ...result.funds ? [row("Disponible", fm(result.funds.available, c), `en cours ${fm(result.funds.processing, c)} \xB7 bloqu\xE9 ${fm(result.funds.onHold, c)}`, "success")] : [],
+    row("Ventes", sale ? `${sale.count}` : "0", sale ? fmTotals(sale.credits, c) : null),
+    row("Frais de vente eBay", fmTotals(summary.totalSaleFees, c), Object.keys(summary.saleFeesByType).slice(0, 3).join(", ") || null, "warning"),
+    ...Object.keys(summary.nonSaleChargesByType).length ? [row("Frais hors vente", Object.entries(summary.nonSaleChargesByType).map(([k, v2]) => `${k} ${fmTotals(v2, c)}`).slice(0, 2).join(" ; "), null, "warning")] : [],
+    ...refund ? [row("Remboursements", String(refund.count), fmTotals(refund.debits, c), "warning")] : [],
+    ...dispute ? [row("Litiges", String(dispute.count), fmTotals({ ...dispute.debits }, c), "danger")] : [],
+    row("Net des transactions", fmTotals(summary.net, c), `${input.days} derniers jours`),
+    ...(payoutList ?? []).slice(0, 2).map((p) => row("Versement", fm(p.amount, c), `${p.status ?? ""} ${day(p.date)}`.trim()))
+  ];
+  return { result, cards: [liveCard("kpis", "Finances eBay", rows, txs.readAt, { warnings: errors.slice(0, 2) })] };
+}
+var TRAFFIC_SORT = { impressions: "LISTING_IMPRESSION_TOTAL", views: "LISTING_VIEWS_TOTAL", transactions: "TRANSACTION", ctr: "CLICK_THROUGH_RATE", conversion: "SALES_CONVERSION_RATE" };
+var trafficInput = z45.object({
+  days: z45.coerce.number().int().min(1).max(90).default(30),
+  dimension: z45.enum(["LISTING", "DAY"]).default("LISTING"),
+  sort: z45.enum(["impressions", "views", "transactions", "ctr", "conversion"]).default("views"),
+  limit: z45.coerce.number().int().min(1).max(30).default(15),
+  itemIds: z45.array(z45.string().regex(EBAY_ITEM_ID)).max(20).optional(),
+  marketplace: marketplaceSchema
+});
+async function traffic(ctx, link, raw) {
+  const input = trafficInput.parse(raw);
+  const to = new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime());
+  const from = new Date(to.getTime() - input.days * DAY_MS3);
+  const url = buildTrafficReportUrl(link.config, { dimension: input.dimension, marketplaceId: input.marketplace, from, to, listingIds: input.itemIds });
+  const res = await live(link, `traffic:${url}`, async () => parseTrafficReport(await restGet(link.auth, url, "analytics:getTrafficReport")));
+  const report2 = res.value;
+  const key2 = TRAFFIC_SORT[input.sort];
+  const rows = [...report2.rows].sort((a, b) => input.dimension === "DAY" ? (a.key ?? "").localeCompare(b.key ?? "") : (b.values[key2] ?? -1) - (a.values[key2] ?? -1));
+  const titles = /* @__PURE__ */ new Map();
+  if (input.dimension === "LISTING") {
+    const ids = rows.slice(0, input.limit).map((r) => r.key).filter((x) => Boolean(x));
+    if (ids.length) {
+      const { data } = await ctx.supabase.from("channel_listings").select("external_listing_id, title").eq("organization_id", ctx.organizationId).eq("provider", "ebay").in("external_listing_id", ids);
+      for (const l of data ?? []) titles.set(l.external_listing_id, l.title);
+    }
+  }
+  const totals2 = {};
+  for (const r of report2.rows) for (const k of ["LISTING_IMPRESSION_TOTAL", "LISTING_VIEWS_TOTAL", "TRANSACTION"]) if (r.values[k] !== null && r.values[k] !== void 0) totals2[k] = (totals2[k] ?? 0) + (r.values[k] ?? 0);
+  const shown = (input.dimension === "DAY" ? rows.slice(-input.limit) : rows.slice(0, input.limit)).map((r) => ({ day: input.dimension === "DAY" ? r.key : void 0, itemId: input.dimension === "LISTING" ? r.key : void 0, title: input.dimension === "LISTING" && r.key ? titles.get(r.key) ?? null : void 0, impressions: r.values.LISTING_IMPRESSION_TOTAL ?? null, views: r.values.LISTING_VIEWS_TOTAL ?? null, clickThroughRate: r.values.CLICK_THROUGH_RATE ?? null, salesConversionRate: r.values.SALES_CONVERSION_RATE ?? null, transactions: r.values.TRANSACTION ?? null }));
+  const result = {
+    ...source(link, "Sell Analytics getTrafficReport", res.readAt, res.cached),
+    period: { days: input.days, start: report2.startDate, end: report2.endDate, ebayDataUpdatedAt: report2.lastUpdated },
+    dimension: input.dimension,
+    sortedBy: input.sort,
+    rowsInReport: report2.rows.length,
+    totals: { impressions: totals2.LISTING_IMPRESSION_TOTAL ?? null, views: totals2.LISTING_VIEWS_TOTAL ?? null, transactions: totals2.TRANSACTION ?? null },
+    rows: shown,
+    warnings: report2.warnings,
+    note: "Taux de clic (CLICK_THROUGH_RATE) et conversion (SALES_CONVERSION_RATE) tels que renvoy\xE9s par eBay (pourcentages, \xE0 citer tels quels). Les donn\xE9es eBay ont environ un jour de d\xE9calage (ebayDataUpdatedAt)."
+  };
+  const cardRows = shown.slice(0, 8).map((r) => {
+    const label = input.dimension === "DAY" ? String(r.day ?? "\u2014") : String(r.title ?? r.itemId ?? "Annonce");
+    return row(label, `${r.views ?? "\u2014"} vues`, `${r.impressions ?? "\u2014"} impressions \xB7 clic ${r.clickThroughRate ?? "\u2014"} % \xB7 conversion ${r.salesConversionRate ?? "\u2014"} % \xB7 ${r.transactions ?? 0} vente(s)`);
+  });
+  return { result, cards: [liveCard("list", `Trafic des annonces (${input.days} j)`, cardRows, res.readAt)] };
+}
+async function sellerStandards(ctx, link, raw) {
+  const { marketplace } = z45.object({ marketplace: marketplaceSchema }).parse(raw);
+  const errors = [];
+  const [profiles, ...metrics] = await Promise.all([
+    live(link, "analytics:standards", async () => parseSellerStandards(await restGet(link.auth, `${link.config.apiBase}/sell/analytics/v1/seller_standards_profile`, "analytics:getSellerStandardsProfiles"))),
+    ...CUSTOMER_SERVICE_METRIC_TYPES.map((type) => part(errors, `Service client ${type}`, () => live(link, `analytics:csm:${type}:${marketplace}`, async () => parseCustomerServiceMetric(type, await restGet(link.auth, customerServiceMetricUrl(link.config, type, marketplace), "analytics:getCustomerServiceMetric")))))
+  ]);
+  const result = {
+    ...source(link, "Sell Analytics (seller_standards_profile, customer_service_metric)", profiles.readAt, profiles.cached),
+    standardsProfiles: profiles.value,
+    customerServiceMetrics: metrics.map((m) => m?.value ?? null).filter((m) => m !== null),
+    errors,
+    note: "level : TOP_RATED (Top Fiabilit\xE9), ABOVE_STANDARD (sup\xE9rieur aux exigences), BELOW_STANDARD (inf\xE9rieur). cycle CURRENT = \xE9valuation en vigueur, PROJECTED = projection. Valeurs des m\xE9triques telles que renvoy\xE9es par eBay."
+  };
+  const rows = profiles.value.slice(0, 4).map((p) => row(`${p.program ?? "Programme"} (${p.cycle ?? "?"})`, p.level ?? "\u2014", p.metrics.slice(0, 2).map((x) => `${x.name ?? x.key} : ${x.value.value ?? "\u2014"}`).join(" \xB7 ") || null, p.level === "BELOW_STANDARD" ? "danger" : p.level === "TOP_RATED" ? "success" : "neutral"));
+  return { result, cards: [liveCard("list", "Niveau vendeur eBay", rows, profiles.readAt, { warnings: errors.slice(0, 2) })] };
+}
+async function promotions(ctx, link, raw) {
+  const { marketplace } = z45.object({ marketplace: marketplaceSchema }).parse(raw);
+  const u = marketingUrls(link.config, marketplace);
+  const errors = [];
+  const [campaignsRes, promosRes] = await Promise.all([
+    part(errors, "Campagnes Promoted Listings", () => live(link, "marketing:campaigns", async () => parseCampaigns(await restGet(link.auth, u.campaigns, "marketing:getCampaigns")))),
+    part(errors, "Promotions", () => live(link, `marketing:promotions:${marketplace}`, async () => parsePromotions(await restGet(link.auth, u.promotions, "marketing:getPromotions", marketplace))))
+  ]);
+  if (!campaignsRes && !promosRes) return { result: unavailable(`Lecture Marketing impossible. ${errors.join(" ")}`), cards: [] };
+  const campaigns = campaignsRes?.value ?? [];
+  const running = campaigns.filter((c) => c.status === "RUNNING" && c.id).slice(0, 3);
+  const ads = await Promise.all(running.map((c) => part(errors, `Annonces de la campagne ${c.name ?? c.id}`, () => live(link, `marketing:ads:${c.id}`, async () => parseAds(await restGet(link.auth, u.ads(c.id), "marketing:getAds"))))));
+  const ids = [...new Set(ads.flatMap((a) => a?.value ?? []).map((a) => a.listingId).filter((x) => Boolean(x)))].slice(0, 200);
+  const titles = /* @__PURE__ */ new Map();
+  if (ids.length) {
+    const { data } = await ctx.supabase.from("channel_listings").select("external_listing_id, title").eq("organization_id", ctx.organizationId).eq("provider", "ebay").in("external_listing_id", ids);
+    for (const l of data ?? []) titles.set(l.external_listing_id, l.title);
+  }
+  const readAt = campaignsRes?.readAt ?? promosRes?.readAt ?? (/* @__PURE__ */ new Date()).toISOString();
+  const result = {
+    ...source(link, "Sell Marketing (campagnes, annonces sponsoris\xE9es, promotions)", readAt, false),
+    marketplace,
+    campaigns,
+    runningCampaignAds: running.map((c, i) => ({ campaignId: c.id, campaignName: c.name, ads: (ads[i]?.value ?? []).slice(0, 30).map((a) => ({ ...a, title: a.listingId ? titles.get(a.listingId) ?? null : null })), totalAdsRead: ads[i]?.value.length ?? null })),
+    promotions: promosRes?.value ?? null,
+    errors,
+    note: "Lecture seule : aucune campagne ni promotion n'est cr\xE9\xE9e ou modifi\xE9e. Les performances d\xE9taill\xE9es des campagnes (rapports publicitaires) ne sont pas lues (cr\xE9ation de rapport c\xF4t\xE9 eBay = \xE9criture)."
+  };
+  const rows = [
+    ...campaigns.slice(0, 5).map((c) => row(c.name ?? c.id ?? "Campagne", c.status ?? "\u2014", [c.fundingModel, c.bidPercentage !== null ? `taux ${String(c.bidPercentage).replace(".", ",")} %` : null, c.end ? `fin ${day(c.end)}` : null].filter(Boolean).join(" \xB7 ") || null, c.status === "RUNNING" ? "success" : "neutral")),
+    ...(promosRes?.value ?? []).slice(0, 5).map((p) => row(p.name ?? p.id ?? "Promotion", p.status ?? "\u2014", [p.type, p.end ? `fin ${day(p.end)}` : null].filter(Boolean).join(" \xB7 ") || null))
+  ];
+  return { result, cards: [liveCard("list", "Publicit\xE9 et promotions eBay", rows, readAt, { warnings: errors.slice(0, 2) })] };
+}
+var LIVE = "Lecture EN DIRECT chez eBay (lecture seule) ; r\xE9sultat dat\xE9 (readAt).";
+var EBAY_ADVISOR_TOOLS = {
+  ebay_order_details: {
+    label: "Commande eBay (en direct)",
+    category: "read",
+    definition: {
+      name: "ebay_order_details",
+      description: `${LIVE} D\xE9tail complet d'UNE commande eBay : statut de paiement et d'exp\xE9dition par ligne, prix, remises/promotions, port, taxes (dont taxes collect\xE9es par eBay), frais eBay (total ; par ligne si analyse compl\xE8te), net vendeur, paiements et blocages de fonds, remboursements, demandes d'annulation, date limite d'exp\xE9dition et livraison estim\xE9e, suivis (transporteur, num\xE9ro, date d'exp\xE9dition), acheteur (pseudo, nom, ville, code postal, pays). \xC0 utiliser pour toute question pr\xE9cise sur une commande.`,
+      input_schema: obj2({ order: { type: "string", description: "Num\xE9ro de commande eBay (ex. 12-34567-89012)." } }, ["order"])
+    },
+    run: withEbay(orderDetails)
+  },
+  ebay_orders_live: {
+    label: "Commandes eBay (en direct)",
+    category: "read",
+    definition: {
+      name: "ebay_orders_live",
+      description: `${LIVE} Commandes r\xE9centes directement chez eBay, y compris celles pas encore synchronis\xE9es dans MON STOCK : totaux et frais par devise, nombre de commandes pay\xE9es \xE0 exp\xE9dier, liste (statuts, acheteur, articles, date limite d'exp\xE9dition). Filtres : jours (\u2264 90), paiement, exp\xE9dition.`,
+      input_schema: obj2({
+        days: { type: "integer", description: "1 \xE0 90 (d\xE9faut 7)." },
+        payment: { type: "string", enum: [...PAYMENT_STATUSES] },
+        shipping: { type: "string", enum: ["all", "not_shipped", "shipped"] },
+        limit: { type: "integer", description: "Commandes d\xE9taill\xE9es : 1 \xE0 30 (d\xE9faut 15)." }
+      })
+    },
+    run: withEbay(ordersLive)
+  },
+  ebay_account_overview: {
+    label: "Compte eBay (en direct)",
+    category: "read",
+    definition: {
+      name: "ebay_account_overview",
+      description: `${LIVE} Vue d'ensemble du compte vendeur : pseudo, type de compte, score et % d'\xE9valuations positives, Top Fiabilit\xE9, limites de vente (montant/quantit\xE9) et restant ce mois-ci, ventes des 30 derniers jours, programmes, abonnement Boutique, politiques d'exp\xE9dition (d\xE9lai, services, co\xFBts), de retour (d\xE9lai, qui paie le retour) et de paiement, emplacements d'inventaire, et autorisations d'analyse compl\xE8te accord\xE9es.`,
+      input_schema: obj2({ marketplace: marketplaceProp })
+    },
+    run: withEbay(accountOverview)
+  },
+  ebay_listing_details: {
+    label: "Annonce eBay (en direct)",
+    category: "read",
+    definition: {
+      name: "ebay_listing_details",
+      description: `${LIVE} D\xE9tail d'UNE annonce (Trading GetItem) : prix actuel et avant promotion, quantit\xE9s mises en vente / vendues / disponibles, nombre d'observateurs, offres (activ\xE9es, re\xE7ues avec montant et statut, acceptation automatique), \xE9tat, cat\xE9gorie, dates de d\xE9but et de fin, d\xE9lai d'exp\xE9dition, politiques, caract\xE9ristiques, variations. Donne itemId (num\xE9ro d'objet) ou query (mot du titre ou SKU d'une annonce synchronis\xE9e).`,
+      input_schema: obj2({ itemId: { type: "string", description: "Num\xE9ro d'objet eBay." }, query: { type: "string", description: "Mot du titre ou SKU si le num\xE9ro est inconnu." } })
+    },
+    run: withEbay(listingDetails)
+  },
+  ebay_sold_unsold: {
+    label: "Vendus / invendus eBay (en direct)",
+    category: "read",
+    definition: {
+      name: "ebay_sold_unsold",
+      description: `${LIVE} Ce qui s'est vendu (transactions : objet, quantit\xE9, prix, date, pay\xE9/exp\xE9di\xE9, pseudo acheteur) et ce qui a expir\xE9 SANS vendre (annonces termin\xE9es : prix, observateurs, date de fin) sur les N derniers jours (\u2264 60), plus le total vendu. Pour \xAB qu'est-ce qui n'a pas vendu \xBB, \xAB mes derni\xE8res ventes eBay \xBB.`,
+      input_schema: obj2({ days: { type: "integer", description: "1 \xE0 60 (d\xE9faut 30)." }, limit: { type: "integer", description: "1 \xE0 30 (d\xE9faut 15)." }, show: { type: "string", enum: ["both", "sold", "unsold"] } })
+    },
+    run: withEbay(soldUnsold)
+  },
+  ebay_feedback: {
+    label: "\xC9valuations eBay (en direct)",
+    category: "read",
+    definition: {
+      name: "ebay_feedback",
+      description: `${LIVE} R\xE9putation : score, % positives, Top Fiabilit\xE9, nombre d'\xE9valuations positives/neutres/n\xE9gatives sur 1, 6 et 12 mois, notes d\xE9taill\xE9es, \xE9valuations r\xE9centes et derni\xE8res n\xE9gatives/neutres avec leur commentaire, l'objet et la r\xE9ponse du vendeur.`,
+      input_schema: obj2({ limit: { type: "integer", description: "1 \xE0 25 (d\xE9faut 10)." } })
+    },
+    run: withEbay(feedback)
+  },
+  ebay_messages: {
+    label: "Messages eBay (en direct)",
+    category: "read",
+    definition: {
+      name: "ebay_messages",
+      description: `${LIVE} Messagerie eBay : nombre de messages non lus, et EN-T\xCATES des messages re\xE7us (exp\xE9diteur, sujet, date, lu/non lu, r\xE9pondu, objet concern\xE9 avec lien). Ne lit PAS le texte des messages.`,
+      input_schema: obj2({ days: { type: "integer", description: "1 \xE0 60 (d\xE9faut 14)." }, limit: { type: "integer", description: "1 \xE0 30 (d\xE9faut 15)." }, unreadOnly: { type: "boolean" } })
+    },
+    run: withEbay(messages)
+  },
+  ebay_message: {
+    label: "Message eBay (contenu)",
+    category: "read",
+    definition: {
+      name: "ebay_message",
+      description: `${LIVE} Texte d'UN message eBay (identifiant obtenu avec ebay_messages). \xC0 appeler UNIQUEMENT si l'utilisateur demande explicitement dans sa question le contenu d'un message (\xAB que dit le message de\u2026 \xBB, \xAB lis-moi le message \xBB). Coordonn\xE9es masqu\xE9es.`,
+      input_schema: obj2({ messageId: { type: "string" } }, ["messageId"])
+    },
+    run: withEbay(messageBody)
+  },
+  ebay_finances: {
+    label: "Finances eBay (analyse compl\xE8te)",
+    category: "read",
+    definition: {
+      name: "ebay_finances",
+      description: `${LIVE} N\xC9CESSITE l'analyse compl\xE8te. Finances eBay sur une p\xE9riode (\u2264 90 j) : solde disponible / en cours / bloqu\xE9, transactions par type (ventes, remboursements, litiges, frais hors vente, \xE9tiquettes), frais eBay par type (frais de vente, publicit\xE9\u2026), net, derniers versements et transactions. Pour \xAB combien eBay m'a pris en frais \xBB, \xAB quand arrive mon prochain virement \xBB.`,
+      input_schema: obj2({ days: { type: "integer", description: "1 \xE0 90 (d\xE9faut 30)." }, limit: { type: "integer", description: "Transactions d\xE9taill\xE9es : 0 \xE0 30 (d\xE9faut 10)." }, marketplace: marketplaceProp })
+    },
+    run: withEbay(financesTool, EBAY_SCOPE.finances)
+  },
+  ebay_traffic: {
+    label: "Trafic eBay (analyse compl\xE8te)",
+    category: "read",
+    definition: {
+      name: "ebay_traffic",
+      description: `${LIVE} N\xC9CESSITE l'analyse compl\xE8te. Rapport de trafic eBay (\u2264 90 j) par annonce ou par jour : impressions, vues, taux de clic, taux de conversion, ventes. Tri par vues, impressions, ventes, clic ou conversion. Pour \xAB quelles annonces sont vues mais ne vendent pas \xBB.`,
+      input_schema: obj2({
+        days: { type: "integer", description: "1 \xE0 90 (d\xE9faut 30)." },
+        dimension: { type: "string", enum: ["LISTING", "DAY"] },
+        sort: { type: "string", enum: ["impressions", "views", "transactions", "ctr", "conversion"] },
+        limit: { type: "integer", description: "1 \xE0 30 (d\xE9faut 15)." },
+        itemIds: { type: "array", items: { type: "string" }, description: "Limiter \xE0 ces num\xE9ros d'objet (20 max)." },
+        marketplace: marketplaceProp
+      })
+    },
+    run: withEbay(traffic, EBAY_SCOPE.analyticsReadonly)
+  },
+  ebay_seller_standards: {
+    label: "Niveau vendeur eBay (analyse compl\xE8te)",
+    category: "read",
+    definition: {
+      name: "ebay_seller_standards",
+      description: `${LIVE} N\xC9CESSITE l'analyse compl\xE8te. Niveau vendeur (Top Fiabilit\xE9 / sup\xE9rieur / inf\xE9rieur aux exigences) actuel et projet\xE9, m\xE9triques (taux de d\xE9fauts, retards, litiges ferm\xE9s sans r\xE9solution\u2026) avec seuils, et m\xE9triques de service client (objet non re\xE7u, non conforme).`,
+      input_schema: obj2({ marketplace: marketplaceProp })
+    },
+    run: withEbay(sellerStandards, EBAY_SCOPE.analyticsReadonly)
+  },
+  ebay_promotions: {
+    label: "Publicit\xE9 eBay (analyse compl\xE8te)",
+    category: "read",
+    definition: {
+      name: "ebay_promotions",
+      description: `${LIVE} N\xC9CESSITE l'analyse compl\xE8te. Campagnes Promoted Listings (statut, mod\xE8le, taux, budget, dates, annonces sponsoris\xE9es et leur taux) et promotions (soldes, remises sur commande, coupons : statut et dates).`,
+      input_schema: obj2({ marketplace: marketplaceProp })
+    },
+    run: withEbay(promotions, EBAY_SCOPE.marketingReadonly)
+  }
+};
+
+// src/services/ai/advisor-tools.ts
+var obj3 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
+var periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "P\xE9riode (calendrier de Paris). \xAB this_week \xBB = depuis lundi, \xAB this_month \xBB = depuis le 1er. D\xE9faut : 30d." };
+var periodSchema = z46.enum(ADVISOR_PERIODS).default("30d");
+var skuRef = z46.string().trim().min(1).max(64);
 var units = (n) => `${n} u.`;
 var signedPct = (r) => r === null ? null : `${r >= 0 ? "+" : ""}${percent(r)}`;
 async function loadSales(ctx, from, to) {
@@ -30171,7 +32288,7 @@ async function cancelledInPeriod(ctx, from, to) {
   }
   return out;
 }
-var reportInput = z45.object({ period: periodSchema });
+var reportInput = z46.object({ period: periodSchema });
 async function businessReport(ctx, raw) {
   const { period } = reportInput.parse(raw);
   const range = periodRange(period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -30198,7 +32315,7 @@ async function businessReport(ctx, raw) {
   if (cancels.cancelled || cancels.refunded) rows.push(row("Annul\xE9es / rembours\xE9es", `${cancels.cancelled} / ${cancels.refunded}`, `rembours\xE9 : ${money7(cancels.refundedCents, c)}`, "warning"));
   return { result, cards: [card("kpis", "Bilan des ventes", rows, { subtitle: range.label, warnings: p.missing.slice(0, 4) })] };
 }
-var profitInput = z45.object({ period: periodSchema, sort: z45.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z45.coerce.number().int().min(1).max(20).default(8) });
+var profitInput = z46.object({ period: periodSchema, sort: z46.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z46.coerce.number().int().min(1).max(20).default(8) });
 async function productProfitability(ctx, raw) {
   const input = profitInput.parse(raw);
   const range = periodRange(input.period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -30221,7 +32338,7 @@ async function productProfitability(ctx, raw) {
   );
   return { result, cards: [card("list", "Rentabilit\xE9 par produit", rows, { subtitle: range.label, warnings: unknown ? [`${unknown} produit(s) sans b\xE9n\xE9fice calculable (co\xFBt d'achat ou frais manquants).`] : [] })] };
 }
-var stockRiskInput = z45.object({ kind: z45.enum(["rupture", "dormant", "all"]).default("all"), limit: z45.coerce.number().int().min(1).max(20).default(8) });
+var stockRiskInput = z46.object({ kind: z46.enum(["rupture", "dormant", "all"]).default("all"), limit: z46.coerce.number().int().min(1).max(20).default(8) });
 async function stockRisks(ctx, raw) {
   const input = stockRiskInput.parse(raw);
   const bundle = await loadStockViews(ctx.org);
@@ -30248,7 +32365,7 @@ async function stockRisks(ctx, raw) {
   return { result, cards };
 }
 async function restockPlan(ctx, raw) {
-  const { limit } = z45.object({ limit: z45.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
+  const { limit } = z46.object({ limit: z46.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
   const drafts = (await computeRecommendations(ctx.org)).filter((d) => d.result.needed).slice(0, limit);
   const result = {
     proposals: drafts.map((d) => ({ product: d.label, sku: d.code, currentStock: d.currentStock, onOrder: d.onOrder, recommendedQuantity: d.result.recommendedQuantity, explanation: d.result.explanation, supplier: d.supplier?.name ?? null, unitPrice: d.unitPrice, currency: d.currency, warnings: d.result.warnings })),
@@ -30260,45 +32377,45 @@ async function restockPlan(ctx, raw) {
   };
 }
 async function orderLookup(ctx, raw) {
-  const { orderNumber } = z45.object({ orderNumber: z45.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
-  const { data, error } = await ctx.supabase.from("orders").select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, sku_id)").eq("organization_id", ctx.organizationId).or(`order_number.eq.${orderNumber},external_order_id.eq.${orderNumber}`).limit(2);
+  const { orderNumber } = z46.object({ orderNumber: z46.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
+  const { data, error } = await ctx.supabase.from("orders").select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, tax_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, total, external_sku, external_listing_id, sku_id)").eq("organization_id", ctx.organizationId).or(`order_number.eq.${orderNumber},external_order_id.eq.${orderNumber}`).limit(2);
   if (error) throw new Error(error.message);
   const order = data?.[0];
   if (!order) return { result: { found: false, orderNumber, note: "Aucune commande avec ce num\xE9ro dans MON STOCK (v\xE9rifiez le num\xE9ro ou la synchronisation eBay)." }, cards: [] };
   const { data: parcels } = await ctx.supabase.from("tracked_parcels").select("tracking_number, carrier_code, status, estimated_delivery, delivered_at, last_checked_at").eq("organization_id", ctx.organizationId).eq("order_id", order.id).limit(5);
   const c = order.currency;
   const fmt2 = (v2) => v2 === null ? "\u2014" : money7(toCents(v2) ?? 0, c);
-  const result = { found: true, order: { ...order, id: void 0 }, parcels: parcels ?? [], note: "Seul le pseudo de l'acheteur est stock\xE9 (pas d'adresse)." };
+  const result = { found: true, order: { ...order, id: void 0 }, parcels: parcels ?? [], note: "Donn\xE9es synchronis\xE9es dans MON STOCK (seul le pseudo de l'acheteur est stock\xE9). Pour le d\xE9tail en direct chez eBay (frais, remboursements, suivis, livraison pr\xE9vue), utilisez ebay_order_details." };
   const rows = [
     row("Statut", order.status, [order.payment_status, order.fulfillment_status].filter(Boolean).join(" \xB7 ") || null),
-    row("Total", fmt2(order.total), `dont port ${fmt2(order.shipping_total)} \u2014 frais canal ${fmt2(order.fee_total)}`),
+    row("Total", fmt2(order.total), `dont port ${fmt2(order.shipping_total)}${order.tax_total !== null ? ` \u2014 taxes ${fmt2(order.tax_total)}` : ""} \u2014 frais canal ${fmt2(order.fee_total)}`),
     ...(order.order_items ?? []).slice(0, 6).map((i) => row(i.title, `${i.quantity} \xD7 ${fmt2(i.unit_price)}`, i.sku_id ? "li\xE9 au stock" : "non li\xE9 au stock", i.sku_id ? "neutral" : "warning")),
     ...(parcels ?? []).map((p) => row(`Colis ${p.tracking_number}`, p.status, p.estimated_delivery ? `livraison estim\xE9e par le transporteur : ${p.estimated_delivery}` : null))
   ];
   return { result, cards: [card("list", `Commande ${order.order_number ?? orderNumber}`, rows, { subtitle: `${order.provider} \u2014 ${order.placed_at.slice(0, 10).split("-").reverse().join("/")}` })] };
 }
 async function parcelsOverview(ctx, raw) {
-  const { filter } = z45.object({ filter: z45.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
+  const { filter } = z46.object({ filter: z46.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
   let q = ctx.supabase.from("tracked_parcels").select("tracking_number, label, carrier_code, status, estimated_delivery, delivered_at, last_checked_at, last_error").eq("organization_id", ctx.organizationId).is("archived_at", null);
   if (filter === "problems") q = q.in("status", ["exception", "failed_attempt", "returned", "expired", "not_found"]);
   if (filter === "in_progress") q = q.not("status", "in", "(delivered,returned,expired)");
   const { data, error } = await q.order("updated_at", { ascending: false }).limit(15);
   if (error) throw new Error(error.message);
-  const list = data ?? [];
+  const list2 = data ?? [];
   return {
-    result: { filter, parcels: list, note: "Statuts et dates uniquement issus des API de suivi ; \xAB unknown \xBB = jamais v\xE9rifi\xE9 (cl\xE9 d'API absente ou num\xE9ro non trouv\xE9)." },
-    cards: [card("list", "Colis suivis", list.slice(0, 10).map((p) => row(p.label || p.tracking_number, p.status, p.estimated_delivery ? `estim\xE9e : ${p.estimated_delivery}` : p.last_checked_at ? null : "jamais v\xE9rifi\xE9", ["exception", "failed_attempt", "returned", "not_found"].includes(p.status) ? "danger" : p.status === "delivered" ? "success" : "neutral")), { subtitle: `${list.length} colis` })]
+    result: { filter, parcels: list2, note: "Statuts et dates uniquement issus des API de suivi ; \xAB unknown \xBB = jamais v\xE9rifi\xE9 (cl\xE9 d'API absente ou num\xE9ro non trouv\xE9)." },
+    cards: [card("list", "Colis suivis", list2.slice(0, 10).map((p) => row(p.label || p.tracking_number, p.status, p.estimated_delivery ? `estim\xE9e : ${p.estimated_delivery}` : p.last_checked_at ? null : "jamais v\xE9rifi\xE9", ["exception", "failed_attempt", "returned", "not_found"].includes(p.status) ? "danger" : p.status === "delivered" ? "success" : "neutral")), { subtitle: `${list2.length} colis` })]
   };
 }
-var shippingInput = z45.object({
-  weightKg: z45.coerce.number().positive().max(70),
-  lengthCm: z45.coerce.number().positive().max(300),
-  widthCm: z45.coerce.number().positive().max(300),
-  heightCm: z45.coerce.number().positive().max(300),
-  fromPostcode: z45.string().trim().min(2).max(12),
-  toPostcode: z45.string().trim().min(2).max(12),
-  fromCountry: z45.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
-  toCountry: z45.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
+var shippingInput = z46.object({
+  weightKg: z46.coerce.number().positive().max(70),
+  lengthCm: z46.coerce.number().positive().max(300),
+  widthCm: z46.coerce.number().positive().max(300),
+  heightCm: z46.coerce.number().positive().max(300),
+  fromPostcode: z46.string().trim().min(2).max(12),
+  toPostcode: z46.string().trim().min(2).max(12),
+  fromCountry: z46.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
+  toCountry: z46.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
 });
 async function shippingQuotesTool(ctx, raw) {
   const input = shippingInput.parse(raw);
@@ -30365,11 +32482,11 @@ async function findSku(ctx, ref) {
 function requireWriter(ctx) {
   return ctx.org.role === "viewer" ? "Votre r\xF4le (lecture seule) ne permet pas de pr\xE9parer une modification. Demandez \xE0 un administrateur." : null;
 }
-var adjustInput = z45.object({
+var adjustInput = z46.object({
   sku: skuRef,
-  change: z45.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
-  reason: z45.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
-  note: z45.string().trim().max(200).optional()
+  change: z46.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
+  reason: z46.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
+  note: z46.string().trim().max(200).optional()
 });
 async function prepareStockAdjustment(ctx, raw) {
   const denied = requireWriter(ctx);
@@ -30384,7 +32501,7 @@ async function prepareStockAdjustment(ctx, raw) {
   const action = await prepareAdvisorAction(ctx, { kind: "adjust_stock", skuId: sku.sku_id, summary, amount: null, currency: null, payload: { change: input.change, reason: input.reason, note: input.note ?? null, expectedAvailable: before, code: sku.code } });
   return actionOutput(action, "Ajustement de stock \xE0 confirmer");
 }
-var priceInput = z45.object({ sku: skuRef, newPrice: z45.union([z45.string(), z45.number()]).transform((v2) => String(v2)) });
+var priceInput = z46.object({ sku: skuRef, newPrice: z46.union([z46.string(), z46.number()]).transform((v2) => String(v2)) });
 async function preparePriceChange(ctx, raw) {
   const denied = requireWriter(ctx);
   if (denied) return { result: { prepared: false, reason: denied }, cards: [] };
@@ -30409,7 +32526,7 @@ function actionOutput(action, title) {
     cards: [card("action", title, [], { action, subtitle: "Rien n'est modifi\xE9 sans votre confirmation." })]
   };
 }
-var draftInput = z45.object({ orderNumber: z45.string().trim().max(64).optional(), subject: z45.string().trim().min(1).max(120), text: z45.string().trim().min(1).max(1500) });
+var draftInput = z46.object({ orderNumber: z46.string().trim().max(64).optional(), subject: z46.string().trim().min(1).max(120), text: z46.string().trim().min(1).max(1500) });
 async function draftBuyerMessage(ctx, raw) {
   const input = draftInput.parse(raw);
   return {
@@ -30437,7 +32554,7 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "business_report",
       description: "Bilan chiffr\xE9 d'une p\xE9riode compar\xE9 \xE0 la pr\xE9c\xE9dente : chiffre d'affaires, commandes, unit\xE9s, co\xFBt d'achat connu, marge brute, frais de vente, b\xE9n\xE9fice estim\xE9, annulations/remboursements, et liste des donn\xE9es manquantes. \xC0 utiliser pour \xAB chiffre d'affaires cette semaine \xBB, \xAB marge r\xE9elle \xBB, \xAB bilan \xBB, \xAB pourquoi mes ventes baissent \xBB.",
-      input_schema: obj2({ period: periodProp })
+      input_schema: obj3({ period: periodProp })
     },
     run: businessReport
   },
@@ -30447,7 +32564,7 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "product_profitability",
       description: "Classement des produits vendus par b\xE9n\xE9fice estim\xE9, CA, unit\xE9s ou marge sur une p\xE9riode (frais de vente r\xE9partis, co\xFBt d'achat actuel). Pour \xAB qu'est-ce qui me rapporte le plus \xBB, \xAB mieux vendu ce mois-ci \xBB.",
-      input_schema: obj2({ period: periodProp, sort: { type: "string", enum: ["profit", "revenue", "units", "margin"] }, limit: { type: "integer", description: "1 \xE0 20 (d\xE9faut 8)." } })
+      input_schema: obj3({ period: periodProp, sort: { type: "string", enum: ["profit", "revenue", "units", "margin"] }, limit: { type: "integer", description: "1 \xE0 20 (d\xE9faut 8)." } })
     },
     run: productProfitability
   },
@@ -30457,7 +32574,7 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "stock_risks",
       description: "Produits en rupture ou \xE0 risque de rupture (vitesse de vente, couverture, d\xE9lai fournisseur) et stock dormant (60 jours sans vente) avec la valeur immobilis\xE9e au co\xFBt d'achat.",
-      input_schema: obj2({ kind: { type: "string", enum: ["rupture", "dormant", "all"] }, limit: { type: "integer", description: "1 \xE0 20 (d\xE9faut 8)." } })
+      input_schema: obj3({ kind: { type: "string", enum: ["rupture", "dormant", "all"] }, limit: { type: "integer", description: "1 \xE0 20 (d\xE9faut 8)." } })
     },
     run: stockRisks
   },
@@ -30467,20 +32584,20 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "restock_plan",
       description: "PROPOSITION de r\xE9approvisionnement (quantit\xE9s recommand\xE9es, fournisseur et prix connus, explication). Ne passe aucune commande. Pour \xAB que dois-je racheter \xBB.",
-      input_schema: obj2({ limit: { type: "integer", description: "1 \xE0 20 (d\xE9faut 10)." } })
+      input_schema: obj3({ limit: { type: "integer", description: "1 \xE0 20 (d\xE9faut 10)." } })
     },
     run: restockPlan
   },
   order_lookup: {
     label: "Commande",
     category: "read",
-    definition: { name: "order_lookup", description: "D\xE9tail d'une commande par son num\xE9ro : lignes, montants, frais, statut, colis suivis li\xE9s.", input_schema: obj2({ orderNumber: { type: "string" } }, ["orderNumber"]) },
+    definition: { name: "order_lookup", description: "D\xE9tail d'une commande SYNCHRONIS\xC9E dans MON STOCK par son num\xE9ro : lignes (SKU eBay, num\xE9ro d'objet), montants, taxes, frais, statut, d\xE9duction du stock, colis suivis li\xE9s. Pour les donn\xE9es en direct chez eBay, pr\xE9f\xE9rez ebay_order_details.", input_schema: obj3({ orderNumber: { type: "string" } }, ["orderNumber"]) },
     run: orderLookup
   },
   parcels_overview: {
     label: "Colis",
     category: "read",
-    definition: { name: "parcels_overview", description: "Colis suivis : en cours, en difficult\xE9 ou tous, avec statut et date estim\xE9e UNIQUEMENT si l'API de suivi l'a fournie.", input_schema: obj2({ filter: { type: "string", enum: ["problems", "in_progress", "all"] } }) },
+    definition: { name: "parcels_overview", description: "Colis suivis : en cours, en difficult\xE9 ou tous, avec statut et date estim\xE9e UNIQUEMENT si l'API de suivi l'a fournie.", input_schema: obj3({ filter: { type: "string", enum: ["problems", "in_progress", "all"] } }) },
     run: parcelsOverview
   },
   shipping_quotes: {
@@ -30489,7 +32606,7 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "shipping_quotes",
       description: "Compare les devis r\xE9els des plateformes connect\xE9es (Packlink, Boxtal, Sendcloud) et les estimations des grilles de l'utilisateur pour un colis. Consultation uniquement : n'ach\xE8te jamais d'\xE9tiquette. Demande poids, dimensions et codes postaux s'ils manquent.",
-      input_schema: obj2(
+      input_schema: obj3(
         {
           weightKg: { type: "number" },
           lengthCm: { type: "number" },
@@ -30508,7 +32625,7 @@ var ADVISOR_TOOLS = {
   today_briefing: {
     label: "Priorit\xE9s du jour",
     category: "read",
-    definition: { name: "today_briefing", description: "Compteurs du jour : commandes \xE0 exp\xE9dier, ruptures, stock \xE0 risque, colis en difficult\xE9, annonces non li\xE9es, ventes non d\xE9duites, synchronisations en \xE9chec, actions en attente. Pour \xAB que dois-je faire aujourd'hui \xBB.", input_schema: obj2({}) },
+    definition: { name: "today_briefing", description: "Compteurs du jour : commandes \xE0 exp\xE9dier, ruptures, stock \xE0 risque, colis en difficult\xE9, annonces non li\xE9es, ventes non d\xE9duites, synchronisations en \xE9chec, actions en attente. Pour \xAB que dois-je faire aujourd'hui \xBB.", input_schema: obj3({}) },
     run: (ctx) => todayBriefing(ctx)
   },
   prepare_stock_adjustment: {
@@ -30517,7 +32634,7 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "prepare_stock_adjustment",
       description: "PR\xC9PARE un ajustement de stock d'un SKU (entr\xE9e positive, sortie n\xE9gative). N'ex\xE9cute rien : cr\xE9e une demande que l'utilisateur doit confirmer avec le bouton \xAB Confirmer \xBB. Demande le code SKU exact s'il est ambigu.",
-      input_schema: obj2({ sku: { type: "string", description: "Code SKU ou code-barres exact." }, change: { type: "integer", description: "Variation : +3 pour ajouter 3 unit\xE9s, -2 pour en retirer 2." }, reason: { type: "string", enum: ["receipt", "adjustment", "return", "correction"] }, note: { type: "string" } }, ["sku", "change"])
+      input_schema: obj3({ sku: { type: "string", description: "Code SKU ou code-barres exact." }, change: { type: "integer", description: "Variation : +3 pour ajouter 3 unit\xE9s, -2 pour en retirer 2." }, reason: { type: "string", enum: ["receipt", "adjustment", "return", "correction"] }, note: { type: "string" } }, ["sku", "change"])
     },
     run: prepareStockAdjustment
   },
@@ -30527,7 +32644,7 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "prepare_price_change",
       description: "PR\xC9PARE le changement du prix de vente d'un SKU dans MON STOCK (pas les annonces eBay). N'ex\xE9cute rien : l'utilisateur doit confirmer avec le bouton \xAB Confirmer \xBB.",
-      input_schema: obj2({ sku: { type: "string" }, newPrice: { type: "string", description: "Nouveau prix, ex. \xAB 429.90 \xBB." } }, ["sku", "newPrice"])
+      input_schema: obj3({ sku: { type: "string" }, newPrice: { type: "string", description: "Nouveau prix, ex. \xAB 429.90 \xBB." } }, ["sku", "newPrice"])
     },
     run: preparePriceChange
   },
@@ -30537,16 +32654,19 @@ var ADVISOR_TOOLS = {
     definition: {
       name: "draft_buyer_message",
       description: "Affiche un brouillon de message \xE0 un acheteur (avec bouton Copier). Rien n'est envoy\xE9 : MON STOCK n'a pas d'envoi de messages eBay. Consulte d'abord la commande avec order_lookup si un num\xE9ro est donn\xE9.",
-      input_schema: obj2({ orderNumber: { type: "string" }, subject: { type: "string" }, text: { type: "string", description: "Texte du message, poli et factuel, sans promesse non v\xE9rifi\xE9e." } }, ["subject", "text"])
+      input_schema: obj3({ orderNumber: { type: "string" }, subject: { type: "string" }, text: { type: "string", description: "Texte du message, poli et factuel, sans promesse non v\xE9rifi\xE9e." } }, ["subject", "text"])
     },
     run: draftBuyerMessage
-  }
+  },
+  // Lecture EN DIRECT du compte eBay (lecture seule ; certaines exigent l'« analyse complète »).
+  ...EBAY_ADVISOR_TOOLS
 };
 var ADVISOR_TOOL_DEFINITIONS = Object.values(ADVISOR_TOOLS).map((t) => t.definition);
 var ADVISOR_FUTURE_CAPABILITIES = [
   "achat d'\xE9tiquette d'exp\xE9dition (Sendcloud est branch\xE9 en consultation seulement)",
-  "envoi de messages aux acheteurs eBay",
-  "modification des annonces eBay (prix, quantit\xE9)",
+  "envoi de messages ou de r\xE9ponses aux acheteurs eBay, acceptation ou refus d'offres",
+  "modification des annonces, campagnes ou promotions eBay (prix, quantit\xE9, taux)",
+  "d\xE9tail des demandes de retour eBay et rapports de performance publicitaire (non lus par MON STOCK)",
   "passage de commandes fournisseurs"
 ];
 var MAX_RESULT_CHARS2 = 2e4;
@@ -30558,14 +32678,14 @@ async function runAdvisorTool(ctx, name, input) {
     const json2 = JSON.stringify(out.result);
     return { content: json2.length > MAX_RESULT_CHARS2 ? `${json2.slice(0, MAX_RESULT_CHARS2)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false, cards: out.cards };
   } catch (e) {
-    if (e instanceof z45.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
+    if (e instanceof z46.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true, cards: [] };
   }
 }
 
 // src/services/ai/advisor.ts
 var log34 = createLogger("AI_ADVISOR");
-var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 6, maxTokens: 2500, deadlineMs: 1e5 };
+var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 8, maxTokens: 2500, deadlineMs: 1e5 };
 var ADVISOR_SYSTEM_STABLE = [
   "Tu es le conseiller e-commerce personnel de l'utilisateur dans MON STOCK (gestion de stock et de ventes d'un revendeur d'appareils \xE9lectroniques, principalement sur eBay). Tu es son employ\xE9 : tu analyses SES donn\xE9es, tu recommandes, tu pr\xE9pares des actions.",
   "",
@@ -30574,6 +32694,14 @@ var ADVISOR_SYSTEM_STABLE = [
   "- P\xE9riodes : utilise le param\xE8tre period des outils (\xAB cette semaine \xBB = this_week, \xAB ce mois-ci \xBB = this_month\u2026). Sans pr\xE9cision : 30 derniers jours, et dis-le.",
   "- Distingue toujours : chiffre d'affaires (CA), marge brute (CA \u2212 co\xFBt d'achat connu), frais de vente, b\xE9n\xE9fice estim\xE9. Rappelle les donn\xE9es manquantes signal\xE9es par les outils (co\xFBts d'achat, frais, port pay\xE9, retours).",
   "- Recommandations : 1 \xE0 3 actions concr\xE8tes, chacune justifi\xE9e par un chiffre issu d'un outil.",
+  "",
+  "Compte eBay \u2014 deux sources :",
+  "- Donn\xE9es SYNCHRONIS\xC9ES dans MON STOCK (business_report, product_profitability, sales_ranking, sales_summary, recent_orders, order_lookup, listings_search, ebay_account) : historique, CA, marges, stock. \xC0 privil\xE9gier pour les bilans chiffr\xE9s.",
+  "- Lecture EN DIRECT chez eBay (outils ebay_*) pour l'\xE9tat actuel ou ce que MON STOCK ne stocke pas : ebay_order_details (une commande : frais, taxes, remises, remboursements, annulation, suivis, livraison pr\xE9vue, ville/pays de l'acheteur), ebay_orders_live (commandes r\xE9centes, m\xEAme non synchronis\xE9es, \xE0 exp\xE9dier), ebay_listing_details (une annonce : observateurs, offres re\xE7ues, quantit\xE9s, dates, \xE9tat), ebay_sold_unsold (vendus et invendus \u2264 60 j), ebay_feedback (\xE9valuations, n\xE9gatives), ebay_messages (en-t\xEAtes, non lus), ebay_account_overview (limites de vente, politiques, programmes, r\xE9putation).",
+  "- Analyse compl\xE8te (autorisation eBay suppl\xE9mentaire) : ebay_finances (frais par type, remboursements, litiges, versements, solde), ebay_traffic (impressions, vues, clic, conversion), ebay_seller_standards (niveau vendeur), ebay_promotions (Promoted Listings, promotions). Si l'outil r\xE9pond que l'analyse compl\xE8te manque, dis-le clairement : un administrateur doit \xAB Autoriser l'analyse compl\xE8te \xBB dans R\xE9glages \u2192 Int\xE9grations. Ne remplace jamais ces donn\xE9es par une estimation.",
+  "- Chaque r\xE9sultat eBay en direct porte readAtParis : cite la source et l'heure (\xAB d'apr\xE8s eBay, lu \xE0 14 h 05 \xBB). Un r\xE9sultat available=false : explique la raison donn\xE9e (non connect\xE9, autorisation expir\xE9e, refus d'eBay) sans rien compl\xE9ter.",
+  "- Messages eBay : ebay_messages donne seulement les en-t\xEAtes. N'appelle ebay_message (texte d'un message) que si l'utilisateur demande explicitement le contenu d'un message dans sa question.",
+  "- Donn\xE9es de l'acheteur (pseudo, nom, ville, code postal, pays) : ne cite que ce qui r\xE9pond \xE0 la question.",
   "",
   "R\xE8gles absolues :",
   "- Chaque chiffre (montant, quantit\xE9, date, pourcentage) doit venir d'un r\xE9sultat d'outil de cette conversation. N'invente, n'extrapole ni ne compl\xE8te jamais une donn\xE9e absente : dis qu'elle manque.",
@@ -30645,7 +32773,7 @@ ${m.content}`;
   return merged.map((m) => ({ role: m.role, content: m.content }));
 }
 async function runAdvisorTurn(ctx, req, emit2, deps = {}) {
-  const client2 = deps.client ?? llmClient();
+  const client3 = deps.client ?? llmClient();
   const store = deps.store ?? supabaseAdvisorStore(ctx);
   const runTool = deps.runTool ?? runAdvisorTool;
   const now = deps.now ?? /* @__PURE__ */ new Date();
@@ -30659,7 +32787,7 @@ async function runAdvisorTurn(ctx, req, emit2, deps = {}) {
 
 ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice))}`;
   const convo = historyForModel([...previous, { role: "user", content: req.message }]);
-  const toolCtx = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now };
+  const toolCtx = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now, question: req.message };
   const cards = [];
   const sources = [];
   let answer = "";
@@ -30673,7 +32801,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
         break;
       }
       streamed = "";
-      const response = await client2.complete(
+      const response = await client3.complete(
         { system, tools: ADVISOR_TOOL_DEFINITIONS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
         {
           signal: deps.signal,
@@ -30862,7 +32990,7 @@ function ebayCallbackTarget(url) {
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
   if (error) {
-    target.searchParams.set("error", error === "access_denied" ? "access_denied" : "ebay_error");
+    target.searchParams.set("error", error === "access_denied" ? "access_denied" : error === "invalid_scope" ? "scope_refused" : "ebay_error");
   } else if (code && state && SAFE_CODE.test(code) && SAFE_STATE.test(state)) {
     target.searchParams.set("code", code);
     target.searchParams.set("state", state);
@@ -31062,21 +33190,21 @@ init_errors2();
 
 // src/integrations/tracking/laposte.ts
 init_empty();
-import { z as z46 } from "npm:zod@4.6.5";
+import { z as z47 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var LAPOSTE_SUIVI_URL = "https://api.laposte.fr/suivi/v2/idships/";
-var responseSchema = z46.object({
-  returnCode: z46.number().optional(),
-  returnMessage: z46.string().optional(),
-  shipment: z46.object({
-    idShip: z46.string().optional(),
-    product: z46.string().nullable().optional(),
-    isFinal: z46.boolean().optional(),
-    estimDate: z46.string().nullable().optional(),
-    deliveryDate: z46.string().nullable().optional(),
-    url: z46.string().nullable().optional(),
-    event: z46.array(z46.object({ code: z46.string().nullable().optional(), label: z46.string().nullable().optional(), date: z46.string().nullable().optional(), order: z46.number().nullable().optional() }).passthrough()).optional()
+var responseSchema = z47.object({
+  returnCode: z47.number().optional(),
+  returnMessage: z47.string().optional(),
+  shipment: z47.object({
+    idShip: z47.string().optional(),
+    product: z47.string().nullable().optional(),
+    isFinal: z47.boolean().optional(),
+    estimDate: z47.string().nullable().optional(),
+    deliveryDate: z47.string().nullable().optional(),
+    url: z47.string().nullable().optional(),
+    event: z47.array(z47.object({ code: z47.string().nullable().optional(), label: z47.string().nullable().optional(), date: z47.string().nullable().optional(), order: z47.number().nullable().optional() }).passthrough()).optional()
   }).passthrough().optional()
 }).passthrough();
 function laPosteConfigured(env = process.env) {
@@ -31120,29 +33248,29 @@ async function laPosteTrack(trackingNumber, env = process.env) {
 
 // src/integrations/tracking/ship24.ts
 init_empty();
-import { z as z47 } from "npm:zod@4.6.5";
+import { z as z48 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var SHIP24_TRACK_URL = "https://api.ship24.com/public/v1/trackers/track";
-var eventSchema = z47.object({
-  status: z47.string().nullable().optional(),
-  occurrenceDatetime: z47.string().nullable().optional(),
-  datetime: z47.string().nullable().optional(),
-  location: z47.string().nullable().optional(),
-  courierCode: z47.string().nullable().optional(),
-  statusMilestone: z47.string().nullable().optional(),
-  statusCode: z47.string().nullable().optional()
+var eventSchema = z48.object({
+  status: z48.string().nullable().optional(),
+  occurrenceDatetime: z48.string().nullable().optional(),
+  datetime: z48.string().nullable().optional(),
+  location: z48.string().nullable().optional(),
+  courierCode: z48.string().nullable().optional(),
+  statusMilestone: z48.string().nullable().optional(),
+  statusCode: z48.string().nullable().optional()
 }).passthrough();
-var trackingSchema = z47.object({
-  shipment: z47.object({
-    statusMilestone: z47.string().nullable().optional(),
-    statusCode: z47.string().nullable().optional(),
-    delivery: z47.object({ estimatedDeliveryDate: z47.string().nullable().optional(), courierEstimatedDeliveryDate: z47.object({ from: z47.string().nullable().optional(), to: z47.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
+var trackingSchema = z48.object({
+  shipment: z48.object({
+    statusMilestone: z48.string().nullable().optional(),
+    statusCode: z48.string().nullable().optional(),
+    delivery: z48.object({ estimatedDeliveryDate: z48.string().nullable().optional(), courierEstimatedDeliveryDate: z48.object({ from: z48.string().nullable().optional(), to: z48.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
   }).passthrough().nullable().optional(),
-  events: z47.array(eventSchema).optional(),
-  statistics: z47.object({ timestamps: z47.object({ deliveredDatetime: z47.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
+  events: z48.array(eventSchema).optional(),
+  statistics: z48.object({ timestamps: z48.object({ deliveredDatetime: z48.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
 }).passthrough();
-var responseSchema2 = z47.object({ data: z47.object({ trackings: z47.array(trackingSchema) }).passthrough() }).passthrough();
+var responseSchema2 = z48.object({ data: z48.object({ trackings: z48.array(trackingSchema) }).passthrough() }).passthrough();
 function ship24Configured(env = process.env) {
   return Boolean(env.SHIP24_API_KEY && env.SHIP24_API_KEY.trim().length >= 10);
 }
@@ -31183,20 +33311,20 @@ async function ship24Track(trackingNumber, opts = {}, env = process.env) {
 
 // src/integrations/tracking/dhl.ts
 init_empty();
-import { z as z48 } from "npm:zod@4.6.5";
+import { z as z49 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var DHL_TRACK_URL = "https://api-eu.dhl.com/track/shipments";
-var place = z48.object({ address: z48.object({ addressLocality: z48.string().nullable().optional(), countryCode: z48.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
-var event = z48.object({ timestamp: z48.string().nullable().optional(), statusCode: z48.string().nullable().optional(), status: z48.string().nullable().optional(), description: z48.string().nullable().optional(), location: place }).passthrough();
-var responseSchema3 = z48.object({
-  shipments: z48.array(
-    z48.object({
-      id: z48.string().optional(),
-      service: z48.string().nullable().optional(),
+var place = z49.object({ address: z49.object({ addressLocality: z49.string().nullable().optional(), countryCode: z49.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
+var event = z49.object({ timestamp: z49.string().nullable().optional(), statusCode: z49.string().nullable().optional(), status: z49.string().nullable().optional(), description: z49.string().nullable().optional(), location: place }).passthrough();
+var responseSchema3 = z49.object({
+  shipments: z49.array(
+    z49.object({
+      id: z49.string().optional(),
+      service: z49.string().nullable().optional(),
       status: event.nullable().optional(),
-      estimatedTimeOfDelivery: z48.string().nullable().optional(),
-      events: z48.array(event).optional()
+      estimatedTimeOfDelivery: z49.string().nullable().optional(),
+      events: z49.array(event).optional()
     }).passthrough()
   ).optional()
 }).passthrough();
@@ -31372,12 +33500,13 @@ var CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayFinalizeSchema = z49.object({ code: z49.string().min(1).max(2048), state: z49.string().min(16).max(200) });
-var syncSchema = z49.object({ connectionId: uuidParam, scope: z49.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z49.object({ hosts: z49.array(z49.string().min(3).max(120)).min(1).max(25), query: z49.string().min(2).max(80).optional() });
+var ebayConnectSchema = z50.object({ extended: z50.boolean().optional() });
+var ebayFinalizeSchema = z50.object({ code: z50.string().min(1).max(2048), state: z50.string().min(16).max(200) });
+var syncSchema = z50.object({ connectionId: uuidParam, scope: z50.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z50.object({ hosts: z50.array(z50.string().min(3).max(120)).min(1).max(25), query: z50.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z49.object({ text: z49.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z49.object({ key: z49.string().min(1).max(80), attest: z49.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z50.object({ text: z50.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z50.object({ key: z50.string().min(1).max(80), attest: z50.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -31389,13 +33518,14 @@ function routeOf(url) {
   const rest = i >= 0 ? p.slice(i + 4) : p;
   return rest === "" ? "/" : rest;
 }
-async function startEbayConnect(request) {
-  const ctx = await requireMobileOrgContext(request, { admin: true });
+async function startEbayConnect(request2) {
+  const ctx = await requireMobileOrgContext(request2, { admin: true });
   const connector = getEbayConnector();
   if (!connector.isConfigured()) {
     throw new AppError("VALIDATION", "Int\xE9gration eBay non configur\xE9e sur le serveur : les cl\xE9s de l'application eBay (EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_RU_NAME) doivent \xEAtre ajout\xE9es aux secrets de la fonction.");
   }
-  const state = randomToken(32);
+  const { extended = false } = await parseBody(request2, ebayConnectSchema);
+  const state = buildOAuthState(randomToken(32), extended);
   const admin = createAdminSupabaseClient();
   await admin.from("oauth_states").delete().lt("expires_at", (/* @__PURE__ */ new Date()).toISOString());
   const { error } = await admin.from("oauth_states").insert({
@@ -31407,12 +33537,12 @@ async function startEbayConnect(request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log36.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
-  return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
+  log36.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id, extended });
+  return { authorizeUrl: connector.getAuthorizeUrl(state, { extended }), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null, extended };
 }
-async function finalizeEbayConnect(request) {
-  const ctx = await requireMobileOrgContext(request, { admin: true });
-  const { code, state } = await parseBody(request, ebayFinalizeSchema);
+async function finalizeEbayConnect(request2) {
+  const ctx = await requireMobileOrgContext(request2, { admin: true });
+  const { code, state } = await parseBody(request2, ebayFinalizeSchema);
   const admin = createAdminSupabaseClient();
   const { data: row2, error } = await admin.from("oauth_states").delete().eq("state", state).eq("provider", "ebay").select("*").maybeSingle();
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
@@ -31428,7 +33558,7 @@ async function finalizeEbayConnect(request) {
   try {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
-    const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
+    const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList({ extended: isExtendedOAuthState(row2.state) }) });
     log36.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
@@ -31459,17 +33589,17 @@ var keyStore = new EbayNotificationKeyStore(() => getEbayConnector().config());
 function ebayWebhookEndpoint() {
   return `${(process.env.SUPABASE_URL ?? "").replace(/\/+$/, "")}/functions/v1/api/ebay/webhook`;
 }
-async function ebayWebhook(request, url) {
-  if (request.method === "GET") {
+async function ebayWebhook(request2, url) {
+  if (request2.method === "GET") {
     const challenge = url.searchParams.get("challenge_code");
     if (!challenge) return Response.json({ ok: true, usage: "eBay envoie GET ?challenge_code=\u2026 puis des POST sign\xE9s." });
     const token = getEbayConnector().config()?.webhookVerificationToken ?? null;
     if (!token) return Response.json({ error: "EBAY_WEBHOOK_VERIFICATION_TOKEN non configur\xE9 : impossible de valider l'endpoint eBay." }, { status: 503 });
     return Response.json({ challengeResponse: computeChallengeResponse(challenge, token, ebayWebhookEndpoint()) });
   }
-  if (request.method !== "POST") return new Response(null, { status: 405 });
+  if (request2.method !== "POST") return new Response(null, { status: 405 });
   const runtime = globalThis.EdgeRuntime;
-  return handleEbayNotification(request, {
+  return handleEbayNotification(request2, {
     admin: createAdminSupabaseClient(),
     isConfigured: () => getEbayConnector().isConfigured(),
     getPublicKey: (kid) => keyStore.getPublicKey(kid),
@@ -31481,11 +33611,11 @@ async function ebayWebhook(request, url) {
     }
   });
 }
-async function route(request) {
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-  const url = new URL(request.url);
+async function route(request2) {
+  if (request2.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const url = new URL(request2.url);
   const path = routeOf(url);
-  const m = request.method;
+  const m = request2.method;
   try {
     if (m === "GET" && path === "/health") {
       return handle(async () => {
@@ -31507,18 +33637,18 @@ async function route(request) {
       });
     }
     if (m === "GET" && path === "/ebay/callback") return ebayCallbackRedirect(url);
-    if (path === "/ebay/webhook") return ebayWebhook(request, url);
+    if (path === "/ebay/webhook") return ebayWebhook(request2, url);
     if (path.startsWith("/cron/")) {
-      const auth = authorizeCron(request);
+      const auth = authorizeCron(request2);
       if (!auth.ok) return auth.response;
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") {
-        return handle(async () => runLibraryChecks((await parseBody(request, z49.object({ keys: z49.array(z49.string().min(1).max(80)).max(60).optional() }))).keys));
+        return handle(async () => runLibraryChecks((await parseBody(request2, z50.object({ keys: z50.array(z50.string().min(1).max(80)).max(60).optional() }))).keys));
       }
       if (m === "POST" && path === "/cron/library-activate") {
         return handle(async () => {
-          const body = await parseBody(request, z49.object({ organizationId: uuidParam, keys: z49.array(z49.string().min(1).max(80)).min(1).max(60), requestedBy: z49.string().min(10).max(600) }));
+          const body = await parseBody(request2, z50.object({ organizationId: uuidParam, keys: z50.array(z50.string().min(1).max(80)).min(1).max(60), requestedBy: z50.string().min(10).max(600) }));
           const admin = createAdminSupabaseClient();
           const out = [];
           for (const key2 of body.keys) {
@@ -31534,22 +33664,22 @@ async function route(request) {
           return out;
         });
       }
-      if (m === "POST" && path === "/cron/sourcing-weekly") return handle(async () => runWeeklyCollection(await parseBody(request, weeklyRunSchema)));
+      if (m === "POST" && path === "/cron/sourcing-weekly") return handle(async () => runWeeklyCollection(await parseBody(request2, weeklyRunSchema)));
       if (m === "POST" && path === "/cron/collect-source") {
         return handle(async () => {
-          const body = await parseBody(request, z49.object({ sourceId: uuidParam, budgetMs: z49.number().int().min(1e4).max(11e4).optional() }));
+          const body = await parseBody(request2, z50.object({ sourceId: uuidParam, budgetMs: z50.number().int().min(1e4).max(11e4).optional() }));
           return runSourceCrawl(body.sourceId, { trigger: "scheduled", budgetMs: body.budgetMs });
         });
       }
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request, z49.object({ query: z49.string().min(2).max(120), source: z49.string().min(1).max(80) }));
+          const body = await parseBody(request2, z50.object({ query: z50.string().min(2).max(120), source: z50.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request, z49.object({ keys: z49.array(z49.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request2, z50.object({ keys: z50.array(z50.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
@@ -31558,164 +33688,164 @@ async function route(request) {
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request, z49.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request2, z50.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/deal-check") {
-        return handle(async () => checkDealAnalysis(await parseBody(request, z49.object({ organizationId: uuidParam, userId: uuidParam, query: z49.string().trim().min(2).max(120), live: z49.boolean().default(false) }))));
+        return handle(async () => checkDealAnalysis(await parseBody(request2, z50.object({ organizationId: uuidParam, userId: uuidParam, query: z50.string().trim().min(2).max(120), live: z50.boolean().default(false) }))));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request, z49.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request2, z50.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
-      if (m === "POST" && path === "/cron/adapter-probe") return handle(async () => runAdapterProbes(await parseBody(request, adapterProbeSchema)));
+      if (m === "POST" && path === "/cron/adapter-probe") return handle(async () => runAdapterProbes(await parseBody(request2, adapterProbeSchema)));
       if (m === "POST" && path === "/cron/scout") {
         return handle(async () => {
-          const body = await parseBody(request, scoutSchema);
+          const body = await parseBody(request2, scoutSchema);
           return scoutHosts(body.hosts, body.query);
         });
       }
     }
-    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request), parseQuery2(request, z49.object({ q: z49.string().trim().min(1).max(120) })).q));
-    if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request), parseQuery2(request, sourcingSearchQuerySchema)));
-    if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request)));
-    if (m === "GET" && path === "/sourcing/library") return handle(async () => sourceLibrary(await requireMobileOrgContext(request)));
+    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request2), parseQuery2(request2, z50.object({ q: z50.string().trim().min(1).max(120) })).q));
+    if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request2), parseQuery2(request2, sourcingSearchQuerySchema)));
+    if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request2)));
+    if (m === "GET" && path === "/sourcing/library") return handle(async () => sourceLibrary(await requireMobileOrgContext(request2)));
     if (m === "POST" && path === "/sourcing/library/activate") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        const body = await parseBody(request, activateSchema);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        const body = await parseBody(request2, activateSchema);
         return activateLibrarySource(ctx, body.key);
       });
     }
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery2(request, z49.object({ sort: z49.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const ctx = await requireMobileOrgContext(request2);
+        const q = parseQuery2(request2, z50.object({ sort: z50.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
       });
     }
     if (m === "GET" && path === "/tools/status") {
       return handle(async () => {
-        await requireMobileOrgContext(request);
+        await requireMobileOrgContext(request2);
         return { shipping: shippingProvidersStatus(), tracking: trackingProviders() };
       });
     }
     if (m === "POST" && path === "/shipping/quotes") {
       return handle(async () => {
-        await requireMobileOrgContext(request);
-        return quoteShipping(await parseBody(request, shippingQuoteRequestSchema));
+        await requireMobileOrgContext(request2);
+        return quoteShipping(await parseBody(request2, shippingQuoteRequestSchema));
       });
     }
     if (m === "POST" && path === "/tracking/refresh") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return refreshParcelForOrg(ctx, (await parseBody(request, trackingRefreshSchema)).parcelId);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return refreshParcelForOrg(ctx, (await parseBody(request2, trackingRefreshSchema)).parcelId);
       });
     }
     if (m === "GET" && path === "/radar/offer") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery2(request, z49.object({ id: uuidParam, quantity: z49.coerce.number().int().min(1).max(1e5).optional() }));
+        const ctx = await requireMobileOrgContext(request2);
+        const q = parseQuery2(request2, z50.object({ id: uuidParam, quantity: z50.coerce.number().int().min(1).max(1e5).optional() }));
         return buildRadarOffer(ctx, q.id, q.quantity ? [q.quantity] : []);
       });
     }
     if (m === "POST" && path === "/radar/settings") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { admin: true });
-        return saveCostSettings(ctx, await parseBody(request, radarSettingsSchema));
+        const ctx = await requireMobileOrgContext(request2, { admin: true });
+        return saveCostSettings(ctx, await parseBody(request2, radarSettingsSchema));
       });
     }
-    if (m === "GET" && path === "/sourcing/matches") return handle(async () => listMatchSuggestions(await requireMobileOrgContext(request)));
+    if (m === "GET" && path === "/sourcing/matches") return handle(async () => listMatchSuggestions(await requireMobileOrgContext(request2)));
     if (m === "POST" && path === "/sourcing/matches/decide") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return decideMatch(ctx, await parseBody(request, matchDecisionSchema2));
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return decideMatch(ctx, await parseBody(request2, matchDecisionSchema2));
       });
     }
-    if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request)));
-    if (m === "GET" && path === "/sourcing/accounts") return handle(async () => proAccountsHub(await requireMobileOrgContext(request)));
+    if (m === "GET" && path === "/sourcing/directory") return handle(async () => directoryForOrg(await requireMobileOrgContext(request2)));
+    if (m === "GET" && path === "/sourcing/accounts") return handle(async () => proAccountsHub(await requireMobileOrgContext(request2)));
     if (m === "GET" && path === "/sourcing/supplier-offers") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request);
-        return supplierOffers(ctx, parseQuery2(request, z49.object({ supplierId: uuidParam })).supplierId);
+        const ctx = await requireMobileOrgContext(request2);
+        return supplierOffers(ctx, parseQuery2(request2, z50.object({ supplierId: uuidParam })).supplierId);
       });
     }
     if (m === "POST" && path === "/sourcing/accounts/connect") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        const body = await parseBody(request, z49.object({ key: z49.string().min(1).max(80), credentials: z49.record(z49.string().max(80), z49.string().max(2e3)) }));
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        const body = await parseBody(request2, z50.object({ key: z50.string().min(1).max(80), credentials: z50.record(z50.string().max(80), z50.string().max(2e3)) }));
         return connectProAccount(ctx, body);
       });
     }
     if (m === "POST" && path === "/sourcing/accounts/sync") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return syncProAccount(ctx, (await parseBody(request, z49.object({ connectionId: uuidParam }))).connectionId);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return syncProAccount(ctx, (await parseBody(request2, z50.object({ connectionId: uuidParam }))).connectionId);
       });
     }
     if (m === "POST" && path === "/sourcing/accounts/disconnect") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { admin: true });
-        return disconnectProAccount(ctx, (await parseBody(request, z49.object({ connectionId: uuidParam }))).connectionId);
+        const ctx = await requireMobileOrgContext(request2, { admin: true });
+        return disconnectProAccount(ctx, (await parseBody(request2, z50.object({ connectionId: uuidParam }))).connectionId);
       });
     }
     if (m === "POST" && path === "/sourcing/import/preview") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        const body = await parseBody(request, catalogPreviewSchema, CATALOG_BODY_LIMIT);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        const body = await parseBody(request2, catalogPreviewSchema, CATALOG_BODY_LIMIT);
         return previewCatalogFileForOrg(ctx, body);
       });
     }
-    if (m === "GET" && path === "/sourcing/sources") return handle(async () => listSourcesForOrg(await requireMobileOrgContext(request)));
+    if (m === "GET" && path === "/sourcing/sources") return handle(async () => listSourcesForOrg(await requireMobileOrgContext(request2)));
     if (m === "POST" && path === "/sourcing/sources/sync") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return syncSourceNow(ctx, (await parseBody(request, z49.object({ sourceId: uuidParam }))).sourceId);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return syncSourceNow(ctx, (await parseBody(request2, z50.object({ sourceId: uuidParam }))).sourceId);
       });
     }
     if (m === "POST" && path === "/sourcing/sources/schedule") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { admin: true });
-        return setSourceSchedule(ctx, await parseBody(request, sourceScheduleSchema));
+        const ctx = await requireMobileOrgContext(request2, { admin: true });
+        return setSourceSchedule(ctx, await parseBody(request2, sourceScheduleSchema));
       });
     }
     if (m === "POST" && path === "/sourcing/feeds/preview") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return previewRemoteFeed(ctx, await parseBody(request, remoteFeedPreviewSchema));
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return previewRemoteFeed(ctx, await parseBody(request2, remoteFeedPreviewSchema));
       });
     }
     if (m === "POST" && path === "/sourcing/feeds") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return createRemoteFeed(ctx, await parseBody(request, remoteFeedCreateSchema));
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return createRemoteFeed(ctx, await parseBody(request2, remoteFeedCreateSchema));
       });
     }
     if (m === "GET" && path === "/sourcing/imports") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request);
-        const q = parseQuery2(request, z49.object({ supplierId: uuidParam.optional(), limit: z49.coerce.number().int().min(1).max(200).optional() }));
+        const ctx = await requireMobileOrgContext(request2);
+        const q = parseQuery2(request2, z50.object({ supplierId: uuidParam.optional(), limit: z50.coerce.number().int().min(1).max(200).optional() }));
         return listImportJobs(ctx, { supplierId: q.supplierId ?? null, limit: q.limit ?? 50 });
       });
     }
     if (m === "GET" && path === "/sourcing/imports/detail") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request);
-        return getImportJob(ctx, parseQuery2(request, z49.object({ id: uuidParam })).id);
+        const ctx = await requireMobileOrgContext(request2);
+        return getImportJob(ctx, parseQuery2(request2, z50.object({ id: uuidParam })).id);
       });
     }
     if (m === "POST" && path === "/sourcing/import") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        const body = await parseBody(request, catalogImportSchema, CATALOG_BODY_LIMIT);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        const body = await parseBody(request2, catalogImportSchema, CATALOG_BODY_LIMIT);
         return importCatalogFile(ctx, body);
       });
     }
     if (m === "POST" && path === "/ai/product-draft") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        const body = await parseBody(request, productDraftSchema);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        const body = await parseBody(request2, productDraftSchema);
         llmClient();
         await enforceAiQuota(ctx, "product_draft");
         return draftProductFromText(body.text, ctx.organization.default_currency);
@@ -31723,8 +33853,8 @@ async function route(request) {
     }
     if (m === "POST" && path === "/ai/assistant") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request);
-        const body = await parseBody(request, assistantRequestSchema);
+        const ctx = await requireMobileOrgContext(request2);
+        const body = await parseBody(request2, assistantRequestSchema);
         llmClient();
         await enforceAiQuota(ctx, "assistant");
         return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
@@ -31732,13 +33862,13 @@ async function route(request) {
     }
     if (m === "GET" && path === "/advisor/status") {
       return handle(async () => {
-        await requireMobileOrgContext(request);
+        await requireMobileOrgContext(request2);
         return { configured: aiConfigured(), model: aiConfigured() ? aiModel() : null, voice: aiConfigured() ? { provider: "openai", name: ttsVoice(), choices: [...TTS_CHOICES] } : null, limits: { perUserPerHour: AI_LIMITS.assistantPerHour, perOrganizationPerDay: AI_LIMITS.orgPerDay, maxMessageChars: ADVISOR_MESSAGE_MAX_CHARS } };
       });
     }
     if (m === "GET" && path === "/advisor/speech") {
       try {
-        const ctx = await requireMobileOrgContext(request);
+        const ctx = await requireMobileOrgContext(request2);
         const messageId = url.searchParams.get("messageId") ?? "";
         if (!/^[0-9a-f-]{36}$/i.test(messageId)) throw new AppError("VALIDATION", "R\xE9ponse \xE0 lire invalide.");
         llmClient();
@@ -31750,7 +33880,7 @@ async function route(request) {
     }
     if (m === "GET" && path === "/advisor/voice-sample") {
       try {
-        const ctx = await requireMobileOrgContext(request);
+        const ctx = await requireMobileOrgContext(request2);
         llmClient();
         await enforceAiQuota(ctx, "assistant");
         const audio = await synthesizeVoiceSample(url.searchParams.get("voice"));
@@ -31761,11 +33891,11 @@ async function route(request) {
     }
     if (m === "POST" && path === "/advisor/chat") {
       try {
-        const ctx = await requireMobileOrgContext(request);
-        const body = await parseBody(request, advisorChatSchema);
+        const ctx = await requireMobileOrgContext(request2);
+        const body = await parseBody(request2, advisorChatSchema);
         llmClient();
         await enforceAiQuota(ctx, "assistant");
-        if ((request.headers.get("accept") ?? "").includes("application/x-ndjson")) {
+        if ((request2.headers.get("accept") ?? "").includes("application/x-ndjson")) {
           return new Response(advisorNdjsonStream(ctx, body), { status: 200, headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
         }
         return handle(() => runAdvisorTurn(ctx, body, () => void 0));
@@ -31775,43 +33905,43 @@ async function route(request) {
     }
     if (m === "POST" && (path === "/advisor/actions/confirm" || path === "/advisor/actions/cancel")) {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request);
-        const { actionId } = await parseBody(request, advisorActionDecisionSchema);
+        const ctx = await requireMobileOrgContext(request2);
+        const { actionId } = await parseBody(request2, advisorActionDecisionSchema);
         return decideAdvisorAction(ctx, actionId, path.endsWith("/confirm") ? "confirm" : "cancel");
       });
     }
-    if (m === "GET" && path === "/integrations") return handle(async () => integrations(await requireMobileOrgContext(request)));
-    if (m === "POST" && path === "/ebay/connect") return handle(() => startEbayConnect(request));
-    if (m === "POST" && path === "/ebay/finalize") return handle(() => finalizeEbayConnect(request));
+    if (m === "GET" && path === "/integrations") return handle(async () => integrations(await requireMobileOrgContext(request2)));
+    if (m === "POST" && path === "/ebay/connect") return handle(() => startEbayConnect(request2));
+    if (m === "POST" && path === "/ebay/finalize") return handle(() => finalizeEbayConnect(request2));
     if (m === "POST" && path === "/ebay/disconnect") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { admin: true });
-        return disconnectEbay(ctx, (await parseBody(request, disconnectSchema)).connectionId);
+        const ctx = await requireMobileOrgContext(request2, { admin: true });
+        return disconnectEbay(ctx, (await parseBody(request2, disconnectSchema)).connectionId);
       });
     }
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return prefillListing(ctx, parseQuery2(request, z49.object({ skuId: uuidParam })).skuId);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return prefillListing(ctx, parseQuery2(request2, z50.object({ skuId: uuidParam })).skuId);
       });
     }
-    if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));
+    if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request2, { write: true })));
     if (m === "POST" && path === "/ebay/listings/check") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        return checkListing(ctx, await parseBody(request, listingRequestSchema));
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        return checkListing(ctx, await parseBody(request2, listingRequestSchema));
       });
     }
     if (m === "POST" && path === "/ebay/listings/publish") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { admin: true });
-        return publishListingForOrg(ctx, await parseBody(request, listingRequestSchema));
+        const ctx = await requireMobileOrgContext(request2, { admin: true });
+        return publishListingForOrg(ctx, await parseBody(request2, listingRequestSchema));
       });
     }
     if (m === "POST" && path === "/ebay/sync") {
       return handle(async () => {
-        const ctx = await requireMobileOrgContext(request, { write: true });
-        const body = await parseBody(request, syncSchema);
+        const ctx = await requireMobileOrgContext(request2, { write: true });
+        const body = await parseBody(request2, syncSchema);
         const r = await syncConnectionNow(ctx, body.connectionId, { trigger: "manual", scope: body.scope });
         return { runId: r.result.runId, status: r.result.status, durationMs: r.result.durationMs, summary: r.summary, errorSummary: r.result.errorSummary };
       });
@@ -31829,9 +33959,9 @@ function ensureRuntimeSecrets() {
   });
   return secretsLoad;
 }
-async function serve(request) {
+async function serve(request2) {
   await ensureRuntimeSecrets();
-  return withCors(await route(request));
+  return withCors(await route(request2));
 }
 
 // server/edge/main.ts

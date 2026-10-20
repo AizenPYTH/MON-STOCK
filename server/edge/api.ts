@@ -32,7 +32,7 @@
  *   GET  /api/sourcing/imports            historique des imports (fichier, empreinte, compteurs, utilisateur)
  *   GET  /api/sourcing/imports/detail?id= détail d'un import et lignes ignorées avec leur raison
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
- *   POST /api/ebay/connect                URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur)
+ *   POST /api/ebay/connect                URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur) ; { extended: true } = analyse complète
  *   GET|POST /api/ebay/webhook            notifications eBay (suppression de compte, commandes) — signées par eBay
  *   GET  /api/ebay/callback               retour d'eBay → redirection vers l'application (monstock://)
  *   POST /api/ebay/finalize               échange du code (utilisateur qui a démarré le flux uniquement)
@@ -72,7 +72,7 @@ import { requireMobileOrgContext } from "@/features/mobile-api/context";
 import { ADVISOR_MESSAGE_MAX_CHARS, advisorActionDecisionSchema, advisorChatSchema, shippingQuoteRequestSchema, sourcingSearchQuerySchema, trackingRefreshSchema } from "@/features/mobile-api/contract";
 import { integrations, sourcingSearch, sourcingStatus } from "@/features/mobile-api/service";
 import { syncConnectionNow } from "@/features/integrations/sync-service";
-import { OAUTH_STATE_TTL_SECONDS, oauthErrorCodeFor } from "@/features/integrations/oauth-flow";
+import { buildOAuthState, isExtendedOAuthState, OAUTH_STATE_TTL_SECONDS, oauthErrorCodeFor } from "@/features/integrations/oauth-flow";
 import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
@@ -119,6 +119,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
+const ebayConnectSchema = z.object({ extended: z.boolean().optional() });
 const ebayFinalizeSchema = z.object({ code: z.string().min(1).max(2048), state: z.string().min(16).max(200) });
 const syncSchema = z.object({ connectionId: uuidParam, scope: z.enum(["full", "listings", "orders"]).default("full") });
 const scoutSchema = z.object({ hosts: z.array(z.string().min(3).max(120)).min(1).max(25), query: z.string().min(2).max(80).optional() });
@@ -147,7 +148,9 @@ async function startEbayConnect(request: Request) {
   if (!connector.isConfigured()) {
     throw new AppError("VALIDATION", "Intégration eBay non configurée sur le serveur : les clés de l'application eBay (EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_RU_NAME) doivent être ajoutées aux secrets de la fonction.");
   }
-  const state = randomToken(32);
+  // Corps facultatif { extended: true } : « Autoriser l'analyse complète » (finances, trafic, marketing en lecture).
+  const { extended = false } = await parseBody(request, ebayConnectSchema);
+  const state = buildOAuthState(randomToken(32), extended);
   const admin = createAdminSupabaseClient();
   await admin.from("oauth_states").delete().lt("expires_at", new Date().toISOString());
   const { error } = await admin.from("oauth_states").insert({
@@ -159,8 +162,8 @@ async function startEbayConnect(request: Request) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1000).toISOString(),
   });
   if (error) throw new AppError("INTERNAL", "Impossible de démarrer la connexion eBay. Réessayez.");
-  log.info("connexion eBay démarrée (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id });
-  return { authorizeUrl: connector.getAuthorizeUrl(state), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null };
+  log.info("connexion eBay démarrée (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id, extended });
+  return { authorizeUrl: connector.getAuthorizeUrl(state, { extended }), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null, extended };
 }
 
 /**
@@ -187,7 +190,7 @@ async function finalizeEbayConnect(request: Request) {
   try {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
-    const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList() });
+    const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList({ extended: isExtendedOAuthState(row.state) }) });
     log.info("connexion eBay établie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {

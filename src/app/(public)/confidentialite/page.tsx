@@ -31,7 +31,7 @@ export default function PrivacyPage() {
             <strong>Colis suivis</strong> : numéros de suivi que vous ajoutez et leurs événements.
           </li>
           <li>
-            <strong>Conseiller et assistant IA</strong>, si vous les utilisez : vos questions et les données de votre organisation nécessaires à la réponse sont transmises à OpenAI ; l&apos;historique des conversations est conservé dans votre organisation.
+            <strong>Conseiller et assistant IA</strong>, si vous les utilisez : vos questions et les données de votre organisation nécessaires à la réponse sont transmises à OpenAI. Pour une question sur une commande ou un message eBay, cela peut inclure, lus en direct chez eBay : le pseudo de l&apos;acheteur, le nom, la ville, le code postal et le pays du destinataire (jamais la rue, le téléphone ni l&apos;e-mail), les en-têtes de vos messages eBay et, seulement si vous demandez à le lire, le texte d&apos;un message (e-mails et téléphones masqués). L&apos;historique des conversations est conservé dans votre organisation.
           </li>
           <li>
             <strong>Dictée vocale (iPhone)</strong> : la reconnaissance vocale est assurée par le système de l&apos;iPhone (Apple) ; seul le texte obtenu est envoyé à MON STOCK.
