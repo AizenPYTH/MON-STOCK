@@ -56,8 +56,7 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
   const base = `/suppliers/${supplier.id}/orders`;
 
   return (
-    <>
-      <SupplierHeader supplier={supplier} tab="orders" counts={counts} />
+    <SupplierHeader supplier={supplier} tab="orders" counts={counts}>
       <div className="space-y-6">
         {writable && !showNew ? (
           <div className="flex justify-end">
@@ -218,6 +217,6 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
           </CardContent>
         </Card>
       </div>
-    </>
+    </SupplierHeader>
   );
 }

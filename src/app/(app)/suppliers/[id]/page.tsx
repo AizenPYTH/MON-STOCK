@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { DescriptionList, Stat } from "@/components/ui/page";
+import { DescriptionList } from "@/components/ui/page";
 import { getSupplier, getSupplierTabCounts } from "@/features/suppliers/queries";
 import { SupplierHeader } from "@/features/suppliers/components/supplier-header";
 import { SupplierForm } from "@/features/suppliers/components/supplier-form";
@@ -28,14 +28,8 @@ export default async function SupplierPage({ params, searchParams }: { params: P
   const counts = await getSupplierTabCounts(ctx, supplier.id);
   const writable = canWrite(ctx.role);
   return (
-    <>
-      <SupplierHeader supplier={supplier} tab="info" counts={counts} />
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Offres actives" value={counts.offers} />
-        <Stat label="Sources & flux" value={counts.sources} hint={counts.sources === 0 ? "Source non connectée" : undefined} />
-        <Stat label="Commandes" value={counts.orders} />
-        <Stat label="Délai annoncé" value={supplier.average_lead_time_days === null ? NOT_PROVIDED : `${supplier.average_lead_time_days} j`} hint="Le délai réel est mesuré sur vos réceptions (onglet Performance)." />
-      </div>
+    <SupplierHeader supplier={supplier} tab="info" counts={counts}>
+      {Number.isFinite(Number(supplier.average_lead_time_days ?? NaN)) ? <p className="mb-4 text-[13px] font-semibold text-muted">Délai annoncé : {supplier.average_lead_time_days} j · le délai réel est mesuré sur vos réceptions (onglet Performance).</p> : null}
       {writable ? (
         <div className="max-w-4xl space-y-6">
           <SupplierForm supplier={supplier} defaultCurrency={ctx.organization.default_currency} />
@@ -70,6 +64,6 @@ export default async function SupplierPage({ params, searchParams }: { params: P
           </CardContent>
         </Card>
       )}
-    </>
+    </SupplierHeader>
   );
 }

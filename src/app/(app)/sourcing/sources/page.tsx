@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOrgContext, canWrite, isAdmin } from "@/features/auth/dal";
-import { PageHeader, EmptyState, Stat, Section, Callout } from "@/components/ui/page";
+import { EmptyState, Callout } from "@/components/ui/page";
+import { MonoTitle, Panel, Paper, Scene, SceneHeader, StageStats } from "@/components/instrument";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -18,6 +19,7 @@ export const metadata: Metadata = { title: "Mes sources" };
 
 function SourcesTable({ sources, caption, writer, admin }: { sources: SourceOverviewDTO[]; caption: string; writer: boolean; admin: boolean }) {
   return (
+    <Panel className="overflow-hidden">
     <Table className="min-w-[1180px]">
       <caption className="sr-only">{caption}</caption>
       <THead>
@@ -100,6 +102,7 @@ function SourcesTable({ sources, caption, writer, admin }: { sources: SourceOver
         })}
       </TBody>
     </Table>
+    </Panel>
   );
 }
 
@@ -114,28 +117,41 @@ export default async function SourcesPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Sourcing"
-        title="Mes sources"
-        description="Chaque source de l'organisation avec son statut RÉEL (connectée seulement après une synchronisation réussie), ses offres exploitables, l'âge des données et le prochain passage."
-        actions={
-          <>
-            <ButtonLink href="/sourcing/imports" variant="secondary">
-              Historique des imports
-            </ButtonLink>
-            <ButtonLink href="/suppliers/accounts" variant="secondary">
-              Comptes fournisseurs
-            </ButtonLink>
-            {writer ? (
-              <ButtonLink href="/sourcing/sources/new-feed" variant="secondary">
-                Ajouter un flux autorisé
+      <Scene>
+        <SceneHeader
+          eyebrow="Sourcing · sources & flux"
+          title="Mes sources"
+          description="Chaque source de l'organisation avec son statut RÉEL (connectée seulement après une synchronisation réussie), ses offres exploitables, l'âge des données et le prochain passage."
+          actions={
+            <>
+              <ButtonLink href="/sourcing/imports" variant="night">
+                Historique des imports
               </ButtonLink>
-            ) : null}
-            {writer ? <ButtonLink href="/sourcing/imports/new">Importer un fichier</ButtonLink> : null}
-          </>
-        }
-      />
-
+              <ButtonLink href="/suppliers/accounts" variant="night">
+                Comptes fournisseurs
+              </ButtonLink>
+              {writer ? (
+                <ButtonLink href="/sourcing/sources/new-feed" variant="night">
+                  Ajouter un flux autorisé
+                </ButtonLink>
+              ) : null}
+              {writer ? <ButtonLink href="/sourcing/imports/new">Importer un fichier</ButtonLink> : null}
+            </>
+          }
+        />
+        {sources.length > 0 ? (
+          <StageStats
+            className="mt-6 max-w-[820px]"
+            stats={[
+              { label: "Actives", value: `${formatNumber(stats.active)} / ${formatNumber(stats.total)}`, tone: stats.active > 0 ? "mint" : undefined },
+              { label: "À corriger", value: formatNumber(stats.toFix), tone: stats.toFix ? "danger" : undefined },
+              { label: "Offres exploitables", value: formatNumber(stats.offers) },
+              { label: "Dernière mise à jour", value: stats.lastSuccess ? ageText(stats.lastSuccess) : "jamais" },
+            ]}
+          />
+        ) : null}
+      </Scene>
+      <Paper>
       {sources.length === 0 ? (
         <EmptyState
           className="mb-6"
@@ -143,68 +159,73 @@ export default async function SourcesPage() {
           description="Connectez votre premier fournisseur : importez sa liste de stock, ajoutez le lien de flux qu'il vous a fourni ou activez un catalogue public de la bibliothèque ci-dessous."
           action={<ButtonLink href="/suppliers/directory">Explorer l'annuaire des fournisseurs</ButtonLink>}
         />
-      ) : (
-        <div className="mb-6 grid gap-3 sm:grid-cols-3">
-          <Stat label="Actives" value={formatNumber(stats.active)} hint={`sur ${formatNumber(stats.total)} source${stats.total > 1 ? "s" : ""}`} tone={stats.active > 0 ? "success" : undefined} />
-          <Stat label="À corriger" value={formatNumber(stats.toFix)} hint={stats.toFix ? "en échec" : "aucune"} tone={stats.toFix ? "danger" : undefined} />
-          <Stat label="Offres exploitables" value={formatNumber(stats.offers)} hint={stats.lastSuccess ? `Dernière mise à jour ${ageText(stats.lastSuccess)}` : "Jamais mises à jour"} />
-        </div>
-      )}
+      ) : null}
 
       <div className="space-y-8">
         {groups.automatic.length > 0 ? (
-          <Section title={`Synchronisation automatique (${groups.automatic.length})`} description="Pages publiques attestées, flux distants autorisés et API fournisseurs.">
+          <section className="flex flex-col gap-2.5">
+            <MonoTitle title="Synchronisation automatique" count={groups.automatic.length} />
+            <p className="text-[13px] font-semibold text-muted">Pages publiques attestées, flux distants autorisés et API fournisseurs.</p>
             <SourcesTable sources={groups.automatic} caption="Sources à synchronisation automatique" writer={writer} admin={admin} />
-          </Section>
+          </section>
         ) : null}
         {groups.live.length > 0 ? (
-          <Section title={`Recherche en direct (${groups.live.length})`} description="Interrogées à chaque recherche de produit : leurs offres se mettent à jour quand vous cherchez, sans synchronisation.">
+          <section className="flex flex-col gap-2.5">
+            <MonoTitle title="Recherche en direct" count={groups.live.length} />
+            <p className="text-[13px] font-semibold text-muted">Interrogées à chaque recherche de produit : leurs offres se mettent à jour quand vous cherchez, sans synchronisation.</p>
             <SourcesTable sources={groups.live} caption="Sources interrogées en direct" writer={writer} admin={admin} />
-          </Section>
+          </section>
         ) : null}
         {groups.manual.length > 0 ? (
-          <Section title={`Fichiers et saisie (${groups.manual.length})`} description="Mises à jour à chaque nouvel import. Pour les automatiser, demandez au fournisseur un lien de flux (CSV / XML) ou une API.">
+          <section className="flex flex-col gap-2.5">
+            <MonoTitle title="Fichiers et saisie" count={groups.manual.length} />
+            <p className="text-[13px] font-semibold text-muted">Mises à jour à chaque nouvel import. Pour les automatiser, demandez au fournisseur un lien de flux (CSV / XML) ou une API.</p>
             <SourcesTable sources={groups.manual} caption="Sources alimentées par fichier ou saisie" writer={writer} admin={admin} />
-          </Section>
+          </section>
         ) : null}
 
         <section id="bibliotheque" aria-labelledby="bibliotheque-title" className="space-y-4">
           <div>
-            <h2 id="bibliotheque-title" className="text-base font-semibold">
+            <h2 id="bibliotheque-title" className="text-[17px] font-bold leading-[22px]">
               Bibliothèque de sources publiques
             </h2>
-            <p className="text-sm text-muted">Vérifiées par le serveur : robots.txt respecté, produits avec prix réellement obtenus. Une source non vérifiée n&apos;est jamais présentée comme connectée.</p>
+            <p className="text-[13px] font-semibold text-muted">Vérifiées par le serveur : robots.txt respecté, produits avec prix réellement obtenus. Une source non vérifiée n&apos;est jamais présentée comme connectée.</p>
           </div>
           {library.entries.length === 0 ? <Callout tone="neutral">La bibliothèque est vide.</Callout> : null}
           {lib.active.length > 0 ? (
-            <Section title={`Activées (${lib.active.length})`}>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <section className="flex flex-col gap-2.5">
+              <MonoTitle title="Activées" count={lib.active.length} />
+              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
                 {lib.active.map((e) => (
                   <LibraryCard key={e.key} entry={e} canActivate={false} />
                 ))}
               </div>
-            </Section>
+            </section>
           ) : null}
           {lib.ready.length > 0 ? (
-            <Section title={`Vérifiées, activables (${lib.ready.length})`} description={writer ? undefined : "Activation réservée aux rôles rédacteur et administrateur."}>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <section className="flex flex-col gap-2.5">
+              <MonoTitle title="Vérifiées, activables" count={lib.ready.length} aside={writer ? undefined : "Activation réservée aux rédacteurs"} />
+              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
                 {lib.ready.map((e) => (
                   <LibraryCard key={e.key} entry={e} canActivate={writer} />
                 ))}
               </div>
-            </Section>
+            </section>
           ) : null}
           {lib.blocked.length > 0 ? (
-            <Section title={`Non activables (${lib.blocked.length})`} description="Résultat de la dernière vérification réelle. Ces fournisseurs n'exposent pas leur catalogue publiquement (compte professionnel, robots.txt, site non lisible) ou attendent des clés d'API.">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <section className="flex flex-col gap-2.5">
+              <MonoTitle title="Non activables" count={lib.blocked.length} />
+              <p className="text-[13px] font-semibold text-muted">Résultat de la dernière vérification réelle. Ces fournisseurs n&apos;exposent pas leur catalogue publiquement (compte professionnel, robots.txt, site non lisible) ou attendent des clés d&apos;API.</p>
+              <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
                 {lib.blocked.map((e) => (
                   <LibraryCard key={e.key} entry={e} canActivate={false} />
                 ))}
               </div>
-            </Section>
+            </section>
           ) : null}
         </section>
       </div>
+      </Paper>
     </>
   );
 }

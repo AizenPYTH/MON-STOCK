@@ -5,6 +5,7 @@
  */
 import type { CatalogMapping, ImportJobDetailDTO, ImportJobDTO } from "@/features/mobile-api/contract";
 import type { BadgeVariant } from "@/components/ui/badge";
+import { formatNumber } from "@/lib/format";
 
 /** Taille maximale d'un fichier : identique à l'Edge Function (MAX_CATALOG_BYTES = 15 Mo). */
 export const MAX_FILE_BYTES = 15 * 1024 * 1024;
@@ -132,7 +133,7 @@ export function isIssueKind(v: unknown): v is IssueKind {
 }
 
 /** Lignes ignorées d'un import (doublons, illisibles, rejetées, non reconnues). Pur. */
-export function ignoredCount(c: ImportJobDTO["counts"]): number {
+export function ignoredCount(c: Pick<ImportJobDTO["counts"], "duplicates" | "invalid" | "rejected" | "unrecognized">): number {
   return c.duplicates + c.invalid + c.rejected + c.unrecognized;
 }
 
@@ -188,4 +189,58 @@ export function fileSizeLabel(bytes: number | null | undefined): string {
   if (bytes < 1024) return `${bytes} o`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
   return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} Mo`;
+}
+
+/** Libellé court d'un statut (historique, rapport, résultat). */
+export const IMPORT_STATUS_SHORT: Record<ImportJobDTO["status"], string> = {
+  running: "En cours",
+  completed: "Import réussi",
+  partial: "Import partiel",
+  failed: "Import en échec",
+  quarantined: "Import suspendu",
+  skipped_duplicate: "Déjà importé",
+};
+
+export type ImportTone = "success" | "warning" | "danger" | "info" | "neutral";
+
+export const IMPORT_STATUS_TONE: Record<ImportJobDTO["status"], ImportTone> = { completed: "success", partial: "warning", failed: "danger", quarantined: "warning", running: "info", skipped_duplicate: "neutral" };
+
+/** Couleurs v5 de la répartition : nouvelles vert, mises à jour nuit, inchangées filet fort, ignorées rouge. */
+export const IMPORT_PART_COLOR = { created: "var(--success)", updated: "var(--night)", unchanged: "var(--border-strong)", ignored: "var(--red)" } as const;
+
+/** Segments de la barre de répartition (vrais comptes) d'un import de l'historique. Pur. */
+export function importSegments(c: Pick<ImportJobDTO["counts"], "created" | "updated" | "unchanged" | "duplicates" | "invalid" | "rejected" | "unrecognized">): { label: string; value: number; color: string }[] {
+  return [
+    { label: "Nouvelles", value: c.created, color: IMPORT_PART_COLOR.created },
+    { label: "Mises à jour", value: c.updated, color: IMPORT_PART_COLOR.updated },
+    { label: "Inchangées", value: c.unchanged, color: IMPORT_PART_COLOR.unchanged },
+    { label: "Ignorées", value: ignoredCount(c), color: IMPORT_PART_COLOR.ignored },
+  ];
+}
+
+/** Offres à jour après un import : nouvelles + mises à jour + inchangées. Pur. */
+export function upToDateCount(c: Pick<ImportJobDTO["counts"], "created" | "updated" | "unchanged">): number {
+  return c.created + c.updated + c.unchanged;
+}
+
+/** Durée d'un import (« 4 s », « 2 min 05 ») ; inconnue → null. Pur. */
+export function durationLabel(startedAt: string, finishedAt: string | null): string | null {
+  if (!finishedAt) return null;
+  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  return `${m} min ${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Ligne de résultat d'un import de l'historique (texte + ton). Pur. */
+export function historyLine(j: Pick<ImportJobDTO, "status" | "counts" | "message">): { text: string; tone: "muted" | "danger" | "warning" } {
+  if (j.status === "failed") return { text: j.message ?? "Le fichier n'a pas été importé.", tone: "danger" };
+  if (j.status === "quarantined") return { text: `Rien n'a été modifié${j.message ? ` : ${j.message}` : "."}`, tone: "warning" };
+  if (j.status === "skipped_duplicate") return { text: "Fichier déjà importé : rien n'a été modifié.", tone: "muted" };
+  if (j.status === "running") return { text: "Import en cours…", tone: "muted" };
+  const ignored = ignoredCount(j.counts);
+  const n = upToDateCount(j.counts);
+  return { text: [`${formatNumber(n)} offre${n > 1 ? "s" : ""} à jour`, ignored ? `${formatNumber(ignored)} ignorée${ignored > 1 ? "s" : ""}` : null].filter(Boolean).join(" · "), tone: "muted" };
 }

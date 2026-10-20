@@ -12,6 +12,7 @@ import { IMPORT_MODE_HELP, IMPORT_MODE_LABEL, mappingIssues, TAX_OPTIONS, taxTyp
 import { MappingEditor } from "@/features/catalog-imports/components/mapping-editor";
 import { PreviewSample } from "@/features/catalog-imports/components/preview-sample";
 import { Steps } from "@/features/catalog-imports/components/steps";
+import { ChoiceChips } from "@/features/catalog-imports/components/choice-chips";
 import { createRemoteFeedAction, previewRemoteFeedAction } from "@/features/sources/actions";
 import { FEED_FREQUENCIES, remoteFeedIssues, type FeedAuthInput } from "@/features/sources/labels";
 
@@ -275,27 +276,18 @@ export function FeedWizard({ suppliers, orgCurrency }: { suppliers: { id: string
                 }}
               />
               <div className="grid gap-4 sm:grid-cols-2">
-                <fieldset>
-                  <legend className="mb-1.5 text-sm font-medium text-foreground">Type de prix</legend>
-                  <div className="flex flex-wrap gap-3">
-                    {TAX_OPTIONS.map((o) => (
-                      <label key={o.value} className="flex items-center gap-1.5 text-sm">
-                        <input
-                          type="radio"
-                          name={`${id}-tax`}
-                          value={o.value}
-                          checked={taxType === o.value}
-                          onChange={() => {
-                            setTaxType(o.value);
-                            setDirty(true);
-                          }}
-                          className="accent-accent"
-                        />
-                        {o.label}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
+                <div>
+                  <span className="mb-1.5 block text-sm font-bold text-foreground">Type de prix</span>
+                  <ChoiceChips
+                    label="Type de prix"
+                    options={TAX_OPTIONS}
+                    value={taxType}
+                    onChange={(t) => {
+                      setTaxType(t);
+                      setDirty(true);
+                    }}
+                  />
+                </div>
                 <Field label="Devise des prix (si absente du flux)" htmlFor={`${id}-currency`} error={currencyOk ? undefined : "Devise sur 3 lettres (EUR, USD…)."}>
                   <Input
                     id={`${id}-currency`}
@@ -319,7 +311,9 @@ export function FeedWizard({ suppliers, orgCurrency }: { suppliers: { id: string
 
           <Card>
             <CardHeader title={`Aperçu (${data.sample.length} premières lignes)`} description="Lu par le serveur, rien n'est encore enregistré." />
-            <PreviewSample sample={data.sample} limit={10} />
+            <CardContent>
+              <PreviewSample sample={data.sample} limit={10} caption="Aperçu des premières lignes du flux" />
+            </CardContent>
           </Card>
 
           <Card>

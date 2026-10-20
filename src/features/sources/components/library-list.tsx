@@ -1,7 +1,7 @@
 import { CircleCheck, CircleX, ExternalLink, KeyRound } from "lucide-react";
 import type { LibraryEntryDTO } from "@/services/sourcing/source-library";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Panel } from "@/components/instrument";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { safeExternalUrl } from "@/lib/utils";
 import { ActivateLibraryForm } from "@/features/directory/components/activate-library-form";
@@ -18,13 +18,12 @@ export function LibraryCard({ entry: e, canActivate }: { entry: LibraryEntryDTO;
   const samples = sampleOf(e);
   const site = safeExternalUrl(e.website);
   return (
-    <Card>
-      <CardContent className="space-y-2">
+    <Panel as="article" className="flex flex-col gap-2 p-4">
         <div className="flex items-start gap-3">
           {e.sourceId || ok ? <CircleCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-success" /> : status === "not_configured" ? <KeyRound aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-warning" /> : <CircleX aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-muted" />}
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold">{e.name}</h3>
-            <p className="text-xs text-muted">
+            <h3 className="text-[15px] font-bold leading-5">{e.name}</h3>
+            <p className="text-[12.5px] font-semibold text-ink-3">
               {LIBRARY_SEGMENT_LABEL[e.segment]} · {e.country} · {LIBRARY_ACCESS_LABEL[e.access]}
             </p>
           </div>
@@ -59,14 +58,13 @@ export function LibraryCard({ entry: e, canActivate }: { entry: LibraryEntryDTO;
           )}
         </div>
         {canActivate && !e.sourceId && e.activatable ? (
-          <details className="rounded-lg border border-border px-3 py-2">
-            <summary className="cursor-pointer text-sm font-medium">Activer cette source</summary>
+          <details className="rounded-xl border border-border px-3 py-1">
+            <summary className="min-h-10 cursor-pointer py-2 text-sm font-bold">Activer cette source</summary>
             <div className="pt-2">
               <ActivateLibraryForm libraryKey={e.key} name={e.name} termsUrl={e.termsUrl} />
             </div>
           </details>
         ) : null}
-      </CardContent>
-    </Card>
+    </Panel>
   );
 }

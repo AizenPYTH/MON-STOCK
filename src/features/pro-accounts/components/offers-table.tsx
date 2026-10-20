@@ -13,6 +13,7 @@ import { safeExternalUrl } from "@/lib/utils";
  */
 export function SupplierOffersTable({ offers, orgCurrency, caption }: { offers: SupplierOffersDTO["offers"]; orgCurrency: string; caption: string }) {
   return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
     <Table className="min-w-[900px]">
       <caption className="sr-only">{caption}</caption>
       <THead>
@@ -61,5 +62,7 @@ export function SupplierOffersTable({ offers, orgCurrency, caption }: { offers: 
         })}
       </TBody>
     </Table>
+    </div>
   );
 }
+

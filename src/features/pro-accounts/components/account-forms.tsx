@@ -53,12 +53,12 @@ export function ConnectAccountForm({ accountKey, accountName, fields }: { accoun
   );
 }
 
-export function SyncAccountForm({ connectionId, label = "Synchroniser mes prix" }: { connectionId: string; label?: string }) {
+export function SyncAccountForm({ connectionId, label = "Synchroniser mes prix", size = "sm", block = false }: { connectionId: string; label?: string; size?: "sm" | "md" | "lg"; block?: boolean }) {
   const [state, action] = useActionState(syncProAccountAction, null);
   return (
     <form action={action} className="space-y-2">
       <input type="hidden" name="connectionId" value={connectionId} />
-      <SubmitButton size="sm" pendingText="Synchronisation…">
+      <SubmitButton size={size} className={block ? "w-full" : undefined} pendingText="Synchronisation…">
         {label}
       </SubmitButton>
       <Result state={state} />

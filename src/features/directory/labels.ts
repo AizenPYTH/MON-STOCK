@@ -90,12 +90,11 @@ export function shortName(name: string): string {
   return name.split(/\s+[—–]\s+/)[0]!.replace(/\s*\([^)]*\)\s*$/, "").trim() || name;
 }
 
-/** Pays ISO → drapeau + code ; autre valeur (« EU », texte) renvoyée telle quelle ; inconnu → « — ». */
+/** Pays : code ISO tel quel (pas de drapeau emoji, non rendu sous Windows) ; inconnu → « — ». */
 export function countryLabel(country: string | null | undefined): string {
   if (!country) return "—";
-  if (!/^[A-Z]{2}$/.test(country) || country === "EU") return country;
-  const flag = String.fromCodePoint(...[...country].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
-  return `${flag} ${country}`;
+  const c = country.trim();
+  return /^[A-Za-z]{2,3}$/.test(c) ? c.toUpperCase() : c || "—";
 }
 
 export function segmentLabel(segment: string): string {
@@ -166,4 +165,23 @@ export function advantagesAndLimits(e: Pick<DirectoryEntry, "registry" | "prices
     e.moq ? `Minimum de commande : ${e.moq}` : null,
   ].filter((x): x is string => Boolean(x));
   return { advantages, limits };
+}
+
+export type StatusTone = "ok" | "low" | "out" | "neutral";
+
+/** Ton du point de statut d'une fiche : état réel dans l'organisation, sinon neutre (écarté → rouge). Pur. */
+export function statusTone(e: Pick<DirectoryEntry, "org" | "registry">): StatusTone {
+  if (e.org.status === "connected") return "ok";
+  if (e.org.status === "pending") return "low";
+  if (e.org.status === "error") return "out";
+  if (e.registry.integrationStatus === "connected_tested") return "ok";
+  if (e.registry.integrationStatus === "abandoned") return "out";
+  return "neutral";
+}
+
+/** Méthode d'accès principale affichée sur une carte (le préalable « compte pro » est signalé à part). Pur. */
+export function mainMethod(e: Pick<DirectoryEntry, "registry">): { label: string; tone: "dark" | "danger" | "neutral" } | null {
+  const m = e.registry.accessMethods.find((x) => x !== "pro_account_first") ?? e.registry.accessMethods[0];
+  if (!m) return null;
+  return { label: ACCESS_METHOD_LABEL[m], tone: m === "official_api" || m === "public_integrated" ? "dark" : m === "not_automatable" ? "danger" : "neutral" };
 }

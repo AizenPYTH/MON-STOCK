@@ -54,3 +54,30 @@ export function PrimaryAction({ entry: e, canWrite, library }: { entry: Director
       );
   }
 }
+
+/**
+ * Lien de l'action principale sur une carte de l'annuaire : direct quand c'est une page
+ * (import, flux, site du fournisseur), sinon la fiche où l'action s'exécute (synchroniser,
+ * connecter l'API avec vos identifiants, activer le catalogue public après attestation).
+ */
+export function cardActionLink(e: DirectoryEntry, canWrite: boolean): { label: string; href: string; external: boolean } {
+  const a = e.registry.primaryAction;
+  const fiche = `/suppliers/directory/${encodeURIComponent(e.key)}`;
+  if (a.kind === "none" || (!canWrite && WRITE_KINDS.has(a.kind))) return { label: "Voir la fiche", href: fiche, external: false };
+  switch (a.kind) {
+    case "import_catalog":
+      return { label: a.label, href: importHref(e), external: false };
+    case "add_feed":
+      return { label: a.label, href: "/sourcing/sources/new-feed", external: false };
+    case "get_pro_access":
+    case "open_site": {
+      const site = e.catalogUrl ?? e.website;
+      return site ? { label: a.label, href: site, external: true } : { label: "Voir la fiche", href: fiche, external: false };
+    }
+    case "connect_api":
+    case "activate_public":
+      return { label: a.label, href: `${fiche}?tab=acces#action`, external: false };
+    default:
+      return { label: a.label, href: fiche, external: false };
+  }
+}

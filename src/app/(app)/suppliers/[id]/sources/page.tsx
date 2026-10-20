@@ -49,8 +49,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
   const feedSources = view.sources.filter((s) => s.source_type === "CSV" || s.source_type === "XML" || s.source_type === "JSON");
 
   return (
-    <>
-      <SupplierHeader supplier={supplier} tab="sources" counts={counts} />
+    <SupplierHeader supplier={supplier} tab="sources" counts={counts}>
       <div className="space-y-6">
         <Callout tone="neutral" title="Règles d'accès">
           Les offres proviennent uniquement de données que vous êtes autorisé à utiliser : flux transmis par le fournisseur, pages / JSON publics dont les conditions d&apos;utilisation autorisent l&apos;accès automatisé (robots.txt respecté), API officielles ou compte fournisseur connecté par vous-même, saisie manuelle. Aucun contournement de connexion, de CAPTCHA ou de protection anti-bot n&apos;est effectué.
@@ -223,6 +222,6 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
           <CardHeader title="Saisie manuelle" description={view.manualSource ? `Source « ${view.manualSource.name} » créée automatiquement à la première saisie.` : "La source de saisie manuelle est créée automatiquement lors de la première offre saisie (onglet Produits / Offres)."} />
         </Card>
       </div>
-    </>
+    </SupplierHeader>
   );
 }

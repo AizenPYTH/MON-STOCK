@@ -33,8 +33,7 @@ export default async function SupplierOffersPage({ params, searchParams }: { par
   const skuOptions = skus.filter((s) => s.sku_id && s.code).map((s) => ({ id: s.sku_id!, code: s.code!, label: `${s.product_name ?? ""}${s.variant_name && s.variant_name !== "Standard" ? ` · ${s.variant_name}` : ""}` }));
   const makeHref = (p: number) => `/suppliers/${supplier.id}/offers?page=${p}${status === "all" ? "&status=all" : ""}`;
   return (
-    <>
-      <SupplierHeader supplier={supplier} tab="offers" counts={counts} />
+    <SupplierHeader supplier={supplier} tab="offers" counts={counts}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm">
           <ButtonLink href={`/suppliers/${supplier.id}/offers`} variant={status === "active" ? "secondary" : "ghost"} size="sm">
@@ -115,6 +114,6 @@ export default async function SupplierOffersPage({ params, searchParams }: { par
           <Pagination page={offers.page} pageSize={offers.pageSize} total={offers.total} makeHref={makeHref} />
         </div>
       )}
-    </>
+    </SupplierHeader>
   );
 }

@@ -131,7 +131,7 @@ describe("annuaire web : fiche", () => {
   });
 
   it("libellés : pays, nom court, e-mail prêt (aucun destinataire imposé)", () => {
-    expect(countryLabel("FR")).toBe("🇫🇷 FR");
+    expect(countryLabel("FR")).toBe("FR");
     expect(countryLabel(null)).toBe("—");
     expect(countryLabel("EU")).toBe("EU");
     expect(shortName("Foneday (NL) — pièces détachées, B2B")).toBe("Foneday");

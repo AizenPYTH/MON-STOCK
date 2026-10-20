@@ -22,8 +22,7 @@ export default async function SupplierPerformancePage({ params }: { params: Prom
   const writable = canWrite(ctx.role);
   const s = perf.score;
   return (
-    <>
-      <SupplierHeader supplier={supplier} tab="performance" counts={counts} />
+    <SupplierHeader supplier={supplier} tab="performance" counts={counts}>
       <div className="space-y-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Score interne" value={s.score === null ? "Données insuffisantes" : `${s.score}/100`} hint={s.score === null ? `${SUPPLIER_SCORE_MIN_ORDERS} commandes reçues minimum` : perf.stored.score_computed_at ? `Enregistré ${formatRelative(perf.stored.score_computed_at)}` : "Non enregistré sur la fiche"} />
@@ -102,6 +101,6 @@ export default async function SupplierPerformancePage({ params }: { params: Prom
           </CardContent>
         </Card>
       </div>
-    </>
+    </SupplierHeader>
   );
 }
