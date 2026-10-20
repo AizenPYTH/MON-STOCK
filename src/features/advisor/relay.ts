@@ -1,0 +1,90 @@
+import "server-only";
+import type { OrgContext } from "@/features/auth/dal";
+import { advisorChatSchema } from "@/features/mobile-api/contract";
+import { isCrossSiteRequest } from "@/features/integrations/oauth-flow";
+import { edgeRequest, EdgeApiError } from "@/lib/edge-api";
+import { isAppError } from "@/lib/errors";
+
+/**
+ * Relais web du conseiller : POST /api/advisor/chat (même origine) → Edge Function
+ * POST /advisor/chat (flux NDJSON), au nom de l'utilisateur connecté (jeton de session,
+ * organisation active). Le corps de la réponse Edge est renvoyé TEL QUEL au navigateur : aucune
+ * mise en mémoire tampon, le texte s'affiche au fil de l'eau. La clé OpenAI reste côté Edge.
+ * Si le navigateur se déconnecte (bouton « Arrêter », onglet fermé), la requête Edge est annulée.
+ */
+
+export const ADVISOR_RELAY_TIMEOUT_MS = 145_000;
+const BODY_LIMIT_BYTES = 16_000;
+
+export interface AdvisorRelayDeps {
+  getContext: () => Promise<OrgContext>;
+  allowedOrigins: string[];
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}
+
+export function jsonError(status: number, code: string, message: string): Response {
+  return new Response(JSON.stringify({ ok: false, error: { code, message } }), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "private, no-store" } });
+}
+
+export async function relayAdvisorChat(request: Request, deps: AdvisorRelayDeps): Promise<Response> {
+  if (isCrossSiteRequest(request.headers, deps.allowedOrigins)) return jsonError(403, "FORBIDDEN", "Requête refusée : elle ne provient pas de MON STOCK.");
+
+  let ctx: OrgContext;
+  try {
+    ctx = await deps.getContext();
+  } catch (e) {
+    if (isAppError(e)) return jsonError(e.status, e.code, e.message);
+    return jsonError(500, "INTERNAL", "Impossible de vérifier votre session. Réessayez.");
+  }
+
+  let raw: unknown;
+  try {
+    const text = await request.text();
+    if (text.length > BODY_LIMIT_BYTES) return jsonError(413, "VALIDATION", "Message trop long.");
+    raw = JSON.parse(text);
+  } catch {
+    return jsonError(400, "VALIDATION", "Requête invalide.");
+  }
+  const parsed = advisorChatSchema.safeParse(raw);
+  if (!parsed.success) return jsonError(400, "VALIDATION", parsed.error.issues[0]?.message ?? "Requête invalide.");
+
+  let url: string;
+  let init: RequestInit;
+  try {
+    ({ url, init } = await edgeRequest(ctx, "/advisor/chat", { method: "POST", body: parsed.data }));
+  } catch (e) {
+    if (e instanceof EdgeApiError) return jsonError(401, e.code, e.message);
+    return jsonError(500, "INTERNAL", "Impossible de préparer la demande au conseiller.");
+  }
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/x-ndjson");
+  const timeout = AbortSignal.timeout(deps.timeoutMs ?? ADVISOR_RELAY_TIMEOUT_MS);
+  const signal = AbortSignal.any([request.signal, timeout]);
+
+  let upstream: Response;
+  try {
+    upstream = await (deps.fetchImpl ?? fetch)(url, { ...init, headers, signal });
+  } catch {
+    if (timeout.aborted) return jsonError(504, "TIMEOUT", "Le conseiller n'a pas répondu à temps. Réessayez.");
+    if (request.signal.aborted) return jsonError(499, "ABORTED", "Demande annulée.");
+    return jsonError(502, "UNREACHABLE", "Le serveur MON STOCK est injoignable. Réessayez dans un instant.");
+  }
+
+  const type = upstream.headers.get("content-type") ?? "";
+  if (upstream.ok && type.includes("ndjson") && upstream.body) {
+    return new Response(upstream.body, {
+      status: 200,
+      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "private, no-store, no-transform", "X-Content-Type-Options": "nosniff", "X-Accel-Buffering": "no" },
+    });
+  }
+
+  // Réponse d'erreur de l'Edge (`{ ok:false, error }`, message déjà rédigé) : relayée telle quelle.
+  try {
+    const json = (await upstream.json()) as { ok?: boolean; error?: { code?: string; message?: string } } | null;
+    if (json && json.ok === false && json.error?.message) return jsonError(upstream.status >= 400 ? upstream.status : 502, json.error.code ?? "SERVER", json.error.message);
+  } catch {
+    // corps illisible
+  }
+  return jsonError(502, "SERVER", upstream.status >= 500 ? "Le serveur MON STOCK est momentanément indisponible. Réessayez." : `Réponse inattendue du serveur (HTTP ${upstream.status}).`);
+}
