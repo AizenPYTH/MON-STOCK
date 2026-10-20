@@ -44,7 +44,7 @@ src/services/sourcing/          côté serveur (clients Supabase, réseau)
 
 src/integrations/sourcing/      ADAPTATEURS DE SOURCE : core.ts (contrat SourceAdapter), registry.ts (SOURCE_ADAPTERS), shared.ts (HTTP tracé, filtrage par requête), un dossier par source
 src/integrations/suppliers/     connecteurs « compte » dérivés des adaptateurs access=account (SUPPLIER_CONNECTORS), note PARTNER_FEED
-src/app/api/cron/sourcing       cron protégé par `Authorization: Bearer ${CRON_SECRET}` (vercel.json : toutes les 6 h)
+src/app/api/cron/sourcing       cron protégé par `Authorization: Bearer ${CRON_SECRET}` (planifié par Supabase pg_cron, voir docs/WEB-DEPLOY.md)
 src/features/suppliers, src/features/sourcing   schémas zod, requêtes, Server Actions, composants ; pages sous src/app/(app)/suppliers et /sourcing
 ```
 

@@ -103,9 +103,8 @@ La route `GET|POST /api/cron/sync` exécute, séquentiellement, les connexions `
 `last_sync_at` est plus ancien que `sync_interval_minutes` (réglable par connexion, minimum 15 min). Elle est protégée par
 `Authorization: Bearer ${CRON_SECRET}` (401 sinon ; 503 si `CRON_SECRET` est absent).
 
-- **Vercel Cron** : `vercel.json` contient `{ "path": "/api/cron/sync", "schedule": "*/30 * * * *" }`. Vercel envoie
-  automatiquement l'en-tête `Authorization: Bearer ${CRON_SECRET}` lorsque la variable est définie dans le projet.
-  `maxDuration = 300` est exporté ; en plan Hobby la limite est de 60 s (réduisez le nombre de connexions ou la fréquence).
+- **Planification actuelle** : Supabase `pg_cron` (`monstock-ebay-sync`, toutes les 15 min) appelle l'Edge Function ;
+  `vercel.json` ne déclare aucun cron (voir `docs/WEB-DEPLOY.md`).
 - **Autre hébergeur** : appelez la route depuis cron/systemd/GitHub Actions :
   `curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://votre-domaine/api/cron/sync`
 - **CLI** (serveur disposant de `.env.local`) :

@@ -42,7 +42,7 @@ Ce document contient :
 | `supabase/migrations` | 19 migrations (≈ 4 350 lignes) : 39 tables, 5 vues, 112 fonctions, 106 politiques RLS |
 | Auth | Supabase Auth email + mot de passe, PKCE, cookies via `@supabase/ssr`, `proxy.ts` rafraîchit la session, DAL `src/features/auth/dal.ts` (`getOrgContext`) |
 | Organisation courante | `user_profiles.current_organization_id` ; rôle `owner/admin/member/viewer` |
-| Tâches planifiées | `vercel.json` : `/api/cron/sync` (30 min), `/api/cron/sourcing` (6 h), protégées par `CRON_SECRET` |
+| Tâches planifiées | Supabase `pg_cron` → Edge Function (synchro eBay 15 min, sourcing 6 h, suivi, annuaire) ; `vercel.json` sans cron (docs/WEB-DEPLOY.md) |
 | Tests | 73 fichiers unitaires (648 tests), 18 fichiers d'intégration (142 tests), 1 spec e2e (21 tests) |
 | Scripts | `db-local-reset.sh`, `generate-db-types.sh`, `run-sync.ts`, `seed-demo.ts`, `verify-sources.ts`, `sourcing-test-searches.ts` |
 | Variables | `.env.example` : Supabase (URL, anon, service_role), `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`, eBay (5), sourcing (3) |

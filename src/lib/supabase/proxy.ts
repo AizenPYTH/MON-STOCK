@@ -8,7 +8,7 @@ import { safeInternalPath } from "@/lib/utils";
  * routes API non listées) exige une session ; la vraie autorisation est faite dans la
  * couche d'accès aux données (DAL) et par la RLS.
  */
-export const PUBLIC_PATHS = ["/login", "/signup", "/reset-password", "/update-password", "/auth", "/api/webhooks", "/api/cron", "/api/integrations/ebay/callback", "/invite"] as const;
+export const PUBLIC_PATHS = ["/confidentialite", "/conditions", "/mentions-legales", "/support", "/login", "/signup", "/reset-password", "/update-password", "/auth", "/api/webhooks", "/api/cron", "/api/integrations/ebay/callback", "/invite"] as const;
 
 // Routes machine-à-machine : pas de session à rafraîchir (webhooks signés, cron protégé par secret).
 export const MACHINE_PATHS = ["/api/webhooks", "/api/cron"] as const;
@@ -96,6 +96,11 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     if (isServerActionRequest(request)) return response;
     // 303 pour les soumissions sans JavaScript (POST) : le navigateur suit en GET.
     return NextResponse.redirect(loginRedirectUrl(request), request.method === "GET" || request.method === "HEAD" ? 307 : 303);
+  }
+
+  if (user && pathname === "/") {
+    // Connecté : l'accueil public laisse place à l'application.
+    return NextResponse.redirect(new URL("/dashboard", request.nextUrl.origin));
   }
 
   if (user && (pathname === "/login" || pathname === "/signup")) {

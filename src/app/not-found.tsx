@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ButtonLink } from "@/components/ui/button";
+import { Wordmark } from "@/components/public/wordmark";
 
 export const metadata: Metadata = { title: "Page introuvable" };
 
@@ -9,8 +10,8 @@ export default function NotFound() {
   return (
     <div className="flex min-h-full flex-1 flex-col bg-background">
       <header className="px-6 py-5">
-        <Link href="/" className="text-sm font-semibold tracking-tight">
-          MON STOCK
+        <Link href="/" aria-label="MON STOCK — accueil">
+          <Wordmark tone="light" />
         </Link>
       </header>
       <main id="contenu" className="flex flex-1 items-center justify-center px-4 pb-16">

@@ -1,29 +1,42 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   MON STOCK — design tokens
-   Fond clair, typographie soignée, accent discret, statuts avec parcimonie.
+   MON STOCK — jetons web alignés sur la charte v5 « Instrument » (apps/mobile/src/theme/tokens.ts) :
+   bleu nuit (scène, navigation), papier clair, cartes blanches à filet, couleur réservée aux signaux.
+   Menthe jamais en texte sur blanc ; ambre et rouge en texte → variantes « ink ».
+   Le handoff web de Claude Design affinera ces valeurs (docs/design/web-claude-design-prompt.md).
 --------------------------------------------------------------------------- */
 :root {
-  --background: #fafafa;
+  --background: #f2f4f7; /* papier */
   --surface: #ffffff;
-  --surface-muted: #f4f4f5;
-  --border: #e4e4e7;
-  --border-strong: #d4d4d8;
-  --foreground: #18181b;
-  --muted: #6b6b73; /* ≥ 4.5:1 sur surface et surface-muted (WCAG AA) */
-  --muted-strong: #52525b;
-  --accent: #4f46e5;
-  --accent-soft: #eef2ff;
-  --success: #15803d; /* lisible en texte sur fond blanc (≥ 4.5:1) */
-  --success-soft: #f0fdf4;
-  --warning: #b45309; /* lisible en texte sur fond blanc (≥ 4.5:1) */
-  --warning-soft: #fffbeb;
-  --danger: #dc2626;
-  --danger-soft: #fef2f2;
-  --info: #2563eb;
-  --info-soft: #eff6ff;
-  --ring: #6366f1; /* indicateur de focus ≥ 3:1 */
+  --surface-muted: #eef1f5;
+  --border: #e6eaf0;
+  --border-strong: #d5dbe4;
+  --foreground: #17212f;
+  --muted: #5b6676; /* ≥ 4.5:1 sur surface et papier (WCAG AA) */
+  --muted-strong: #3e4a5b;
+  --accent: #101c2c; /* bleu nuit : liens, sélection */
+  --accent-soft: #e8ebf0;
+  --success: #1e7f57; /* marge positive en texte sur fond clair */
+  --success-soft: #e3f8ee;
+  --warning: #8a5a12; /* « demande une action » en texte */
+  --warning-soft: #fbf1e2;
+  --danger: #b03a3a; /* rupture, perte, erreur en texte */
+  --danger-soft: #fbe9e9;
+  --info: #24518f;
+  --info-soft: #eaf0fb;
+  --ring: #3567c4; /* indicateur de focus ≥ 3:1 */
+  /* Charte v5 */
+  --night: #101c2c;
+  --night-deep: #0a1420;
+  --night-raised: #22324a;
+  --on-night: #f7f8fa;
+  --on-night-muted: #9aa6b6;
+  --night-line: rgba(247, 248, 250, 0.1);
+  --mint: #8be8be;
+  --mint-pressed: #72d9a9;
+  --amber: #e5a34d;
+  --red: #dc5a5a;
 }
 
 @theme inline {
@@ -46,7 +59,16 @@
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --color-night: var(--night);
+  --color-night-deep: var(--night-deep);
+  --color-night-raised: var(--night-raised);
+  --color-on-night: var(--on-night);
+  --color-on-night-muted: var(--on-night-muted);
+  --color-mint: var(--mint);
+  --color-mint-pressed: var(--mint-pressed);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
@@ -59,7 +81,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
-  font-feature-settings: "cv11", "ss01", "tnum";
+  font-feature-settings: "tnum";
   -webkit-font-smoothing: antialiased;
 }
 
@@ -76,7 +98,7 @@ body {
 }
 
 dialog::backdrop {
-  background: rgba(24, 24, 27, 0.35);
+  background: rgba(10, 20, 32, 0.45);
 }
 
 /* Modale ouverte (dialog natif ou tiroir mobile) : la page derrière ne défile plus. */

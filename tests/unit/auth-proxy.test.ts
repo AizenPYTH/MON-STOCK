@@ -39,7 +39,7 @@ describe("Proxy : routes publiques", () => {
   });
 
   it("les routes publiques sont limitées à des segments complets", () => {
-    for (const p of ["/login", "/signup", "/reset-password", "/update-password", "/auth/callback", "/invite/abc", "/api/webhooks/ebay", "/api/cron/sync", "/api/integrations/ebay/callback", "/"]) {
+    for (const p of ["/login", "/signup", "/reset-password", "/update-password", "/auth/callback", "/invite/abc", "/api/webhooks/ebay", "/api/cron/sync", "/api/integrations/ebay/callback", "/", "/confidentialite", "/conditions", "/mentions-legales", "/support"]) {
       expect(isPublicPath(p), p).toBe(true);
     }
     for (const p of ["/loginx", "/authentication", "/invitex", "/api/webhooksx", "/api/cron-admin", "/dashboard", "/settings/users"]) {
@@ -113,6 +113,17 @@ describe("Proxy : updateSession", () => {
     const res = await updateSession(new NextRequest("https://app.example/api/webhooks/ebay", { method: "POST" }));
     expect(res.status).toBe(200);
     expect(getUser).not.toHaveBeenCalled();
+  });
+
+  it("site public : visiteur sans session accepté ; connecté sur l'accueil → /dashboard", async () => {
+    getUser.mockResolvedValue({ data: { user: null } });
+    for (const route of ["/", "/confidentialite", "/support"]) {
+      expect((await updateSession(new NextRequest(`https://app.example${route}`))).status, route).toBe(200);
+    }
+    getUser.mockResolvedValue({ data: { user: { id: "u1" } } });
+    const res = await updateSession(new NextRequest("https://app.example/"));
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/dashboard");
+    expect((await updateSession(new NextRequest("https://app.example/confidentialite"))).status).toBe(200);
   });
 
   it("laisse passer un utilisateur connecté", async () => {

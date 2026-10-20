@@ -5,6 +5,11 @@ import { expect, test } from "@playwright/test";
 const shotsDir = path.join(process.env.E2E_OUTPUT_DIR ?? path.join(os.tmpdir(), "mon-stock-e2e"), "screenshots");
 
 const PAGES = [
+  { slug: "accueil", url: "/", heading: /au même endroit/ },
+  { slug: "confidentialite", url: "/confidentialite", heading: "Politique de confidentialité" },
+  { slug: "conditions", url: "/conditions", heading: "Conditions d'utilisation" },
+  { slug: "mentions-legales", url: "/mentions-legales", heading: "Mentions légales" },
+  { slug: "support", url: "/support", heading: "Support" },
   { slug: "login", url: "/login", heading: "Connexion" },
   { slug: "signup", url: "/signup", heading: "Créer un compte" },
   { slug: "reset-password", url: "/reset-password", heading: /mot de passe/i },

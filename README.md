@@ -215,7 +215,7 @@ Les adaptateurs de sourcing et l'API eBay sont testés **uniquement sur des fixt
 
 1. Déployez sur Vercel (ou tout hébergeur Node.js ≥ 22) avec les variables de la section 2.
 2. Mettez `NEXT_PUBLIC_APP_URL` sur l'URL publique, ajoutez-la aux *Redirect URLs* Supabase et dans la configuration eBay (RuName).
-3. `vercel.json` déclare les crons (`/api/cron/sync`, `/api/cron/sourcing`) ; configurez `CRON_SECRET` (Vercel envoie automatiquement `Authorization: Bearer $CRON_SECRET`).
+3. Les tâches planifiées tournent dans Supabase (`pg_cron` → Edge Function) ; `vercel.json` ne déclare aucun cron. Voir `docs/WEB-DEPLOY.md`.
 4. Vérifiez l'endpoint webhook eBay (challenge GET) depuis le portail développeur.
 5. Configurez Supabase : *Confirm email*, *Secure email change* et *Secure password change* activés ; *Redirect URLs* limitées à votre domaine.
 6. Si votre projet Supabase utilise un domaine personnalisé, ajoutez-le à `connect-src` de la Content-Security-Policy (`next.config.ts`).
