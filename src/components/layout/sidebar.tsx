@@ -16,6 +16,14 @@ import {
   Users,
   CreditCard,
   Lightbulb,
+  Radar,
+  BookOpen,
+  KeyRound,
+  FileSpreadsheet,
+  Rss,
+  Calculator,
+  MessageSquareText,
+  LineChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { activeHref } from "@/components/layout/active-href";
@@ -23,15 +31,29 @@ import { activeHref } from "@/components/layout/active-href";
 type Item = { href: string; label: string; icon: typeof LayoutDashboard; badge?: number };
 
 const MAIN: Item[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Aujourd'hui", icon: LayoutDashboard },
   { href: "/stock", label: "Stock", icon: Boxes },
   { href: "/sales", label: "Ventes", icon: ShoppingCart },
-  { href: "/sourcing", label: "Sourcing", icon: Search },
-  { href: "/suppliers", label: "Fournisseurs", icon: Factory },
-  { href: "/opportunities", label: "Opportunités", icon: Sparkles },
-  { href: "/margins", label: "Marges", icon: Percent },
-  { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/stock/alerts", label: "Alertes", icon: Bell },
+];
+
+const SOURCING: Item[] = [
+  { href: "/sourcing", label: "Recherche fournisseurs", icon: Search },
+  { href: "/radar", label: "Radar", icon: Radar },
+  { href: "/suppliers/directory", label: "Annuaire", icon: BookOpen },
+  { href: "/suppliers", label: "Mes fournisseurs", icon: Factory },
+  { href: "/suppliers/accounts", label: "Comptes pro", icon: KeyRound },
+  { href: "/sourcing/imports", label: "Imports", icon: FileSpreadsheet },
+  { href: "/sourcing/sources", label: "Sources et flux", icon: Rss },
+];
+
+const ANALYSIS: Item[] = [
+  { href: "/advisor", label: "Conseiller", icon: MessageSquareText },
+  { href: "/analysis", label: "Analyse", icon: LineChart },
+  { href: "/insights", label: "À faire", icon: Lightbulb },
+  { href: "/margins", label: "Marges", icon: Percent },
+  { href: "/opportunities", label: "Opportunités", icon: Sparkles },
+  { href: "/tools", label: "Outils", icon: Calculator },
 ];
 
 const SETTINGS: Item[] = [
@@ -48,7 +70,7 @@ const BADGE_LABEL: Record<string, string> = {
   "/settings/integrations": "annonce(s) à associer",
 };
 
-const ALL_HREFS = [...MAIN, ...SETTINGS].map((i) => i.href);
+const ALL_HREFS = [...MAIN, ...SOURCING, ...ANALYSIS, ...SETTINGS].map((i) => i.href);
 
 export function Sidebar({ counts, className, onNavigate }: { counts?: Partial<Record<string, number>>; className?: string; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -87,6 +109,14 @@ export function Sidebar({ counts, className, onNavigate }: { counts?: Partial<Re
       <div>
         <div className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Pilotage</div>
         <ul className="space-y-0.5">{render(MAIN)}</ul>
+      </div>
+      <div>
+        <div className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Sourcing</div>
+        <ul className="space-y-0.5">{render(SOURCING)}</ul>
+      </div>
+      <div>
+        <div className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Analyse et outils</div>
+        <ul className="space-y-0.5">{render(ANALYSIS)}</ul>
       </div>
       <div>
         <div className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Paramètres</div>
