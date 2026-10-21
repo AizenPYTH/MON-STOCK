@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cleanEnvValue, normalizeBaseUrl, siteUrl } from "@/lib/site";
 
 /**
  * Validation des variables d'environnement.
@@ -45,19 +46,31 @@ function formatIssues(prefix: string, error: z.ZodError): string {
 let publicCache: PublicEnv | null = null;
 let serverCache: ServerEnv | null = null;
 
+function parsePublicEnv() {
+  // Les variables NEXT_PUBLIC_* doivent être référencées explicitement pour être inlinées (au
+  // moment de la build, côté navigateur ET serveur). Valeurs collées nettoyées (espaces,
+  // guillemets, `https://` manquant) ; sans NEXT_PUBLIC_APP_URL, l'adresse fournie par Vercel.
+  return publicSchema.safeParse({
+    NEXT_PUBLIC_APP_URL: siteUrl(),
+    NEXT_PUBLIC_SUPABASE_URL: normalizeBaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: cleanEnvValue(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+  });
+}
+
 export function publicEnv(): PublicEnv {
   if (publicCache) return publicCache;
-  // Les variables NEXT_PUBLIC_* doivent être référencées explicitement pour être inlinées côté client.
-  const parsed = publicSchema.safeParse({
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  });
+  const parsed = parsePublicEnv();
   if (!parsed.success) {
     throw new EnvError(formatIssues("Configuration Supabase manquante ou invalide :", parsed.error));
   }
   publicCache = parsed.data;
   return publicCache;
+}
+
+/** Noms des variables publiques absentes ou invalides (jamais leurs valeurs) ; [] si tout va bien. */
+export function publicEnvIssues(): string[] {
+  const parsed = parsePublicEnv();
+  return parsed.success ? [] : [...new Set(parsed.error.issues.map((i) => String(i.path[0] ?? "?")))];
 }
 
 export function serverEnv(): ServerEnv {
