@@ -46,6 +46,14 @@ describe("statuts prouvés", () => {
     expect(integrationOf("bigbuy")).toEqual({ kind: "connector", connectorKey: "bigbuy" });
     expect(directoryStages(entry("bigbuy"), null, noFacts)).toContain("connector_ready");
     expect(integrationOf("foneday")).toEqual({ kind: "file_import" });
+    // fiches de l'annuaire reliées aux sources publiques de la bibliothèque (activables après vérification serveur)
+    expect(integrationOf("telehurt")).toEqual({ kind: "library", libraryKey: "telehurt-pl" });
+    expect(integrationOf("repair-outlet")).toEqual({ kind: "library", libraryKey: "repair-outlet-uk" });
+    // chaque lien pointe vers une source réellement présente dans la bibliothèque (sinon : import de fichier)
+    for (const key of ["pieces2mobile", "mobile-depot-europe", "mobistock", "pc-portatil", "hurtowniagsm-pl", "fonefunshop", "ms-gsm", "teknikdelar"]) {
+      expect(SUPPLIER_DIRECTORY.some((d) => d.key === key)).toBe(true);
+      expect(integrationOf(key).kind).toBe("library");
+    }
   });
 
   it("site en erreur → indisponible", () => {

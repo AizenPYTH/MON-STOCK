@@ -69,7 +69,23 @@ export const DIRECTORY_RESEARCH_DATE = "2026-10-10";
 /** Intégration disponible dans MON STOCK pour une fiche (au-delà de l'import de fichier, toujours possible). */
 export type DirectoryIntegration = { kind: "library"; libraryKey: string } | { kind: "connector"; connectorKey: "bigbuy" | "ingram-micro" } | { kind: "file_import" };
 
-const LIBRARY_BY_DIRECTORY_KEY: Record<string, string> = { "ebay-browse": "ebay-fr", "brico-phone": "brico-phone", "refreshed-apples": "refreshed-apples", "fixje-zakelijk": "fixje", "servisnidily-cz": "servisni-dily" };
+const LIBRARY_BY_DIRECTORY_KEY: Record<string, string> = {
+  "ebay-browse": "ebay-fr",
+  "brico-phone": "brico-phone",
+  "refreshed-apples": "refreshed-apples",
+  "fixje-zakelijk": "fixje",
+  "servisnidily-cz": "servisni-dily",
+  pieces2mobile: "pieces2mobile",
+  "mobile-depot-europe": "mobiledepot-eu",
+  mobistock: "mobistock-nl",
+  "pc-portatil": "pc-portatil-es",
+  telehurt: "telehurt-pl",
+  "hurtowniagsm-pl": "hurtowniagsm-pl",
+  "repair-outlet": "repair-outlet-uk",
+  fonefunshop: "fonefunshop-uk",
+  "ms-gsm": "ms-gsm",
+  teknikdelar: "teknikdelar-se",
+};
 const CONNECTOR_BY_DIRECTORY_KEY: Record<string, "bigbuy" | "ingram-micro"> = { bigbuy: "bigbuy", "ingram-micro-fr": "ingram-micro" };
 
 export function integrationOf(key: string): DirectoryIntegration {

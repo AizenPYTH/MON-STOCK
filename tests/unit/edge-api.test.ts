@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseQuery } from "@/domain/sourcing/query-parser";
 import { clearEbayAppTokenCache, ebayBrowseAdapter, ebayCondition, mapEbayItem } from "@/integrations/sourcing/ebay-browse";
-import { checkLibrarySource, checkLibrarySourceDetect, getLibrarySource, SOURCE_LIBRARY } from "@/services/sourcing/source-library";
+import { activateLibrarySourceFor, checkLibrarySource, checkLibrarySourceDetect, getLibrarySource, SOURCE_LIBRARY } from "@/services/sourcing/source-library";
 import { ebayCallbackTarget } from "../../server/edge/ebay-callback";
 import { route, routeOf } from "../../server/edge/api";
 import { mockFetch, runCtx, sourceConfig } from "./helpers/sourcing-adapters";
@@ -111,6 +111,29 @@ describe("bibliothèque de sources : vérification réelle avant toute activatio
       expect(s.termsUrl).toMatch(/^https:\/\//);
       expect(s.probeQuery.length).toBeGreaterThan(2);
     }
+  });
+
+  it("chaque source déclare un adaptateur connu, des adresses HTTPS, un pays et des notes", () => {
+    const adapters = new Set(["shopify-storefront", "woocommerce-store", "sitemap-jsonld", "ebay-browse"]);
+    for (const s of SOURCE_LIBRARY) {
+      expect(adapters.has(s.adapter)).toBe(true);
+      expect(s.website).toMatch(/^https:\/\//);
+      expect(s.baseUrl).toMatch(/^https:\/\//);
+      expect(s.country).toMatch(/^[A-Z]{2}$/);
+      expect(s.currency).toMatch(/^[A-Z]{3}$/);
+      expect(s.notes.length).toBeGreaterThan(20);
+      if (s.access === "official_api") expect(s.adapter).toBe("ebay-browse");
+    }
+  });
+
+  it("source bloquée par les conditions du fournisseur : activation refusée sans aucune requête", async () => {
+    const blocked = SOURCE_LIBRARY.filter((s) => s.blocked);
+    expect(blocked.length).toBeGreaterThan(0);
+    const from = vi.fn();
+    for (const s of blocked) {
+      await expect(activateLibrarySourceFor({ from } as never, "org-1", s.key, "attestation")).rejects.toThrow(s.blocked);
+    }
+    expect(from).not.toHaveBeenCalled();
   });
 
   it("robots.txt interdit → robots_disallowed, aucune recherche", async () => {
