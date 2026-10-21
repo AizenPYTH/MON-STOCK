@@ -8,7 +8,7 @@ import type { AdvisorStreamEvent } from "@/features/mobile-api/contract";
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient: () => ({}) }));
 
 const { computeProfitability, productProfits, periodRange, parisMidnight, change, percent, money } = await import("@/services/ai/advisor-metrics");
-const { runAdvisorTurn, historyForModel, advisorSystemVolatile, ADVISOR_SYSTEM_STABLE, ADVISOR_LIMITS } = await import("@/services/ai/advisor");
+const { runAdvisorTurn, historyForModel, advisorSystemVolatile, splitShowCard, ADVISOR_SYSTEM_STABLE, ADVISOR_LIMITS, ADVISOR_MODEL_TOOLS } = await import("@/services/ai/advisor");
 const { ADVISOR_TOOLS, ADVISOR_TOOL_DEFINITIONS, runAdvisorTool } = await import("@/services/ai/advisor-tools");
 const { decideAdvisorAction, ACTION_TTL_MS } = await import("@/services/ai/advisor-actions");
 const { fakeSupabase } = await import("./helpers/fake-supabase");
@@ -190,6 +190,41 @@ describe("conversation textuelle et vocale", () => {
     const second = calls[1] as { messages: Record<string, unknown>[] };
     expect(second.messages.at(-2)).toMatchObject({ role: "assistant", toolCalls: [{ id: "call_1", name: "business_report" }] });
     expect(second.messages.at(-1)).toEqual({ role: "tool", toolCallId: "call_1", content: JSON.stringify({ revenue: "830,00 €" }) });
+  });
+
+  it("cartes ciblées : show_card=false masque la carte de contexte, paramètre retiré avant l'outil ; action préparée toujours affichée", async () => {
+    const callsIn = { model: "m", finish: "tool_calls" as const, text: "", toolCalls: [
+      { id: "a", name: "ebay_account_overview", input: { show_card: true } },
+      { id: "b", name: "business_report", input: { period: "30d", show_card: false } },
+      { id: "c", name: "prepare_stock_adjustment", input: { sku: "IP13", change: 2, show_card: false } },
+    ] };
+    const { client, calls } = fakeModel([callsIn, text("Ton compte eBay est en bon état.")]);
+    const mk = (title: string, kind = "kpis") => ({ kind, title, subtitle: null, rows: [], warnings: [], action: null, text: null });
+    const runTool = vi.fn(async (_c: unknown, name: string) => ({ content: "{}", isError: false, cards: [mk(name === "ebay_account_overview" ? "Compte eBay" : name === "business_report" ? "Bilan des ventes" : "Action", name.startsWith("prepare") ? "action" : "kpis")] }));
+    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Que penses-tu de mon compte eBay ?" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: runTool as never });
+    expect(reply.cards.map((c) => c.title)).toEqual(["Compte eBay", "Action"]);
+    expect(runTool).toHaveBeenCalledWith(expect.anything(), "business_report", { period: "30d" });
+    expect(runTool).toHaveBeenCalledWith(expect.anything(), "prepare_stock_adjustment", { sku: "IP13", change: 2 });
+    // les outils déclarés au modèle exigent show_card ; la définition de l'outil reste inchangée
+    const p = calls[0] as { tools: { name: string; input_schema: { required?: string[]; properties: Record<string, unknown> } }[] };
+    expect(p.tools.every((t) => t.input_schema.required?.includes("show_card") && "show_card" in t.input_schema.properties)).toBe(true);
+    expect(ADVISOR_MODEL_TOOLS.length).toBe(ADVISOR_TOOL_DEFINITIONS.length);
+    expect((ADVISOR_TOOL_DEFINITIONS[0]!.input_schema as { properties: Record<string, unknown> }).properties).not.toHaveProperty("show_card");
+  });
+
+  it("au plus 3 cartes de lecture par réponse ; show_card absent = carte affichée", async () => {
+    const many = { model: "m", finish: "tool_calls" as const, text: "", toolCalls: Array.from({ length: 5 }, (_, i) => ({ id: `t${i}`, name: "business_report", input: {} })) };
+    const { client } = fakeModel([many, text("ok")]);
+    const runTool = vi.fn(async () => ({ content: "{}", isError: false, cards: [{ kind: "kpis", title: "x", subtitle: null, rows: [], warnings: [], action: null, text: null }] }));
+    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "bilan" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: runTool as never });
+    expect(reply.cards).toHaveLength(ADVISOR_LIMITS.maxReadCards);
+    expect(splitShowCard({ a: 1 })).toEqual({ show: true, input: { a: 1 } });
+    expect(splitShowCard(null)).toEqual({ show: true, input: null });
+  });
+
+  it("invite : répondre à la question posée, pas de bilan général non demandé", () => {
+    expect(ADVISOR_SYSTEM_STABLE).toMatch(/EXACTEMENT à la question posée/);
+    expect(ADVISOR_SYSTEM_STABLE).toMatch(/show_card/);
   });
 
   it("erreur d'outil transmise comme telle (préfixe ERREUR), jamais complétée", async () => {

@@ -3,7 +3,7 @@ import type { OrgContext } from "@/features/auth/dal";
 import type { AdvisorCardDTO, AdvisorChatRequest, AdvisorReplyDTO, AdvisorStreamEvent } from "@/features/mobile-api/contract";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { aiError, llmClient, type LlmClient, type LlmMessage } from "./llm";
+import { aiError, llmClient, type LlmClient, type LlmMessage, type LlmTool } from "./llm";
 import { ADVISOR_FUTURE_CAPABILITIES, ADVISOR_TOOL_DEFINITIONS, ADVISOR_TOOLS, runAdvisorTool, type AdvisorToolContext } from "./advisor-tools";
 
 const log = createLogger("AI_ADVISOR");
@@ -23,17 +23,50 @@ const log = createLogger("AI_ADVISOR");
  * qu'1 ou 2 étapes.
  */
 
-export const ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12_000, maxSteps: 8, maxTokens: 2500, deadlineMs: 100_000 } as const;
+export const ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12_000, maxSteps: 8, maxTokens: 2500, deadlineMs: 100_000, maxReadCards: 3, maxCards: 8 } as const;
+
+/**
+ * Pertinence des cartes : chaque outil reçoit un paramètre `show_card` que le modèle renseigne à
+ * l'appel (vrai = le résultat répond directement à la question ; faux = simple contexte). Seules
+ * les cartes demandées s'affichent sous la réponse (au plus 3 cartes de lecture) ; les cartes
+ * d'actions préparées (Confirmer / Annuler) s'affichent toujours. Paramètre retiré avant
+ * l'exécution de l'outil.
+ */
+export const SHOW_CARD_PARAM = "show_card";
+
+function withShowCard(t: LlmTool): LlmTool {
+  const schema = t.input_schema as { properties?: Record<string, unknown>; required?: string[] };
+  return {
+    ...t,
+    input_schema: {
+      ...schema,
+      properties: { ...(schema.properties ?? {}), [SHOW_CARD_PARAM]: { type: "boolean", description: "true si la carte de ce résultat doit s'afficher sous ta réponse parce qu'elle répond directement à la question posée ; false si l'outil sert seulement de contexte (bilan général, priorités, etc. pour une question qui porte sur autre chose)." } },
+      required: [...(schema.required ?? []), SHOW_CARD_PARAM],
+    },
+  };
+}
+
+/** Outils tels que déclarés au modèle (définitions + paramètre `show_card`). */
+export const ADVISOR_MODEL_TOOLS: LlmTool[] = ADVISOR_TOOL_DEFINITIONS.map(withShowCard);
+
+/** Sépare `show_card` des paramètres de l'outil (absent = carte affichée, par prudence). */
+export function splitShowCard(input: unknown): { show: boolean; input: unknown } {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return { show: true, input };
+  const { [SHOW_CARD_PARAM]: flag, ...rest } = input as Record<string, unknown>;
+  return { show: flag !== false, input: rest };
+}
 
 /** Partie STABLE de l'invite (mise en cache avec les outils) : aucune donnée variable ici. */
 export const ADVISOR_SYSTEM_STABLE = [
   "Tu es le conseiller e-commerce personnel de l'utilisateur dans MON STOCK (gestion de stock et de ventes d'un revendeur d'appareils électroniques, principalement sur eBay). Tu es son employé : tu analyses SES données, tu recommandes, tu prépares des actions.",
   "",
   "Méthode :",
-  "- Avant toute réponse chiffrée ou factuelle sur l'activité, appelle les outils. Choisis les plus ciblés ; appelle-les en parallèle si utile ; n'en appelle pas d'inutiles.",
+  "- Réponds EXACTEMENT à la question posée, et seulement à elle. Ne fais pas de bilan général si on ne te le demande pas.",
+  "- Avant toute réponse chiffrée ou factuelle sur l'activité, appelle les outils. Choisis les plus ciblés pour la question (ex. « mon compte eBay » → ebay_account_overview, ebay_account ; pas business_report ni today_briefing) ; appelle-les en parallèle si utile ; n'en appelle pas d'inutiles.",
+  "- show_card : mets true uniquement pour les 1 ou 2 outils dont le résultat répond directement à la question ; false pour ceux qui servent seulement de contexte.",
   "- Périodes : utilise le paramètre period des outils (« cette semaine » = this_week, « ce mois-ci » = this_month…). Sans précision : 30 derniers jours, et dis-le.",
   "- Distingue toujours : chiffre d'affaires (CA), marge brute (CA − coût d'achat connu), frais de vente, bénéfice estimé. Rappelle les données manquantes signalées par les outils (coûts d'achat, frais, port payé, retours).",
-  "- Recommandations : 1 à 3 actions concrètes, chacune justifiée par un chiffre issu d'un outil.",
+  "- Recommandations : seulement si elles sont demandées ou évidemment utiles, 1 à 2 actions concrètes, chacune justifiée par un chiffre issu d'un outil.",
   "",
   "Compte eBay — deux sources :",
   "- Données SYNCHRONISÉES dans MON STOCK (business_report, product_profitability, sales_ranking, sales_summary, recent_orders, order_lookup, listings_search, ebay_account) : historique, CA, marges, stock. À privilégier pour les bilans chiffrés.",
@@ -51,7 +84,7 @@ export const ADVISOR_SYSTEM_STABLE = [
   "- Les cartes de résultats s'affichent automatiquement sous ta réponse : ne recopie pas les tableaux, commente l'essentiel.",
   "- Les messages « [Note de l'application] » sont écrits par MON STOCK (pas par l'utilisateur) : ils indiquent le résultat réel d'une action.",
   "",
-  "Style : français, naturel et direct, comme un collaborateur. Commence par la réponse en une phrase. Pas de tableaux ni de titres ; listes courtes avec « – » si nécessaire. Montants au format français (1 234,50 €).",
+  "Style : français, naturel et direct, comme un collaborateur qui parle. Commence par la réponse en une phrase. Cite seulement les 2 ou 3 chiffres qui comptent pour la question, pas tous ceux des outils. Pas de tableaux ni de titres ; pas de longue liste à puces (au plus 3 puces « – », et seulement si la question appelle une énumération). Montants au format français (1 234,50 €).",
 ].join("\n");
 
 export function advisorSystemVolatile(org: { name: string; currency: string; role: string }, today: string, voice: boolean): string {
@@ -60,7 +93,7 @@ export function advisorSystemVolatile(org: { name: string; currency: string; rol
     `Nous sommes le ${today} (heure de Paris).`,
     voice
       ? "La question a été DICTÉE et ta réponse sera LUE À VOIX HAUTE : 2 à 4 phrases courtes, chiffres arrondis à l'unité quand c'est sans ambiguïté, pas de liste, pas de symboles ni d'abréviations ; renvoie au détail affiché à l'écran."
-      : "Réponse écrite : concise (5 à 10 lignes maximum sauf demande de bilan détaillé).",
+      : "Réponse écrite : courte (2 à 6 lignes, plus seulement si l'utilisateur demande un bilan détaillé).",
   ].join("\n");
 }
 
@@ -166,6 +199,7 @@ export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, e
   const toolCtx: AdvisorToolContext = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now, question: req.message };
 
   const cards: AdvisorCardDTO[] = [];
+  let readCards = 0;
   const sources: string[] = [];
   let answer = "";
   let model: string | null = null;
@@ -180,7 +214,7 @@ export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, e
       }
       streamed = "";
       const response = await client.complete(
-        { system, tools: ADVISOR_TOOL_DEFINITIONS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
+        { system, tools: ADVISOR_MODEL_TOOLS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
         {
           signal: deps.signal,
           onText: (delta) => {
@@ -207,13 +241,16 @@ export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, e
         calls.map(async (call) => {
           const spec = ADVISOR_TOOLS[call.name];
           emit({ type: "status", label: spec ? spec.label : call.name });
-          const r = await runTool(toolCtx, call.name, call.input);
+          const { show, input } = splitShowCard(call.input);
+          const r = await runTool(toolCtx, call.name, input);
           if (spec && !sources.includes(spec.label)) sources.push(spec.label);
+          const always = spec?.category === "prepare";
           for (const c of r.cards) {
-            if (cards.length < 8) {
-              cards.push(c);
-              emit({ type: "card", card: c });
-            }
+            if (!always && (!show || readCards >= ADVISOR_LIMITS.maxReadCards)) continue;
+            if (cards.length >= ADVISOR_LIMITS.maxCards) break;
+            if (!always) readCards++;
+            cards.push(c);
+            emit({ type: "card", card: c });
           }
           if (r.isError) log.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool" as const, toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };

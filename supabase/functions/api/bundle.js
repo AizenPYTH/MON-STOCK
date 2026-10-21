@@ -282,6 +282,29 @@ var init_empty = __esm({
   }
 });
 
+// src/lib/site.ts
+function cleanEnvValue(value) {
+  const v2 = value?.trim().replace(/^(["'])(.*)\1$/, "$2").trim();
+  return v2 ? v2 : void 0;
+}
+function normalizeBaseUrl(value) {
+  const v2 = cleanEnvValue(value);
+  if (!v2) return void 0;
+  return (/^[a-z][a-z0-9+.-]*:\/\//i.test(v2) ? v2 : `https://${v2}`).replace(/\/+$/, "");
+}
+function siteUrl() {
+  const explicit = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
+  if (explicit && URL.canParse(explicit)) return explicit;
+  const vercel = normalizeBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL);
+  if (vercel) return vercel;
+  return "http://localhost:3000";
+}
+var init_site = __esm({
+  "src/lib/site.ts"() {
+    "use strict";
+  }
+});
+
 // src/lib/env.ts
 import { z } from "npm:zod@4.6.5";
 function formatIssues(prefix, error) {
@@ -290,13 +313,16 @@ function formatIssues(prefix, error) {
 ${lines.join("\n")}
 Voir .env.example pour la liste des variables attendues.`;
 }
+function parsePublicEnv() {
+  return publicSchema.safeParse({
+    NEXT_PUBLIC_APP_URL: siteUrl(),
+    NEXT_PUBLIC_SUPABASE_URL: normalizeBaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: cleanEnvValue(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  });
+}
 function publicEnv() {
   if (publicCache) return publicCache;
-  const parsed = publicSchema.safeParse({
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  });
+  const parsed = parsePublicEnv();
   if (!parsed.success) {
     throw new EnvError(formatIssues("Configuration Supabase manquante ou invalide :", parsed.error));
   }
@@ -324,6 +350,7 @@ var publicSchema, serverSchema, ebaySchema, EnvError, publicCache, serverCache;
 var init_env = __esm({
   "src/lib/env.ts"() {
     "use strict";
+    init_site();
     publicSchema = z.object({
       NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
       NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -31561,6 +31588,63 @@ function periodRange(period, now) {
   }
 }
 
+// src/services/ai/ebay-display.ts
+var QTY = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+function frQuantity(n) {
+  return n === null || n === void 0 || !Number.isFinite(n) ? "\u2014" : QTY.format(n);
+}
+var UNITS = {
+  DAY: ["jour", "jours"],
+  BUSINESS_DAY: ["jour ouvr\xE9", "jours ouvr\xE9s"],
+  CALENDAR_DAY: ["jour", "jours"],
+  HOUR: ["heure", "heures"],
+  WEEK: ["semaine", "semaines"],
+  MONTH: ["mois", "mois"],
+  YEAR: ["an", "ans"]
+};
+function frDuration(text3) {
+  if (!text3) return null;
+  const m = /^(\d+)\s+([A-Z_]+)$/.exec(text3.trim());
+  if (!m) return text3.trim();
+  const n = Number(m[1]);
+  const unit = UNITS[m[2]];
+  if (!unit) return text3.trim();
+  return `${n} ${n <= 1 ? unit[0] : unit[1]}`;
+}
+function frHandlingTime(text3) {
+  const d = frDuration(text3);
+  return d && /^0 /.test(d) ? "le jour m\xEAme" : d;
+}
+var SERVICES = {
+  PostOfficeLetterFollowed: "Lettre suivie",
+  PostOfficeLetterRecommended: "Lettre recommand\xE9e",
+  PostOfficeLetter: "Lettre",
+  LaPosteLetterFollowed: "Lettre suivie",
+  ColiposteColissimo: "Colissimo",
+  ColiposteColissimoRecommended: "Colissimo recommand\xE9",
+  Colissimo: "Colissimo",
+  Chronopost: "Chronopost",
+  MondialRelay: "Mondial Relay",
+  RelaisColis: "Relais Colis",
+  Ecopli: "Ecopli"
+};
+function ebayServiceName(code) {
+  if (!code) return null;
+  const bare = code.trim().replace(/^[A-Z]{2}_/, "");
+  if (SERVICES[bare]) return SERVICES[bare];
+  const spaced = bare.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim();
+  return spaced || null;
+}
+function dedupeRows(rows) {
+  const seen = /* @__PURE__ */ new Set();
+  return rows.filter((r) => {
+    const k = `${r.label}\0${r.value}\0${r.sub ?? ""}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 // src/services/ai/advisor-ebay.ts
 var CACHE_TTL_MS2 = 6e4;
 var CACHE_MAX_ENTRIES = 300;
@@ -31775,6 +31859,28 @@ async function ordersLive(ctx, link, raw) {
   ];
   return { result, cards: [liveCard("list", "Commandes eBay (en direct)", rows, res.readAt)] };
 }
+function limitRows(lim, summary, c) {
+  const limAmount = lim?.sellingLimit.amount ?? null;
+  const limQty = lim?.sellingLimit.quantity ?? null;
+  const out = [];
+  if (summary && (summary.amountLimitRemaining?.value ?? null) !== null) out.push(row("Montant restant ce mois-ci", fm(summary.amountLimitRemaining, c), limAmount?.value != null ? `limite : ${fm(limAmount, c)}` : null));
+  else if (limAmount?.value != null) out.push(row("Limite de vente (montant)", fm(limAmount, c)));
+  if (summary && summary.quantityLimitRemaining !== null) out.push(row("Objets restants ce mois-ci", frQuantity(summary.quantityLimitRemaining), limQty !== null ? `limite : ${frQuantity(limQty)} objets` : null));
+  else if (limQty !== null) out.push(row("Limite de vente (objets)", frQuantity(limQty)));
+  return out;
+}
+function shippingRow(c) {
+  return (p) => {
+    const services = p.domestic.filter((d) => d.service).slice(0, 2).map((d) => `${ebayServiceName(d.service)}${d.free ? " : gratuit" : d.cost?.value != null ? ` : ${fm(d.cost, c)}` : ""}`);
+    const handling = frHandlingTime(p.handlingTime);
+    return row("Exp\xE9dition", services.join(", ") || "\u2014", handling ? `pr\xE9paration : ${handling}` : null);
+  };
+}
+function returnRow(p) {
+  const payer = p.shippingCostPayer === "SELLER" ? "le vendeur" : p.shippingCostPayer === "BUYER" ? "l'acheteur" : null;
+  const value = p.returnsAccepted === false ? "refus\xE9s" : [p.returnsAccepted ? "accept\xE9s" : null, frDuration(p.period)].filter(Boolean).join(" \xB7 ") || "\u2014";
+  return row("Retours", value, payer ? `port retour pay\xE9 par ${payer}` : null);
+}
 async function accountOverview(ctx, link, raw) {
   const { marketplace } = z45.object({ marketplace: marketplaceSchema }).parse(raw);
   const errors = [];
@@ -31820,14 +31926,13 @@ async function accountOverview(ctx, link, raw) {
   };
   const c = ctx.currency;
   const s = seller?.value;
-  const rows = [
+  const rows = dedupeRows([
     row("Compte", identity?.value.username ?? link.username ?? "\u2014", [identity?.value.accountType, identity?.value.registrationMarketplaceId].filter(Boolean).join(" \xB7 ") || null),
-    ...s ? [row("\xC9valuations", s.feedbackScore === null ? "\u2014" : String(s.feedbackScore), s.positiveFeedbackPercent === null ? null : `${String(s.positiveFeedbackPercent).replace(".", ",")} % positives${s.topRatedSeller ? " \xB7 Top Fiabilit\xE9" : ""}`, "success")] : [],
-    ...lim ? [row("Limite de vente", fm(lim.sellingLimit.amount, c), lim.sellingLimit.quantity === null ? null : `${lim.sellingLimit.quantity} objets`)] : [],
-    ...selling ? [row("Restant ce mois-ci", fm(selling.value.summary.amountLimitRemaining, c), selling.value.summary.quantityLimitRemaining === null ? null : `${selling.value.summary.quantityLimitRemaining} objets`)] : [],
-    ...(result.policies.shipping ?? []).slice(0, 2).map((p) => row(`Exp\xE9dition : ${p.name ?? "\u2014"}`, p.handlingTime ?? "\u2014", p.domestic.map((d) => d.service).filter(Boolean).slice(0, 2).join(", ") || null)),
-    ...(result.policies.returns ?? []).slice(0, 2).map((p) => row(`Retours : ${p.name ?? "\u2014"}`, p.returnsAccepted === false ? "refus\xE9s" : p.period ?? "\u2014", p.shippingCostPayer ? `port retour pay\xE9 par ${p.shippingCostPayer === "SELLER" ? "le vendeur" : "l'acheteur"}` : null))
-  ];
+    ...s ? [row("\xC9valuations", s.feedbackScore === null ? "\u2014" : frQuantity(s.feedbackScore), s.positiveFeedbackPercent === null ? null : `${String(s.positiveFeedbackPercent).replace(".", ",")} % positives${s.topRatedSeller ? " \xB7 Top Fiabilit\xE9" : ""}`, "success")] : [],
+    ...limitRows(lim, selling?.value.summary ?? null, c),
+    ...(result.policies.shipping ?? []).slice(0, 2).map(shippingRow(c)),
+    ...(result.policies.returns ?? []).slice(0, 2).map(returnRow)
+  ]);
   return { result, cards: [liveCard("kpis", "Compte eBay", rows, readAt, { warnings: errors.slice(0, 3) })] };
 }
 var listingInput = z45.object({ itemId: z45.string().trim().max(32).optional(), query: z45.string().trim().max(80).optional() }).refine((v2) => Boolean(v2.itemId || v2.query), "Indiquez un num\xE9ro d'objet eBay (itemId) ou un mot du titre / SKU (query).");
@@ -32685,15 +32790,35 @@ async function runAdvisorTool(ctx, name, input) {
 
 // src/services/ai/advisor.ts
 var log34 = createLogger("AI_ADVISOR");
-var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 8, maxTokens: 2500, deadlineMs: 1e5 };
+var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 8, maxTokens: 2500, deadlineMs: 1e5, maxReadCards: 3, maxCards: 8 };
+var SHOW_CARD_PARAM = "show_card";
+function withShowCard(t) {
+  const schema = t.input_schema;
+  return {
+    ...t,
+    input_schema: {
+      ...schema,
+      properties: { ...schema.properties ?? {}, [SHOW_CARD_PARAM]: { type: "boolean", description: "true si la carte de ce r\xE9sultat doit s'afficher sous ta r\xE9ponse parce qu'elle r\xE9pond directement \xE0 la question pos\xE9e ; false si l'outil sert seulement de contexte (bilan g\xE9n\xE9ral, priorit\xE9s, etc. pour une question qui porte sur autre chose)." } },
+      required: [...schema.required ?? [], SHOW_CARD_PARAM]
+    }
+  };
+}
+var ADVISOR_MODEL_TOOLS = ADVISOR_TOOL_DEFINITIONS.map(withShowCard);
+function splitShowCard(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return { show: true, input };
+  const { [SHOW_CARD_PARAM]: flag2, ...rest } = input;
+  return { show: flag2 !== false, input: rest };
+}
 var ADVISOR_SYSTEM_STABLE = [
   "Tu es le conseiller e-commerce personnel de l'utilisateur dans MON STOCK (gestion de stock et de ventes d'un revendeur d'appareils \xE9lectroniques, principalement sur eBay). Tu es son employ\xE9 : tu analyses SES donn\xE9es, tu recommandes, tu pr\xE9pares des actions.",
   "",
   "M\xE9thode :",
-  "- Avant toute r\xE9ponse chiffr\xE9e ou factuelle sur l'activit\xE9, appelle les outils. Choisis les plus cibl\xE9s ; appelle-les en parall\xE8le si utile ; n'en appelle pas d'inutiles.",
+  "- R\xE9ponds EXACTEMENT \xE0 la question pos\xE9e, et seulement \xE0 elle. Ne fais pas de bilan g\xE9n\xE9ral si on ne te le demande pas.",
+  "- Avant toute r\xE9ponse chiffr\xE9e ou factuelle sur l'activit\xE9, appelle les outils. Choisis les plus cibl\xE9s pour la question (ex. \xAB mon compte eBay \xBB \u2192 ebay_account_overview, ebay_account ; pas business_report ni today_briefing) ; appelle-les en parall\xE8le si utile ; n'en appelle pas d'inutiles.",
+  "- show_card : mets true uniquement pour les 1 ou 2 outils dont le r\xE9sultat r\xE9pond directement \xE0 la question ; false pour ceux qui servent seulement de contexte.",
   "- P\xE9riodes : utilise le param\xE8tre period des outils (\xAB cette semaine \xBB = this_week, \xAB ce mois-ci \xBB = this_month\u2026). Sans pr\xE9cision : 30 derniers jours, et dis-le.",
   "- Distingue toujours : chiffre d'affaires (CA), marge brute (CA \u2212 co\xFBt d'achat connu), frais de vente, b\xE9n\xE9fice estim\xE9. Rappelle les donn\xE9es manquantes signal\xE9es par les outils (co\xFBts d'achat, frais, port pay\xE9, retours).",
-  "- Recommandations : 1 \xE0 3 actions concr\xE8tes, chacune justifi\xE9e par un chiffre issu d'un outil.",
+  "- Recommandations : seulement si elles sont demand\xE9es ou \xE9videmment utiles, 1 \xE0 2 actions concr\xE8tes, chacune justifi\xE9e par un chiffre issu d'un outil.",
   "",
   "Compte eBay \u2014 deux sources :",
   "- Donn\xE9es SYNCHRONIS\xC9ES dans MON STOCK (business_report, product_profitability, sales_ranking, sales_summary, recent_orders, order_lookup, listings_search, ebay_account) : historique, CA, marges, stock. \xC0 privil\xE9gier pour les bilans chiffr\xE9s.",
@@ -32711,13 +32836,13 @@ var ADVISOR_SYSTEM_STABLE = [
   "- Les cartes de r\xE9sultats s'affichent automatiquement sous ta r\xE9ponse : ne recopie pas les tableaux, commente l'essentiel.",
   "- Les messages \xAB [Note de l'application] \xBB sont \xE9crits par MON STOCK (pas par l'utilisateur) : ils indiquent le r\xE9sultat r\xE9el d'une action.",
   "",
-  "Style : fran\xE7ais, naturel et direct, comme un collaborateur. Commence par la r\xE9ponse en une phrase. Pas de tableaux ni de titres ; listes courtes avec \xAB \u2013 \xBB si n\xE9cessaire. Montants au format fran\xE7ais (1 234,50 \u20AC)."
+  "Style : fran\xE7ais, naturel et direct, comme un collaborateur qui parle. Commence par la r\xE9ponse en une phrase. Cite seulement les 2 ou 3 chiffres qui comptent pour la question, pas tous ceux des outils. Pas de tableaux ni de titres ; pas de longue liste \xE0 puces (au plus 3 puces \xAB \u2013 \xBB, et seulement si la question appelle une \xE9num\xE9ration). Montants au format fran\xE7ais (1 234,50 \u20AC)."
 ].join("\n");
 function advisorSystemVolatile(org, today, voice) {
   return [
     `Organisation : \xAB ${org.name} \xBB ; devise principale ${org.currency} ; r\xF4le de l'utilisateur : ${org.role}${org.role === "viewer" ? " (lecture seule : ne pr\xE9pare aucune modification)" : ""}.`,
     `Nous sommes le ${today} (heure de Paris).`,
-    voice ? "La question a \xE9t\xE9 DICT\xC9E et ta r\xE9ponse sera LUE \xC0 VOIX HAUTE : 2 \xE0 4 phrases courtes, chiffres arrondis \xE0 l'unit\xE9 quand c'est sans ambigu\xEFt\xE9, pas de liste, pas de symboles ni d'abr\xE9viations ; renvoie au d\xE9tail affich\xE9 \xE0 l'\xE9cran." : "R\xE9ponse \xE9crite : concise (5 \xE0 10 lignes maximum sauf demande de bilan d\xE9taill\xE9)."
+    voice ? "La question a \xE9t\xE9 DICT\xC9E et ta r\xE9ponse sera LUE \xC0 VOIX HAUTE : 2 \xE0 4 phrases courtes, chiffres arrondis \xE0 l'unit\xE9 quand c'est sans ambigu\xEFt\xE9, pas de liste, pas de symboles ni d'abr\xE9viations ; renvoie au d\xE9tail affich\xE9 \xE0 l'\xE9cran." : "R\xE9ponse \xE9crite : courte (2 \xE0 6 lignes, plus seulement si l'utilisateur demande un bilan d\xE9taill\xE9)."
   ].join("\n");
 }
 function supabaseAdvisorStore(ctx) {
@@ -32789,6 +32914,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
   const convo = historyForModel([...previous, { role: "user", content: req.message }]);
   const toolCtx = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now, question: req.message };
   const cards = [];
+  let readCards = 0;
   const sources = [];
   let answer = "";
   let model = null;
@@ -32802,7 +32928,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
       }
       streamed = "";
       const response = await client3.complete(
-        { system, tools: ADVISOR_TOOL_DEFINITIONS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
+        { system, tools: ADVISOR_MODEL_TOOLS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
         {
           signal: deps.signal,
           onText: (delta) => {
@@ -32829,13 +32955,16 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
         calls.map(async (call) => {
           const spec = ADVISOR_TOOLS[call.name];
           emit2({ type: "status", label: spec ? spec.label : call.name });
-          const r = await runTool(toolCtx, call.name, call.input);
+          const { show, input } = splitShowCard(call.input);
+          const r = await runTool(toolCtx, call.name, input);
           if (spec && !sources.includes(spec.label)) sources.push(spec.label);
+          const always = spec?.category === "prepare";
           for (const c of r.cards) {
-            if (cards.length < 8) {
-              cards.push(c);
-              emit2({ type: "card", card: c });
-            }
+            if (!always && (!show || readCards >= ADVISOR_LIMITS.maxReadCards)) continue;
+            if (cards.length >= ADVISOR_LIMITS.maxCards) break;
+            if (!always) readCards++;
+            cards.push(c);
+            emit2({ type: "card", card: c });
           }
           if (r.isError) log34.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };

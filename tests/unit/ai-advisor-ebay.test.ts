@@ -358,3 +358,38 @@ describe("analyse complète (scopes étendus)", () => {
     expectReadOnly(calls);
   });
 });
+
+describe("carte « Compte eBay » lisible", () => {
+  it("limites séparées et formatées, politiques sans codes ni numéros, durées traduites, sans doublon", async () => {
+    const fulfillment = (id: string) => ({
+      fulfillmentPolicyId: id,
+      name: `Frais fixes: FR_PostOfficeLetterFollowed gratu (${id})`,
+      handlingTime: { value: 2, unit: "DAY" },
+      shippingOptions: [{ optionType: "DOMESTIC", shippingServices: [{ shippingServiceCode: "FR_PostOfficeLetterFollowed", freeShipping: true }, { shippingServiceCode: "FR_ColiposteColissimo", shippingCost: { value: "4.90", currency: "EUR" } }] }],
+    });
+    const ret = (id: string) => ({ returnPolicyId: id, name: "Retours acceptés,Acheteur,14 jours,Internatio", returnsAccepted: true, returnPeriod: { value: 14, unit: "DAY" }, returnShippingCostPayer: "BUYER" });
+    const calls = stubEbay((c) => {
+      if (c.callName) return xml(wrap(c.callName, ""));
+      const p = c.url.pathname;
+      if (p.endsWith("/privilege")) return json({ sellingLimit: { amount: { value: "10000000.00", currency: "EUR" }, quantity: 10000000 } });
+      if (p.endsWith("/fulfillment_policy")) return json({ fulfillmentPolicies: [fulfillment("366693922023"), fulfillment("366693922024")] });
+      if (p.endsWith("/return_policy")) return json({ returnPolicies: [ret("1"), ret("2")] });
+      return json({});
+    });
+    const { ctx } = setup();
+    const r = await run(ctx, "ebay_account_overview");
+    expectReadOnly(calls);
+    const rows = r.cards[0]!.rows;
+    const byLabel = (l: string) => rows.filter((x) => x.label === l);
+    expect(byLabel("Limite de vente (montant)")[0]?.value).toMatch(/^10\s000\s000,00\s€$/);
+    expect(byLabel("Limite de vente (objets)")[0]?.value).toMatch(/^10\s000\s000$/);
+    expect(byLabel("Expédition")).toHaveLength(1);
+    expect(byLabel("Expédition")[0]).toMatchObject({ detail: "préparation : 2 jours" });
+    expect(byLabel("Expédition")[0]!.value).toMatch(/^Lettre suivie : gratuit, Colissimo : 4,90\s€$/);
+    expect(byLabel("Retours")).toEqual([expect.objectContaining({ value: "acceptés · 14 jours", detail: "port retour payé par l'acheteur" })]);
+    const text = JSON.stringify(rows);
+    expect(text).not.toMatch(/366693922023|FR_|DAY|gratu\b/);
+    // le résultat transmis au modèle garde les données brutes
+    expect(JSON.stringify(r.json)).toMatch(/FR_PostOfficeLetterFollowed/);
+  });
+});

@@ -38,6 +38,8 @@ import {
   restGet,
   summarizeTransactions,
   type FinanceTransaction,
+  type FulfillmentPolicySummary,
+  type ReturnPolicySummary,
   type LiveShippingFilter,
 } from "@/integrations/ebay/insights";
 import {
@@ -56,6 +58,7 @@ import {
 import { connectorAuthFor } from "@/services/channels/connection-store";
 import { card, row } from "./advisor-cards";
 import { money, toCents } from "./advisor-metrics";
+import { dedupeRows, ebayServiceName, frDuration, frHandlingTime, frQuantity } from "./ebay-display";
 import type { AdvisorToolContext, AdvisorToolOutput, AdvisorToolSpec } from "./advisor-tools";
 
 /**
@@ -366,6 +369,37 @@ async function ordersLive(ctx: AdvisorToolContext, link: EbayLink, raw: unknown)
 // 3. Vue d'ensemble du compte (identité, limites, programmes, politiques, emplacements, réputation)
 // ---------------------------------------------------------------------------
 
+// Lignes lisibles de la carte « Compte eBay » : montant et nombre d'objets séparés, politiques
+// décrites par leurs services et durées (les noms de politique générés par eBay contiennent des
+// codes et des numéros tronqués : ils restent dans le résultat transmis au modèle).
+function limitRows(lim: ReturnType<typeof parsePrivilege> | null, summary: { amountLimitRemaining: MoneyValue | null; quantityLimitRemaining: number | null } | null, c: string): AdvisorCardRowDTO[] {
+  const limAmount = lim?.sellingLimit.amount ?? null;
+  const limQty = lim?.sellingLimit.quantity ?? null;
+  const out: AdvisorCardRowDTO[] = [];
+  if (summary && (summary.amountLimitRemaining?.value ?? null) !== null) out.push(row("Montant restant ce mois-ci", fm(summary.amountLimitRemaining, c), limAmount?.value != null ? `limite : ${fm(limAmount, c)}` : null));
+  else if (limAmount?.value != null) out.push(row("Limite de vente (montant)", fm(limAmount, c)));
+  if (summary && summary.quantityLimitRemaining !== null) out.push(row("Objets restants ce mois-ci", frQuantity(summary.quantityLimitRemaining), limQty !== null ? `limite : ${frQuantity(limQty)} objets` : null));
+  else if (limQty !== null) out.push(row("Limite de vente (objets)", frQuantity(limQty)));
+  return out;
+}
+
+function shippingRow(c: string) {
+  return (p: FulfillmentPolicySummary): AdvisorCardRowDTO => {
+    const services = p.domestic
+      .filter((d) => d.service)
+      .slice(0, 2)
+      .map((d) => `${ebayServiceName(d.service)}${d.free ? " : gratuit" : d.cost?.value != null ? ` : ${fm(d.cost, c)}` : ""}`);
+    const handling = frHandlingTime(p.handlingTime);
+    return row("Expédition", services.join(", ") || "—", handling ? `préparation : ${handling}` : null);
+  };
+}
+
+function returnRow(p: ReturnPolicySummary): AdvisorCardRowDTO {
+  const payer = p.shippingCostPayer === "SELLER" ? "le vendeur" : p.shippingCostPayer === "BUYER" ? "l'acheteur" : null;
+  const value = p.returnsAccepted === false ? "refusés" : [p.returnsAccepted ? "acceptés" : null, frDuration(p.period)].filter(Boolean).join(" · ") || "—";
+  return row("Retours", value, payer ? `port retour payé par ${payer}` : null);
+}
+
 async function accountOverview(ctx: AdvisorToolContext, link: EbayLink, raw: unknown): Promise<AdvisorToolOutput> {
   const { marketplace } = z.object({ marketplace: marketplaceSchema }).parse(raw);
   const errors: string[] = [];
@@ -412,14 +446,13 @@ async function accountOverview(ctx: AdvisorToolContext, link: EbayLink, raw: unk
   };
   const c = ctx.currency;
   const s = seller?.value;
-  const rows = [
+  const rows = dedupeRows([
     row("Compte", identity?.value.username ?? link.username ?? "—", [identity?.value.accountType, identity?.value.registrationMarketplaceId].filter(Boolean).join(" · ") || null),
-    ...(s ? [row("Évaluations", s.feedbackScore === null ? "—" : String(s.feedbackScore), s.positiveFeedbackPercent === null ? null : `${String(s.positiveFeedbackPercent).replace(".", ",")} % positives${s.topRatedSeller ? " · Top Fiabilité" : ""}`, "success")] : []),
-    ...(lim ? [row("Limite de vente", fm(lim.sellingLimit.amount, c), lim.sellingLimit.quantity === null ? null : `${lim.sellingLimit.quantity} objets`)] : []),
-    ...(selling ? [row("Restant ce mois-ci", fm(selling.value.summary.amountLimitRemaining, c), selling.value.summary.quantityLimitRemaining === null ? null : `${selling.value.summary.quantityLimitRemaining} objets`)] : []),
-    ...(result.policies.shipping ?? []).slice(0, 2).map((p) => row(`Expédition : ${p.name ?? "—"}`, p.handlingTime ?? "—", p.domestic.map((d) => d.service).filter(Boolean).slice(0, 2).join(", ") || null)),
-    ...(result.policies.returns ?? []).slice(0, 2).map((p) => row(`Retours : ${p.name ?? "—"}`, p.returnsAccepted === false ? "refusés" : (p.period ?? "—"), p.shippingCostPayer ? `port retour payé par ${p.shippingCostPayer === "SELLER" ? "le vendeur" : "l'acheteur"}` : null)),
-  ];
+    ...(s ? [row("Évaluations", s.feedbackScore === null ? "—" : frQuantity(s.feedbackScore), s.positiveFeedbackPercent === null ? null : `${String(s.positiveFeedbackPercent).replace(".", ",")} % positives${s.topRatedSeller ? " · Top Fiabilité" : ""}`, "success")] : []),
+    ...limitRows(lim, selling?.value.summary ?? null, c),
+    ...(result.policies.shipping ?? []).slice(0, 2).map(shippingRow(c)),
+    ...(result.policies.returns ?? []).slice(0, 2).map(returnRow),
+  ]);
   return { result, cards: [liveCard("kpis", "Compte eBay", rows, readAt, { warnings: errors.slice(0, 3) })] };
 }
 
