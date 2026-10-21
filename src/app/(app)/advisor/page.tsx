@@ -12,8 +12,8 @@ export const metadata: Metadata = { title: "Conseiller IA" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Conseiller (v5) : scène avec le quota réel (limite du serveur, questions de l'heure), papier
- * avec l'historique des conversations à gauche et la conversation à droite.
+ * Conseiller : page simple, une seule colonne — gros micro (dictée + réponse à voix haute, comme
+ * sur l'iPhone) ou saisie, conversations récentes à reprendre ; quota réel dans la scène.
  */
 export default async function AdvisorPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await requireOrgContext();
@@ -54,7 +54,7 @@ export default async function AdvisorPage({ searchParams }: { searchParams: Prom
   return (
     <AdvisorUsageProvider initialUsed={statusView.usedThisHour} limit={status?.limits.perUserPerHour ?? null}>
       <Scene className="pb-11">
-        <SceneHeader eyebrow="Conseiller IA · vos données" title="Conseiller" actions={<AdvisorQuota variant="scene" />} />
+        <SceneHeader eyebrow="Parlez ou écrivez" title="Conseiller" actions={<AdvisorQuota variant="scene" />} />
       </Scene>
       <Paper className="lg:pt-5">
         <AdvisorChat

@@ -1,23 +1,25 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type FormEvent, type KeyboardEvent, type ReactNode, type SetStateAction } from "react";
 import Link from "next/link";
-import { ArrowUp, Database, MessageSquarePlus, Square } from "lucide-react";
+import { ArrowUp, Database, History, MessageSquarePlus, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import type { AdvisorActionDTO, AdvisorStreamEvent } from "@/features/mobile-api/contract";
 import { ADVISOR_MESSAGE_MAX_CHARS } from "@/features/mobile-api/contract";
 import { cn } from "@/lib/utils";
 import { ADVISOR_CHAT_PATH, ADVISOR_CLIENT_TIMEOUT_MS, AdvisorStreamError, readAdvisorStream } from "@/features/advisor/stream";
-import { ADVISOR_INTRO, ADVISOR_SUGGESTIONS, conversationTitleFrom, quotaView, replaceActionInCards, type ChatItem } from "@/features/advisor/view.pure";
+import { ADVISOR_INTRO, ADVISOR_SUGGESTIONS, quotaView, replaceActionInCards, type ChatItem } from "@/features/advisor/view.pure";
 import { cancelAdvisorActionAction, confirmAdvisorActionAction } from "@/features/advisor/actions";
 import { rememberConversation } from "@/features/advisor/remember";
 import { AdvisorCardView } from "@/features/advisor/components/advisor-card";
+import { useDictation, useDictationSupported, useSpeaker, useVoicePrefs, VOICE_CHOICES } from "@/features/advisor/voice";
 
 export type { ChatItem } from "@/features/advisor/view.pure";
 
 /**
- * Conseiller e-commerce IA (web, v5) : conversation ÉCRITE fondée sur les données réelles du
- * compte (calculs et outils exécutés sur le serveur, sous les droits de l'utilisateur). Réponse
- * affichée au fil de l'eau ; actions préparées exécutées seulement sur « Confirmer ». Même
- * composant pour la page (historique à gauche) et le panneau ⌘J.
+ * Conseiller e-commerce IA (web) : conversation écrite OU vocale, comme sur l'iPhone (dictée du
+ * navigateur, réponse lue avec la voix de l'application), fondée sur les données réelles du compte
+ * (outils exécutés sur le serveur, sous les droits de l'utilisateur). Réponse affichée au fil de
+ * l'eau ; actions préparées exécutées seulement sur « Confirmer ». Même composant pour la page
+ * (colonne unique, gros micro) et le panneau ⌘J.
  */
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1";
@@ -101,7 +103,7 @@ export function AdvisorChat({
   canConfirm: boolean;
   perUserPerHour: number | null;
   usedThisHour: number | null;
-  /** « page » : historique à gauche, adresse synchronisée ; « panel » : panneau ⌘J */
+  /** « page » : page dédiée, adresse synchronisée ; « panel » : panneau ⌘J */
   variant?: "page" | "panel";
   /** conversations récentes (page) ; null si illisibles */
   history?: AdvisorHistoryEntry[] | null;
@@ -118,7 +120,6 @@ export function AdvisorChat({
 
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [items, setItems] = useState<ChatItem[]>(initialItems);
-  const [localHistory, setLocalHistory] = useState<AdvisorHistoryEntry[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [statusDetail, setStatusDetail] = useState<string | null>(null);
@@ -133,6 +134,12 @@ export function AdvisorChat({
     changeRef.current = onConversationChange;
   }, [onConversationChange]);
 
+  const [prefs, setPrefs] = useVoicePrefs();
+  const speaker = useSpeaker(prefs.voice);
+  const canDictate = useDictationSupported();
+  const sendRef = useRef<(q: string, voice?: boolean) => void>(() => {});
+  const dictation = useDictation((heard) => sendRef.current(heard, true));
+
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
     rememberConversation(conversationId);
@@ -146,26 +153,27 @@ export function AdvisorChat({
   }, [items, page]);
 
   const adopt = useCallback(
-    (id: string, question: string) => {
+    (id: string) => {
       setConversationId(id);
       if (page) setConversationInUrl(id);
-      if (page && history && !history.some((h) => h.id === id)) setLocalHistory((xs) => (xs.some((h) => h.id === id) ? xs : [{ id, title: conversationTitleFrom(question), when: "à l'instant" }, ...xs]));
     },
-    [page, history],
+    [page],
   );
 
   const updateLast = useCallback((fn: (it: ChatItem) => ChatItem) => setItems((xs) => xs.map((it, i) => (i === xs.length - 1 ? fn(it) : it))), []);
   const disabled = configured === false;
   const quota = quotaView(used, perUserPerHour);
 
-  async function send(question: string) {
+  async function send(question: string, voice = false) {
     const q = question.trim().slice(0, ADVISOR_MESSAGE_MAX_CHARS);
     if (!q || busy || disabled) return;
+    speaker.stop();
     setText("");
     setBusy(true);
     setStatusDetail(null);
     setAnnounce("Le conseiller analyse vos données…");
-    setItems((xs) => [...xs, { key: nextKey(), role: "user", content: q, cards: [], sources: [] }, { key: nextKey(), role: "assistant", content: "", cards: [], sources: [], streaming: true }]);
+    const replyKey = nextKey();
+    setItems((xs) => [...xs, { key: nextKey(), role: "user", content: q, cards: [], sources: [] }, { key: replyKey, role: "assistant", content: "", cards: [], sources: [], streaming: true }]);
     const controller = new AbortController();
     abortRef.current = controller;
     let timedOut = false;
@@ -178,7 +186,7 @@ export function AdvisorChat({
       const res = await fetch(ADVISOR_CHAT_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-        body: JSON.stringify({ conversationId, message: q }),
+        body: JSON.stringify({ conversationId, message: q, voice }),
         signal: controller.signal,
         cache: "no-store",
       });
@@ -187,14 +195,16 @@ export function AdvisorChat({
           counted = true;
           setUsed((u) => (u === null ? null : u + 1));
         }
-        if (e.type === "conversation") adopt(e.conversationId, q);
+        if (e.type === "conversation") adopt(e.conversationId);
         else if (e.type === "status") setStatusDetail(`Consultation : ${e.label}`);
         else if (e.type === "text") updateLast((it) => ({ ...it, content: it.content + e.delta }));
         else if (e.type === "card") updateLast((it) => ({ ...it, cards: [...it.cards, e.card] }));
       });
-      adopt(reply.conversationId, q);
-      updateLast((it) => ({ ...it, content: reply.answer, cards: reply.cards, sources: reply.sources, interrupted: reply.interrupted, streaming: false }));
+      adopt(reply.conversationId);
+      updateLast((it) => ({ ...it, content: reply.answer, cards: reply.cards, sources: reply.sources, interrupted: reply.interrupted, streaming: false, messageId: reply.messageId }));
       setAnnounce(reply.interrupted ? "Réponse incomplète reçue." : "Réponse reçue.");
+      // Question dictée (ou « lire les réponses ») : réponse lue avec la voix de l'application.
+      if ((voice || prefs.autoRead) && reply.answer) speaker.speak(replyKey, reply.answer, reply.messageId);
     } catch (e) {
       const aborted = e instanceof Error && e.name === "AbortError";
       const message = aborted ? (timedOut ? "Le conseiller n'a pas répondu à temps. Réessayez." : "Demande arrêtée.") : e instanceof AdvisorStreamError ? e.message : "Le serveur MON STOCK est injoignable. Vérifiez votre connexion et réessayez.";
@@ -206,9 +216,12 @@ export function AdvisorChat({
       setBusy(false);
       setStatusDetail(null);
       abortRef.current = null;
-      inputRef.current?.focus();
+      if (!voice) inputRef.current?.focus();
     }
   }
+  useEffect(() => {
+    sendRef.current = (q, voice) => void send(q, voice);
+  });
 
   async function decide(action: AdvisorActionDTO, kind: "confirm" | "cancel") {
     setBusyActionId(action.id);
@@ -232,6 +245,8 @@ export function AdvisorChat({
 
   function newConversation() {
     abortRef.current?.abort();
+    dictation.cancel();
+    speaker.stop();
     setConversationId(null);
     setItems([]);
     setText("");
@@ -239,32 +254,110 @@ export function AdvisorChat({
     inputRef.current?.focus();
   }
 
+  function toggleMic() {
+    if (dictation.listening) {
+      dictation.stop();
+      return;
+    }
+    speaker.stop();
+    speaker.unlock();
+    dictation.start();
+  }
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (busy) abortRef.current?.abort();
-    else void send(text);
+    else {
+      speaker.unlock();
+      void send(text);
+    }
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
+      speaker.unlock();
       void send(text);
     }
   }
 
-  const suggestions = page && items.length === 0 ? ADVISOR_SUGGESTIONS : ADVISOR_SUGGESTIONS.slice(0, 3);
+  const listening = dictation.listening;
+  const empty = items.length === 0;
+  const recent = page && !historyError ? (history ?? []).slice(0, 3) : [];
+
+  const voiceBar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setPrefs({ autoRead: !prefs.autoRead })}
+        aria-pressed={prefs.autoRead}
+        title="Lire à voix haute toutes les réponses (les questions dictées sont toujours lues)"
+        className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-bold", prefs.autoRead ? "border-foreground bg-foreground text-on-night" : "border-border bg-surface hover:bg-line-soft", FOCUS)}
+      >
+        {prefs.autoRead ? <Volume2 aria-hidden="true" className="h-3.5 w-3.5" /> : <VolumeX aria-hidden="true" className="h-3.5 w-3.5" />}
+        Lire les réponses
+      </button>
+      <label className="sr-only" htmlFor={`advisor-voice-${variant}`}>
+        Voix du conseiller
+      </label>
+      <select
+        id={`advisor-voice-${variant}`}
+        value={prefs.voice}
+        onChange={(e) => setPrefs({ voice: e.target.value === "cedar" ? "cedar" : "marin" })}
+        className={cn("min-h-9 rounded-full border border-border bg-surface px-3 text-[12.5px] font-bold", FOCUS)}
+      >
+        {VOICE_CHOICES.map((v) => (
+          <option key={v.id} value={v.id}>
+            Voix : {v.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 
   const messages = (
     <>
-      <p className="max-w-[92%] self-center rounded-xl bg-line-soft px-3 py-2 text-center text-[13px] font-semibold leading-[18px] text-muted">{ADVISOR_INTRO}</p>
       {notices}
-      {items.length === 0 ? (
-        <p className="max-w-[92%] self-center px-3 text-center text-[13px] font-semibold leading-[18px] text-ink-3">
-          Posez votre question comme à un collaborateur : le conseiller consulte les ventes, marges, stock, commandes et expéditions de {organizationName}.
-        </p>
+      {empty && page ? (
+        <div className="flex flex-col items-center gap-4 py-6 text-center sm:py-10">
+          {canDictate ? (
+            <>
+              <button
+                type="button"
+                onClick={toggleMic}
+                disabled={busy || disabled}
+                aria-label={listening ? "Arrêter l'écoute et envoyer" : "Parler au conseiller"}
+                className={cn("relative flex h-28 w-28 items-center justify-center rounded-full text-night transition-transform active:scale-95 disabled:opacity-50", listening ? "bg-danger text-on-night" : "bg-mint hover:bg-mint-pressed", FOCUS)}
+              >
+                {listening ? <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full bg-danger/30 motion-reduce:animate-none" /> : null}
+                {listening ? <Square aria-hidden="true" className="relative h-8 w-8 fill-current" /> : <Mic aria-hidden="true" className="h-11 w-11" />}
+              </button>
+              <p className="text-lg font-bold">{listening ? "J'écoute… parlez maintenant" : "Touchez le micro et posez votre question"}</p>
+              {listening && dictation.transcript ? <p className="max-w-[560px] text-[15px] font-semibold text-muted">« {dictation.transcript} »</p> : null}
+            </>
+          ) : (
+            <p className="text-lg font-bold">Posez votre question</p>
+          )}
+          <p className="max-w-[520px] text-[13.5px] font-semibold leading-[19px] text-ink-3">Le conseiller consulte les ventes, marges, stock, commandes et le compte eBay de {organizationName}, puis vous répond {canDictate ? "à l'écrit et à voix haute" : "à l'écrit"}.</p>
+          {recent.length > 0 ? (
+            <div className="flex flex-col items-center gap-1.5">
+              <span className="ms-mono text-[10.5px] text-ink-3">Reprendre</span>
+              <ul className="flex flex-wrap justify-center gap-1.5">
+                {recent.map((h) => (
+                  <li key={h.id}>
+                    <Link href={`/advisor?conversation=${h.id}` as never} className={cn("inline-flex min-h-8 max-w-[260px] items-center rounded-full border border-border bg-surface px-3 text-[12.5px] font-semibold hover:bg-line-soft", FOCUS)}>
+                      <span className="truncate">{h.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
       ) : null}
+      {empty && !page ? <p className="max-w-[92%] self-center px-3 text-center text-[13px] font-semibold leading-[18px] text-ink-3">Posez votre question comme à un collaborateur : le conseiller consulte les données de {organizationName}.</p> : null}
       {items.map((it) => (
-        <MessageView key={it.key} item={it} statusDetail={it.streaming ? statusDetail : null}>
+        <MessageView key={it.key} item={it} statusDetail={it.streaming ? statusDetail : null} speaking={speaker.speakingKey === it.key} onSpeak={() => (speaker.speakingKey === it.key ? speaker.stop() : speaker.speak(it.key, it.content, it.messageId))}>
           {it.cards.map((c, i) => (
             <AdvisorCardView key={`${it.key}-c${i}`} card={c} busyActionId={busyActionId} canConfirm={canConfirm} onConfirm={(a) => void decide(a, "confirm")} onCancel={(a) => void decide(a, "cancel")} />
           ))}
@@ -274,57 +367,78 @@ export function AdvisorChat({
     </>
   );
 
+  const suggestions = empty ? ADVISOR_SUGGESTIONS.slice(0, page ? 4 : 3) : [];
+
   const composer = (
     <form onSubmit={onSubmit} className="flex flex-col gap-2">
-      <ul aria-label="Questions suggérées" className="flex flex-wrap gap-1.5">
-        {suggestions.map((s) => (
-          <li key={s}>
-            <button type="button" onClick={() => void send(s)} disabled={busy || disabled} className={cn("relative min-h-8 rounded-full border border-border bg-surface px-3 py-1 text-left text-[12.5px] font-bold leading-[17px] hover:bg-line-soft disabled:opacity-50", "after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']", FOCUS)}>
-              {s}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {suggestions.length > 0 ? (
+        <ul aria-label="Questions suggérées" className={cn("flex flex-wrap gap-1.5", page && "justify-center")}>
+          {suggestions.map((s) => (
+            <li key={s}>
+              <button
+                type="button"
+                onClick={() => {
+                  speaker.unlock();
+                  void send(s);
+                }}
+                disabled={busy || disabled}
+                className={cn("relative min-h-8 rounded-full border border-border bg-surface px-3 py-1 text-left text-[12.5px] font-bold leading-[17px] hover:bg-line-soft disabled:opacity-50", "after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']", FOCUS)}
+              >
+                {s}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {quota.reached && !busy ? (
         <p role="status" className="text-xs font-semibold text-danger">
           Limite horaire atteinte ({perUserPerHour} questions par heure). Réessayez plus tard.
         </p>
       ) : null}
-      <div className="flex items-end gap-2 rounded-2xl border border-border-strong bg-surface py-2 pl-3.5 pr-2 focus-within:ring-2 focus-within:ring-ring">
+      {dictation.error ? (
+        <p role="alert" className="text-xs font-semibold text-danger">
+          {dictation.error}
+        </p>
+      ) : null}
+      <div className={cn("flex items-end gap-2 rounded-2xl border bg-surface py-2 pl-3.5 pr-2 focus-within:ring-2 focus-within:ring-ring", listening ? "border-danger" : "border-border-strong")}>
         <label htmlFor={`advisor-input-${variant}`} className="sr-only">
           Votre question
         </label>
         <textarea
           ref={inputRef}
           id={`advisor-input-${variant}`}
-          value={text}
+          value={listening ? dictation.transcript : text}
           onChange={(e) => setText(e.target.value.slice(0, ADVISOR_MESSAGE_MAX_CHARS))}
           onKeyDown={onKeyDown}
-          placeholder={disabled ? "Conseiller non activé sur le serveur" : "Posez une question sur vos ventes, votre stock, vos fournisseurs…"}
-          rows={2}
+          placeholder={disabled ? "Conseiller non activé sur le serveur" : listening ? "J'écoute…" : canDictate ? "Écrivez ou touchez le micro…" : "Écrivez votre question…"}
+          rows={1}
           maxLength={ADVISOR_MESSAGE_MAX_CHARS}
           disabled={busy || disabled}
-          aria-describedby={`advisor-hint-${variant}`}
-          className="max-h-48 min-h-[50px] flex-1 resize-none bg-transparent py-1 text-[15px] font-semibold leading-[21px] text-foreground placeholder:text-ink-4 focus:outline-none disabled:cursor-not-allowed"
+          readOnly={listening}
+          className="max-h-48 min-h-[40px] flex-1 resize-none bg-transparent py-2 text-[15px] font-semibold leading-[21px] text-foreground placeholder:text-ink-4 focus:outline-none disabled:cursor-not-allowed"
         />
+        {canDictate && !busy ? (
+          <button
+            type="button"
+            onClick={toggleMic}
+            disabled={disabled}
+            aria-label={listening ? "Arrêter l'écoute et envoyer" : "Parler au conseiller"}
+            className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl disabled:opacity-50", listening ? "bg-danger text-on-night" : "bg-line-soft text-foreground hover:bg-border", FOCUS)}
+          >
+            {listening ? <Square aria-hidden="true" className="h-3.5 w-3.5 fill-current" /> : <Mic aria-hidden="true" className="h-[18px] w-[18px]" />}
+          </button>
+        ) : null}
         {busy ? (
           <button type="submit" aria-label="Arrêter la réponse" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-night text-on-night hover:bg-night-raised", FOCUS)}>
             <Square aria-hidden="true" className="h-3.5 w-3.5 fill-current" />
           </button>
         ) : (
-          <button type="submit" disabled={!text.trim() || disabled} aria-label="Envoyer la question" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-night hover:bg-mint-pressed disabled:bg-line-soft disabled:text-ink-4", FOCUS)}>
+          <button type="submit" disabled={!text.trim() || disabled || listening} aria-label="Envoyer la question" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-night hover:bg-mint-pressed disabled:bg-line-soft disabled:text-ink-4", FOCUS)}>
             <ArrowUp aria-hidden="true" className="h-[18px] w-[18px]" />
           </button>
         )}
       </div>
-      <p id={`advisor-hint-${variant}`} className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 text-xs font-semibold leading-[17px] text-ink-3">
-        <span>Entrée pour envoyer · Maj+Entrée pour aller à la ligne. Les réponses citent vos données ; aucune action n&apos;est exécutée sans « Confirmer ».</span>
-        {text.length > ADVISOR_MESSAGE_MAX_CHARS * 0.8 ? (
-          <span className="tnum">
-            {text.length} / {ADVISOR_MESSAGE_MAX_CHARS}
-          </span>
-        ) : null}
-      </p>
+      <p className="text-center text-xs font-semibold leading-[17px] text-ink-3">{ADVISOR_INTRO}</p>
     </form>
   );
 
@@ -337,6 +451,7 @@ export function AdvisorChat({
   if (!page) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2">{voiceBar}</div>
         <div ref={logRef} role="log" aria-label="Conversation avec le conseiller" className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-4">
           {messages}
         </div>
@@ -346,56 +461,31 @@ export function AdvisorChat({
     );
   }
 
-  const entries = [...localHistory, ...(history ?? [])];
   return (
-    <div className="flex flex-wrap items-start gap-6">
-      <aside aria-label="Historique des conversations" className="flex min-w-[min(240px,100%)] flex-[0_1_280px] flex-col gap-2.5 max-lg:order-last xl:sticky xl:top-[72px]">
-        <button type="button" onClick={newConversation} className={cn("flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border-strong bg-surface text-sm font-extrabold hover:bg-line-soft", FOCUS)}>
-          <MessageSquarePlus aria-hidden="true" className="h-4 w-4" />
-          Nouvelle conversation
-        </button>
-        <h2 className="ms-mono text-[11px] leading-[22px] tracking-[0.08em] text-muted">Historique</h2>
-        {historyError ? (
-          <p role="alert" className="text-[13px] font-semibold text-danger">
-            Historique illisible : {historyError}
-          </p>
-        ) : entries.length === 0 ? (
-          <p className="text-[13px] font-semibold text-ink-3">Aucune conversation pour le moment.</p>
-        ) : (
-          <ul className="flex flex-col gap-0.5">
-            {entries.map((h) => {
-              const active = h.id === conversationId;
-              return (
-                <li key={h.id}>
-                  <Link
-                    href={`/advisor?conversation=${h.id}` as never}
-                    aria-current={active ? "page" : undefined}
-                    className={cn("flex flex-col gap-0.5 rounded-xl px-3 py-2.5 hover:bg-selection", active && "bg-selection", FOCUS)}
-                  >
-                    <span className={cn("line-clamp-2 text-sm leading-[19px]", active ? "font-bold" : "font-semibold")}>{h.title}</span>
-                    <span className="ms-code text-[10.5px] text-ink-3">{h.when}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <Link href="/advisor/history" className={cn("inline-flex min-h-10 items-center rounded px-1 text-[13px] font-bold hover:underline hover:underline-offset-2", FOCUS)}>
-          Gérer les conversations
-        </Link>
-      </aside>
-      <section aria-label="Conversation" className="flex min-w-0 max-w-[820px] flex-[1_1_560px] flex-col gap-4">
-        <div ref={logRef} role="log" aria-label="Conversation avec le conseiller" className="flex flex-col gap-3.5">
-          {messages}
+    <section aria-label="Conversation" className="mx-auto flex w-full max-w-[780px] flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={newConversation} className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-strong bg-surface px-3 text-[12.5px] font-extrabold hover:bg-line-soft", FOCUS)}>
+            <MessageSquarePlus aria-hidden="true" className="h-3.5 w-3.5" />
+            Nouvelle conversation
+          </button>
+          <Link href="/advisor/history" className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold hover:bg-line-soft", FOCUS)}>
+            <History aria-hidden="true" className="h-3.5 w-3.5" />
+            Historique
+          </Link>
         </div>
-        {live}
-        <div className="z-10 -mx-1 bg-background px-1 pb-3 pt-2 lg:sticky lg:bottom-0">{composer}</div>
-      </section>
-    </div>
+        {voiceBar}
+      </div>
+      <div ref={logRef} role="log" aria-label="Conversation avec le conseiller" className="flex flex-col gap-3.5">
+        {messages}
+      </div>
+      {live}
+      <div className="z-10 -mx-1 bg-background px-1 pb-3 pt-2 lg:sticky lg:bottom-0">{composer}</div>
+    </section>
   );
 }
 
-function MessageView({ item, statusDetail, children }: { item: ChatItem; statusDetail: string | null; children: ReactNode }) {
+function MessageView({ item, statusDetail, speaking, onSpeak, children }: { item: ChatItem; statusDetail: string | null; speaking: boolean; onSpeak: () => void; children: ReactNode }) {
   if (item.role === "notice") {
     return <p className={cn("max-w-[92%] self-center rounded-xl px-3 py-2 text-center text-[13px] font-semibold leading-[18px]", item.error ? "bg-danger-soft text-danger" : "bg-line-soft text-muted")}>{item.content}</p>;
   }
@@ -421,6 +511,12 @@ function MessageView({ item, statusDetail, children }: { item: ChatItem; statusD
           {item.streaming ? <span aria-hidden="true" className="ms-pulse ml-0.5 text-ink-3">▍</span> : null}
         </div>
         {item.interrupted ? <span className="self-start rounded-md bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning">Réponse incomplète</span> : null}
+        {!item.streaming && !item.error && item.content ? (
+          <button type="button" onClick={onSpeak} aria-pressed={speaking} className={cn("inline-flex min-h-8 items-center gap-1.5 self-start rounded-full px-2 text-[12.5px] font-bold text-ink-3 hover:bg-line-soft hover:text-foreground", speaking && "text-foreground", FOCUS)}>
+            {speaking ? <Square aria-hidden="true" className="h-3 w-3 fill-current" /> : <Volume2 aria-hidden="true" className="h-3.5 w-3.5" />}
+            {speaking ? "Arrêter la lecture" : "Écouter"}
+          </button>
+        ) : null}
         {item.sources.length > 0 ? (
           <p className="flex items-start gap-1 px-1 text-[12.5px] font-semibold text-ink-3">
             <Database aria-hidden="true" className="mt-[3px] h-3 w-3 shrink-0" />

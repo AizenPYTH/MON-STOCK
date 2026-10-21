@@ -16,6 +16,7 @@ describe("conseiller : quota réel et conversation", () => {
   });
 
   it("messages enregistrés → éléments de conversation", () => {
-    expect(chatItemsFrom([{ id: "m1", role: "user", content: "Bonjour", cards: [], sources: [], interrupted: false }])).toEqual([{ key: "m1", role: "user", content: "Bonjour", cards: [], sources: [], interrupted: false }]);
+    expect(chatItemsFrom([{ id: "m1", role: "user", content: "Bonjour", cards: [], sources: [], interrupted: false }])).toEqual([{ key: "m1", role: "user", content: "Bonjour", cards: [], sources: [], interrupted: false, messageId: null }]);
+    expect(chatItemsFrom([{ id: "m2", role: "assistant", content: "Réponse", cards: [], sources: [], interrupted: false }])[0]?.messageId).toBe("m2");
   });
 });

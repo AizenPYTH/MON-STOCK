@@ -24,11 +24,13 @@ export type ChatItem = {
   interrupted?: boolean;
   error?: boolean;
   streaming?: boolean;
+  /** identifiant enregistré de la réponse (lecture à voix haute avec la voix du serveur) */
+  messageId?: string | null;
 };
 
 /** Messages enregistrés → éléments de conversation. */
 export function chatItemsFrom(messages: readonly { id: string; role: "user" | "assistant" | "notice"; content: string; cards: AdvisorCardDTO[]; sources: string[]; interrupted: boolean }[]): ChatItem[] {
-  return messages.map((m) => ({ key: m.id, role: m.role, content: m.content, cards: m.cards, sources: m.sources, interrupted: m.interrupted }));
+  return messages.map((m) => ({ key: m.id, role: m.role, content: m.content, cards: m.cards, sources: m.sources, interrupted: m.interrupted, messageId: m.role === "assistant" ? m.id : null }));
 }
 
 /** Avertissement affiché en tête de toute conversation. */

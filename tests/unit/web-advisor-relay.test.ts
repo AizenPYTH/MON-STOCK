@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_test";
-const { relayAdvisorChat } = await import("@/features/advisor/relay");
+const { relayAdvisorChat, relayAdvisorSpeech } = await import("@/features/advisor/relay");
 const { AppError } = await import("@/lib/errors");
 
 type Ctx = Awaited<ReturnType<Parameters<typeof relayAdvisorChat>[1]["getContext"]>>;
@@ -92,5 +92,39 @@ describe("relayAdvisorChat (web → Edge /advisor/chat)", () => {
     const res = await relayAdvisorChat(chatRequest({ message: "x" }), deps(fetchImpl as unknown as typeof fetch));
     expect(res.status).toBe(502);
     expect((await res.json()).error.code).toBe("UNREACHABLE");
+  });
+});
+
+describe("relayAdvisorSpeech (web → Edge /advisor/speech)", () => {
+  const MSG = "0b5f3c1e-8f7a-4c2b-9d3e-1a2b3c4d5e6f";
+  const speechRequest = (q: string) => new Request(`${ORIGIN}/api/advisor/speech?${q}`);
+
+  it("relaie l'audio de l'Edge (même voix que l'iPhone), avec jeton et organisation", async () => {
+    const audio = new Uint8Array([1, 2, 3]);
+    const fetchImpl = vi.fn(async () => new Response(audio, { status: 200, headers: { "Content-Type": "audio/mpeg" } }));
+    const res = await relayAdvisorSpeech(speechRequest(`messageId=${MSG}&voice=cedar`), { getContext: async () => ctx, fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(audio);
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`https://project.supabase.co/functions/v1/api/advisor/speech?messageId=${MSG}&voice=cedar`);
+    expect(new Headers(init.headers).get("authorization")).toBe("Bearer jwt");
+    expect(new Headers(init.headers).get("x-organization-id")).toBe("org-1");
+  });
+
+  it("identifiant invalide : 400 sans appeler l'Edge ; voix inconnue ignorée", async () => {
+    const fetchImpl = vi.fn(async () => new Response(new Uint8Array([1]), { status: 200, headers: { "Content-Type": "audio/mpeg" } }));
+    const bad = await relayAdvisorSpeech(speechRequest("messageId=../x"), { getContext: async () => ctx, fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(bad.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await relayAdvisorSpeech(speechRequest(`messageId=${MSG}&voice=evil`), { getContext: async () => ctx, fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(String((fetchImpl.mock.calls[0] as unknown as [string])[0])).not.toContain("voice=");
+  });
+
+  it("erreur de l'Edge (quota, IA non configurée) : message relayé", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: false, error: { code: "RATE_LIMITED", message: "Limite atteinte." } }), { status: 429, headers: { "Content-Type": "application/json" } }));
+    const res = await relayAdvisorSpeech(speechRequest(`messageId=${MSG}`), { getContext: async () => ctx, fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ ok: false, error: { code: "RATE_LIMITED", message: "Limite atteinte." } });
   });
 });

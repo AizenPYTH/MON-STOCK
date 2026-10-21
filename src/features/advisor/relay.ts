@@ -88,3 +88,58 @@ export async function relayAdvisorChat(request: Request, deps: AdvisorRelayDeps)
   }
   return jsonError(502, "SERVER", upstream.status >= 500 ? "Le serveur MON STOCK est momentanément indisponible. Réessayez." : `Réponse inattendue du serveur (HTTP ${upstream.status}).`);
 }
+
+const MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VOICES = new Set(["marin", "cedar"]);
+export const ADVISOR_SPEECH_TIMEOUT_MS = 45_000;
+
+/**
+ * Voix du conseiller (web) : GET /api/advisor/speech?messageId=…&voice=… → Edge Function
+ * GET /advisor/speech (audio/mpeg), au nom de l'utilisateur. Même voix que l'application iPhone ;
+ * la clé OpenAI reste côté Edge. Seule une réponse déjà enregistrée peut être lue (identifiant).
+ */
+export async function relayAdvisorSpeech(request: Request, deps: Omit<AdvisorRelayDeps, "allowedOrigins">): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const messageId = params.get("messageId") ?? "";
+  if (!MESSAGE_ID.test(messageId)) return jsonError(400, "VALIDATION", "Réponse à lire invalide.");
+  const voice = params.get("voice");
+
+  let ctx: OrgContext;
+  try {
+    ctx = await deps.getContext();
+  } catch (e) {
+    if (isAppError(e)) return jsonError(e.status, e.code, e.message);
+    return jsonError(500, "INTERNAL", "Impossible de vérifier votre session. Réessayez.");
+  }
+
+  let url: string;
+  let init: RequestInit;
+  try {
+    ({ url, init } = await edgeRequest(ctx, "/advisor/speech", { query: { messageId, voice: voice && VOICES.has(voice) ? voice : undefined } }));
+  } catch (e) {
+    if (e instanceof EdgeApiError) return jsonError(401, e.code, e.message);
+    return jsonError(500, "INTERNAL", "Impossible de préparer la lecture.");
+  }
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "audio/mpeg");
+  const timeout = AbortSignal.timeout(deps.timeoutMs ?? ADVISOR_SPEECH_TIMEOUT_MS);
+
+  let upstream: Response;
+  try {
+    upstream = await (deps.fetchImpl ?? fetch)(url, { ...init, headers, signal: AbortSignal.any([request.signal, timeout]) });
+  } catch {
+    if (timeout.aborted) return jsonError(504, "TIMEOUT", "La voix n'a pas répondu à temps.");
+    return jsonError(502, "UNREACHABLE", "Le serveur MON STOCK est injoignable.");
+  }
+  const type = upstream.headers.get("content-type") ?? "";
+  if (upstream.ok && type.startsWith("audio/") && upstream.body) {
+    return new Response(upstream.body, { status: 200, headers: { "Content-Type": type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+  }
+  try {
+    const json = (await upstream.json()) as { ok?: boolean; error?: { code?: string; message?: string } } | null;
+    if (json && json.ok === false && json.error?.message) return jsonError(upstream.status >= 400 ? upstream.status : 502, json.error.code ?? "SERVER", json.error.message);
+  } catch {
+    // corps illisible
+  }
+  return jsonError(502, "SERVER", "La voix est momentanément indisponible.");
+}
