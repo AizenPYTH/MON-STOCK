@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb } from "./helpers/memory-db";
 
 vi.mock("server-only", () => ({}));
@@ -98,6 +98,14 @@ describe("recherche Fournisseurs", () => {
 });
 
 describe("analyse « bonne affaire » dans la recherche", () => {
+  // Le niveau dépend de l'âge du prix (relevé le 13/10) : horloge figée pour que le test ne
+  // vieillisse pas avec le calendrier.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T09:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
   const EB = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
   const SRC_EBAY = "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e";
   const SRC_WEB = "6f6f6f6f-6f6f-4f6f-8f6f-6f6f6f6f6f6f";
