@@ -29082,7 +29082,7 @@ async function synthesize(input, voice, deps, what) {
   try {
     const sdk2 = deps.sdk ?? openAISdk();
     const res = await sdk2.audio.speech.create({ model, voice, input, instructions: TTS_INSTRUCTIONS, response_format: "mp3" });
-    return await res.arrayBuffer();
+    return res.body ?? await res.arrayBuffer();
   } catch (e) {
     logApiError(e, model, false);
     if (e instanceof AppError) log29.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });

@@ -79,16 +79,22 @@ export function resetSpeechRate() {
 
 /** Sous-ensemble du SDK utilisé (simulable en test). */
 export interface SpeechSdkLike {
-  audio: { speech: { create(body: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<{ arrayBuffer(): Promise<ArrayBuffer> }> } };
+  audio: { speech: { create(body: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<{ body?: ReadableStream<Uint8Array> | null; arrayBuffer(): Promise<ArrayBuffer> }> } };
 }
 
-async function synthesize(input: string, voice: TtsVoice, deps: { sdk?: SpeechSdkLike; env?: Record<string, string | undefined> }, what: string): Promise<ArrayBuffer> {
+/**
+ * Audio renvoyé tel qu'il arrive d'OpenAI (flux) : la lecture commence dès les premiers octets au
+ * lieu d'attendre le fichier complet (plusieurs secondes de moins avant d'entendre la voix).
+ */
+export type SpeechAudio = ReadableStream<Uint8Array> | ArrayBuffer;
+
+async function synthesize(input: string, voice: TtsVoice, deps: { sdk?: SpeechSdkLike; env?: Record<string, string | undefined> }, what: string): Promise<SpeechAudio> {
   const env = deps.env ?? process.env;
   const model = ttsModel(env);
   try {
     const sdk = deps.sdk ?? (openAISdk() as unknown as SpeechSdkLike);
     const res = await sdk.audio.speech.create({ model, voice, input, instructions: TTS_INSTRUCTIONS, response_format: "mp3" });
-    return await res.arrayBuffer();
+    return res.body ?? (await res.arrayBuffer());
   } catch (e) {
     // jamais masqué : configuration (clé, modèle), quota ou panne sont journalisés (sans secret)
     logApiError(e, model, false);
@@ -102,7 +108,7 @@ export async function synthesizeAdvisorMessage(
   ctx: Pick<OrgContext, "supabase" | "organization" | "user">,
   messageId: string,
   opts: { voice?: string | null; sdk?: SpeechSdkLike; env?: Record<string, string | undefined>; now?: number } = {},
-): Promise<ArrayBuffer> {
+): Promise<SpeechAudio> {
   const { data, error } = await ctx.supabase.from("advisor_messages").select("content, role").eq("id", messageId).eq("organization_id", ctx.organization.id).eq("user_id", ctx.user.id).maybeSingle();
   if (error) throw new AppError("INTERNAL", "Réponse illisible. Réessayez.");
   if (!data || data.role !== "assistant") throw new AppError("NOT_FOUND", "Réponse introuvable.");
@@ -113,6 +119,6 @@ export async function synthesizeAdvisorMessage(
 }
 
 /** Échantillon fixe pour comparer les voix (le quota IA est appliqué par la route). */
-export function synthesizeVoiceSample(voice: string | null | undefined, opts: { sdk?: SpeechSdkLike; env?: Record<string, string | undefined> } = {}): Promise<ArrayBuffer> {
+export function synthesizeVoiceSample(voice: string | null | undefined, opts: { sdk?: SpeechSdkLike; env?: Record<string, string | undefined> } = {}): Promise<SpeechAudio> {
   return synthesize(TTS_SAMPLE_TEXT, ttsVoice(voice, opts.env), opts, "sample");
 }

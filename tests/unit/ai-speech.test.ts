@@ -31,10 +31,19 @@ describe("synthèse d'une réponse du conseiller", () => {
     const { c, queries } = ctx({ data: { role: "assistant", content: "– CA : 1 234,50 € (+12 %) → **bon**" } });
     const { sdk: s, create } = sdk();
     const audio = await synthesizeAdvisorMessage(c, MSG, { sdk: s, env: {} });
-    expect(new Uint8Array(audio)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(new Uint8Array(await new Response(audio).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     expect(bodyOf(create)).toEqual({ model: "gpt-4o-mini-tts", voice: "marin", input: "CA : 1 234,50 euros (+12 pour cent) puis bon", instructions: TTS_INSTRUCTIONS, response_format: "mp3" });
     const calls = queries.find((q) => q.target === "advisor_messages")!.calls;
     for (const [k, v] of [["id", MSG], ["organization_id", ORG], ["user_id", USER]]) expect(calls).toContainEqual({ method: "eq", args: [k, v] });
+  });
+
+  it("audio relayé en flux dès les premiers octets (aucune mise en mémoire tampon)", async () => {
+    const stream = new ReadableStream<Uint8Array>({ start: (c) => (c.enqueue(new Uint8Array([9])), c.close()) });
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(0));
+    const create = vi.fn(async () => ({ body: stream, arrayBuffer }));
+    const audio = await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: { audio: { speech: { create } } }, env: {} });
+    expect(audio).toBe(stream);
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("voix choisie par l'utilisateur (cedar) ; voix inconnue ignorée", async () => {

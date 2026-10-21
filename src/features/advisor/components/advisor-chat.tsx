@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type FormEvent, type KeyboardEvent, type ReactNode, type SetStateAction } from "react";
 import Link from "next/link";
-import { ArrowUp, Database, History, MessageSquarePlus, Mic, Square, Volume2, VolumeX } from "lucide-react";
+import { ArrowUp, AudioLines, Database, History, MessageSquarePlus, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import type { AdvisorActionDTO, AdvisorStreamEvent } from "@/features/mobile-api/contract";
 import { ADVISOR_MESSAGE_MAX_CHARS } from "@/features/mobile-api/contract";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,9 @@ export type { ChatItem } from "@/features/advisor/view.pure";
  * l'eau ; actions préparées exécutées seulement sur « Confirmer ». Même composant pour la page
  * (colonne unique, gros micro) et le panneau ⌘J.
  */
+
+/** Mode conversation : l'écoute reste ouverte quelques secondes après la fin de la réponse lue. */
+const CONVERSATION_GRACE_MS = 8_000;
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1";
 
@@ -138,7 +141,15 @@ export function AdvisorChat({
   const speaker = useSpeaker(prefs.voice);
   const canDictate = useDictationSupported();
   const sendRef = useRef<(q: string, voice?: boolean) => void>(() => {});
-  const dictation = useDictation((heard) => sendRef.current(heard, true));
+  const listenAgainRef = useRef<() => void>(() => {});
+  const dictation = useDictation(
+    (heard) => sendRef.current(heard, true),
+    () => listenAgainRef.current(),
+  );
+  // Mode conversation (comme ChatGPT) : après une question dictée, la réponse est lue PENDANT que
+  // le micro écoute — parler coupe la voix — puis l'écoute continue pour la question suivante.
+  const convRef = useRef<{ active: boolean; answer: string | null; endedAt: number | null }>({ active: false, answer: null, endedAt: null });
+  const [conversing, setConversing] = useState(false);
 
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
@@ -204,13 +215,22 @@ export function AdvisorChat({
       updateLast((it) => ({ ...it, content: reply.answer, cards: reply.cards, sources: reply.sources, interrupted: reply.interrupted, streaming: false, messageId: reply.messageId }));
       setAnnounce(reply.interrupted ? "Réponse incomplète reçue." : "Réponse reçue.");
       // Question dictée (ou « lire les réponses ») : réponse lue avec la voix de l'application.
-      if ((voice || prefs.autoRead) && reply.answer) speaker.speak(replyKey, reply.answer, reply.messageId);
+      if ((voice || prefs.autoRead) && reply.answer) {
+        const conv = voice && prefs.conversation;
+        convRef.current = { active: conv, answer: conv ? reply.answer : null, endedAt: null };
+        setConversing(conv);
+        speaker.speak(replyKey, reply.answer, reply.messageId, () => {
+          convRef.current.endedAt = Date.now();
+        });
+        if (conv) listenDuring(reply.answer);
+      } else if (voice) endConversation();
     } catch (e) {
       const aborted = e instanceof Error && e.name === "AbortError";
       const message = aborted ? (timedOut ? "Le conseiller n'a pas répondu à temps. Réessayez." : "Demande arrêtée.") : e instanceof AdvisorStreamError ? e.message : "Le serveur MON STOCK est injoignable. Vérifiez votre connexion et réessayez.";
       if (e instanceof AdvisorStreamError && e.code === "RATE_LIMITED" && perUserPerHour !== null) setUsed((u) => (u === null ? u : Math.max(u, perUserPerHour)));
       updateLast((it) => (it.content ? { ...it, streaming: false, interrupted: true } : { ...it, content: message, error: true, streaming: false }));
       setAnnounce(message);
+      endConversation();
     } finally {
       window.clearTimeout(timer);
       setBusy(false);
@@ -221,7 +241,32 @@ export function AdvisorChat({
   }
   useEffect(() => {
     sendRef.current = (q, voice) => void send(q, voice);
+    listenAgainRef.current = () => {
+      const c = convRef.current;
+      // Silence ou écho seul : l'écoute reprend tant que le conseiller parle et quelques secondes après.
+      if (c.active && (speaker.isSpeaking() || (c.endedAt !== null && Date.now() - c.endedAt < CONVERSATION_GRACE_MS))) listenDuring(c.answer);
+      else endConversation();
+    };
   });
+
+  function listenDuring(answer: string | null) {
+    dictation.start({
+      conversation: true,
+      echoOf: answer,
+      onBargeIn: () => {
+        if (!speaker.isSpeaking()) return;
+        speaker.stop();
+        convRef.current.endedAt = Date.now();
+      },
+    });
+  }
+
+  function endConversation() {
+    convRef.current = { active: false, answer: null, endedAt: null };
+    setConversing(false);
+    dictation.cancel();
+    speaker.stop();
+  }
 
   async function decide(action: AdvisorActionDTO, kind: "confirm" | "cancel") {
     setBusyActionId(action.id);
@@ -245,8 +290,7 @@ export function AdvisorChat({
 
   function newConversation() {
     abortRef.current?.abort();
-    dictation.cancel();
-    speaker.stop();
+    endConversation();
     setConversationId(null);
     setItems([]);
     setText("");
@@ -255,10 +299,19 @@ export function AdvisorChat({
   }
 
   function toggleMic() {
-    if (dictation.listening) {
-      dictation.stop();
+    // Conversation : toucher le micro pendant que le conseiller parle lui coupe la parole.
+    if (convRef.current.active && speaker.isSpeaking()) {
+      speaker.stop();
+      convRef.current.endedAt = Date.now();
+      if (!dictation.listening) listenDuring(null);
       return;
     }
+    if (dictation.listening) {
+      if (dictation.transcript) dictation.stop();
+      else endConversation();
+      return;
+    }
+    // Hors conversation : toucher le micro pendant la lecture arrête la voix et écoute.
     speaker.stop();
     speaker.unlock();
     dictation.start();
@@ -287,6 +340,18 @@ export function AdvisorChat({
 
   const voiceBar = (
     <div className="flex flex-wrap items-center gap-2">
+      {canDictate ? (
+        <button
+          type="button"
+          onClick={() => setPrefs({ conversation: !prefs.conversation })}
+          aria-pressed={prefs.conversation}
+          title="Après une question dictée : la réponse est lue pendant que le micro écoute — parlez pour couper la parole au conseiller — puis l'écoute reprend"
+          className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-bold", prefs.conversation ? "border-foreground bg-foreground text-on-night" : "border-border bg-surface hover:bg-line-soft", FOCUS)}
+        >
+          <AudioLines aria-hidden="true" className="h-3.5 w-3.5" />
+          Conversation
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => setPrefs({ autoRead: !prefs.autoRead })}
@@ -395,6 +460,17 @@ export function AdvisorChat({
           Limite horaire atteinte ({perUserPerHour} questions par heure). Réessayez plus tard.
         </p>
       ) : null}
+      {conversing ? (
+        <div role="status" className="flex items-center gap-3 rounded-2xl bg-night px-4 py-2.5 text-on-night">
+          <span aria-hidden="true" className={cn("h-2.5 w-2.5 shrink-0 rounded-full", speaker.speakingKey ? "ms-pulse bg-mint" : listening ? "animate-pulse bg-danger-on-night" : "ms-pulse bg-on-night-muted")} />
+          <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
+            {speaker.speakingKey ? "Le conseiller parle — parlez pour l'interrompre" : listening ? (dictation.transcript ? `« ${dictation.transcript} »` : "J'écoute…") : busy ? "Le conseiller réfléchit…" : "Conversation en pause"}
+          </span>
+          <button type="button" onClick={endConversation} className={cn("min-h-8 shrink-0 rounded-full border border-night-stroke px-3 text-[12.5px] font-bold hover:bg-night-raised", FOCUS)}>
+            Terminer
+          </button>
+        </div>
+      ) : null}
       {dictation.error ? (
         <p role="alert" className="text-xs font-semibold text-danger">
           {dictation.error}
@@ -422,7 +498,7 @@ export function AdvisorChat({
             type="button"
             onClick={toggleMic}
             disabled={disabled}
-            aria-label={listening ? "Arrêter l'écoute et envoyer" : "Parler au conseiller"}
+            aria-label={speaker.speakingKey ? "Couper la parole au conseiller" : listening ? "Arrêter l'écoute et envoyer" : "Parler au conseiller"}
             className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl disabled:opacity-50", listening ? "bg-danger text-on-night" : "bg-line-soft text-foreground hover:bg-border", FOCUS)}
           >
             {listening ? <Square aria-hidden="true" className="h-3.5 w-3.5 fill-current" /> : <Mic aria-hidden="true" className="h-[18px] w-[18px]" />}
