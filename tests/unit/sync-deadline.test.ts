@@ -6,6 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchWithRetry } from "@/integrations/core/http";
 import { ConnectorError } from "@/integrations/core/errors";
@@ -356,7 +357,7 @@ describe("runSyncCron", () => {
   });
 
   it("parité : l'Edge Function et la route web utilisent le MÊME service (plus de divergence S-06)", () => {
-    const root = path.resolve(__dirname, "../..");
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
     const edge = readFileSync(path.join(root, "server/edge/api.ts"), "utf8");
     const web = readFileSync(path.join(root, "src/app/api/cron/sync/route.ts"), "utf8");
     for (const src of [edge, web]) {

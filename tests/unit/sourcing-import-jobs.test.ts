@@ -146,6 +146,7 @@ describe("S-04 : interruption et reprise sûre", () => {
     expect(out).toMatchObject({ done: true, status: "partial" });
     expect(db.tables.sourcing_offers).toHaveLength(599);
     const detail = await getImportJob(ctx(), jobId);
+    console.log("DBG issues", JSON.stringify(db.tables.sourcing_import_issues));
     expect(detail.counts).toMatchObject({ created: 599, invalid: 1 });
     expect(detail.issues.filter((i) => i.kind === "invalid")).toHaveLength(1);
   });
