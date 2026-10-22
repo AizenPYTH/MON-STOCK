@@ -1,4 +1,5 @@
 import { ConnectorError } from "@/integrations/core/errors";
+import { DeadlineExceededError, MIN_CALL_REMAINING_MS, isDeadlineExceeded, remainingMs } from "@/integrations/core/deadline";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("HTTP");
@@ -11,6 +12,12 @@ export interface FetchRetryOptions {
   retries?: number;
   /** Étiquette lisible pour les journaux (jamais l'URL complète si elle contient des secrets). */
   label?: string;
+  /**
+   * Échéance absolue (ms depuis l'époque) du traitement appelant : le délai de chaque tentative est
+   * réduit au temps restant, aucune nouvelle tentative (ni attente) ne dépasse l'échéance, et un
+   * appel qui ne peut plus démarrer ou qui est coupé par elle lève DeadlineExceededError.
+   */
+  deadline?: number | null;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -52,13 +59,21 @@ export async function fetchWithRetry(url: string, init: RequestInit, options: Fe
   const label = options.label ?? new URL(url).pathname;
   let lastError: unknown = null;
   let lastStatus: number | null = null;
+  let attemptsMade = retries + 1;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const remaining = remainingMs(options.deadline);
+    if (remaining < MIN_CALL_REMAINING_MS) throw new DeadlineExceededError(label);
+    // Délai de la tentative borné par le temps restant avant l'échéance du traitement appelant.
+    const attemptTimeoutMs = Math.min(timeoutMs, remaining);
+    const cutByDeadline = attemptTimeoutMs < timeoutMs;
     const controller = new AbortController();
     // Le délai couvre aussi la lecture du corps (le signal reste attaché à la réponse) :
     // le minuteur n'est annulé qu'en cas d'erreur ; il ne retient pas le processus (unref).
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(cutByDeadline ? new DeadlineExceededError(label) : undefined), attemptTimeoutMs);
     (timer as { unref?: () => void }).unref?.();
+    // Une nouvelle tentative n'est faite que si l'attente ET un appel utile tiennent avant l'échéance.
+    const canRetryAfter = (wait: number) => attempt < retries && remainingMs(options.deadline) - wait >= MIN_CALL_REMAINING_MS;
     try {
       const res = await fetch(url, { ...init, signal: controller.signal });
       lastStatus = res.status;
@@ -68,8 +83,8 @@ export async function fetchWithRetry(url: string, init: RequestInit, options: Fe
         await res.body?.cancel().catch(() => undefined);
         // Quota épuisé pour longtemps (ex. limite journalière) : inutile d'attendre ni de réessayer.
         const tooLong = requested !== null && requested > MAX_RETRY_AFTER_MS;
-        if (attempt < retries && !tooLong) {
-          const wait = requested ?? backoff(attempt);
+        const wait = requested ?? backoff(attempt);
+        if (!tooLong && canRetryAfter(wait)) {
           log.warn("réponse transitoire, nouvelle tentative", { provider: options.provider, label, status: res.status, attempt: attempt + 1, waitMs: wait });
           await sleep(wait);
           continue;
@@ -90,15 +105,20 @@ export async function fetchWithRetry(url: string, init: RequestInit, options: Fe
       return res;
     } catch (e) {
       clearTimeout(timer);
-      if (e instanceof ConnectorError) throw e;
+      if (e instanceof ConnectorError || isDeadlineExceeded(e)) throw e;
       lastError = e;
       const aborted = e instanceof Error && e.name === "AbortError";
-      if (attempt < retries) {
-        const wait = backoff(attempt);
+      // Délai réduit au temps restant puis dépassé : c'est l'échéance du traitement, pas une panne distante.
+      if (aborted && cutByDeadline) throw new DeadlineExceededError(label);
+      const wait = backoff(attempt);
+      if (canRetryAfter(wait)) {
         log.warn(aborted ? "délai dépassé, nouvelle tentative" : "erreur réseau, nouvelle tentative", { provider: options.provider, label, attempt: attempt + 1, waitMs: wait });
         await sleep(wait);
         continue;
       }
+      // Plus de nouvelle tentative possible (nombre épuisé, ou échéance trop proche pour réessayer).
+      attemptsMade = attempt + 1;
+      break;
     }
   }
 
@@ -107,7 +127,7 @@ export async function fetchWithRetry(url: string, init: RequestInit, options: Fe
     "API_ERROR",
     options.provider,
     aborted ? `L'API ${options.provider} n'a pas répondu dans le délai imparti (${Math.round(timeoutMs / 1000)} s).` : `Impossible de joindre l'API ${options.provider} (erreur réseau).`,
-    { httpStatus: lastStatus, details: { label, attempts: retries + 1, reason: lastError instanceof Error ? lastError.message : String(lastError) }, cause: lastError },
+    { httpStatus: lastStatus, details: { label, attempts: attemptsMade, reason: lastError instanceof Error ? lastError.message : String(lastError) }, cause: lastError },
   );
 }
 
@@ -119,6 +139,8 @@ export async function readBodyText(res: Response, provider = "api", label = "bod
   try {
     return await res.text();
   } catch (e) {
+    // Lecture coupée par l'échéance du traitement appelant (voir fetchWithRetry) : propagée telle quelle.
+    if (isDeadlineExceeded(e)) throw e;
     const aborted = e instanceof Error && e.name === "AbortError";
     throw new ConnectorError(
       "API_ERROR",

@@ -148,6 +148,7 @@ var init_db_error_messages = __esm({
       MOVEMENT_QUANTITY_ZERO: { code: "VALIDATION", message: "La quantit\xE9 d'un mouvement ne peut pas \xEAtre nulle." },
       MOVEMENT_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Quantit\xE9 trop importante pour un seul mouvement." },
       MOVEMENT_SIGN_INVALID: { code: "VALIDATION", message: "Sens du mouvement incoh\xE9rent avec son type (entr\xE9e / sortie)." },
+      ORDER_ITEM_CANCELLATION_WITHOUT_SALE: { code: "CONFLICT", message: "Annulation refus\xE9e : aucune vente n'a \xE9t\xE9 d\xE9duite du stock pour cette ligne de commande (rien \xE0 recr\xE9diter)." },
       STOCK_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Le stock r\xE9sultant d\xE9passerait la limite autoris\xE9e." },
       SKU_NOT_FOUND: { code: "NOT_FOUND", message: "SKU introuvable." },
       SKU_CODE_EXISTS: { code: "CONFLICT", message: "Ce code SKU existe d\xE9j\xE0 dans votre organisation." },
@@ -1357,11 +1358,11 @@ function createAdapterHttp(ctx) {
   const budget = ctx.timeoutMs ?? null;
   const sleep3 = ctx.sleep ?? defaultSleep;
   let lastRequestAt = null;
-  const remainingMs = () => budget === null ? Number.POSITIVE_INFINITY : Math.max(0, budget - (Date.now() - startedAt));
+  const remainingMs2 = () => budget === null ? Number.POSITIVE_INFINITY : Math.max(0, budget - (Date.now() - startedAt));
   return {
     requests,
-    remainingMs,
-    exhausted: () => remainingMs() <= 0,
+    remainingMs: remainingMs2,
+    exhausted: () => remainingMs2() <= 0,
     countOffers(n) {
       const last = requests[requests.length - 1];
       if (last) last.offers = n;
@@ -1372,7 +1373,7 @@ function createAdapterHttp(ctx) {
         const wait = minDelay - (Date.now() - lastRequestAt);
         if (wait > 0) await sleep3(wait);
       }
-      const remaining = remainingMs();
+      const remaining = remainingMs2();
       if (remaining <= 0) throw new Error("Budget de temps \xE9puis\xE9 avant la requ\xEAte.");
       const t0 = Date.now();
       lastRequestAt = t0;
@@ -1390,11 +1391,11 @@ function createAdapterHttp(ctx) {
           truncate: options.truncate,
           timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, Number.isFinite(remaining) ? remaining : DEFAULT_REQUEST_TIMEOUT_MS)
         });
-        if ((res.status === 429 || res.status === 503) && remainingMs() > RETRY_AFTER_MS + 5e3) {
+        if ((res.status === 429 || res.status === 503) && remainingMs2() > RETRY_AFTER_MS + 5e3) {
           requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: `HTTP ${res.status} (nouvel essai dans ${RETRY_AFTER_MS / 1e3} s)` });
           await sleep3(RETRY_AFTER_MS);
           lastRequestAt = Date.now();
-          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, truncate: options.truncate, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs()) });
+          res = await fetchText(url, { userAgent: ctx.userAgent, fetchImpl: ctx.fetchImpl, resolver: ctx.resolver, accept: options.accept, headers: options.headers, method: options.method, body: options.body, maxBytes: options.maxBytes, truncate: options.truncate, timeoutMs: Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs2()) });
         }
         requests.push({ url, status: res.status, durationMs: Date.now() - t0, offers: 0, error: res.ok ? null : `HTTP ${res.status}` });
         traced = true;
@@ -5238,7 +5239,7 @@ async function resolveAlerts(admin, organizationId, dedupeKeys) {
   const { error } = await admin.from("alerts").update({ status: "resolved", resolved_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("organization_id", organizationId).in("dedupe_key", dedupeKeys).neq("status", "resolved");
   if (error) log7.warn("r\xE9solution d'alertes impossible", { dedupeKeys, error: error.message });
 }
-var log7, connectionExpiredKey, syncFailedKey;
+var log7, connectionExpiredKey, syncFailedKey, ordersBlockedKey;
 var init_alerts = __esm({
   "src/services/sync/alerts.ts"() {
     "use strict";
@@ -5247,6 +5248,7 @@ var init_alerts = __esm({
     log7 = createLogger("ALERTS");
     connectionExpiredKey = (connectionId) => `connection_expired:${connectionId}`;
     syncFailedKey = (connectionId) => `sync_failed:${connectionId}`;
+    ordersBlockedKey = (connectionId) => `sync_orders_blocked:${connectionId}`;
   }
 });
 
@@ -5884,6 +5886,30 @@ var init_paginate = __esm({
   }
 });
 
+// src/integrations/core/deadline.ts
+function isDeadlineExceeded(e) {
+  return e instanceof DeadlineExceededError;
+}
+function remainingMs(deadline, now = Date.now()) {
+  if (deadline === null || deadline === void 0 || !Number.isFinite(deadline)) return Number.POSITIVE_INFINITY;
+  return deadline - now;
+}
+var MIN_CALL_REMAINING_MS, DeadlineExceededError;
+var init_deadline = __esm({
+  "src/integrations/core/deadline.ts"() {
+    "use strict";
+    MIN_CALL_REMAINING_MS = 1500;
+    DeadlineExceededError = class extends Error {
+      label;
+      constructor(label = null) {
+        super(`\xC9ch\xE9ance interne atteinte${label ? ` avant ou pendant ${label}` : ""} : traitement interrompu proprement, reprise au prochain passage.`);
+        this.name = "DeadlineExceededError";
+        this.label = label;
+      }
+    };
+  }
+});
+
 // src/integrations/core/http.ts
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -5908,10 +5934,16 @@ async function fetchWithRetry(url, init, options) {
   const label = options.label ?? new URL(url).pathname;
   let lastError = null;
   let lastStatus = null;
+  let attemptsMade = retries + 1;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const remaining = remainingMs(options.deadline);
+    if (remaining < MIN_CALL_REMAINING_MS) throw new DeadlineExceededError(label);
+    const attemptTimeoutMs = Math.min(timeoutMs, remaining);
+    const cutByDeadline = attemptTimeoutMs < timeoutMs;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(cutByDeadline ? new DeadlineExceededError(label) : void 0), attemptTimeoutMs);
     timer.unref?.();
+    const canRetryAfter = (wait) => attempt < retries && remainingMs(options.deadline) - wait >= MIN_CALL_REMAINING_MS;
     try {
       const res = await fetch(url, { ...init, signal: controller.signal });
       lastStatus = res.status;
@@ -5920,8 +5952,8 @@ async function fetchWithRetry(url, init, options) {
         const requested = parseRetryAfterMs(res.headers.get("retry-after"));
         await res.body?.cancel().catch(() => void 0);
         const tooLong = requested !== null && requested > MAX_RETRY_AFTER_MS;
-        if (attempt < retries && !tooLong) {
-          const wait = requested ?? backoff(attempt);
+        const wait = requested ?? backoff(attempt);
+        if (!tooLong && canRetryAfter(wait)) {
           log11.warn("r\xE9ponse transitoire, nouvelle tentative", { provider: options.provider, label, status: res.status, attempt: attempt + 1, waitMs: wait });
           await sleep(wait);
           continue;
@@ -5942,15 +5974,18 @@ async function fetchWithRetry(url, init, options) {
       return res;
     } catch (e) {
       clearTimeout(timer);
-      if (e instanceof ConnectorError) throw e;
+      if (e instanceof ConnectorError || isDeadlineExceeded(e)) throw e;
       lastError = e;
       const aborted2 = e instanceof Error && e.name === "AbortError";
-      if (attempt < retries) {
-        const wait = backoff(attempt);
+      if (aborted2 && cutByDeadline) throw new DeadlineExceededError(label);
+      const wait = backoff(attempt);
+      if (canRetryAfter(wait)) {
         log11.warn(aborted2 ? "d\xE9lai d\xE9pass\xE9, nouvelle tentative" : "erreur r\xE9seau, nouvelle tentative", { provider: options.provider, label, attempt: attempt + 1, waitMs: wait });
         await sleep(wait);
         continue;
       }
+      attemptsMade = attempt + 1;
+      break;
     }
   }
   const aborted = lastError instanceof Error && lastError.name === "AbortError";
@@ -5958,13 +5993,14 @@ async function fetchWithRetry(url, init, options) {
     "API_ERROR",
     options.provider,
     aborted ? `L'API ${options.provider} n'a pas r\xE9pondu dans le d\xE9lai imparti (${Math.round(timeoutMs / 1e3)} s).` : `Impossible de joindre l'API ${options.provider} (erreur r\xE9seau).`,
-    { httpStatus: lastStatus, details: { label, attempts: retries + 1, reason: lastError instanceof Error ? lastError.message : String(lastError) }, cause: lastError }
+    { httpStatus: lastStatus, details: { label, attempts: attemptsMade, reason: lastError instanceof Error ? lastError.message : String(lastError) }, cause: lastError }
   );
 }
 async function readBodyText(res, provider = "api", label = "body") {
   try {
     return await res.text();
   } catch (e) {
+    if (isDeadlineExceeded(e)) throw e;
     const aborted = e instanceof Error && e.name === "AbortError";
     throw new ConnectorError(
       "API_ERROR",
@@ -5988,6 +6024,7 @@ var init_http2 = __esm({
   "src/integrations/core/http.ts"() {
     "use strict";
     init_errors2();
+    init_deadline();
     init_logger();
     log11 = createLogger("HTTP");
     DEFAULT_TIMEOUT_MS2 = 3e4;
@@ -6013,6 +6050,7 @@ function basicAuth(config) {
   return "Basic " + Buffer.from(`${config.clientId}:${config.clientSecret}`, "utf8").toString("base64");
 }
 async function tokenRequest(config, body, label) {
+  const retries = body.get("grant_type") === "authorization_code" ? TOKEN_REQUEST_RETRIES.exchangeCode : TOKEN_REQUEST_RETRIES.other;
   const res = await fetchWithRetry(
     config.tokenUrl,
     {
@@ -6020,7 +6058,7 @@ async function tokenRequest(config, body, label) {
       headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basicAuth(config), Accept: "application/json" },
       body: body.toString()
     },
-    { provider: EBAY_PROVIDER, label, retries: 2, timeoutMs: 2e4 }
+    { provider: EBAY_PROVIDER, label, retries, timeoutMs: 2e4 }
   );
   const json2 = await readJson(res, EBAY_PROVIDER);
   if (!res.ok) {
@@ -6084,7 +6122,7 @@ async function getApplicationAccessToken(config, now = /* @__PURE__ */ new Date(
   const data = await tokenRequest(config, body, "oauth:client_credentials");
   return { accessToken: data.access_token, expiresAt: new Date(now.getTime() + data.expires_in * 1e3) };
 }
-var tokenResponseSchema, tokenErrorSchema;
+var tokenResponseSchema, tokenErrorSchema, TOKEN_REQUEST_RETRIES;
 var init_oauth = __esm({
   "src/integrations/ebay/oauth.ts"() {
     "use strict";
@@ -6102,6 +6140,7 @@ var init_oauth = __esm({
       error: z19.string(),
       error_description: z19.string().optional()
     });
+    TOKEN_REQUEST_RETRIES = { exchangeCode: 0, other: 2 };
   }
 });
 
@@ -6213,7 +6252,7 @@ async function ebayRestGet(auth, url, label, options = {}) {
           ...options.marketplaceId ? { "X-EBAY-C-MARKETPLACE-ID": options.marketplaceId } : {}
         }
       },
-      { provider: EBAY_PROVIDER, label }
+      { provider: EBAY_PROVIDER, label, deadline: options.deadline ?? null }
     );
     const json2 = await readJson(res, EBAY_PROVIDER);
     if (res.status === 401) {
@@ -6400,6 +6439,13 @@ function buildLastModifiedFilter(since2, until) {
   const from = since2.toISOString();
   return until ? `lastmodifieddate:[${from}..${until.toISOString()}]` : `lastmodifieddate:[${from}..]`;
 }
+function rawModifiedAt(raw) {
+  if (typeof raw !== "object" || raw === null || !("lastModifiedDate" in raw)) return null;
+  const v2 = raw.lastModifiedDate;
+  if (typeof v2 !== "string") return null;
+  const d = new Date(v2);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
 async function* iterateEbayOrders(config, auth, params) {
   let offset = 0;
   for (let page2 = 0; page2 < EBAY_ORDERS_MAX_PAGES; page2++) {
@@ -6407,7 +6453,7 @@ async function* iterateEbayOrders(config, auth, params) {
     url.searchParams.set("filter", buildLastModifiedFilter(params.since, params.until));
     url.searchParams.set("limit", String(EBAY_ORDERS_PAGE_SIZE));
     url.searchParams.set("offset", String(offset));
-    const json2 = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders");
+    const json2 = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders", { deadline: params.deadline ?? null });
     const parsed = ebayOrdersPageSchema.safeParse(json2);
     if (!parsed.success) {
       throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "R\xE9ponse inattendue de la Fulfillment API eBay (liste de commandes illisible).", {
@@ -6421,7 +6467,7 @@ async function* iterateEbayOrders(config, auth, params) {
         orders.push(normalizeEbayOrder(raw));
       } catch (e) {
         const id = typeof raw === "object" && raw !== null && "orderId" in raw ? String(raw.orderId) : null;
-        invalid.push({ orderId: id, message: e instanceof Error ? e.message : String(e) });
+        invalid.push({ orderId: id, message: e instanceof Error ? e.message : String(e), modifiedAt: rawModifiedAt(raw) });
       }
     }
     const total = parsed.data.total ?? null;
@@ -6687,7 +6733,7 @@ function parseReviseInventoryStatusResponse(xml) {
   const response = node(doc?.ReviseInventoryStatusResponse);
   return assertTradingAck("ReviseInventoryStatus", response);
 }
-async function tradingCall(config, auth, callName, body) {
+async function tradingCall(config, auth, callName, body, options = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
     const res = await fetchWithRetry(
@@ -6703,7 +6749,7 @@ async function tradingCall(config, auth, callName, body) {
         },
         body
       },
-      { provider: EBAY_PROVIDER, label: `trading:${callName}`, timeoutMs: 6e4 }
+      { provider: EBAY_PROVIDER, label: `trading:${callName}`, timeoutMs: 6e4, deadline: options.deadline ?? null }
     );
     const xml = await readBodyText(res, EBAY_PROVIDER, `trading:${callName}`);
     if (res.status === 401 && attempt === 0) continue;
@@ -6718,19 +6764,20 @@ async function tradingCall(config, auth, callName, body) {
   }
   throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expir\xE9 ou a \xE9t\xE9 r\xE9voqu\xE9.", { details: { callName } });
 }
-async function* iterateGetMyeBaySelling(config, auth) {
-  for (let page2 = 1; page2 <= GET_MY_EBAY_SELLING_MAX_PAGES; page2++) {
-    const xml = await tradingCall(config, auth, "GetMyeBaySelling", buildGetMyeBaySellingRequest(page2));
-    const parsed = parseGetMyeBaySellingResponse(xml);
+async function* iterateGetMyeBaySelling(config, auth, options = {}) {
+  const first = Math.max(1, Math.trunc(options.startPage ?? 1));
+  for (let page2 = first; page2 <= GET_MY_EBAY_SELLING_MAX_PAGES; page2++) {
+    const xml = await tradingCall(config, auth, "GetMyeBaySelling", buildGetMyeBaySellingRequest(page2), { deadline: options.deadline ?? null });
+    const parsed = { ...parseGetMyeBaySellingResponse(xml), pageNumber: page2 };
     yield parsed;
     if (page2 >= parsed.totalPages) return;
   }
 }
-async function reviseInventoryStatus(config, auth, ref, quantity) {
+async function reviseInventoryStatus(config, auth, ref, quantity, options = {}) {
   if (!Number.isInteger(quantity) || quantity < 0) {
     throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "La quantit\xE9 \xE0 envoyer \xE0 eBay doit \xEAtre un entier positif ou nul.", { retryable: false });
   }
-  const xml = await tradingCall(config, auth, "ReviseInventoryStatus", buildReviseInventoryStatusRequest(ref, quantity));
+  const xml = await tradingCall(config, auth, "ReviseInventoryStatus", buildReviseInventoryStatusRequest(ref, quantity), { deadline: options.deadline ?? null });
   const { warnings } = parseReviseInventoryStatusResponse(xml);
   return { ok: true, quantity, warnings };
 }
@@ -6839,18 +6886,17 @@ var init_connector = __esm({
         for await (const page2 of iterateEbayOrders(config, auth, params)) {
           for (const inv of page2.invalid) log12.warn("commande eBay ignor\xE9e (format inattendu)", { orderId: inv.orderId, reason: inv.message });
           if (page2.truncated) log12.warn("r\xE9cup\xE9ration des commandes tronqu\xE9e (limite de pages atteinte) : la suite sera reprise au prochain run");
-          yield { orders: page2.orders, invalid: page2.invalid.map((i) => ({ ref: i.orderId, message: i.message })), truncated: page2.truncated, hasMore: page2.hasMore };
+          yield { orders: page2.orders, invalid: page2.invalid.map((i) => ({ ref: i.orderId, message: i.message, modifiedAt: i.modifiedAt })), truncated: page2.truncated, hasMore: page2.hasMore };
         }
       }
-      async *getListings(auth) {
+      /** `params.startPage` : reprise d'un parcours interrompu ; `params.deadline` borne chaque appel. */
+      async *getListings(auth, params = {}) {
         const config = this.requireConfig();
-        let pageIndex = 0;
-        for await (const page2 of iterateGetMyeBaySelling(config, auth)) {
-          pageIndex++;
+        for await (const page2 of iterateGetMyeBaySelling(config, auth, { startPage: params.startPage, deadline: params.deadline ?? null })) {
           for (const inv of page2.invalid) log12.warn("annonce eBay ignor\xE9e (format inattendu)", { itemId: inv.itemId, reason: inv.message });
-          const truncated = pageIndex >= GET_MY_EBAY_SELLING_MAX_PAGES && page2.totalPages > pageIndex;
-          if (truncated) log12.warn("liste d'annonces tronqu\xE9e (limite de pages atteinte)", { pages: pageIndex, totalPages: page2.totalPages });
-          yield { listings: page2.listings, invalid: page2.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page2.warnings, truncated };
+          const truncated = page2.pageNumber >= GET_MY_EBAY_SELLING_MAX_PAGES && page2.totalPages > page2.pageNumber;
+          if (truncated) log12.warn("liste d'annonces tronqu\xE9e (limite de pages atteinte)", { pages: page2.pageNumber, totalPages: page2.totalPages });
+          yield { listings: page2.listings, invalid: page2.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page2.warnings, truncated, pageNumber: page2.pageNumber, totalPages: page2.totalPages };
         }
       }
       /** Les quantités eBay sont celles des annonces : GetMyeBaySelling est la source de vérité. */
@@ -6871,8 +6917,8 @@ var init_connector = __esm({
        * ReviseInventoryStatus. Limitation connue : les annonces créées via l'Inventory API (offres)
        * refusent les révisions Trading ; eBay renvoie alors une erreur explicite qui est remontée telle quelle.
        */
-      updateListingInventory(auth, ref, quantity) {
-        return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity);
+      updateListingInventory(auth, ref, quantity, options = {}) {
+        return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity, options);
       }
       /**
        * eBay ne publie pas d'endpoint de révocation des tokens utilisateur : les tokens sont
@@ -7689,6 +7735,10 @@ var init_live_search = __esm({
 });
 
 // src/services/sync/context.ts
+function timeLeftMs(ctx) {
+  if (ctx.deadlineAt === null || ctx.deadlineAt === void 0) return Number.POSITIVE_INFINITY;
+  return ctx.deadlineAt - (ctx.clock ?? Date.now)();
+}
 function sanitizeDetails(details) {
   if (!details) return {};
   const cleaned = scrubDeep(details);
@@ -7730,11 +7780,21 @@ async function listDueConnections(now = /* @__PURE__ */ new Date()) {
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin.from("channel_connections").select("*").in("status", ["connected", "error"]).eq("auto_sync", true).order("last_sync_at", { ascending: true, nullsFirst: true }).limit(200);
   if (error) throw fromPostgrestError(error);
+  const attemptedAt = (c) => {
+    const v2 = c.last_sync_attempt_at ?? c.last_sync_at;
+    return v2 ? new Date(v2).getTime() : Number.NEGATIVE_INFINITY;
+  };
   return (data ?? []).filter((c) => {
     if (!c.last_sync_at) return true;
     const due = new Date(c.last_sync_at).getTime() + c.sync_interval_minutes * 6e4;
     return due <= now.getTime();
-  });
+  }).sort((a, b) => attemptedAt(a) - attemptedAt(b));
+}
+function accountAlreadyLinkedMessage(label, environment) {
+  return `Ce compte ${label}${environment === "sandbox" ? " (sandbox)" : ""} est d\xE9j\xE0 reli\xE9 \xE0 une autre organisation MON STOCK. Un m\xEAme compte ne peut alimenter qu'une seule organisation (sinon ses ventes seraient import\xE9es et d\xE9duites deux fois). D\xE9connectez-le d'abord dans l'autre organisation, puis relancez la connexion.`;
+}
+function accountLinkedElsewhere(label, environment) {
+  return new AppError("CONFLICT", accountAlreadyLinkedMessage(label, environment), { details: { reason: ACCOUNT_LINKED_ELSEWHERE } });
 }
 async function findConnectionsByExternalAccount(provider, account) {
   const admin = createAdminSupabaseClient();
@@ -7776,6 +7836,12 @@ async function upsertOAuthConnection(input) {
   const label = PROVIDER_LABEL[input.provider];
   const { data: existingList, error: listError } = await admin.from("channel_connections").select("*").eq("organization_id", input.organizationId).eq("provider", input.provider).order("created_at", { ascending: true });
   if (listError) throw fromPostgrestError(listError);
+  const { data: elsewhere, error: elsewhereError } = await admin.from("channel_connections").select("id, organization_id").eq("provider", input.provider).eq("environment", input.environment).eq("external_account_id", input.account.externalAccountId).neq("status", "disconnected").neq("organization_id", input.organizationId).limit(1);
+  if (elsewhereError) throw fromPostgrestError(elsewhereError);
+  if ((elsewhere ?? []).length > 0) {
+    log17.warn("connexion refus\xE9e : compte d\xE9j\xE0 reli\xE9 \xE0 une autre organisation", { provider: input.provider, orgId: input.organizationId, environment: input.environment });
+    throw accountLinkedElsewhere(label, input.environment);
+  }
   const existing = (existingList ?? []).find((c) => c.external_account_id === input.account.externalAccountId) ?? (existingList ?? []).find((c) => !c.external_account_id && c.status === "pending") ?? null;
   const patch = {
     status: "connected",
@@ -7789,19 +7855,28 @@ async function upsertOAuthConnection(input) {
     token_expires_at: input.tokens.accessTokenExpiresAt.toISOString(),
     refresh_token_expires_at: input.tokens.refreshTokenExpiresAt?.toISOString() ?? null
   };
+  const uniqueViolation = (error) => {
+    if (error.code === "23505" && /channel_connections_one_active_account_uidx/.test(error.message)) throw accountLinkedElsewhere(label, input.environment);
+    throw fromPostgrestError(error);
+  };
   let connection;
   let isNew = false;
   if (existing) {
-    const { data, error } = await admin.from("channel_connections").update(patch).eq("id", existing.id).select("*").single();
-    if (error) throw fromPostgrestError(error);
+    const { data, error } = await admin.from("channel_connections").update({ ...patch, ...existing.sales_stock_cutoff_at ? {} : { sales_stock_cutoff_at: nowIso } }).eq("id", existing.id).select("*").single();
+    if (error) uniqueViolation(error);
+    if (!data) throw new AppError("INTERNAL", "Connexion non enregistr\xE9e.");
     connection = data;
     await admin.from("sales_channels").update({ name: `${label} \xB7 ${input.account.username}`, is_active: true }).eq("id", existing.sales_channel_id);
   } else {
     const { data: org } = await admin.from("organizations").select("default_currency").eq("id", input.organizationId).maybeSingle();
     const { data: channel, error: channelError } = await admin.from("sales_channels").insert({ organization_id: input.organizationId, provider: input.provider, name: `${label} \xB7 ${input.account.username}`, currency: org?.default_currency ?? "EUR" }).select("*").single();
     if (channelError) throw fromPostgrestError(channelError);
-    const { data, error } = await admin.from("channel_connections").insert({ organization_id: input.organizationId, sales_channel_id: channel.id, provider: input.provider, ...patch }).select("*").single();
-    if (error) throw fromPostgrestError(error);
+    const { data, error } = await admin.from("channel_connections").insert({ organization_id: input.organizationId, sales_channel_id: channel.id, provider: input.provider, ...patch, sales_stock_cutoff_at: nowIso }).select("*").single();
+    if (error) {
+      await admin.from("sales_channels").delete().eq("id", channel.id);
+      uniqueViolation(error);
+    }
+    if (!data) throw new AppError("INTERNAL", "Connexion non enregistr\xE9e.");
     connection = data;
     isNew = true;
   }
@@ -7951,7 +8026,7 @@ async function disconnectConnection(connectionId, organizationId) {
   log17.info("connexion d\xE9connect\xE9e", { connectionId, orgId: organizationId, revoked });
   return { revoked, note };
 }
-var log17, PROVIDER_LABEL, ACCESS_TOKEN_REFRESH_MARGIN_MS, inflightRefresh;
+var log17, PROVIDER_LABEL, ACCOUNT_LINKED_ELSEWHERE, ACCESS_TOKEN_REFRESH_MARGIN_MS, inflightRefresh;
 var init_connection_store = __esm({
   "src/services/channels/connection-store.ts"() {
     "use strict";
@@ -7966,13 +8041,14 @@ var init_connection_store = __esm({
     init_context();
     log17 = createLogger("CONNECTIONS");
     PROVIDER_LABEL = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "Ventes manuelles" };
+    ACCOUNT_LINKED_ELSEWHERE = "ACCOUNT_LINKED_ELSEWHERE";
     ACCESS_TOKEN_REFRESH_MARGIN_MS = 5 * 6e4;
     inflightRefresh = /* @__PURE__ */ new Map();
   }
 });
 
 // src/services/sourcing/feed-secrets.ts
-import { z as z28 } from "npm:zod@4.6.5";
+import { z as z30 } from "npm:zod@4.6.5";
 function authHeaders2(auth) {
   if (auth.kind === "header") {
     if (FORBIDDEN_HEADERS.has(auth.name.toLowerCase())) throw new AppError("VALIDATION", `En-t\xEAte \xAB ${auth.name} \xBB non autoris\xE9.`);
@@ -7994,10 +8070,10 @@ var init_feed_secrets = __esm({
     init_empty();
     init_crypto();
     init_errors();
-    feedAuthSchema = z28.discriminatedUnion("kind", [
-      z28.object({ kind: z28.literal("none") }),
-      z28.object({ kind: z28.literal("header"), name: z28.string().trim().regex(/^[A-Za-z0-9-]{1,64}$/, "Nom d'en-t\xEAte invalide (lettres, chiffres, tirets)."), value: z28.string().min(1).max(2e3) }),
-      z28.object({ kind: z28.literal("basic"), username: z28.string().min(1).max(200), password: z28.string().min(1).max(500) })
+    feedAuthSchema = z30.discriminatedUnion("kind", [
+      z30.object({ kind: z30.literal("none") }),
+      z30.object({ kind: z30.literal("header"), name: z30.string().trim().regex(/^[A-Za-z0-9-]{1,64}$/, "Nom d'en-t\xEAte invalide (lettres, chiffres, tirets)."), value: z30.string().min(1).max(2e3) }),
+      z30.object({ kind: z30.literal("basic"), username: z30.string().min(1).max(200), password: z30.string().min(1).max(500) })
     ]);
     FORBIDDEN_HEADERS = /* @__PURE__ */ new Set(["host", "cookie", "content-length", "transfer-encoding", "connection", "user-agent"]);
   }
@@ -8116,7 +8192,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
       content = await fetchFeedContent(feed.url, feed.format, feedOptions.encoding, options.fetchImpl, await loadFeedAuthHeaders(admin, feed.id), options.resolver);
     }
     const parsed = parseFeedContent(content, feed.format, feedOptions);
-    for (const w2 of parsed.warnings) log21.info("feed warning", { feedId, warning: w2 });
+    for (const w2 of parsed.warnings) log22.info("feed warning", { feedId, warning: w2 });
     const ctx = {
       supabase: admin,
       organizationId: feed.organization_id,
@@ -8212,7 +8288,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     return { feedId, runId: run.id, status, processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, duplicates: duplicateIdx.size, quarantined: false, quality, created, updated, unchanged, unrecognized, totalRows: parsed.rows.length, truncated, mode, issues };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue.";
-    log21.error("feed ingestion failed", { feedId, error: message });
+    log22.error("feed ingestion failed", { feedId, error: message });
     await recordSyncErrors(admin, run, [...errors, { code: "FEED_FAILED", message }]);
     await finishSyncRun(admin, run, { status: "failed", recordsProcessed: processed, errorCount: errors.length + 1, errorSummary: message });
     await admin.from("supplier_feeds").update({ last_sync_at: run.startedAt.toISOString(), last_error: message, status: "error" }).eq("id", feed.id);
@@ -8220,7 +8296,7 @@ async function ingestFeed(feedId, options = { trigger: "manual" }) {
     return { feedId, runId: run.id, status: "failed", processed, stored, rejected, invalidRows, expired: expired2, fxUnavailable, message, created, updated, unchanged, unrecognized, mode, issues };
   }
 }
-var MAX_ROWS_PER_RUN, log21, FEED_ACCEPT, MAX_IMPORT_ISSUES;
+var MAX_ROWS_PER_RUN, log22, FEED_ACCEPT, MAX_IMPORT_ISSUES;
 var init_feed_ingestion = __esm({
   "src/services/sourcing/feed-ingestion.ts"() {
     "use strict";
@@ -8235,7 +8311,7 @@ var init_feed_ingestion = __esm({
     init_sync_runs();
     init_import_quality();
     MAX_ROWS_PER_RUN = 5e3;
-    log21 = createLogger("FEED_INGESTION");
+    log22 = createLogger("FEED_INGESTION");
     FEED_ACCEPT = {
       csv: "text/csv,text/plain,application/csv;q=0.9,*/*;q=0.5",
       xml: "application/xml,text/xml,application/rss+xml;q=0.9,*/*;q=0.5",
@@ -8375,7 +8451,7 @@ __export(catalog_import_exports, {
   suggestCatalogMappingDetailed: () => suggestCatalogMappingDetailed
 });
 import { createHash as createHash7 } from "node:crypto";
-import { z as z29 } from "npm:zod@4.6.5";
+import { z as z31 } from "npm:zod@4.6.5";
 function decodeBase64(b64) {
   const clean = b64.replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) throw new AppError("VALIDATION", "Fichier illisible (encodage invalide).");
@@ -8705,41 +8781,41 @@ var init_catalog_import = __esm({
     init_xlsx();
     MAX_CATALOG_BYTES = 15 * 1024 * 1024;
     CATALOG_IMPORT_KIND = "catalog_file_import";
-    catalogFileSchema = z29.object({
-      fileName: z29.string().trim().min(1).max(200),
+    catalogFileSchema = z31.object({
+      fileName: z31.string().trim().min(1).max(200),
       /** contenu du fichier encodé en base64 */
-      contentBase64: z29.string().min(4).max(Math.ceil(MAX_CATALOG_BYTES * 4 / 3) + 8, "Fichier trop volumineux (15 Mo maximum)."),
-      format: z29.enum(["csv", "xlsx", "xml", "json"]).optional(),
-      sheet: z29.string().max(100).optional()
+      contentBase64: z31.string().min(4).max(Math.ceil(MAX_CATALOG_BYTES * 4 / 3) + 8, "Fichier trop volumineux (15 Mo maximum)."),
+      format: z31.enum(["csv", "xlsx", "xml", "json"]).optional(),
+      sheet: z31.string().max(100).optional()
     });
-    catalogDefaultsSchema = z29.object({
-      currency: z29.string().trim().regex(/^[A-Za-z]{3}$/, "Devise sur 3 lettres (EUR, USD\u2026).").transform((s) => s.toUpperCase()),
-      taxType: z29.enum(["ht", "ttc", "unknown"]).default("unknown"),
-      country: z29.string().trim().regex(/^[A-Za-z]{2}$/).transform((s) => s.toUpperCase()).nullish()
+    catalogDefaultsSchema = z31.object({
+      currency: z31.string().trim().regex(/^[A-Za-z]{3}$/, "Devise sur 3 lettres (EUR, USD\u2026).").transform((s) => s.toUpperCase()),
+      taxType: z31.enum(["ht", "ttc", "unknown"]).default("unknown"),
+      country: z31.string().trim().regex(/^[A-Za-z]{2}$/).transform((s) => s.toUpperCase()).nullish()
     });
-    catalogPreviewSchema = z29.object({
+    catalogPreviewSchema = z31.object({
       file: catalogFileSchema,
       mapping: fieldMappingSchema.optional(),
       defaults: catalogDefaultsSchema.partial({ currency: true }).optional(),
       /** fournisseur choisi : retrouve son mapping mémorisé et signale un fichier déjà importé */
-      supplierId: z29.string().uuid().optional()
+      supplierId: z31.string().uuid().optional()
     });
-    importModeSchema = z29.enum(["partial", "snapshot"]);
-    catalogImportSchema = z29.object({
+    importModeSchema = z31.enum(["partial", "snapshot"]);
+    catalogImportSchema = z31.object({
       file: catalogFileSchema,
       mapping: fieldMappingSchema,
       defaults: catalogDefaultsSchema,
-      supplierId: z29.string().uuid().optional(),
-      supplierName: z29.string().trim().min(2).max(160).optional(),
+      supplierId: z31.string().uuid().optional(),
+      supplierName: z31.string().trim().min(2).max(160).optional(),
       /** confirmation explicite après un import suspendu par le contrôle de qualité */
-      force: z29.boolean().optional(),
+      force: z31.boolean().optional(),
       /**
        * partial (défaut) : seules les lignes du fichier sont créées / mises à jour ;
        * snapshot : catalogue COMPLET, les offres absentes du fichier sont marquées « expirées ».
        */
       mode: importModeSchema.default("partial"),
       /** confirmation explicite pour réimporter un fichier identique à un import déjà réussi */
-      allowSameFile: z29.boolean().optional()
+      allowSameFile: z31.boolean().optional()
     }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), {
       message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix."
     });
@@ -8853,7 +8929,7 @@ async function runLibraryChecks(keys) {
       message: r.message,
       duration_ms: r.durationMs
     });
-    if (error) log25.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
+    if (error) log26.error("enregistrement de la v\xE9rification impossible", { key: r.key, error: error.message });
   }
   return out;
 }
@@ -8931,10 +9007,10 @@ async function activateLibrarySourceFor(db, organizationId, key2, attestation, o
     await db.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", organizationId);
     throw srcErr ?? new AppError("INTERNAL", "Source non cr\xE9\xE9e.");
   }
-  log25.info("source de biblioth\xE8que activ\xE9e", { orgId: organizationId, key: key2 });
+  log26.info("source de biblioth\xE8que activ\xE9e", { orgId: organizationId, key: key2 });
   return { sourceId: source2.id, supplierId: supplier.id, alreadyActive: false };
 }
-var log25, shopifyTerms, SOURCE_LIBRARY;
+var log26, shopifyTerms, SOURCE_LIBRARY;
 var init_source_library = __esm({
   "src/services/sourcing/source-library.ts"() {
     "use strict";
@@ -8947,7 +9023,7 @@ var init_source_library = __esm({
     init_registry();
     init_robots();
     init_env();
-    log25 = createLogger("SOURCE_LIBRARY");
+    log26 = createLogger("SOURCE_LIBRARY");
     shopifyTerms = (base) => `${base}/policies/terms-of-service`;
     SOURCE_LIBRARY = [
       {
@@ -10069,7 +10145,7 @@ var init_assessment = __esm({
 });
 
 // src/domain/sourcing/radar-settings.ts
-import { z as z32 } from "npm:zod@4.6.5";
+import { z as z34 } from "npm:zod@4.6.5";
 function readCostSettings(orgSettings, channel) {
   const raw = orgSettings?.radar ?? {};
   const s = { ...EMPTY_COST_SETTINGS };
@@ -10101,11 +10177,11 @@ var init_radar_settings = __esm({
   "src/domain/sourcing/radar-settings.ts"() {
     "use strict";
     init_radar();
-    nullableNumber2 = (min, max) => z32.number().finite().min(min).max(max).nullable();
-    radarSettingsSchema = z32.object({
-      vatRegime: z32.enum(["normal", "margin", "franchise"]).nullable(),
+    nullableNumber2 = (min, max) => z34.number().finite().min(min).max(max).nullable();
+    radarSettingsSchema = z34.object({
+      vatRegime: z34.enum(["normal", "margin", "franchise"]).nullable(),
       vatRate: nullableNumber2(0, 30),
-      vatRecoverable: z32.boolean().nullable(),
+      vatRecoverable: z34.boolean().nullable(),
       marketplaceFeePercent: nullableNumber2(0, 50),
       paymentFeePercent: nullableNumber2(0, 20),
       paymentFeeFixed: nullableNumber2(0, 50),
@@ -10389,7 +10465,7 @@ var init_conditions = __esm({
 });
 
 // src/integrations/ebay/listing.ts
-import { z as z33 } from "npm:zod@4.6.5";
+import { z as z35 } from "npm:zod@4.6.5";
 function checkListingDraft(input) {
   const parsed = listingDraftSchema.safeParse(input);
   if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "annonce"} : ${i.message}`), warnings: [], draft: null };
@@ -10523,24 +10599,24 @@ var init_listing = __esm({
     init_conditions();
     init_conditions();
     SKU_RE = /^[A-Za-z0-9._\-/]{1,50}$/;
-    listingDraftSchema = z33.object({
-      sku: z33.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
-      marketplaceId: z33.literal("EBAY_FR").default("EBAY_FR"),
-      title: z33.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
-      description: z33.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
-      categoryId: z33.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
-      condition: z33.enum(EBAY_CONDITIONS),
-      conditionDescription: z33.string().trim().max(1e3).optional(),
-      price: z33.number().finite().positive("Prix positif requis.").max(1e6),
-      currency: z33.literal("EUR").default("EUR"),
-      quantity: z33.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
-      imageUrls: z33.array(z33.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
-      aspects: z33.record(z33.string().min(1).max(65), z33.array(z33.string().min(1).max(65)).min(1)).default({}),
-      brand: z33.string().trim().max(65).optional(),
-      mpn: z33.string().trim().max(65).optional(),
-      ean: z33.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
-      policies: z33.object({ fulfillmentPolicyId: z33.string().min(1), paymentPolicyId: z33.string().min(1), returnPolicyId: z33.string().min(1) }).optional(),
-      merchantLocationKey: z33.string().trim().min(1).max(36).optional()
+    listingDraftSchema = z35.object({
+      sku: z35.string().trim().regex(SKU_RE, "Code SKU : 50 caract\xE8res max (lettres, chiffres, . _ - /)."),
+      marketplaceId: z35.literal("EBAY_FR").default("EBAY_FR"),
+      title: z35.string().trim().min(10, "Titre trop court (10 caract\xE8res minimum).").max(80, "Titre limit\xE9 \xE0 80 caract\xE8res par eBay."),
+      description: z35.string().trim().min(20, "Description trop courte (20 caract\xE8res minimum).").max(2e4),
+      categoryId: z35.string().trim().regex(/^\d{1,10}$/, "Cat\xE9gorie eBay : identifiant num\xE9rique (ex. 9355 T\xE9l\xE9phones mobiles)."),
+      condition: z35.enum(EBAY_CONDITIONS),
+      conditionDescription: z35.string().trim().max(1e3).optional(),
+      price: z35.number().finite().positive("Prix positif requis.").max(1e6),
+      currency: z35.literal("EUR").default("EUR"),
+      quantity: z35.number().int().min(1, "Quantit\xE9 d'au moins 1 pour publier.").max(1e4),
+      imageUrls: z35.array(z35.string().url().refine((u) => u.startsWith("https://"), "Images en HTTPS uniquement.")).min(1, "Au moins une photo (URL HTTPS) est exig\xE9e par eBay.").max(24, "24 photos maximum."),
+      aspects: z35.record(z35.string().min(1).max(65), z35.array(z35.string().min(1).max(65)).min(1)).default({}),
+      brand: z35.string().trim().max(65).optional(),
+      mpn: z35.string().trim().max(65).optional(),
+      ean: z35.string().trim().regex(/^\d{8,14}$/, "EAN : 8 \xE0 14 chiffres.").optional(),
+      policies: z35.object({ fulfillmentPolicyId: z35.string().min(1), paymentPolicyId: z35.string().min(1), returnPolicyId: z35.string().min(1) }).optional(),
+      merchantLocationKey: z35.string().trim().min(1).max(36).optional()
     });
   }
 });
@@ -10556,7 +10632,7 @@ __export(ebay_listing_service_exports, {
   prefillListing: () => prefillListing,
   publishListingForOrg: () => publishListingForOrg
 });
-import { z as z34 } from "npm:zod@4.6.5";
+import { z as z36 } from "npm:zod@4.6.5";
 async function connectedEbay(ctx) {
   const { data, error } = await ctx.supabase.from("channel_connections").select("id, status").eq("organization_id", ctx.organization.id).eq("provider", "ebay").eq("status", "connected").limit(1).maybeSingle();
   if (error) throw fromPostgrestError(error);
@@ -10666,8 +10742,8 @@ var init_ebay_listing_service = __esm({
     init_rest();
     init_listing();
     init_connection_store();
-    listingRequestSchema = z34.object({ draft: z34.unknown(), confirm: z34.boolean().default(false) });
-    disconnectSchema = z34.object({ connectionId: z34.string().uuid() });
+    listingRequestSchema = z36.object({ draft: z36.unknown(), confirm: z36.boolean().default(false) });
+    disconnectSchema = z36.object({ connectionId: z36.string().uuid() });
   }
 });
 
@@ -10679,7 +10755,7 @@ __export(offer_linking_exports, {
   listMatchSuggestions: () => listMatchSuggestions,
   matchDecisionSchema: () => matchDecisionSchema2
 });
-import { z as z35 } from "npm:zod@4.6.5";
+import { z as z37 } from "npm:zod@4.6.5";
 async function confirmOfferLink(orgId, supabase, userId, offerId, skuId, sourcingProductId) {
   const { data: existing } = await supabase.from("product_matches").select("id, status").eq("organization_id", orgId).eq("offer_id", offerId).eq("sku_id", skuId).maybeSingle();
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -10729,7 +10805,7 @@ var init_offer_linking = __esm({
     init_empty();
     init_errors();
     init_matching_service();
-    matchDecisionSchema2 = z35.object({ matchId: z35.string().uuid(), decision: z35.enum(["confirm", "reject"]) });
+    matchDecisionSchema2 = z37.object({ matchId: z37.string().uuid(), decision: z37.enum(["confirm", "reject"]) });
   }
 });
 
@@ -20547,7 +20623,7 @@ function priorityOf(e) {
     s += 15;
     reasons.push("Fournisseur fran\xE7ais");
   }
-  if (e.deliveryZones.some((z51) => z51 === "FR" || z51 === "EU")) {
+  if (e.deliveryZones.some((z53) => z53 === "FR" || z53 === "EU")) {
     s += 10;
     reasons.push("Livre la France");
   }
@@ -21606,7 +21682,7 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
     else summary = r;
   } catch (e) {
     partial = true;
-    log27.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+    log28.warn("live search failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
   }
   let offersQuery = ctx.supabase.from("sourcing_offers").select(OFFER_COLUMNS).eq("organization_id", ctx.organization.id).eq("status", "active");
   for (const tok of tokens) offersQuery = offersQuery.ilike("title_original", ilikePattern(tok));
@@ -21620,7 +21696,7 @@ async function simpleSupplierSearch(ctx, q, deps = {}) {
     deals = r.deals;
     missingCostSettings = r.missing;
   } catch (e) {
-    log27.warn("deal analysis failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
+    log28.warn("deal analysis failed", { orgId: ctx.organization.id, error: e instanceof Error ? e.message : String(e) });
   }
   const suppliers = groupBySupplier(rows, SIMPLE_SEARCH_PER_SUPPLIER, deals);
   const offers = byPrice(rows, SIMPLE_SEARCH_MAX_OFFERS, deals);
@@ -21659,7 +21735,7 @@ async function loadDeals(ctx, rows, now) {
   const deals = computeDeals(targets, poolRes.data ?? [], { orgCurrency, settings, own, now });
   return { deals, missing: missingSettings(settings) };
 }
-var log27, SIMPLE_SEARCH_LIVE_BUDGET_MS, SIMPLE_SEARCH_PER_SUPPLIER, SCAN_LIMIT, fold, num, SIMPLE_SEARCH_MAX_OFFERS, DEAL_POOL_LIMIT, OFFER_COLUMNS;
+var log28, SIMPLE_SEARCH_LIVE_BUDGET_MS, SIMPLE_SEARCH_PER_SUPPLIER, SCAN_LIMIT, fold, num, SIMPLE_SEARCH_MAX_OFFERS, DEAL_POOL_LIMIT, OFFER_COLUMNS;
 var init_simple_search = __esm({
   "src/services/sourcing/simple-search.ts"() {
     "use strict";
@@ -21672,7 +21748,7 @@ var init_simple_search = __esm({
     init_radar();
     init_radar_settings();
     init_pro_accounts();
-    log27 = createLogger("SUPPLIER_SEARCH");
+    log28 = createLogger("SUPPLIER_SEARCH");
     SIMPLE_SEARCH_LIVE_BUDGET_MS = 35e3;
     SIMPLE_SEARCH_PER_SUPPLIER = 30;
     SCAN_LIMIT = 3e3;
@@ -21689,7 +21765,7 @@ init_errors();
 init_logger();
 init_crypto();
 init_admin();
-import { z as z50 } from "npm:zod@4.6.5";
+import { z as z52 } from "npm:zod@4.6.5";
 
 // src/services/sourcing/crawler/crawler-manager.ts
 init_empty();
@@ -26753,7 +26829,9 @@ init_admin();
 init_errors();
 init_logger();
 init_errors2();
+init_deadline();
 init_registry2();
+import { z as z28 } from "npm:zod@4.6.5";
 
 // src/integrations/ebay/cursor.ts
 var ORDERS_OVERLAP_HOURS = 3;
@@ -26807,8 +26885,10 @@ init_context();
 // src/services/sync/listings.ts
 init_empty();
 init_errors();
+init_deadline();
 init_variation();
 init_context();
+import { z as z26 } from "npm:zod@4.6.5";
 
 // src/services/sync/matching.ts
 var STOPWORDS = /* @__PURE__ */ new Set(["de", "la", "le", "les", "et", "en", "pour", "avec", "du", "des", "un", "une", "the", "and", "with", "for", "of", "a", "an", "neuf", "new", "lot"]);
@@ -26965,12 +27045,21 @@ function suggestSkusForListing(listing, candidates, options = {}) {
 }
 
 // src/services/sync/listings.ts
+var listingsPassStateSchema = z26.object({
+  passStartedAt: z26.string().datetime({ offset: true }),
+  nextPage: z26.number().int().min(1),
+  runs: z26.number().int().min(0),
+  truncated: z26.boolean(),
+  /** une annonce illisible SANS identifiant : impossible de la protéger, rien ne sera terminé */
+  unreferencedInvalid: z26.boolean()
+});
 var UPSERT_CHUNK = 200;
+var LISTINGS_MAX_PAGES_PER_RUN = 6;
+var LISTINGS_PAGE_MIN_REMAINING_MS = 15e3;
+var AUTO_MAP_MIN_REMAINING_MS = 1e3;
+var SUGGESTIONS_MIN_REMAINING_MS = 2e4;
 var MAX_LISTINGS_TO_SCORE = 500;
 var MAX_SKU_CANDIDATES = 5e3;
-function listingKey(externalListingId, externalVariationId) {
-  return `${externalListingId}\0${externalVariationId}`;
-}
 function listingToRows(ctx, l, nowIso) {
   const base = {
     organization_id: ctx.organizationId,
@@ -27021,45 +27110,90 @@ function listingToRows(ctx, l, nowIso) {
   });
 }
 function emptyListingsResult() {
-  return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
+  return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false, passFinished: false, stoppedByDeadline: false, pagesRead: 0, pass: null };
 }
-async function syncListings(ctx, result = emptyListingsResult()) {
-  const { admin, log: log37 } = ctx;
-  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-  const seen = /* @__PURE__ */ new Set();
-  let truncated = false;
-  for await (const page2 of ctx.connector.getListings(ctx.auth)) {
-    result.fetched += page2.listings.length;
-    result.invalid += page2.invalid.length;
-    for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w2 of page2.warnings) log37.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
-    if (page2.truncated) truncated = true;
-    const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
-    for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
-    for (const part2 of chunk2(rows, UPSERT_CHUNK)) {
-      const { data, error } = await admin.from("channel_listings").upsert(part2, { onConflict: "sales_channel_id,external_listing_id,external_variation_id" }).select("id");
-      if (error) throw fromPostgrestError(error);
-      result.upserted += data?.length ?? 0;
+async function syncListings(ctx, result = emptyListingsResult(), options = {}) {
+  const { admin, log: log38 } = ctx;
+  const nowIso = new Date((ctx.clock ?? Date.now)()).toISOString();
+  const resumed = options.pass ?? null;
+  const pass = resumed ? { ...resumed, runs: resumed.runs + 1 } : { passStartedAt: nowIso, nextPage: 1, runs: 1, truncated: false, unreferencedInvalid: false };
+  result.pass = pass;
+  const startPage = pass.nextPage > 1 ? pass.nextPage - 1 : 1;
+  const overlapPages = pass.nextPage - startPage;
+  if (resumed) log38.info("reprise du parcours des annonces", { startPage, passStartedAt: pass.passStartedAt, runs: pass.runs });
+  const maxPages = Math.max(1, options.maxPagesPerRun ?? LISTINGS_MAX_PAGES_PER_RUN);
+  let finished = false;
+  try {
+    let iteration = 0;
+    for await (const page2 of ctx.connector.getListings(ctx.auth, { startPage, deadline: ctx.deadlineAt ?? null })) {
+      const pageNumber = page2.pageNumber ?? startPage + iteration;
+      iteration++;
+      result.fetched += page2.listings.length;
+      result.invalid += page2.invalid.length;
+      for (const inv of page2.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
+      for (const w2 of page2.warnings) log38.warn("avertissement eBay (GetMyeBaySelling)", { warning: w2 });
+      if (page2.truncated) pass.truncated = true;
+      const rows = page2.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
+      for (const part2 of chunk2(rows, UPSERT_CHUNK)) {
+        const { data, error } = await admin.from("channel_listings").upsert(part2, { onConflict: "sales_channel_id,external_listing_id,external_variation_id" }).select("id");
+        if (error) throw fromPostgrestError(error);
+        result.upserted += data?.length ?? 0;
+      }
+      const invalidRefs = [...new Set(page2.invalid.map((i) => i.ref).filter((r) => Boolean(r)))];
+      if (page2.invalid.some((i) => !i.ref)) pass.unreferencedInvalid = true;
+      for (const refs of chunk2(invalidRefs, 200)) {
+        const { error } = await admin.from("channel_listings").update({ last_synced_at: nowIso }).eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").in("external_listing_id", refs);
+        if (error) throw fromPostgrestError(error);
+      }
+      result.pagesRead++;
+      pass.nextPage = pageNumber + 1;
+      if (options.onPageComplete) await options.onPageComplete({ ...pass });
+      const lastKnown = page2.truncated || page2.totalPages !== void 0 && pageNumber >= page2.totalPages;
+      if (lastKnown) {
+        finished = true;
+        break;
+      }
+      const onlyOverlapRead = result.pagesRead <= overlapPages;
+      if (result.pagesRead >= maxPages + overlapPages || !onlyOverlapRead && timeLeftMs(ctx) < LISTINGS_PAGE_MIN_REMAINING_MS) {
+        result.stoppedByDeadline = true;
+        break;
+      }
     }
+    if (!result.stoppedByDeadline) finished = true;
+  } catch (e) {
+    if (!isDeadlineExceeded(e)) throw e;
+    result.stoppedByDeadline = true;
   }
-  result.complete = !truncated;
-  if (truncated) {
+  result.passFinished = finished;
+  result.complete = finished && !pass.truncated;
+  if (finished && pass.truncated) {
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incompl\xE8te (limite de pages atteinte) : aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce run.", entityType: "phase", entityRef: "listings" });
-    log37.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
+    log38.warn("liste d'annonces tronqu\xE9e : \xE9tape \xAB annonces termin\xE9es \xBB ignor\xE9e", { fetched: result.fetched });
   }
-  const active = result.complete ? await fetchAllRows(
-    (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
+  if (result.complete && pass.unreferencedInvalid) {
+    ctx.recordError({ code: "LISTINGS_END_SKIPPED", message: "Une annonce eBay illisible n'a pas d'identifiant : par prudence, aucune annonce n'a \xE9t\xE9 marqu\xE9e termin\xE9e lors de ce parcours.", entityType: "phase", entityRef: "listings" });
+  }
+  const active = result.complete && !pass.unreferencedInvalid ? await fetchAllRows(
+    (from, to) => admin.from("channel_listings").select("id, last_synced_at").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").order("id").range(from, to)
   ).catch((e) => {
     throw fromPostgrestError(e);
   }) : [];
-  const toEnd = active.filter((r) => !seen.has(listingKey(r.external_listing_id, r.external_variation_id))).map((r) => r.id);
+  const passStart = new Date(pass.passStartedAt).getTime();
+  const toEnd = active.filter((r) => !r.last_synced_at || new Date(r.last_synced_at).getTime() < passStart).map((r) => r.id);
   for (const ids of chunk2(toEnd, 500)) {
     const { error } = await admin.from("channel_listings").update({ status: "ended", ended_at: nowIso, last_synced_at: nowIso }).in("id", ids).eq("organization_id", ctx.organizationId);
     if (error) throw fromPostgrestError(error);
     result.ended += ids.length;
   }
-  result.autoMapped = await autoMapBySku(ctx);
-  result.suggestionsCreated = await computeSuggestions(ctx);
+  if (finished) result.pass = null;
+  const mapped = await autoMapBySku(ctx);
+  result.autoMapped = mapped.mapped;
+  if (mapped.stoppedByDeadline) result.stoppedByDeadline = true;
+  if (finished && timeLeftMs(ctx) >= SUGGESTIONS_MIN_REMAINING_MS) {
+    result.suggestionsCreated = await computeSuggestions(ctx);
+  } else if (finished) {
+    log38.info("suggestions d'association report\xE9es au prochain parcours (\xE9ch\xE9ance du run proche)");
+  }
   return result;
 }
 async function autoMapBySku(ctx) {
@@ -27071,7 +27205,7 @@ async function autoMapBySku(ctx) {
     (from, to) => admin.from("channel_listings").select("id, external_sku").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").in("mapping_status", ["unmapped", "suggested"]).not("external_sku", "is", null).order("id").range(from, to)
   ).catch(toAppError);
   const candidates = unmapped.filter((l) => l.external_sku && l.external_sku.trim().length > 0);
-  if (candidates.length === 0) return 0;
+  if (candidates.length === 0) return { mapped: 0, stoppedByDeadline: false };
   const skus = await fetchAllRows((from, to) => admin.from("skus").select("id, code").eq("organization_id", ctx.organizationId).eq("is_active", true).order("id").range(from, to)).catch(toAppError);
   const byCode = /* @__PURE__ */ new Map();
   for (const s of skus) byCode.set(s.code.trim().toUpperCase(), s.id);
@@ -27079,6 +27213,7 @@ async function autoMapBySku(ctx) {
   for (const l of candidates) {
     const skuId = byCode.get((l.external_sku ?? "").trim().toUpperCase());
     if (!skuId) continue;
+    if (timeLeftMs(ctx) < AUTO_MAP_MIN_REMAINING_MS) return { mapped, stoppedByDeadline: true };
     const { error: mapError } = await admin.rpc("map_listing_to_sku", { p_listing_id: l.id, p_sku_id: skuId, p_source: "auto_sku_match" });
     if (mapError) {
       ctx.recordError({ code: "AUTO_MAP_FAILED", message: mapError.message, entityType: "listing", entityRef: l.id });
@@ -27086,7 +27221,7 @@ async function autoMapBySku(ctx) {
     }
     mapped++;
   }
-  return mapped;
+  return { mapped, stoppedByDeadline: false };
 }
 async function computeSuggestions(ctx) {
   const { admin } = ctx;
@@ -27143,7 +27278,9 @@ async function computeSuggestions(ctx) {
 
 // src/services/sync/orders.ts
 init_empty();
-import { z as z26 } from "npm:zod@4.6.5";
+init_deadline();
+import { z as z27 } from "npm:zod@4.6.5";
+init_context();
 function emptyOrdersResult() {
   return {
     fetched: 0,
@@ -27159,18 +27296,22 @@ function emptyOrdersResult() {
     failedWithoutDate: false,
     completedUntil: null,
     windowComplete: false,
-    truncated: false
+    truncated: false,
+    stoppedByDeadline: false,
+    slicesCompleted: 0
   };
 }
 var ORDERS_MIN_SLICE_HOURS = 1;
 var ORDERS_MAX_PAGES_PER_RUN = 200;
-var ingestResultSchema = z26.object({
-  order_id: z26.string(),
-  created: z26.boolean(),
-  status_changed: z26.boolean().optional(),
-  items_mapped: z26.number().int().optional(),
-  items_unmapped: z26.number().int().optional(),
-  movements: z26.number().int().optional()
+var ORDERS_PAGE_MIN_REMAINING_MS = 8e3;
+var ORDER_INGEST_MIN_REMAINING_MS = 1e3;
+var ingestResultSchema = z27.object({
+  order_id: z27.string(),
+  created: z27.boolean(),
+  status_changed: z27.boolean().optional(),
+  items_mapped: z27.number().int().optional(),
+  items_unmapped: z27.number().int().optional(),
+  movements: z27.number().int().optional()
 });
 function orderToRpcPayload(order) {
   return {
@@ -27215,22 +27356,44 @@ async function syncOrders(ctx, window, result = emptyOrdersResult(), options = {
       result.truncated = true;
       break;
     }
+    if (timeLeftMs(ctx) < ORDERS_PAGE_MIN_REMAINING_MS) {
+      result.stoppedByDeadline = true;
+      break;
+    }
     const slice = queue.shift();
     let sliceTruncated = false;
     let outOfBudget = false;
-    for await (const page2 of ctx.connector.getOrders(ctx.auth, { since: slice.since, until: slice.until })) {
-      if (budget <= 0) {
-        outOfBudget = true;
-        break;
+    let outOfTime = false;
+    try {
+      for await (const page2 of ctx.connector.getOrders(ctx.auth, { since: slice.since, until: slice.until, deadline: ctx.deadlineAt ?? null })) {
+        if (budget <= 0) {
+          outOfBudget = true;
+          break;
+        }
+        budget--;
+        result.pages++;
+        const ingested = await ingestOrdersPage(ctx, page2, result, seen, slice);
+        if (!ingested) {
+          outOfTime = true;
+          break;
+        }
+        if (page2.truncated) sliceTruncated = true;
+        if (budget <= 0 && !sliceTruncated && page2.hasMore !== false) {
+          outOfBudget = true;
+          break;
+        }
+        if (page2.hasMore !== false && !sliceTruncated && timeLeftMs(ctx) < ORDERS_PAGE_MIN_REMAINING_MS) {
+          outOfTime = true;
+          break;
+        }
       }
-      budget--;
-      result.pages++;
-      await ingestOrdersPage(ctx, page2, result, seen);
-      if (page2.truncated) sliceTruncated = true;
-      if (budget <= 0 && !sliceTruncated && page2.hasMore !== false) {
-        outOfBudget = true;
-        break;
-      }
+    } catch (e) {
+      if (!isDeadlineExceeded(e)) throw e;
+      outOfTime = true;
+    }
+    if (outOfTime) {
+      result.stoppedByDeadline = true;
+      break;
     }
     if (outOfBudget) {
       result.truncated = true;
@@ -27247,8 +27410,10 @@ async function syncOrders(ctx, window, result = emptyOrdersResult(), options = {
       break;
     }
     result.completedUntil = slice.until;
+    result.slicesCompleted++;
+    if (options.onSliceComplete) await options.onSliceComplete(result);
   }
-  result.windowComplete = !result.truncated && queue.length === 0;
+  result.windowComplete = !result.truncated && !result.stoppedByDeadline && queue.length === 0;
   if (result.truncated) {
     const resumeFrom = result.completedUntil ?? window.since;
     ctx.recordError({
@@ -27260,7 +27425,7 @@ async function syncOrders(ctx, window, result = emptyOrdersResult(), options = {
   }
   return result;
 }
-async function ingestOrdersPage(ctx, page2, result, seen) {
+async function ingestOrdersPage(ctx, page2, result, seen, slice) {
   const { admin } = ctx;
   const noteFailed = (modifiedAt) => {
     if (!modifiedAt) {
@@ -27271,14 +27436,22 @@ async function ingestOrdersPage(ctx, page2, result, seen) {
     if (!result.minFailedModified || d < result.minFailedModified) result.minFailedModified = d;
   };
   for (const inv of page2.invalid) {
+    noteFailed(inv.modifiedAt ?? slice.since.toISOString());
     if (inv.ref) {
       if (seen.invalid.has(inv.ref)) continue;
       seen.invalid.add(inv.ref);
     }
     result.invalid++;
-    ctx.recordError({ code: "INVALID_ORDER", message: `${inv.message} Cette commande n'a pas \xE9t\xE9 import\xE9e : v\xE9rifiez-la dans eBay.`, entityType: "order", entityRef: inv.ref });
+    ctx.recordError({
+      code: "INVALID_ORDER",
+      message: `${inv.message} Cette commande n'a pas \xE9t\xE9 import\xE9e : v\xE9rifiez-la dans eBay. L'import des commandes ne d\xE9passera pas sa date tant qu'elle n'aura pas pu \xEAtre import\xE9e.`,
+      entityType: "order",
+      entityRef: inv.ref,
+      ...inv.modifiedAt ? { details: { modifiedAt: inv.modifiedAt } } : {}
+    });
   }
   for (const order of page2.orders) {
+    if (timeLeftMs(ctx) < ORDER_INGEST_MIN_REMAINING_MS) return false;
     const prev = seen.orders.get(order.externalOrderId);
     const modifiedAt = order.externalModifiedAt ?? null;
     if (prev?.ingested && prev.payloadHash === order.payloadHash && prev.modifiedAt === modifiedAt) continue;
@@ -27327,6 +27500,7 @@ async function ingestOrdersPage(ctx, page2, result, seen) {
       if (!result.maxModifiedSeen || d > result.maxModifiedSeen) result.maxModifiedSeen = d;
     }
   }
+  return true;
 }
 
 // src/services/sync/inventory-push.ts
@@ -27334,21 +27508,25 @@ init_empty();
 init_errors();
 init_logger();
 init_errors2();
+init_deadline();
 init_context();
+init_alerts();
 var log18 = createLogger("SYNC");
 var MAX_PUSH_PER_RUN = 200;
+var PUSH_MIN_REMAINING_MS = 5e3;
+var sharedSkuPushKey = (connectionId) => `inventory_push_shared_sku:${connectionId}`;
 function listingRefOf(row2) {
   if (!row2.external_variation_id) return { externalListingId: row2.external_listing_id, variationSku: null };
   if (!row2.external_sku) return null;
   return { externalListingId: row2.external_listing_id, variationSku: row2.external_sku };
 }
-async function pushQuantityToChannel(admin, connector, auth, listing, quantity) {
+async function pushQuantityToChannel(admin, connector, auth, listing, quantity, options = {}) {
   const ref = listingRefOf(listing);
   if (!ref) {
     throw new AppError("VALIDATION", `L'annonce \xAB ${listing.title} \xBB est une variation sans SKU eBay : eBay ne permet pas d'en modifier la quantit\xE9 sans SKU.`);
   }
   const qty = Math.max(0, Math.trunc(quantity));
-  const result = await connector.updateListingInventory(auth, ref, qty);
+  const result = await connector.updateListingInventory(auth, ref, qty, { deadline: options.deadline ?? null });
   const { error } = await admin.from("channel_listings").update({ quantity_available: qty, last_synced_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", listing.id);
   if (error) throw fromPostgrestError(error);
   log18.info("quantit\xE9 envoy\xE9e au canal", { listingId: listing.id, externalListingId: listing.external_listing_id, variation: listing.external_variation_id || null, quantity: qty, warnings: result.warnings.length });
@@ -27356,7 +27534,7 @@ async function pushQuantityToChannel(admin, connector, auth, listing, quantity) 
 }
 async function pushInventory(ctx) {
   const { admin } = ctx;
-  const result = { checked: 0, changed: 0, pushed: 0, failed: 0 };
+  const result = { checked: 0, changed: 0, pushed: 0, failed: 0, refusedSharedSku: 0, stoppedByDeadline: false };
   const listings = await fetchAllRows(
     (from, to) => admin.from("channel_listings").select("id, external_listing_id, external_variation_id, external_sku, sku_id, quantity_available, title").eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").eq("mapping_status", "mapped").not("sku_id", "is", null).order("id").range(from, to)
   ).catch((e) => {
@@ -27364,6 +27542,7 @@ async function pushInventory(ctx) {
   });
   const rows = listings;
   result.checked = rows.length;
+  await reportSharedSkus(ctx, rows, result);
   if (rows.length === 0) return result;
   const skuIds = [...new Set(rows.map((r) => r.sku_id).filter((x) => Boolean(x)))];
   const available = /* @__PURE__ */ new Map();
@@ -27372,20 +27551,31 @@ async function pushInventory(ctx) {
     if (invError) throw fromPostgrestError(invError);
     for (const r of inv ?? []) if (r.quantity_available !== null) available.set(r.sku_id, r.quantity_available);
   }
+  const listingsPerSku = /* @__PURE__ */ new Map();
+  for (const r of rows) if (r.sku_id) listingsPerSku.set(r.sku_id, (listingsPerSku.get(r.sku_id) ?? 0) + 1);
   let budget = MAX_PUSH_PER_RUN;
   for (const row2 of rows) {
     if (!row2.sku_id) continue;
+    if ((listingsPerSku.get(row2.sku_id) ?? 0) > 1) continue;
     const target = available.get(row2.sku_id);
     if (target === void 0) continue;
     const clamped = Math.max(0, target);
     if (row2.quantity_available === clamped) continue;
     result.changed++;
     if (budget <= 0) continue;
+    if (timeLeftMs(ctx) < PUSH_MIN_REMAINING_MS) {
+      result.stoppedByDeadline = true;
+      break;
+    }
     budget--;
     try {
-      await pushQuantityToChannel(admin, ctx.connector, ctx.auth, row2, clamped);
+      await pushQuantityToChannel(admin, ctx.connector, ctx.auth, row2, clamped, { deadline: ctx.deadlineAt ?? null });
       result.pushed++;
     } catch (e) {
+      if (isDeadlineExceeded(e)) {
+        result.stoppedByDeadline = true;
+        break;
+      }
       const d = describeError(e);
       if (d.code === "AUTH_EXPIRED") throw e;
       result.failed++;
@@ -27396,15 +27586,74 @@ async function pushInventory(ctx) {
       }
     }
   }
-  if (result.changed > MAX_PUSH_PER_RUN) {
+  if (result.changed > MAX_PUSH_PER_RUN && !result.stoppedByDeadline) {
     ctx.recordError({ code: "INVENTORY_PUSH_LIMIT", message: `${result.changed} annonces \xE0 mettre \xE0 jour, ${MAX_PUSH_PER_RUN} envoy\xE9es sur ce run : la suite sera trait\xE9e au prochain run.`, entityType: "channel" });
   }
   return result;
 }
+async function reportSharedSkus(ctx, rows, result) {
+  const bySku = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    if (!r.sku_id) continue;
+    const list2 = bySku.get(r.sku_id) ?? [];
+    list2.push(r);
+    bySku.set(r.sku_id, list2);
+  }
+  const shared = [...bySku.entries()].filter(([, list2]) => list2.length > 1);
+  if (shared.length === 0) {
+    await resolveAlerts(ctx.admin, ctx.organizationId, [sharedSkuPushKey(ctx.connection.id)]);
+    return;
+  }
+  for (const [skuId, list2] of shared) {
+    result.refusedSharedSku += list2.length;
+    ctx.recordError({
+      code: "INVENTORY_PUSH_SHARED_SKU",
+      message: `Quantit\xE9 non envoy\xE9e : ce SKU est associ\xE9 \xE0 ${list2.length} annonces eBay actives (${list2.map((l) => l.title).slice(0, 3).join(" ; ")}${list2.length > 3 ? "\u2026" : ""}). Envoyer le stock entier \xE0 chacune permettrait de vendre plusieurs fois la m\xEAme unit\xE9.`,
+      entityType: "sku",
+      entityRef: skuId,
+      details: { listings: list2.map((l) => l.external_listing_id + (l.external_variation_id ? ` / ${l.external_variation_id}` : "")) }
+    });
+  }
+  await upsertAlert(ctx.admin, {
+    organizationId: ctx.organizationId,
+    type: "inventory_push_shared_sku",
+    severity: "warning",
+    title: "Envoi des quantit\xE9s eBay bloqu\xE9 pour des SKU partag\xE9s",
+    message: `${shared.length} SKU sont associ\xE9s \xE0 plusieurs annonces eBay actives : leur quantit\xE9 n'est pas envoy\xE9e automatiquement (risque de survente). Gardez une seule annonce associ\xE9e par SKU ou g\xE9rez ces quantit\xE9s dans eBay.`,
+    dedupeKey: sharedSkuPushKey(ctx.connection.id),
+    entityType: "channel_connection",
+    entityId: ctx.connection.id,
+    actionHref: "/settings/integrations/mapping"
+  });
+  log18.warn("envoi refus\xE9 pour des SKU associ\xE9s \xE0 plusieurs annonces", { connectionId: ctx.connection.id, skus: shared.length });
+}
 
 // src/services/sync/engine.ts
 var log19 = createLogger("SYNC");
-var RUNNING_STALE_MINUTES2 = 15;
+var RUNNING_STALE_MINUTES2 = 10;
+var DEFAULT_SYNC_RUN_BUDGET_MS = 1e5;
+var MIN_SYNC_RUN_BUDGET_MS = 5e3;
+var MAX_SYNC_RUN_BUDGET_MS = 8 * 6e4;
+var LISTINGS_BUDGET_SHARE = 0.5;
+var BUDGET_REACHED_CODE = "SYNC_BUDGET_REACHED";
+var BUDGET_REACHED_MESSAGE = "Budget de temps atteint, reprise au prochain passage : la synchronisation s'est arr\xEAt\xE9e proprement apr\xE8s la derni\xE8re \xE9tape confirm\xE9e (aucune donn\xE9e perdue).";
+function syncRunBudgetMs(env = process.env) {
+  const raw = Number(env.SYNC_RUN_BUDGET_MS ?? "");
+  const value = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_SYNC_RUN_BUDGET_MS;
+  return Math.min(MAX_SYNC_RUN_BUDGET_MS, Math.max(MIN_SYNC_RUN_BUDGET_MS, Math.trunc(value)));
+}
+var syncStateSchema = z28.object({
+  listingsPass: listingsPassStateSchema.nullable().optional(),
+  ordersSliceHours: z28.number().int().min(1).max(ORDERS_SLICE_HOURS).optional()
+}).strip();
+function readSyncState(raw) {
+  const parsed = syncStateSchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    log19.warn("progression de synchronisation illisible : reprise depuis le d\xE9but", { issues: parsed.error.issues.map((i) => i.path.join(".")) });
+    return {};
+  }
+  return parsed.data;
+}
 function emptyStats() {
   return {
     listings_fetched: 0,
@@ -27424,8 +27673,11 @@ function emptyStats() {
 var PROVIDER_LABEL2 = { ebay: "eBay", amazon: "Amazon", shopify: "Shopify", woocommerce: "WooCommerce", manual: "Ventes manuelles" };
 async function runChannelSync(connectionId, options) {
   const admin = createAdminSupabaseClient();
+  const clock = options.clock ?? Date.now;
   const scope = options.scope ?? "full";
-  const startedAt = /* @__PURE__ */ new Date();
+  const startedMs = clock();
+  const budgetMs = Math.min(MAX_SYNC_RUN_BUDGET_MS, Math.max(MIN_SYNC_RUN_BUDGET_MS, Math.trunc(options.budgetMs ?? syncRunBudgetMs())));
+  const deadlineAt = options.deadlineAt ?? startedMs + budgetMs;
   const { data: connection, error: connError } = await admin.from("channel_connections").select("*").eq("id", connectionId).maybeSingle();
   if (connError) throw fromPostgrestError(connError);
   if (!connection) throw new AppError("NOT_FOUND", "Connexion introuvable.");
@@ -27451,10 +27703,21 @@ async function runChannelSync(connectionId, options) {
     throw fromPostgrestError(runError);
   }
   const runId = run.id;
-  log19.info(`${label} sync started`, { runId, connectionId, orgId: connection.organization_id, trigger: options.trigger, scope, username: connection.external_username });
+  log19.info(`${label} sync started`, { runId, connectionId, orgId: connection.organization_id, trigger: options.trigger, scope, username: connection.external_username, budgetMs: deadlineAt - startedMs });
+  const { error: attemptError } = await admin.from("channel_connections").update({ last_sync_attempt_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", connection.id).neq("status", "disconnected");
+  if (attemptError) log19.warn("tentative de synchronisation non enregistr\xE9e", { runId, error: attemptError.message });
   const stats = emptyStats();
   const errors = [];
-  const state = { fatal: null, authExpired: false, phasesCompleted: 0, newCursor: null };
+  const state = {
+    fatal: null,
+    authExpired: false,
+    phasesCompleted: 0,
+    newCursor: null,
+    budgetStopped: false,
+    passComplete: true
+  };
+  const progress = {};
+  let syncState = readSyncState(connection.sync_state);
   const ctx = {
     admin,
     connection,
@@ -27466,6 +27729,21 @@ async function runChannelSync(connectionId, options) {
     recordError: (e) => {
       errors.push(e);
       log19.warn("erreur de synchronisation", { runId, code: e.code, entity: e.entityRef ?? null, message: e.message });
+    },
+    deadlineAt,
+    clock
+  };
+  const persistSyncState = async (next) => {
+    const { error } = await admin.from("channel_connections").update({ sync_state: next }).eq("id", connection.id).neq("status", "disconnected");
+    if (error) throw fromPostgrestError(error);
+    syncState = next;
+  };
+  const persistSyncStateOrRecord = async (next, step) => {
+    try {
+      await persistSyncState(next);
+    } catch (e) {
+      const d = describeError(e);
+      ctx.recordError({ code: "SYNC_PROGRESS_NOT_SAVED", message: `Progression non enregistr\xE9e (${step}) : ${d.message}`, entityType: "phase", entityRef: step });
     }
   };
   const runPhase = async (name, fn) => {
@@ -27475,6 +27753,11 @@ async function runChannelSync(connectionId, options) {
       state.phasesCompleted++;
       return true;
     } catch (e) {
+      if (isDeadlineExceeded(e)) {
+        state.budgetStopped = true;
+        log19.info(`phase ${name} arr\xEAt\xE9e \xE0 l'\xE9ch\xE9ance`, { runId });
+        return false;
+      }
       const d = describeError(e);
       const entry = { code: d.code, message: d.message, entityType: "phase", entityRef: name, details: d.details };
       errors.push(entry);
@@ -27488,44 +27771,115 @@ async function runChannelSync(connectionId, options) {
       return false;
     }
   };
-  if (scope === "full" || scope === "listings") {
-    const r = emptyListingsResult();
-    await runPhase("listings", async () => {
-      await syncListings(ctx, r);
-      log19.info(`${label} listings synced`, { runId, fetched: r.fetched, upserted: r.upserted, ended: r.ended, autoMapped: r.autoMapped, suggestions: r.suggestionsCreated, invalid: r.invalid });
-    });
-    stats.listings_fetched = r.fetched;
-    stats.listings_upserted = r.upserted;
-    stats.listings_ended = r.ended;
-    stats.listings_auto_mapped = r.autoMapped;
-    stats.suggestions_created = r.suggestionsCreated;
+  try {
+    if (scope === "full" || scope === "listings") {
+      const r = emptyListingsResult();
+      const listingsDeadline = scope === "full" ? Math.min(deadlineAt, startedMs + Math.floor((deadlineAt - startedMs) * LISTINGS_BUDGET_SHARE)) : deadlineAt;
+      const resumedPass = syncState.listingsPass ?? null;
+      await runPhase("listings", async () => {
+        await syncListings({ ...ctx, deadlineAt: listingsDeadline }, r, {
+          pass: resumedPass,
+          maxPagesPerRun: options.listings?.maxPagesPerRun,
+          onPageComplete: (pass) => persistSyncState({ ...syncState, listingsPass: pass })
+        });
+        log19.info(`${label} listings synced`, { runId, fetched: r.fetched, upserted: r.upserted, ended: r.ended, autoMapped: r.autoMapped, suggestions: r.suggestionsCreated, invalid: r.invalid, pages: r.pagesRead, passFinished: r.passFinished });
+      });
+      stats.listings_fetched = r.fetched;
+      stats.listings_upserted = r.upserted;
+      stats.listings_ended = r.ended;
+      stats.listings_auto_mapped = r.autoMapped;
+      stats.suggestions_created = r.suggestionsCreated;
+      if (r.passFinished && r.pass === null && syncState.listingsPass) await persistSyncStateOrRecord({ ...syncState, listingsPass: null }, "listings");
+      if (r.stoppedByDeadline) state.budgetStopped = true;
+      if (!r.passFinished) state.passComplete = false;
+      progress.listings = { pagesRead: r.pagesRead, passFinished: r.passFinished, nextPage: r.pass?.nextPage ?? null, resumed: resumedPass !== null };
+    }
+    let ordersResult = null;
+    let ordersPhaseOk = false;
+    if (scope === "full" || scope === "orders") {
+      if (state.fatal) {
+        state.passComplete = false;
+      } else if (timeLeftMs(ctx) < ORDERS_PAGE_MIN_REMAINING_MS) {
+        state.budgetStopped = true;
+        state.passComplete = false;
+      } else {
+        const previousCursor = connection.last_orders_cursor;
+        const window = computeOrdersWindow(previousCursor, new Date(clock()));
+        const sliceHours = options.orders?.sliceHours ?? syncState.ordersSliceHours ?? ORDERS_SLICE_HOURS;
+        const r = emptyOrdersResult();
+        ordersResult = r;
+        let savedCursor = previousCursor ? new Date(previousCursor).toISOString() : null;
+        const saveCursor = async () => {
+          const cursor = resolveOrdersCursor(window, r, previousCursor);
+          if (!cursor || cursor.toISOString() === savedCursor) return;
+          const { error } = await admin.from("channel_connections").update({ last_orders_cursor: cursor.toISOString() }).eq("id", connection.id).neq("status", "disconnected");
+          if (error) throw fromPostgrestError(error);
+          savedCursor = cursor.toISOString();
+        };
+        log19.info(`${label} orders window`, { runId, since: window.since.toISOString(), until: window.until.toISOString(), initial: window.initial, sliceHours });
+        ordersPhaseOk = await runPhase("orders", async () => {
+          await syncOrders(ctx, window, r, { ...options.orders, sliceHours, onSliceComplete: saveCursor });
+          log19.info(`${label} orders synced`, { runId, fetched: r.fetched, created: r.created, updated: r.updated, itemsUnmapped: r.itemsUnmapped, movements: r.movements, failed: r.failed, invalid: r.invalid, truncated: r.truncated, pages: r.pages, stoppedByDeadline: r.stoppedByDeadline });
+        });
+        stats.orders_fetched = r.fetched;
+        stats.orders_created = r.created;
+        stats.orders_updated = r.updated;
+        stats.items_unmapped = r.itemsUnmapped;
+        stats.inventory_changes = r.movements;
+        state.newCursor = resolveOrdersCursor(window, r, previousCursor);
+        if (r.stoppedByDeadline) state.budgetStopped = true;
+        if (!r.windowComplete) state.passComplete = false;
+        const nextSliceHours = r.windowComplete ? void 0 : r.stoppedByDeadline && r.slicesCompleted === 0 ? Math.max(ORDERS_MIN_SLICE_HOURS, Math.floor(sliceHours / 2)) : syncState.ordersSliceHours;
+        if (nextSliceHours !== syncState.ordersSliceHours) {
+          const next = { ...syncState };
+          if (nextSliceHours === void 0) delete next.ordersSliceHours;
+          else next.ordersSliceHours = nextSliceHours;
+          await persistSyncStateOrRecord(next, "orders");
+        }
+        progress.orders = { pages: r.pages, slicesCompleted: r.slicesCompleted, windowComplete: r.windowComplete, sliceHours, cursor: state.newCursor?.toISOString() ?? savedCursor };
+        await reportOrdersBlocked(ctx, r, label);
+      }
+    }
+    if (scope === "full" && connection.push_inventory && !state.fatal) {
+      const reasons = pushBlockers(ordersResult, ordersPhaseOk);
+      if (reasons.length > 0) {
+        ctx.recordError({
+          code: "INVENTORY_PUSH_SKIPPED",
+          message: `Quantit\xE9s non envoy\xE9es \xE0 eBay : ${reasons.join(" ; ")}. Le stock local pourrait ne pas refl\xE9ter des ventes r\xE9centes (risque de survente) : l'envoi reprendra apr\xE8s un import des commandes complet et sans erreur.`,
+          entityType: "phase",
+          entityRef: "inventory_push"
+        });
+      } else if (timeLeftMs(ctx) < PUSH_MIN_REMAINING_MS) {
+        state.budgetStopped = true;
+        state.passComplete = false;
+      } else {
+        await runPhase("inventory_push", async () => {
+          const r = await pushInventory(ctx);
+          stats.inventory_pushed = r.pushed;
+          if (r.stoppedByDeadline) {
+            state.budgetStopped = true;
+            state.passComplete = false;
+          }
+          log19.info(`${label} inventory pushed`, { runId, checked: r.checked, changed: r.changed, pushed: r.pushed, failed: r.failed, refusedSharedSku: r.refusedSharedSku });
+        });
+      }
+    }
+  } catch (e) {
+    const d = describeError(e);
+    const entry = { code: d.code, message: d.message, entityType: "run", entityRef: null, details: d.details };
+    errors.push(entry);
+    state.fatal = entry;
+    state.passComplete = false;
+    log19.error("run interrompu par une erreur inattendue", { runId, code: d.code, message: d.message });
   }
-  if (scope === "full" || scope === "orders") {
-    const window = computeOrdersWindow(connection.last_orders_cursor, startedAt);
-    const r = emptyOrdersResult();
-    log19.info(`${label} orders window`, { runId, since: window.since.toISOString(), until: window.until.toISOString(), initial: window.initial });
-    await runPhase("orders", async () => {
-      await syncOrders(ctx, window, r, options.orders);
-      log19.info(`${label} orders synced`, { runId, fetched: r.fetched, created: r.created, updated: r.updated, itemsUnmapped: r.itemsUnmapped, movements: r.movements, failed: r.failed, invalid: r.invalid, truncated: r.truncated, pages: r.pages });
-    });
-    stats.orders_fetched = r.fetched;
-    stats.orders_created = r.created;
-    stats.orders_updated = r.updated;
-    stats.items_unmapped = r.itemsUnmapped;
-    stats.inventory_changes = r.movements;
-    state.newCursor = resolveOrdersCursor(window, r, connection.last_orders_cursor);
-  }
-  if (scope === "full" && connection.push_inventory) {
-    await runPhase("inventory_push", async () => {
-      const r = await pushInventory(ctx);
-      stats.inventory_pushed = r.pushed;
-      log19.info(`${label} inventory pushed`, { runId, checked: r.checked, changed: r.changed, pushed: r.pushed, failed: r.failed });
-    });
+  if (state.budgetStopped && !state.fatal) {
+    errors.unshift({ code: BUDGET_REACHED_CODE, message: BUDGET_REACHED_MESSAGE, entityType: "run", entityRef: null, details: { budgetMs: deadlineAt - startedMs, progress } });
   }
   stats.errors = errors.length;
+  const finishedMs = clock();
   const finishedAt = /* @__PURE__ */ new Date();
-  const durationMs = finishedAt.getTime() - startedAt.getTime();
-  const status = state.fatal || state.phasesCompleted === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
+  const durationMs = Math.max(0, finishedMs - startedMs);
+  const status = state.fatal ? "failed" : state.budgetStopped ? "partial" : state.phasesCompleted === 0 ? "failed" : errors.length > 0 ? "partial" : "success";
   const errorSummary = errors.length === 0 ? null : sanitizeMessage(`${errors[0]?.message ?? "Erreur"}${errors.length > 1 ? ` (+${errors.length - 1} autre(s))` : ""}`, 1e3);
   for (const part2 of chunk2(errors, 200)) {
     const { error } = await admin.from("sync_errors").insert(
@@ -27548,11 +27902,11 @@ async function runChannelSync(connectionId, options) {
     records_processed: stats.listings_fetched + stats.orders_fetched,
     error_count: errors.length,
     error_summary: errorSummary,
-    stats
+    stats: { ...stats, budget_reached: state.budgetStopped, pass_complete: state.passComplete, progress }
   }).eq("id", runId);
   if (finishError) log19.error("impossible de finaliser le run", { runId, error: finishError.message });
   const connectionPatch = { last_error: errorSummary };
-  if (options.trigger !== "webhook") connectionPatch.last_sync_at = finishedAt.toISOString();
+  if (options.trigger !== "webhook" && state.passComplete && !state.budgetStopped && !state.fatal) connectionPatch.last_sync_at = finishedAt.toISOString();
   if (status === "success") connectionPatch.last_successful_sync_at = finishedAt.toISOString();
   if (state.newCursor) connectionPatch.last_orders_cursor = state.newCursor.toISOString();
   if (state.authExpired) {
@@ -27585,8 +27939,37 @@ async function runChannelSync(connectionId, options) {
       actionHref: `/settings/sync/${runId}`
     });
   }
-  log19.info(`${label} sync finished`, { runId, status, durationMs, ...stats });
-  return { runId, status, stats, durationMs, errorSummary, connectionId: connection.id };
+  log19.info(`${label} sync finished`, { runId, status, durationMs, budgetReached: state.budgetStopped, passComplete: state.passComplete, ...stats });
+  return { runId, status, stats, durationMs, errorSummary, connectionId: connection.id, stoppedByBudget: state.budgetStopped };
+}
+function pushBlockers(orders, ordersPhaseOk) {
+  if (!orders) return ["l'import des commandes n'a pas pu \xEAtre lanc\xE9 pendant ce run"];
+  const reasons = [];
+  if (!ordersPhaseOk) reasons.push("l'import des commandes a \xE9chou\xE9");
+  if (orders.stoppedByDeadline) reasons.push("l'import des commandes a \xE9t\xE9 interrompu (budget de temps)");
+  if (orders.truncated) reasons.push("l'import des commandes a \xE9t\xE9 tronqu\xE9");
+  if (orders.failed > 0) reasons.push(`${orders.failed} commande(s) n'ont pas pu \xEAtre import\xE9es`);
+  if (orders.invalid > 0) reasons.push(`${orders.invalid} commande(s) illisible(s)`);
+  if (!orders.windowComplete && reasons.length === 0) reasons.push("la fen\xEAtre de commandes n'a pas \xE9t\xE9 lue en entier");
+  return reasons;
+}
+async function reportOrdersBlocked(ctx, r, label) {
+  const key2 = ordersBlockedKey(ctx.connection.id);
+  if (r.invalid > 0) {
+    await upsertAlert(ctx.admin, {
+      organizationId: ctx.organizationId,
+      type: "sync_orders_blocked",
+      severity: "warning",
+      title: `Commandes ${label} illisibles : import bloqu\xE9`,
+      message: `${r.invalid} commande(s) ${label} n'ont pas pu \xEAtre lues (format inattendu). L'import des commandes ne d\xE9passe pas leur date tant qu'elles ne sont pas import\xE9es ; l'envoi des quantit\xE9s vers ${label} est suspendu. Consultez l'historique des synchronisations.`,
+      dedupeKey: key2,
+      entityType: "channel_connection",
+      entityId: ctx.connection.id,
+      actionHref: "/settings/sync"
+    });
+  } else if (r.windowComplete && r.failed === 0) {
+    await resolveAlerts(ctx.admin, ctx.organizationId, [key2]);
+  }
 }
 async function guardConcurrency(admin, connection) {
   const { data: running, error } = await admin.from("sync_runs").select("id, started_at").eq("source_ref", connection.id).eq("status", "running").order("started_at", { ascending: false }).limit(5);
@@ -27601,7 +27984,7 @@ async function guardConcurrency(admin, connection) {
     staleIds.push(r.id);
   }
   if (staleIds.length > 0) {
-    await admin.from("sync_runs").update({ status: "failed", finished_at: (/* @__PURE__ */ new Date()).toISOString(), error_summary: `Run interrompu (aucune fin enregistr\xE9e apr\xE8s ${RUNNING_STALE_MINUTES2} min).` }).in("id", staleIds);
+    await admin.from("sync_runs").update({ status: "failed", finished_at: (/* @__PURE__ */ new Date()).toISOString(), error_summary: `Run interrompu (aucune fin enregistr\xE9e apr\xE8s ${RUNNING_STALE_MINUTES2} min).` }).in("id", staleIds).eq("status", "running");
     log19.warn("runs interrompus marqu\xE9s en \xE9chec", { connectionId: connection.id, count: staleIds.length });
   }
 }
@@ -27665,6 +28048,8 @@ async function syncConnectionNow(ctx, connectionId, options) {
 // src/features/integrations/oauth-flow.ts
 function oauthErrorCodeFor(e) {
   const code = typeof e === "object" && e !== null && "code" in e ? String(e.code) : "";
+  const reason = typeof e === "object" && e !== null && "details" in e ? e.details?.reason : void 0;
+  if (code === "CONFLICT" && reason === "ACCOUNT_LINKED_ELSEWHERE") return "account_in_use";
   switch (code) {
     case "AUTH_EXPIRED":
       return "exchange_denied";
@@ -27697,15 +28082,15 @@ init_connection_store();
 
 // src/integrations/ebay/webhook-verify.ts
 import { createHash as createHash6, createVerify } from "node:crypto";
-import { z as z27 } from "npm:zod@4.6.5";
+import { z as z29 } from "npm:zod@4.6.5";
 function computeChallengeResponse(challengeCode, verificationToken, endpointUrl) {
   return createHash6("sha256").update(challengeCode).update(verificationToken).update(endpointUrl).digest("hex");
 }
-var ebaySignatureHeaderSchema = z27.object({
-  alg: z27.string().optional(),
-  kid: z27.string().min(1),
-  signature: z27.string().min(1),
-  digest: z27.string().optional()
+var ebaySignatureHeaderSchema = z29.object({
+  alg: z29.string().optional(),
+  kid: z29.string().min(1),
+  signature: z29.string().min(1),
+  digest: z29.string().optional()
 });
 function parseSignatureHeader(header2) {
   if (!header2) return null;
@@ -27717,10 +28102,10 @@ function parseSignatureHeader(header2) {
     return null;
   }
 }
-var ebayPublicKeySchema = z27.object({
-  key: z27.string().min(1),
-  algorithm: z27.string().optional(),
-  digest: z27.string().optional()
+var ebayPublicKeySchema = z29.object({
+  key: z29.string().min(1),
+  algorithm: z29.string().optional(),
+  digest: z29.string().optional()
 });
 function formatPem(key2) {
   const trimmed = key2.trim();
@@ -27758,14 +28143,14 @@ function verifyNotificationSignature(rawBody, header2, publicKey) {
     return false;
   }
 }
-var ebayNotificationSchema = z27.object({
-  metadata: z27.object({ topic: z27.string().min(1), schemaVersion: z27.string().optional(), deprecated: z27.boolean().optional() }),
-  notification: z27.object({
-    notificationId: z27.string().min(1).optional(),
-    eventDate: z27.string().optional(),
-    publishDate: z27.string().optional(),
-    publishAttemptCount: z27.number().optional(),
-    data: z27.record(z27.string(), z27.unknown()).optional()
+var ebayNotificationSchema = z29.object({
+  metadata: z29.object({ topic: z29.string().min(1), schemaVersion: z29.string().optional(), deprecated: z29.boolean().optional() }),
+  notification: z29.object({
+    notificationId: z29.string().min(1).optional(),
+    eventDate: z29.string().optional(),
+    publishDate: z29.string().optional(),
+    publishAttemptCount: z29.number().optional(),
+    data: z29.record(z29.string(), z29.unknown()).optional()
   })
 });
 function notificationEventId(notification, payloadHash) {
@@ -27861,6 +28246,7 @@ var WEBHOOK_CONFLICT_RETRIES = 2;
 var WEBHOOK_CONFLICT_WAIT_MS = 1e4;
 var WEBHOOK_ORDERS_MAX_PAGES = 20;
 var WEBHOOK_ABANDONED_MS = 10 * 6e4;
+var WEBHOOK_SYNC_FINALIZE_MARGIN_MS = 5e3;
 var WEBHOOK_DEADLINE_MESSAGE = `Traitement interrompu : d\xE9lai maximal de ${WEBHOOK_ROUTE_MAX_DURATION_S} s atteint avant la fin de la synchronisation. Les commandes et annonces concern\xE9es seront reprises par la prochaine synchronisation planifi\xE9e (le curseur de commandes n\u2019avance que sur des donn\xE9es lues).`;
 var DELETED_ACCOUNT_LABEL = "[compte eBay supprim\xE9]";
 function json(body, status = 200) {
@@ -28056,7 +28442,7 @@ async function runWithConflictRetry(deps, connectionId, scope, deadlineAt) {
   const wait = deps.conflictWaitMs ?? WEBHOOK_CONFLICT_WAIT_MS;
   for (let attempt = 0; ; attempt++) {
     try {
-      const r = await deps.runSync(connectionId, { trigger: "webhook", scope, ...scope === "orders" ? { orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } } : {} });
+      const r = await deps.runSync(connectionId, { trigger: "webhook", scope, deadlineAt: deadlineAt - WEBHOOK_SYNC_FINALIZE_MARGIN_MS, ...scope === "orders" ? { orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } } : {} });
       return { ok: true, runId: r.runId, status: r.status };
     } catch (e) {
       const conflict = e instanceof AppError && e.code === "CONFLICT";
@@ -28068,6 +28454,56 @@ async function runWithConflictRetry(deps, connectionId, scope, deadlineAt) {
       return { ok: false, conflict: false, message: toUserMessage(e) };
     }
   }
+}
+async function recoverAbandonedWebhookEvents(admin, options = {}) {
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const cutoff = new Date(now.getTime() - WEBHOOK_ABANDONED_MS).toISOString();
+  const { data: stale, error: selectError } = await admin.from("webhook_events").select("id").eq("provider", "ebay").eq("status", "received").lt("received_at", cutoff).order("received_at", { ascending: true }).limit(options.limit ?? 100);
+  if (selectError) throw new Error(`lecture des notifications abandonn\xE9es impossible : ${selectError.message}`);
+  if (!stale || stale.length === 0) return { recovered: 0, connections: [] };
+  const { data: claimed, error } = await admin.from("webhook_events").update({
+    status: "failed",
+    processed_at: now.toISOString(),
+    error: `Traitement interrompu (aucune issue enregistr\xE9e ${Math.round(WEBHOOK_ABANDONED_MS / 6e4)} min apr\xE8s la r\xE9ception) : synchronisation de rattrapage lanc\xE9e par le cron.`
+  }).in(
+    "id",
+    stale.map((r) => r.id)
+  ).eq("status", "received").lt("received_at", cutoff).select("id, event_type, connection_id, payload");
+  if (error) throw new Error(`reprise des notifications abandonn\xE9es impossible : ${error.message}`);
+  const scopes = /* @__PURE__ */ new Map();
+  const add = (id, topic) => {
+    if (!/ORDER|ITEM|LISTING|OFFER|INVENTORY/i.test(topic)) return;
+    const s = /ORDER/i.test(topic) ? "orders" : "listings";
+    const prev = scopes.get(id);
+    scopes.set(id, prev && prev !== s ? "full" : s);
+  };
+  const candidates = /* @__PURE__ */ new Set();
+  for (const e of claimed ?? []) {
+    log20.warn("notification abandonn\xE9e reprise par le cron", { eventRowId: e.id, topic: e.event_type });
+    const ids = /* @__PURE__ */ new Set();
+    if (e.connection_id) ids.add(e.connection_id);
+    const data = e.payload?.notification?.data ?? {};
+    if (options.findConnections) {
+      const userId = typeof data.userId === "string" && data.userId ? data.userId : null;
+      const username = typeof data.username === "string" && data.username ? data.username : null;
+      if (userId || username) {
+        try {
+          for (const c of await options.findConnections({ userId, username })) ids.add(c.id);
+        } catch (err) {
+          log20.warn("connexions de la notification abandonn\xE9e introuvables", { eventRowId: e.id, reason: toUserMessage(err) });
+        }
+      }
+    }
+    for (const id of ids) {
+      candidates.add(id);
+      add(id, e.event_type);
+    }
+  }
+  if (candidates.size === 0) return { recovered: claimed?.length ?? 0, connections: [] };
+  const { data: activeRows, error: connError } = await admin.from("channel_connections").select("id").in("id", [...candidates]).in("status", ["connected", "error"]);
+  if (connError) throw new Error(`lecture des connexions impossible : ${connError.message}`);
+  const connections = (activeRows ?? []).filter((c) => scopes.has(c.id)).map((c) => ({ id: c.id, scope: scopes.get(c.id) }));
+  return { recovered: claimed?.length ?? 0, connections };
 }
 async function handleAccountDeletion(admin, account, connections) {
   const fail2 = (step, message) => {
@@ -28113,6 +28549,91 @@ async function handleAccountDeletion(admin, account, connections) {
   return { ordersAnonymized, eventsPurged, connectionsDisconnected: connections.length };
 }
 
+// src/services/sync/cron.ts
+init_empty();
+init_admin();
+init_errors();
+init_logger();
+init_connection_store();
+var log21 = createLogger("CRON");
+var EDGE_CRON_SYNC_BUDGET_MS = 1e5;
+var CRON_MIN_RUN_START_MS = 2e4;
+var OTHER_RUNS_STALE_MINUTES = 30;
+var ABANDONED_RUN_MESSAGE = (minutes) => `Run interrompu (aucune fin enregistr\xE9e apr\xE8s ${minutes} min) : marqu\xE9 en \xE9chec par le nettoyage planifi\xE9.`;
+async function reapAbandonedSyncRuns(admin, now = /* @__PURE__ */ new Date()) {
+  const channelCutoff = new Date(now.getTime() - RUNNING_STALE_MINUTES2 * 6e4).toISOString();
+  const otherCutoff = new Date(now.getTime() - OTHER_RUNS_STALE_MINUTES * 6e4).toISOString();
+  const finishedAt = now.toISOString();
+  const { data: channel, error: channelError } = await admin.from("sync_runs").update({ status: "failed", finished_at: finishedAt, error_summary: ABANDONED_RUN_MESSAGE(RUNNING_STALE_MINUTES2) }).eq("status", "running").eq("source_kind", "channel").lt("started_at", channelCutoff).select("id");
+  if (channelError) throw new Error(`nettoyage des runs de synchronisation impossible : ${channelError.message}`);
+  const { data: other, error: otherError } = await admin.from("sync_runs").update({ status: "failed", finished_at: finishedAt, error_summary: ABANDONED_RUN_MESSAGE(OTHER_RUNS_STALE_MINUTES) }).eq("status", "running").in("source_kind", ["supplier_feed", "supplier_source", "supplier_connection", "sourcing_alerts", "fx_rates"]).lt("started_at", otherCutoff).select("id");
+  if (otherError) throw new Error(`nettoyage des runs fournisseurs impossible : ${otherError.message}`);
+  const result = { channel: channel?.length ?? 0, other: other?.length ?? 0 };
+  if (result.channel + result.other > 0) log21.warn("runs abandonn\xE9s marqu\xE9s en \xE9chec", result);
+  return result;
+}
+function defaultDeps(overrides) {
+  return {
+    admin: overrides.admin ?? createAdminSupabaseClient(),
+    listDue: (now) => listDueConnections(now),
+    recover: (admin) => recoverAbandonedWebhookEvents(admin, { findConnections: (account) => findConnectionsByExternalAccount("ebay", account) }),
+    runSync: (connectionId, options) => runChannelSync(connectionId, options),
+    reap: (admin, now) => reapAbandonedSyncRuns(admin, now),
+    clock: Date.now
+  };
+}
+async function runSyncCron(options, overrides = {}) {
+  const deps = { ...defaultDeps(overrides), ...overrides };
+  const startedAt = deps.clock();
+  const deadlineAt = startedAt + options.budgetMs;
+  let abandonedRuns = null;
+  try {
+    abandonedRuns = await deps.reap(deps.admin, new Date(startedAt));
+  } catch (e) {
+    log21.error("nettoyage des runs abandonn\xE9s impossible", { message: toUserMessage(e) });
+  }
+  const due = await deps.listDue(new Date(startedAt));
+  const recoveryJobs = [];
+  let webhookRecovered = 0;
+  try {
+    const recovery = await deps.recover(deps.admin);
+    webhookRecovered = recovery.recovered;
+    const dueIds = new Set(due.map((c) => c.id));
+    for (const c of recovery.connections) {
+      if (!dueIds.has(c.id)) recoveryJobs.push({ id: c.id, provider: "ebay", trigger: "webhook", scope: c.scope });
+    }
+    if (recovery.recovered > 0) log21.warn("notifications eBay abandonn\xE9es reprises", { recovered: recovery.recovered, connections: recovery.connections.length });
+  } catch (e) {
+    log21.error("reprise des notifications eBay abandonn\xE9es impossible", { message: toUserMessage(e) });
+  }
+  const jobs = [...recoveryJobs, ...due.map((c) => ({ id: c.id, provider: c.provider, trigger: "scheduled" }))];
+  const results = [];
+  for (const job of jobs) {
+    if (deadlineAt - deps.clock() < CRON_MIN_RUN_START_MS) {
+      results.push({ connectionId: job.id, provider: job.provider, status: "deferred", error: "Report\xE9 au prochain passage du cron (budget de temps atteint)." });
+      continue;
+    }
+    try {
+      const r = await deps.runSync(job.id, { trigger: job.trigger, deadlineAt, ...job.scope ? { scope: job.scope } : {} });
+      results.push({ connectionId: job.id, provider: job.provider, runId: r.runId, status: r.status, durationMs: r.durationMs, stats: r.stats, errorSummary: r.errorSummary, stoppedByBudget: r.stoppedByBudget });
+    } catch (e) {
+      results.push({ connectionId: job.id, provider: job.provider, status: "skipped", error: toUserMessage(e) });
+    }
+  }
+  const summary = {
+    ok: true,
+    due: due.length,
+    webhookRecovered,
+    abandonedRuns,
+    synced: results.filter((r) => r.runId).length,
+    deferred: results.filter((r) => r.status === "deferred").length,
+    durationMs: deps.clock() - startedAt,
+    results
+  };
+  log21.info("cron de synchronisation termin\xE9", { due: summary.due, synced: summary.synced, deferred: summary.deferred, webhookRecovered, durationMs: summary.durationMs });
+  return summary;
+}
+
 // src/services/sourcing/sync.ts
 init_empty();
 init_logger();
@@ -28123,13 +28644,13 @@ init_empty();
 init_admin();
 init_errors();
 init_logger();
-import { z as z30 } from "npm:zod@4.6.5";
+import { z as z32 } from "npm:zod@4.6.5";
 init_feed_ingestion();
 init_supplier_connectors();
 init_catalog_import();
 init_adapter_runtime();
 init_registry();
-var log22 = createLogger("SOURCE_SYNC");
+var log23 = createLogger("SOURCE_SYNC");
 var MANUAL_SYNC_COOLDOWN_MS = 2 * 6e4;
 var SOURCE_COLUMNS = "id, organization_id, supplier_id, name, source_type, base_url, country, config, automated_access_confirmed, sync_frequency, status, last_sync_at, last_successful_sync_at, last_error, next_run_at, consecutive_failures";
 function kindOf(s, hasUrlFeed, hasConnection) {
@@ -28229,14 +28750,14 @@ async function runScheduledSources(now = /* @__PURE__ */ new Date(), admin = cre
     await recordSourceOutcome(admin, { sourceId: source2.id, organizationId: source2.organization_id, sourceName: source2.name, frequency: source2.sync_frequency, previousFailures: source2.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
     out.push({ sourceId: source2.id, status: outcome.status, message: outcome.message });
   }
-  log22.info("scheduled sources", { due: sources.length, ran: out.length });
+  log23.info("scheduled sources", { due: sources.length, ran: out.length });
   return out;
 }
-var sourceScheduleSchema = z30.object({
-  sourceId: z30.string().uuid(),
-  frequency: z30.enum(["manual", "hourly", "every_6_hours", "daily", "weekly"]).optional(),
+var sourceScheduleSchema = z32.object({
+  sourceId: z32.string().uuid(),
+  frequency: z32.enum(["manual", "hourly", "every_6_hours", "daily", "weekly"]).optional(),
   /** désactiver (pause) / réactiver la source */
-  enabled: z30.boolean().optional()
+  enabled: z32.boolean().optional()
 });
 async function setSourceSchedule(ctx, input, admin = createAdminSupabaseClient(), now = /* @__PURE__ */ new Date()) {
   const { data, error } = await ctx.supabase.from("supplier_sources").select(SOURCE_COLUMNS).eq("organization_id", ctx.organization.id).eq("id", input.sourceId).maybeSingle();
@@ -28317,7 +28838,7 @@ init_empty();
 init_admin();
 init_logger();
 init_query_parser();
-import { z as z31 } from "npm:zod@4.6.5";
+import { z as z33 } from "npm:zod@4.6.5";
 
 // src/domain/sourcing/opportunities.ts
 init_validation();
@@ -28375,16 +28896,16 @@ function detectOpportunities(offer, priceHistory, stockHistory, now = /* @__PURE
 // src/services/sourcing/alerts.ts
 init_offer_query();
 init_sync_runs();
-var log23 = createLogger("SOURCING_ALERTS");
-var alertCriteriaSchema = z31.object({
-  max_price: z31.number().positive().optional(),
-  min_quantity: z31.number().int().min(0).optional(),
-  countries: z31.array(z31.string().length(2)).optional(),
-  max_moq: z31.number().int().min(1).optional(),
-  grades: z31.array(z31.string().max(5)).optional(),
-  condition: z31.enum(["new", "refurbished", "used"]).optional(),
-  max_delivery_days: z31.number().int().min(0).optional(),
-  supplier_id: z31.string().uuid().optional()
+var log24 = createLogger("SOURCING_ALERTS");
+var alertCriteriaSchema = z33.object({
+  max_price: z33.number().positive().optional(),
+  min_quantity: z33.number().int().min(0).optional(),
+  countries: z33.array(z33.string().length(2)).optional(),
+  max_moq: z33.number().int().min(1).optional(),
+  grades: z33.array(z33.string().max(5)).optional(),
+  condition: z33.enum(["new", "refurbished", "used"]).optional(),
+  max_delivery_days: z33.number().int().min(0).optional(),
+  supplier_id: z33.string().uuid().optional()
 });
 function criteriaToFilters(c) {
   return { maxPrice: c.max_price, minQuantity: c.min_quantity, countries: c.countries, maxMoq: c.max_moq, grades: c.grades, condition: c.condition, maxDeliveryDays: c.max_delivery_days, supplierId: c.supplier_id };
@@ -28471,7 +28992,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
         totalAlerts++;
       } catch (e) {
         errors++;
-        log23.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
+        log24.warn("alert evaluation failed", { alertId: a.id, error: e instanceof Error ? e.message : String(e) });
       }
     }
     totalEvents += events;
@@ -28481,7 +29002,7 @@ async function evaluateSourcingAlerts(now = /* @__PURE__ */ new Date(), admin = 
 }
 
 // src/services/sourcing/sync.ts
-var log24 = createLogger("SOURCING_SYNC");
+var log25 = createLogger("SOURCING_SYNC");
 async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
   const startedAt = now.toISOString();
   let fx = { ok: false, date: null, count: 0, error: null };
@@ -28490,23 +29011,23 @@ async function runSourcingSync(now = /* @__PURE__ */ new Date()) {
     fx = { ok: true, date: r.date, count: r.count, error: null };
   } catch (e) {
     fx = { ok: false, date: null, count: 0, error: e instanceof Error ? e.message : String(e) };
-    log24.warn("fx refresh failed", { error: fx.error });
+    log25.warn("fx refresh failed", { error: fx.error });
   }
   let sources = [];
   try {
     sources = await runScheduledSources(now);
   } catch (e) {
-    log24.error("scheduled sources failed", { error: e instanceof Error ? e.message : String(e) });
+    log25.error("scheduled sources failed", { error: e instanceof Error ? e.message : String(e) });
   }
   let alerts;
   try {
     alerts = await evaluateSourcingAlerts(now);
   } catch (e) {
     alerts = { error: e instanceof Error ? e.message : String(e) };
-    log24.error("alerts evaluation failed", { error: alerts.error });
+    log25.error("alerts evaluation failed", { error: alerts.error });
   }
   const summary = { startedAt, finishedAt: (/* @__PURE__ */ new Date()).toISOString(), fx, sources, alerts };
-  log24.info("sourcing sync finished", { fx: fx.ok, sources: sources.length });
+  log25.info("sourcing sync finished", { fx: fx.ok, sources: sources.length });
   return summary;
 }
 
@@ -28771,7 +29292,7 @@ init_supplier_registry();
 init_supplier_directory2();
 init_core();
 init_supplier_connectors();
-var log26 = createLogger("PRO_ACCOUNTS");
+var log27 = createLogger("PRO_ACCOUNTS");
 function proStatusOf(input) {
   if (input.connection?.status === "connected" || input.accountOffers > 0) return "connected";
   if (input.connection?.status === "error" || input.connection?.status === "expired") return "error";
@@ -28879,7 +29400,7 @@ async function connectProAccount(ctx, input) {
   }
   const supplierId = await ensureSupplierFor(ctx, spec.key);
   const connectionId = await createSupplierConnection({ organizationId: ctx.organization.id, supplierId, connectorKey: descriptor.key, credentials });
-  log26.info("pro account connected", { orgId: ctx.organization.id, key: spec.key, connectionId });
+  log27.info("pro account connected", { orgId: ctx.organization.id, key: spec.key, connectionId });
   const test = await testSupplierConnection(connectionId);
   return { connectionId, ok: test.ok, message: test.ok ? `${test.message} Lancez une synchronisation pour r\xE9cup\xE9rer vos prix.` : test.message };
 }
@@ -28900,7 +29421,7 @@ async function disconnectProAccount(ctx, connectionId) {
   if (delErr) throw fromPostgrestError(delErr);
   const { error } = await admin.from("supplier_connections").update({ status: "disconnected", last_error: null }).eq("id", connectionId).eq("organization_id", ctx.organization.id);
   if (error) throw fromPostgrestError(error);
-  log26.info("pro account disconnected", { orgId: ctx.organization.id, connectionId });
+  log27.info("pro account disconnected", { orgId: ctx.organization.id, connectionId });
   return { message: "Compte d\xE9connect\xE9 : identifiants supprim\xE9s. Les offres d\xE9j\xE0 re\xE7ues restent dans l'historique." };
 }
 async function supplierOffers(ctx, supplierId, limit = 30) {
@@ -28939,17 +29460,17 @@ init_empty();
 init_query_parser();
 init_registry();
 init_robots();
-import { z as z36 } from "npm:zod@4.6.5";
-var adapterProbeSchema = z36.object({
-  probes: z36.array(
-    z36.object({
-      key: z36.string().min(1).max(80),
-      adapter: z36.string().min(1).max(40),
-      baseUrl: z36.string().url().max(300),
-      query: z36.string().min(2).max(80).default("iphone"),
-      mode: z36.enum(["search", "catalog"]).default("search"),
-      settings: z36.record(z36.string(), z36.unknown()).default({}),
-      currency: z36.string().length(3).optional()
+import { z as z38 } from "npm:zod@4.6.5";
+var adapterProbeSchema = z38.object({
+  probes: z38.array(
+    z38.object({
+      key: z38.string().min(1).max(80),
+      adapter: z38.string().min(1).max(40),
+      baseUrl: z38.string().url().max(300),
+      query: z38.string().min(2).max(80).default("iphone"),
+      mode: z38.enum(["search", "catalog"]).default("search"),
+      settings: z38.record(z38.string(), z38.unknown()).default({}),
+      currency: z38.string().length(3).optional()
     })
   ).min(1).max(8)
 });
@@ -29010,8 +29531,8 @@ init_http();
 init_feed_parsers();
 init_feed_ingestion();
 init_catalog_import();
-import { z as z37 } from "npm:zod@4.6.5";
-var urlSchema = z37.string().trim().max(2e3).refine((u) => {
+import { z as z39 } from "npm:zod@4.6.5";
+var urlSchema = z39.string().trim().max(2e3).refine((u) => {
   try {
     const parsed = assertPublicHttpUrl(u);
     return parsed.protocol === "https:";
@@ -29019,23 +29540,23 @@ var urlSchema = z37.string().trim().max(2e3).refine((u) => {
     return false;
   }
 }, "Adresse HTTPS publique requise (aucune adresse locale, interne ni identifiant dans l'URL).");
-var remoteFeedPreviewSchema = z37.object({
+var remoteFeedPreviewSchema = z39.object({
   url: urlSchema,
-  format: z37.enum(["csv", "xml", "json"]),
+  format: z39.enum(["csv", "xml", "json"]),
   auth: feedAuthSchema.default({ kind: "none" }),
   mapping: fieldMappingSchema.optional(),
   defaults: catalogDefaultsSchema.partial({ currency: true }).optional(),
-  rootPath: z37.string().max(200).optional()
+  rootPath: z39.string().max(200).optional()
 });
 var remoteFeedCreateSchema = remoteFeedPreviewSchema.extend({
   mapping: fieldMappingSchema,
   defaults: catalogDefaultsSchema,
-  supplierId: z37.string().uuid().optional(),
-  supplierName: z37.string().trim().min(2).max(160).optional(),
-  mode: z37.enum(["partial", "snapshot"]).default("snapshot"),
-  frequency: z37.enum(["manual", "hourly", "every_6_hours", "daily"]).default("daily"),
+  supplierId: z39.string().uuid().optional(),
+  supplierName: z39.string().trim().min(2).max(160).optional(),
+  mode: z39.enum(["partial", "snapshot"]).default("snapshot"),
+  frequency: z39.enum(["manual", "hourly", "every_6_hours", "daily"]).default("daily"),
   /** l'utilisateur atteste disposer de l'accord du fournisseur pour la lecture automatisée */
-  attest: z37.literal(true, { message: "Confirmez disposer de l'accord du fournisseur pour lire ce flux automatiquement." })
+  attest: z39.literal(true, { message: "Confirmez disposer de l'accord du fournisseur pour lire ce flux automatiquement." })
 }).refine((d) => Boolean(d.supplierId) !== Boolean(d.supplierName), { message: "Choisissez un fournisseur existant ou indiquez le nom d'un nouveau fournisseur." }).refine((d) => Boolean(d.mapping.title && d.mapping.price && (d.mapping.external_offer_id || d.mapping.supplier_sku || d.mapping.ean)), { message: "Associez au minimum la r\xE9f\xE9rence (ou l'EAN), la d\xE9signation et le prix." });
 async function fetchRemoteFeed(url, format, headers, fetchImpl, resolver) {
   const res = await fetchText(url, { userAgent: serverEnv().SOURCING_USER_AGENT, accept: FEED_ACCEPT[format], headers, fetchImpl, resolver, timeoutMs: 3e4 });
@@ -29141,7 +29662,7 @@ init_empty();
 init_errors();
 init_logger();
 import OpenAI from "npm:openai@7.23.0";
-var log28 = createLogger("AI_LLM");
+var log29 = createLogger("AI_LLM");
 var DEFAULT_AI_MODEL = "gpt-5.4-mini";
 function aiModel(env = process.env) {
   const m = env.OPENAI_MODEL?.trim();
@@ -29212,7 +29733,7 @@ function rejectedParam(e) {
   return null;
 }
 function logApiError(e, model, withTools) {
-  if (e instanceof OpenAI.APIError) log28.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
+  if (e instanceof OpenAI.APIError) log29.warn("requ\xEAte OpenAI refus\xE9e", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
 }
 function openAILlm(sdk2, model) {
   return {
@@ -29298,7 +29819,7 @@ function speakableText(raw, max = MAX_SPOKEN_CHARS) {
 // src/services/ai/speech.ts
 init_errors();
 init_logger();
-var log29 = createLogger("AI_SPEECH");
+var log30 = createLogger("AI_SPEECH");
 var TTS_DEFAULT_MODEL = "gpt-4o-mini-tts";
 var TTS_CHOICES = ["marin", "cedar"];
 var TTS_DEFAULT_VOICE = "marin";
@@ -29341,8 +29862,8 @@ async function synthesize(input, voice, deps, what) {
     return res.body ?? await res.arrayBuffer();
   } catch (e) {
     logApiError(e, model, false);
-    if (e instanceof AppError) log29.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
-    else log29.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+    if (e instanceof AppError) log30.warn("synth\xE8se vocale indisponible", { what, code: e.code, message: e.message });
+    else log30.warn("synth\xE8se vocale en \xE9chec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
     throw aiError(e);
   }
 }
@@ -29380,43 +29901,43 @@ async function enforceAiQuota(ctx, kind, now = /* @__PURE__ */ new Date(), admin
 
 // src/services/ai/product-draft.ts
 init_empty();
-import { z as z39 } from "npm:zod@4.6.5";
+import { z as z41 } from "npm:zod@4.6.5";
 
 // src/features/stock/product-form.ts
-import { z as z38 } from "npm:zod@4.6.5";
+import { z as z40 } from "npm:zod@4.6.5";
 var MAX_VARIANTS = 50;
 var PRODUCT_GRADES = ["A", "B", "C"];
 var PRODUCT_CATEGORIES = ["Smartphone", "Tablette", "Ordinateur", "Montre connect\xE9e", "Console", "Audio", "Accessoire", "Pi\xE8ce d\xE9tach\xE9e"];
 var CONDITION_LABEL = { new: "Neuf", refurbished: "Reconditionn\xE9", used: "Occasion", unknown: "Non pr\xE9cis\xE9" };
 var productFields = {
-  name: z38.string().trim().max(300).optional().or(z38.literal("")),
-  brand: z38.string().trim().max(120).optional().or(z38.literal("")),
-  model: z38.string().trim().max(160).optional().or(z38.literal("")),
-  category: z38.string().trim().max(120).optional().or(z38.literal("")),
-  description: z38.string().trim().max(5e3).optional().or(z38.literal(""))
+  name: z40.string().trim().max(300).optional().or(z40.literal("")),
+  brand: z40.string().trim().max(120).optional().or(z40.literal("")),
+  model: z40.string().trim().max(160).optional().or(z40.literal("")),
+  category: z40.string().trim().max(120).optional().or(z40.literal("")),
+  description: z40.string().trim().max(5e3).optional().or(z40.literal(""))
 };
 function blankToUndefined(v2) {
   if (typeof v2 !== "string") return v2;
   const t = v2.trim().replace(/\s/g, "").replace(",", ".");
   return t === "" ? void 0 : t;
 }
-var moneyInput = z38.preprocess(
+var moneyInput = z40.preprocess(
   blankToUndefined,
-  z38.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
+  z40.coerce.number({ error: "Montant invalide (ex. 429,90)." }).min(0, "Le montant ne peut pas \xEAtre n\xE9gatif.").max(MAX_MONEY, "Montant trop \xE9lev\xE9 (1 000 000 maximum).").optional()
 );
-var quantityInput = z38.preprocess(
+var quantityInput = z40.preprocess(
   blankToUndefined,
-  z38.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
+  z40.coerce.number({ error: "Quantit\xE9 invalide." }).int("Nombre entier attendu.").min(0, "La quantit\xE9 ne peut pas \xEAtre n\xE9gative.").max(MAX_QUANTITY, "Quantit\xE9 trop \xE9lev\xE9e (1 000 000 maximum).").optional()
 );
-var variantInputSchema = z38.object({
+var variantInputSchema = z40.object({
   ...variantFields,
-  grade: z38.union([z38.enum(PRODUCT_GRADES), z38.literal("")], { error: "Grade A, B ou C." }).optional(),
+  grade: z40.union([z40.enum(PRODUCT_GRADES), z40.literal("")], { error: "Grade A, B ou C." }).optional(),
   ...skuFields,
   cost_price: moneyInput,
   sale_price: moneyInput,
   initial_quantity: quantityInput
 });
-var variantsArraySchema = z38.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
+var variantsArraySchema = z40.array(variantInputSchema).min(1, "Ajoutez au moins une variante.").max(MAX_VARIANTS, `${MAX_VARIANTS} variantes maximum.`).superRefine((variants, ctx) => {
   for (const [i, message] of duplicateCodes(variants)) ctx.addIssue({ code: "custom", path: [i, "code"], message });
 });
 function duplicateCodes(variants) {
@@ -29431,10 +29952,10 @@ function duplicateCodes(variants) {
   });
   return out;
 }
-var productWithVariantsSchema = z38.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
+var productWithVariantsSchema = z40.object({ ...productFields, variants: variantsArraySchema }).superRefine((d, ctx) => {
   if (!productDisplayName(d)) ctx.addIssue({ code: "custom", path: ["name"], message: "Indiquez le nom du produit, ou au moins la marque et le mod\xE8le." });
 });
-var addVariantsSchema = z38.object({ product_id: z38.string().uuid(), variants: variantsArraySchema });
+var addVariantsSchema = z40.object({ product_id: z40.string().uuid(), variants: variantsArraySchema });
 function productDisplayName(d) {
   const name = d.name?.trim();
   if (name) return name;
@@ -29478,25 +29999,25 @@ var PRODUCT_DRAFT_JSON_SCHEMA = {
     notes: { type: "array", items: { type: "string" } }
   }
 };
-var money4 = z39.number().finite().min(0).max(1e6).nullable();
-var draftSchema = z39.object({
-  understood: z39.boolean(),
-  brand: z39.string().max(120).nullable(),
-  model: z39.string().max(160).nullable(),
-  name: z39.string().max(300).nullable(),
-  category: z39.string().max(120).nullable(),
-  variants: z39.array(
-    z39.object({
-      storage: z39.string().max(60).nullable(),
-      color: z39.string().max(60).nullable(),
-      grade: z39.enum(PRODUCT_GRADES).nullable(),
-      condition: z39.enum(CONDITIONS),
+var money4 = z41.number().finite().min(0).max(1e6).nullable();
+var draftSchema = z41.object({
+  understood: z41.boolean(),
+  brand: z41.string().max(120).nullable(),
+  model: z41.string().max(160).nullable(),
+  name: z41.string().max(300).nullable(),
+  category: z41.string().max(120).nullable(),
+  variants: z41.array(
+    z41.object({
+      storage: z41.string().max(60).nullable(),
+      color: z41.string().max(60).nullable(),
+      grade: z41.enum(PRODUCT_GRADES).nullable(),
+      condition: z41.enum(CONDITIONS),
       cost_price: money4,
       sale_price: money4,
-      initial_quantity: z39.number().int().min(0).max(1e6).nullable()
+      initial_quantity: z41.number().int().min(0).max(1e6).nullable()
     })
   ).max(MAX_VARIANTS),
-  notes: z39.array(z39.string().max(300)).max(10)
+  notes: z41.array(z41.string().max(300)).max(10)
 });
 function productDraftSystemPrompt(currency) {
   return [
@@ -29579,18 +30100,18 @@ function parseProductDraft(raw, transcript) {
 init_empty();
 init_errors();
 init_logger();
-import { z as z41 } from "npm:zod@4.6.5";
+import { z as z43 } from "npm:zod@4.6.5";
 
 // src/services/ai/assistant-tools.ts
 init_empty();
-import { z as z40 } from "npm:zod@4.6.5";
+import { z as z42 } from "npm:zod@4.6.5";
 var DAY = 864e5;
 var PAGE = 1e3;
 var MAX_ROWS = 5e3;
 var EXCLUDED_STATUSES = "(cancelled,refunded)";
-var daysSchema = z40.coerce.number().int().min(1).max(730).default(30);
-var limitSchema = (max, def) => z40.coerce.number().int().min(1).max(max).default(def);
-var textQuery = z40.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
+var daysSchema = z42.coerce.number().int().min(1).max(730).default(30);
+var limitSchema = (max, def) => z42.coerce.number().int().min(1).max(max).default(def);
+var textQuery = z42.string().max(80).optional().transform((s) => (s ? s.replace(/[%,()*\\"']/g, " ").replace(/\s+/g, " ").trim() : void 0) || void 0);
 function since(ctx, days) {
   return new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime() - days * DAY).toISOString();
 }
@@ -29612,11 +30133,11 @@ async function fetchAll(page2) {
   }
   return { rows, truncated: true };
 }
-var salesRankingInput = z40.object({
+var salesRankingInput = z42.object({
   days: daysSchema,
-  by: z40.enum(["units", "revenue"]).default("units"),
+  by: z42.enum(["units", "revenue"]).default("units"),
   limit: limitSchema(25, 10),
-  channel: z40.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
+  channel: z42.enum(["ebay", "amazon", "shopify", "woocommerce", "manual"]).optional(),
   query: textQuery
 });
 async function salesRanking(ctx, raw) {
@@ -29672,7 +30193,7 @@ async function salesRanking(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues. revenue = montant des lignes de commande (hors frais de port), par devise."
   };
 }
-var salesSummaryInput = z40.object({ days: daysSchema });
+var salesSummaryInput = z42.object({ days: daysSchema });
 async function salesSummary(ctx, raw) {
   const input = salesSummaryInput.parse(raw);
   const from = since(ctx, input.days * 2).slice(0, 10);
@@ -29702,9 +30223,9 @@ async function salesSummary(ctx, raw) {
     note: "Commandes annul\xE9es ou rembours\xE9es exclues ; jours sans vente non compt\xE9s dans activeDays."
   };
 }
-var stockInput = z40.object({
+var stockInput = z42.object({
   query: textQuery,
-  filter: z40.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
+  filter: z42.enum(["all", "in_stock", "low", "out_of_stock", "dormant", "best_sellers"]).default("all"),
   limit: limitSchema(40, 15)
 });
 async function stockSearch(ctx, raw) {
@@ -29745,7 +30266,7 @@ async function stockSearch(ctx, raw) {
     note: "stock_value = quantit\xE9 en stock \xD7 prix d'achat (null si prix d'achat inconnu). unit_margin = prix de vente \u2212 prix d'achat."
   };
 }
-var ordersInput = z40.object({ days: daysSchema, limit: limitSchema(30, 10), status: z40.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
+var ordersInput = z42.object({ days: daysSchema, limit: limitSchema(30, 10), status: z42.enum(["pending", "paid", "shipped", "delivered", "cancelled", "refunded", "unknown"]).optional() });
 async function recentOrders(ctx, raw) {
   const input = ordersInput.parse(raw);
   let q = ctx.supabase.from("orders").select("order_number, provider, status, placed_at, total, subtotal, shipping_total, tax_total, fee_total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, external_sku, external_listing_id, sku_id)").eq("organization_id", ctx.organizationId).gte("placed_at", since(ctx, input.days));
@@ -29778,11 +30299,11 @@ async function ebayAccount(ctx) {
     recentSyncErrors: errors.data ?? []
   };
 }
-var listingsInput = z40.object({
+var listingsInput = z42.object({
   query: textQuery,
-  status: z40.enum(["active", "ended", "unsold", "unknown"]).optional(),
-  onlyNotLinkedToStock: z40.boolean().default(false),
-  sort: z40.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
+  status: z42.enum(["active", "ended", "unsold", "unknown"]).optional(),
+  onlyNotLinkedToStock: z42.boolean().default(false),
+  sort: z42.enum(["quantity_sold", "price", "recent"]).default("quantity_sold"),
   limit: limitSchema(30, 10)
 });
 async function listingsSearch(ctx, raw) {
@@ -29883,15 +30404,15 @@ async function runAssistantTool(ctx, name, input) {
     const json2 = JSON.stringify(result);
     return { content: json2.length > MAX_RESULT_CHARS ? `${json2.slice(0, MAX_RESULT_CHARS)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false };
   } catch (e) {
-    if (e instanceof z40.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
+    if (e instanceof z42.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true };
   }
 }
 
 // src/services/ai/assistant.ts
-var log30 = createLogger("AI_ASSISTANT");
-var assistantRequestSchema = z41.object({
-  messages: z41.array(z41.object({ role: z41.enum(["user", "assistant"]), content: z41.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
+var log31 = createLogger("AI_ASSISTANT");
+var assistantRequestSchema = z43.object({
+  messages: z43.array(z43.object({ role: z43.enum(["user", "assistant"]), content: z43.string().trim().min(1).max(4e3) })).min(1).max(20).refine((m) => m[0]?.role === "user" && m[m.length - 1]?.role === "user", { message: "La conversation doit commencer et se terminer par une question." }).refine((m) => m.every((x, i) => i === 0 || x.role !== m[i - 1].role), { message: "Conversation invalide." })
 });
 var MAX_STEPS = 8;
 var ASSISTANT_DEADLINE_MS = 11e4;
@@ -29944,7 +30465,7 @@ async function askAssistant(ctx, request2, deps = {}) {
         calls.map(async (call) => {
           const r = await runAssistantTool(ctx, call.name, call.input);
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
-          if (r.isError) log30.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log31.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -29963,7 +30484,7 @@ init_logger();
 
 // src/services/ai/advisor-tools.ts
 init_empty();
-import { z as z46 } from "npm:zod@4.6.5";
+import { z as z48 } from "npm:zod@4.6.5";
 
 // src/services/ai/advisor-cards.ts
 function card(kind, title, rows, extra = {}) {
@@ -30287,22 +30808,22 @@ async function boxtalQuotes(req, env = process.env, now = /* @__PURE__ */ new Da
 init_empty();
 init_errors2();
 init_http2();
-import { z as z42 } from "npm:zod@4.6.5";
+import { z as z44 } from "npm:zod@4.6.5";
 var PACKLINK_BASE_URL = "https://api.packlink.com/v1/";
-var money5 = z42.union([z42.number(), z42.string()]).nullable().optional();
-var serviceSchema = z42.object({
-  id: z42.union([z42.number(), z42.string()]),
-  carrier_name: z42.string().nullable().optional(),
-  name: z42.string().nullable().optional(),
-  currency: z42.string().nullable().optional(),
-  price: z42.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
-  transit_time: z42.string().nullable().optional(),
-  transit_hours: z42.union([z42.number(), z42.string()]).nullable().optional(),
-  dropoff: z42.boolean().nullable().optional(),
-  delivery_to_parcelshop: z42.boolean().nullable().optional(),
-  category: z42.string().nullable().optional(),
-  first_estimated_delivery_date: z42.string().nullable().optional(),
-  customs_required: z42.boolean().nullable().optional()
+var money5 = z44.union([z44.number(), z44.string()]).nullable().optional();
+var serviceSchema = z44.object({
+  id: z44.union([z44.number(), z44.string()]),
+  carrier_name: z44.string().nullable().optional(),
+  name: z44.string().nullable().optional(),
+  currency: z44.string().nullable().optional(),
+  price: z44.object({ total_price: money5, base_price: money5, tax_price: money5 }).partial().nullable().optional(),
+  transit_time: z44.string().nullable().optional(),
+  transit_hours: z44.union([z44.number(), z44.string()]).nullable().optional(),
+  dropoff: z44.boolean().nullable().optional(),
+  delivery_to_parcelshop: z44.boolean().nullable().optional(),
+  category: z44.string().nullable().optional(),
+  first_estimated_delivery_date: z44.string().nullable().optional(),
+  customs_required: z44.boolean().nullable().optional()
 }).passthrough();
 function packlinkConfigured(env = process.env) {
   return Boolean(env.PACKLINK_API_KEY && env.PACKLINK_API_KEY.trim().length >= 10);
@@ -30387,27 +30908,27 @@ async function packlinkQuotes(req, env = process.env, now = /* @__PURE__ */ new 
 
 // src/integrations/shipping/sendcloud.ts
 init_empty();
-import { z as z43 } from "npm:zod@4.6.5";
+import { z as z45 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var SENDCLOUD_SHIPPING_OPTIONS_URL = "https://panel.sendcloud.sc/api/v3/shipping-options";
-var money6 = z43.object({ value: z43.union([z43.string(), z43.number()]).nullable().optional(), currency: z43.string().nullable().optional() }).passthrough();
-var optionSchema = z43.object({
-  code: z43.string().min(1),
-  name: z43.string().nullable().optional(),
-  carrier: z43.object({ code: z43.string().nullable().optional(), name: z43.string().nullable().optional() }).passthrough().nullable().optional(),
-  functionalities: z43.object({ tracked: z43.boolean().nullable().optional(), first_mile: z43.string().nullable().optional(), last_mile: z43.string().nullable().optional() }).passthrough().nullable().optional(),
-  requirements: z43.object({ fields: z43.array(z43.string()).nullable().optional(), is_service_point_required: z43.boolean().nullable().optional() }).passthrough().nullable().optional(),
-  quotes: z43.array(
-    z43.object({
-      price: z43.object({
+var money6 = z45.object({ value: z45.union([z45.string(), z45.number()]).nullable().optional(), currency: z45.string().nullable().optional() }).passthrough();
+var optionSchema = z45.object({
+  code: z45.string().min(1),
+  name: z45.string().nullable().optional(),
+  carrier: z45.object({ code: z45.string().nullable().optional(), name: z45.string().nullable().optional() }).passthrough().nullable().optional(),
+  functionalities: z45.object({ tracked: z45.boolean().nullable().optional(), first_mile: z45.string().nullable().optional(), last_mile: z45.string().nullable().optional() }).passthrough().nullable().optional(),
+  requirements: z45.object({ fields: z45.array(z45.string()).nullable().optional(), is_service_point_required: z45.boolean().nullable().optional() }).passthrough().nullable().optional(),
+  quotes: z45.array(
+    z45.object({
+      price: z45.object({
         total: money6.nullable().optional(),
-        breakdown: z43.array(z43.object({ type: z43.string().nullable().optional(), label: z43.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
+        breakdown: z45.array(z45.object({ type: z45.string().nullable().optional(), label: z45.string().nullable().optional(), price: money6.nullable().optional() }).passthrough()).nullable().optional()
       }).passthrough().nullable().optional(),
-      lead_time: z43.number().nullable().optional()
+      lead_time: z45.number().nullable().optional()
     }).passthrough()
   ).nullable().optional(),
-  quote_error: z43.unknown().optional()
+  quote_error: z45.unknown().optional()
 }).passthrough();
 var PICKUP_LAST_MILE = /* @__PURE__ */ new Set(["service_point", "locker", "locker_or_service_point"]);
 var REQUIREMENT_LABEL = {
@@ -30538,7 +31059,7 @@ async function sendcloudQuotes(req, env = process.env, now = /* @__PURE__ */ new
 
 // src/services/shipping/quotes.ts
 init_logger();
-var log31 = createLogger("SHIPPING");
+var log32 = createLogger("SHIPPING");
 var PROVIDERS = [
   { id: "packlink", label: "Packlink PRO", configured: packlinkConfigured, quote: async (req, env, now) => ({ quotes: await packlinkQuotes(req, env, now), excluded: 0 }) },
   { id: "boxtal", label: "Boxtal", configured: boxtalConfigured, quote: async (req, env, now) => ({ quotes: await boxtalQuotes(req, env, now), excluded: 0 }) },
@@ -30569,7 +31090,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
         return { status: { id: p.id, label: p.label, state: quotes.length ? "ok" : "no_result", message, count: quotes.length }, quotes };
       } catch (e) {
         const message = isConnectorError(e) ? e.message : "Erreur inattendue.";
-        log31.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
+        log32.warn("devis d'exp\xE9dition en \xE9chec", { provider: p.id, error: message });
         return { status: { id: p.id, label: p.label, state: "error", message, count: 0 }, quotes: [] };
       }
     })
@@ -30579,7 +31100,7 @@ async function quoteShipping(req, env = process.env, now = /* @__PURE__ */ new D
 
 // src/services/ai/advisor-actions.ts
 init_empty();
-import { z as z44 } from "npm:zod@4.6.5";
+import { z as z46 } from "npm:zod@4.6.5";
 
 // src/features/stock/movement-service.ts
 init_empty();
@@ -30632,7 +31153,7 @@ function stockErrorMessage(e) {
 }
 
 // src/features/stock/movement-service.ts
-var log32 = createLogger("STOCK");
+var log33 = createLogger("STOCK");
 async function applyManualMovement(ctx, d) {
   const signed = signedMovementQuantity(d);
   const { data, error } = await ctx.supabase.rpc("apply_inventory_movement", {
@@ -30647,7 +31168,7 @@ async function applyManualMovement(ctx, d) {
   });
   if (error) throw new AppError("VALIDATION", stockErrorMessage(error));
   const { data: sku } = await ctx.supabase.from("skus").select("code").eq("id", d.sku_id).eq("organization_id", ctx.organization.id).maybeSingle();
-  log32.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
+  log33.info("stock adjusted", { orgId: ctx.organization.id, skuId: d.sku_id, quantity: signed, type: d.type, after: data?.quantity_after });
   return { quantityAfter: data?.quantity_after ?? null, skuCode: sku?.code ?? null };
 }
 
@@ -30655,7 +31176,7 @@ async function applyManualMovement(ctx, d) {
 init_errors();
 init_logger();
 init_admin();
-var log33 = createLogger("AI_ADVISOR_ACTIONS");
+var log34 = createLogger("AI_ADVISOR_ACTIONS");
 var ACTION_TTL_MS = 10 * 6e4;
 var ACTION_COLUMNS = "id, organization_id, user_id, conversation_id, kind, sku_id, payload, summary, amount, currency, status, expires_at, result, error";
 function actionToDTO(r) {
@@ -30679,8 +31200,8 @@ async function prepareAdvisorAction(ctx, input) {
   if (error || !data) throw new Error(error?.message ?? "pr\xE9paration impossible");
   return actionToDTO(data);
 }
-var adjustPayload = z44.object({ change: z44.number().int(), reason: z44.enum(["receipt", "adjustment", "return", "correction"]), note: z44.string().nullable(), expectedAvailable: z44.number().int(), code: z44.string() });
-var pricePayload = z44.object({ newPrice: z44.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z44.number().nullable(), code: z44.string() });
+var adjustPayload = z46.object({ change: z46.number().int(), reason: z46.enum(["receipt", "adjustment", "return", "correction"]), note: z46.string().nullable(), expectedAvailable: z46.number().int(), code: z46.string() });
+var pricePayload = z46.object({ newPrice: z46.string().regex(/^\d+(\.\d{1,2})?$/), expectedPrice: z46.number().nullable(), code: z46.string() });
 async function finish(admin, id, status, patch, now) {
   const { data, error } = await admin.from("advisor_actions").update({ status, decided_at: now.toISOString(), result: patch.result ?? null, error: patch.error?.slice(0, 400) ?? null }).eq("id", id).select(ACTION_COLUMNS).single();
   if (error || !data) throw new AppError("INTERNAL", "R\xE9sultat de l'action non enregistr\xE9 : v\xE9rifiez l'\xE9tat dans l'application.");
@@ -30736,13 +31257,13 @@ async function decideAdvisorAction(ctx, actionId, decision, deps = {}) {
   try {
     const done = await execute(ctx, claimed);
     const final = await finish(admin, row2.id, "executed", { result: { message: done.message, ...done.result } }, now);
-    log33.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
+    log34.info("action du conseiller ex\xE9cut\xE9e", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e et ex\xE9cut\xE9e : ${done.message}`);
     return { action: actionToDTO(final), message: done.message };
   } catch (e) {
     const message = e instanceof AppError ? e.message : "Ex\xE9cution impossible : rien n'a \xE9t\xE9 modifi\xE9.";
     const final = await finish(admin, row2.id, "failed", { error: message }, now);
-    log33.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
+    log34.warn("action du conseiller en \xE9chec", { orgId: ctx.organization.id, actionId: row2.id, kind: row2.kind, error: message });
     await notice(ctx, row2.conversation_id, `Action confirm\xE9e mais non ex\xE9cut\xE9e : ${message}`);
     return { action: actionToDTO(final), message };
   }
@@ -30754,7 +31275,7 @@ init_errors2();
 init_registry2();
 init_config();
 init_identity();
-import { z as z45 } from "npm:zod@4.6.5";
+import { z as z47 } from "npm:zod@4.6.5";
 
 // src/integrations/ebay/insights-common.ts
 function rec(v2) {
@@ -31982,14 +32503,14 @@ function withEbay(run, requiredScope) {
     try {
       return await run(ctx, link, input);
     } catch (e) {
-      if (e instanceof z45.ZodError) throw e;
+      if (e instanceof z47.ZodError) throw e;
       return { result: ebayFailure(e), cards: [] };
     }
   };
 }
 var obj2 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
 var marketplaceProp = { type: "string", description: "Marketplace eBay (ex. EBAY_FR, EBAY_DE, EBAY_GB). D\xE9faut : EBAY_FR." };
-var marketplaceSchema = z45.string().trim().toUpperCase().regex(/^EBAY_[A-Z]{2}(_[A-Z]{2,10})?$/, "Marketplace eBay invalide (ex. EBAY_FR).").default(DEFAULT_MARKETPLACE);
+var marketplaceSchema = z47.string().trim().toUpperCase().regex(/^EBAY_[A-Z]{2}(_[A-Z]{2,10})?$/, "Marketplace eBay invalide (ex. EBAY_FR).").default(DEFAULT_MARKETPLACE);
 function fm(m, fallbackCurrency) {
   if (!m || m.value === null) return "\u2014";
   return money7(toCents(m.value) ?? 0, m.currency ?? fallbackCurrency);
@@ -32011,7 +32532,7 @@ function source(link, api, readAt, cached2) {
 function liveCard(kind, title, rows, readAt, extra = {}) {
   return card(kind, title, rows, { subtitle: `eBay, lu le ${readAtParis(readAt)}`, ...extra });
 }
-var orderInput = z45.object({ order: z45.string().trim().min(3).max(64) });
+var orderInput = z47.object({ order: z47.string().trim().min(3).max(64) });
 async function orderDetails(ctx, link, raw) {
   const { order } = orderInput.parse(raw);
   const ref = order.replace(/[^0-9A-Za-z!-]/g, "");
@@ -32068,11 +32589,11 @@ async function orderDetails(ctx, link, raw) {
   return { result, cards: [liveCard("list", `Commande eBay ${o.legacyOrderId ?? o.orderId ?? orderId}`, rows, details.readAt, { warnings: errors.slice(0, 3) })] };
 }
 var PAYMENT_STATUSES = ["PAID", "PENDING", "FAILED", "PARTIALLY_REFUNDED", "FULLY_REFUNDED"];
-var liveOrdersInput = z45.object({
-  days: z45.coerce.number().int().min(1).max(90).default(7),
-  payment: z45.enum(PAYMENT_STATUSES).optional(),
-  shipping: z45.enum(["all", "not_shipped", "shipped"]).default("all"),
-  limit: z45.coerce.number().int().min(1).max(30).default(15)
+var liveOrdersInput = z47.object({
+  days: z47.coerce.number().int().min(1).max(90).default(7),
+  payment: z47.enum(PAYMENT_STATUSES).optional(),
+  shipping: z47.enum(["all", "not_shipped", "shipped"]).default("all"),
+  limit: z47.coerce.number().int().min(1).max(30).default(15)
 });
 async function ordersLive(ctx, link, raw) {
   const input = liveOrdersInput.parse(raw);
@@ -32138,7 +32659,7 @@ function returnRow(p) {
   return row("Retours", value, payer ? `port retour pay\xE9 par ${payer}` : null);
 }
 async function accountOverview(ctx, link, raw) {
-  const { marketplace } = z45.object({ marketplace: marketplaceSchema }).parse(raw);
+  const { marketplace } = z47.object({ marketplace: marketplaceSchema }).parse(raw);
   const errors = [];
   const u = accountUrls(link.config, marketplace);
   const get = (key2, url, label) => live(link, `account:${key2}:${marketplace}`, () => restGet(link.auth, url, label, marketplace));
@@ -32191,7 +32712,7 @@ async function accountOverview(ctx, link, raw) {
   ]);
   return { result, cards: [liveCard("kpis", "Compte eBay", rows, readAt, { warnings: errors.slice(0, 3) })] };
 }
-var listingInput = z45.object({ itemId: z45.string().trim().max(32).optional(), query: z45.string().trim().max(80).optional() }).refine((v2) => Boolean(v2.itemId || v2.query), "Indiquez un num\xE9ro d'objet eBay (itemId) ou un mot du titre / SKU (query).");
+var listingInput = z47.object({ itemId: z47.string().trim().max(32).optional(), query: z47.string().trim().max(80).optional() }).refine((v2) => Boolean(v2.itemId || v2.query), "Indiquez un num\xE9ro d'objet eBay (itemId) ou un mot du titre / SKU (query).");
 async function listingDetails(ctx, link, raw) {
   const input = listingInput.parse(raw);
   let itemId = input.itemId?.replace(/\D/g, "") ?? "";
@@ -32228,7 +32749,7 @@ async function listingDetails(ctx, link, raw) {
   ];
   return { result, cards: [liveCard("list", item.title ?? `Annonce ${itemId}`, rows, res.readAt, { warnings: errors.slice(0, 2) })] };
 }
-var soldInput = z45.object({ days: z45.coerce.number().int().min(1).max(SOLD_UNSOLD_MAX_DAYS).default(30), limit: z45.coerce.number().int().min(1).max(30).default(15), show: z45.enum(["both", "sold", "unsold"]).default("both") });
+var soldInput = z47.object({ days: z47.coerce.number().int().min(1).max(SOLD_UNSOLD_MAX_DAYS).default(30), limit: z47.coerce.number().int().min(1).max(30).default(15), show: z47.enum(["both", "sold", "unsold"]).default("both") });
 async function soldUnsold(ctx, link, raw) {
   const input = soldInput.parse(raw);
   const res = await live(link, `trading:soldunsold:${input.days}`, () => fetchSoldUnsold(link.config, link.auth, { days: input.days, entriesPerPage: 100 }));
@@ -32249,7 +32770,7 @@ async function soldUnsold(ctx, link, raw) {
   return { result, cards };
 }
 async function feedback(_ctx, link, raw) {
-  const { limit } = z45.object({ limit: z45.coerce.number().int().min(1).max(25).default(10) }).parse(raw);
+  const { limit } = z47.object({ limit: z47.coerce.number().int().min(1).max(25).default(10) }).parse(raw);
   const errors = [];
   const [all, bad, profile] = await Promise.all([
     live(link, "trading:feedback", () => fetchFeedback(link.config, link.auth)),
@@ -32277,7 +32798,7 @@ async function feedback(_ctx, link, raw) {
   ];
   return { result, cards: [liveCard("list", "\xC9valuations eBay", rows, all.readAt, { warnings: errors.slice(0, 2) })] };
 }
-var messagesInput = z45.object({ days: z45.coerce.number().int().min(1).max(60).default(14), limit: z45.coerce.number().int().min(1).max(30).default(15), unreadOnly: z45.boolean().default(false) });
+var messagesInput = z47.object({ days: z47.coerce.number().int().min(1).max(60).default(14), limit: z47.coerce.number().int().min(1).max(30).default(15), unreadOnly: z47.boolean().default(false) });
 async function messages(ctx, link, raw) {
   const input = messagesInput.parse(raw);
   const to = new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime());
@@ -32310,7 +32831,7 @@ function questionAsksForMessageContent(question) {
   return words.some((w2) => triggers.test(w2));
 }
 async function messageBody(ctx, link, raw) {
-  const { messageId } = z45.object({ messageId: z45.string().trim().regex(EBAY_MESSAGE_ID, "Identifiant de message eBay invalide.") }).parse(raw);
+  const { messageId } = z47.object({ messageId: z47.string().trim().regex(EBAY_MESSAGE_ID, "Identifiant de message eBay invalide.") }).parse(raw);
   if (!questionAsksForMessageContent(ctx.question)) {
     return { result: { read: false, reason: "Le contenu d'un message n'est lu que si l'utilisateur le demande explicitement (\xAB que dit le message de\u2026 \xBB). Proposez-lui de le demander." }, cards: [] };
   }
@@ -32322,7 +32843,7 @@ async function messageBody(ctx, link, raw) {
     cards: [liveCard("draft", m.subject ?? "Message eBay", [row("De", m.sender ?? "?", day(m.receivedAt))], res.readAt, { text: m.body })]
   };
 }
-var financesInput = z45.object({ days: z45.coerce.number().int().min(1).max(90).default(30), limit: z45.coerce.number().int().min(0).max(30).default(10), marketplace: marketplaceSchema });
+var financesInput = z47.object({ days: z47.coerce.number().int().min(1).max(90).default(30), limit: z47.coerce.number().int().min(0).max(30).default(10), marketplace: marketplaceSchema });
 async function financesTool(ctx, link, raw) {
   const input = financesInput.parse(raw);
   const to = new Date((ctx.now ?? /* @__PURE__ */ new Date()).getTime());
@@ -32367,12 +32888,12 @@ async function financesTool(ctx, link, raw) {
   return { result, cards: [liveCard("kpis", "Finances eBay", rows, txs.readAt, { warnings: errors.slice(0, 2) })] };
 }
 var TRAFFIC_SORT = { impressions: "LISTING_IMPRESSION_TOTAL", views: "LISTING_VIEWS_TOTAL", transactions: "TRANSACTION", ctr: "CLICK_THROUGH_RATE", conversion: "SALES_CONVERSION_RATE" };
-var trafficInput = z45.object({
-  days: z45.coerce.number().int().min(1).max(90).default(30),
-  dimension: z45.enum(["LISTING", "DAY"]).default("LISTING"),
-  sort: z45.enum(["impressions", "views", "transactions", "ctr", "conversion"]).default("views"),
-  limit: z45.coerce.number().int().min(1).max(30).default(15),
-  itemIds: z45.array(z45.string().regex(EBAY_ITEM_ID)).max(20).optional(),
+var trafficInput = z47.object({
+  days: z47.coerce.number().int().min(1).max(90).default(30),
+  dimension: z47.enum(["LISTING", "DAY"]).default("LISTING"),
+  sort: z47.enum(["impressions", "views", "transactions", "ctr", "conversion"]).default("views"),
+  limit: z47.coerce.number().int().min(1).max(30).default(15),
+  itemIds: z47.array(z47.string().regex(EBAY_ITEM_ID)).max(20).optional(),
   marketplace: marketplaceSchema
 });
 async function traffic(ctx, link, raw) {
@@ -32413,7 +32934,7 @@ async function traffic(ctx, link, raw) {
   return { result, cards: [liveCard("list", `Trafic des annonces (${input.days} j)`, cardRows, res.readAt)] };
 }
 async function sellerStandards(ctx, link, raw) {
-  const { marketplace } = z45.object({ marketplace: marketplaceSchema }).parse(raw);
+  const { marketplace } = z47.object({ marketplace: marketplaceSchema }).parse(raw);
   const errors = [];
   const [profiles, ...metrics] = await Promise.all([
     live(link, "analytics:standards", async () => parseSellerStandards(await restGet(link.auth, `${link.config.apiBase}/sell/analytics/v1/seller_standards_profile`, "analytics:getSellerStandardsProfiles"))),
@@ -32430,7 +32951,7 @@ async function sellerStandards(ctx, link, raw) {
   return { result, cards: [liveCard("list", "Niveau vendeur eBay", rows, profiles.readAt, { warnings: errors.slice(0, 2) })] };
 }
 async function promotions(ctx, link, raw) {
-  const { marketplace } = z45.object({ marketplace: marketplaceSchema }).parse(raw);
+  const { marketplace } = z47.object({ marketplace: marketplaceSchema }).parse(raw);
   const u = marketingUrls(link.config, marketplace);
   const errors = [];
   const [campaignsRes, promosRes] = await Promise.all([
@@ -32602,8 +33123,8 @@ var EBAY_ADVISOR_TOOLS = {
 // src/services/ai/advisor-tools.ts
 var obj3 = (properties, required = []) => ({ type: "object", additionalProperties: false, properties, ...required.length ? { required } : {} });
 var periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "P\xE9riode (calendrier de Paris). \xAB this_week \xBB = depuis lundi, \xAB this_month \xBB = depuis le 1er. D\xE9faut : 30d." };
-var periodSchema = z46.enum(ADVISOR_PERIODS).default("30d");
-var skuRef = z46.string().trim().min(1).max(64);
+var periodSchema = z48.enum(ADVISOR_PERIODS).default("30d");
+var skuRef = z48.string().trim().min(1).max(64);
 var units = (n) => `${n} u.`;
 var signedPct = (r) => r === null ? null : `${r >= 0 ? "+" : ""}${percent(r)}`;
 async function loadSales(ctx, from, to) {
@@ -32649,7 +33170,7 @@ async function cancelledInPeriod(ctx, from, to) {
   }
   return out;
 }
-var reportInput = z46.object({ period: periodSchema });
+var reportInput = z48.object({ period: periodSchema });
 async function businessReport(ctx, raw) {
   const { period } = reportInput.parse(raw);
   const range = periodRange(period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -32676,7 +33197,7 @@ async function businessReport(ctx, raw) {
   if (cancels.cancelled || cancels.refunded) rows.push(row("Annul\xE9es / rembours\xE9es", `${cancels.cancelled} / ${cancels.refunded}`, `rembours\xE9 : ${money7(cancels.refundedCents, c)}`, "warning"));
   return { result, cards: [card("kpis", "Bilan des ventes", rows, { subtitle: range.label, warnings: p.missing.slice(0, 4) })] };
 }
-var profitInput = z46.object({ period: periodSchema, sort: z46.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z46.coerce.number().int().min(1).max(20).default(8) });
+var profitInput = z48.object({ period: periodSchema, sort: z48.enum(["profit", "revenue", "units", "margin"]).default("profit"), limit: z48.coerce.number().int().min(1).max(20).default(8) });
 async function productProfitability(ctx, raw) {
   const input = profitInput.parse(raw);
   const range = periodRange(input.period, ctx.now ?? /* @__PURE__ */ new Date());
@@ -32699,7 +33220,7 @@ async function productProfitability(ctx, raw) {
   );
   return { result, cards: [card("list", "Rentabilit\xE9 par produit", rows, { subtitle: range.label, warnings: unknown ? [`${unknown} produit(s) sans b\xE9n\xE9fice calculable (co\xFBt d'achat ou frais manquants).`] : [] })] };
 }
-var stockRiskInput = z46.object({ kind: z46.enum(["rupture", "dormant", "all"]).default("all"), limit: z46.coerce.number().int().min(1).max(20).default(8) });
+var stockRiskInput = z48.object({ kind: z48.enum(["rupture", "dormant", "all"]).default("all"), limit: z48.coerce.number().int().min(1).max(20).default(8) });
 async function stockRisks(ctx, raw) {
   const input = stockRiskInput.parse(raw);
   const bundle = await loadStockViews(ctx.org);
@@ -32726,7 +33247,7 @@ async function stockRisks(ctx, raw) {
   return { result, cards };
 }
 async function restockPlan(ctx, raw) {
-  const { limit } = z46.object({ limit: z46.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
+  const { limit } = z48.object({ limit: z48.coerce.number().int().min(1).max(20).default(10) }).parse(raw);
   const drafts = (await computeRecommendations(ctx.org)).filter((d) => d.result.needed).slice(0, limit);
   const result = {
     proposals: drafts.map((d) => ({ product: d.label, sku: d.code, currentStock: d.currentStock, onOrder: d.onOrder, recommendedQuantity: d.result.recommendedQuantity, explanation: d.result.explanation, supplier: d.supplier?.name ?? null, unitPrice: d.unitPrice, currency: d.currency, warnings: d.result.warnings })),
@@ -32738,7 +33259,7 @@ async function restockPlan(ctx, raw) {
   };
 }
 async function orderLookup(ctx, raw) {
-  const { orderNumber } = z46.object({ orderNumber: z46.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
+  const { orderNumber } = z48.object({ orderNumber: z48.string().trim().min(1).max(64).transform((s) => s.replace(/[%,()*\\"']/g, "")) }).parse(raw);
   const { data, error } = await ctx.supabase.from("orders").select("id, order_number, external_order_id, provider, status, payment_status, fulfillment_status, placed_at, subtotal, shipping_total, tax_total, fee_total, total, currency, buyer_username, inventory_applied, order_items(title, quantity, unit_price, total, external_sku, external_listing_id, sku_id)").eq("organization_id", ctx.organizationId).or(`order_number.eq.${orderNumber},external_order_id.eq.${orderNumber}`).limit(2);
   if (error) throw new Error(error.message);
   const order = data?.[0];
@@ -32756,7 +33277,7 @@ async function orderLookup(ctx, raw) {
   return { result, cards: [card("list", `Commande ${order.order_number ?? orderNumber}`, rows, { subtitle: `${order.provider} \u2014 ${order.placed_at.slice(0, 10).split("-").reverse().join("/")}` })] };
 }
 async function parcelsOverview(ctx, raw) {
-  const { filter } = z46.object({ filter: z46.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
+  const { filter } = z48.object({ filter: z48.enum(["problems", "in_progress", "all"]).default("in_progress") }).parse(raw);
   let q = ctx.supabase.from("tracked_parcels").select("tracking_number, label, carrier_code, status, estimated_delivery, delivered_at, last_checked_at, last_error").eq("organization_id", ctx.organizationId).is("archived_at", null);
   if (filter === "problems") q = q.in("status", ["exception", "failed_attempt", "returned", "expired", "not_found"]);
   if (filter === "in_progress") q = q.not("status", "in", "(delivered,returned,expired)");
@@ -32768,15 +33289,15 @@ async function parcelsOverview(ctx, raw) {
     cards: [card("list", "Colis suivis", list2.slice(0, 10).map((p) => row(p.label || p.tracking_number, p.status, p.estimated_delivery ? `estim\xE9e : ${p.estimated_delivery}` : p.last_checked_at ? null : "jamais v\xE9rifi\xE9", ["exception", "failed_attempt", "returned", "not_found"].includes(p.status) ? "danger" : p.status === "delivered" ? "success" : "neutral")), { subtitle: `${list2.length} colis` })]
   };
 }
-var shippingInput = z46.object({
-  weightKg: z46.coerce.number().positive().max(70),
-  lengthCm: z46.coerce.number().positive().max(300),
-  widthCm: z46.coerce.number().positive().max(300),
-  heightCm: z46.coerce.number().positive().max(300),
-  fromPostcode: z46.string().trim().min(2).max(12),
-  toPostcode: z46.string().trim().min(2).max(12),
-  fromCountry: z46.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
-  toCountry: z46.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
+var shippingInput = z48.object({
+  weightKg: z48.coerce.number().positive().max(70),
+  lengthCm: z48.coerce.number().positive().max(300),
+  widthCm: z48.coerce.number().positive().max(300),
+  heightCm: z48.coerce.number().positive().max(300),
+  fromPostcode: z48.string().trim().min(2).max(12),
+  toPostcode: z48.string().trim().min(2).max(12),
+  fromCountry: z48.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR"),
+  toCountry: z48.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).default("FR")
 });
 async function shippingQuotesTool(ctx, raw) {
   const input = shippingInput.parse(raw);
@@ -32843,11 +33364,11 @@ async function findSku(ctx, ref) {
 function requireWriter(ctx) {
   return ctx.org.role === "viewer" ? "Votre r\xF4le (lecture seule) ne permet pas de pr\xE9parer une modification. Demandez \xE0 un administrateur." : null;
 }
-var adjustInput = z46.object({
+var adjustInput = z48.object({
   sku: skuRef,
-  change: z46.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
-  reason: z46.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
-  note: z46.string().trim().max(200).optional()
+  change: z48.coerce.number().int().min(-1e5).max(1e5).refine((n) => n !== 0, "Variation nulle."),
+  reason: z48.enum(["receipt", "adjustment", "return", "correction"]).default("adjustment"),
+  note: z48.string().trim().max(200).optional()
 });
 async function prepareStockAdjustment(ctx, raw) {
   const denied = requireWriter(ctx);
@@ -32862,7 +33383,7 @@ async function prepareStockAdjustment(ctx, raw) {
   const action = await prepareAdvisorAction(ctx, { kind: "adjust_stock", skuId: sku.sku_id, summary, amount: null, currency: null, payload: { change: input.change, reason: input.reason, note: input.note ?? null, expectedAvailable: before, code: sku.code } });
   return actionOutput(action, "Ajustement de stock \xE0 confirmer");
 }
-var priceInput = z46.object({ sku: skuRef, newPrice: z46.union([z46.string(), z46.number()]).transform((v2) => String(v2)) });
+var priceInput = z48.object({ sku: skuRef, newPrice: z48.union([z48.string(), z48.number()]).transform((v2) => String(v2)) });
 async function preparePriceChange(ctx, raw) {
   const denied = requireWriter(ctx);
   if (denied) return { result: { prepared: false, reason: denied }, cards: [] };
@@ -32887,7 +33408,7 @@ function actionOutput(action, title) {
     cards: [card("action", title, [], { action, subtitle: "Rien n'est modifi\xE9 sans votre confirmation." })]
   };
 }
-var draftInput = z46.object({ orderNumber: z46.string().trim().max(64).optional(), subject: z46.string().trim().min(1).max(120), text: z46.string().trim().min(1).max(1500) });
+var draftInput = z48.object({ orderNumber: z48.string().trim().max(64).optional(), subject: z48.string().trim().min(1).max(120), text: z48.string().trim().min(1).max(1500) });
 async function draftBuyerMessage(ctx, raw) {
   const input = draftInput.parse(raw);
   return {
@@ -33039,13 +33560,13 @@ async function runAdvisorTool(ctx, name, input) {
     const json2 = JSON.stringify(out.result);
     return { content: json2.length > MAX_RESULT_CHARS2 ? `${json2.slice(0, MAX_RESULT_CHARS2)}\u2026[r\xE9sultat tronqu\xE9]` : json2, isError: false, cards: out.cards };
   } catch (e) {
-    if (e instanceof z46.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
+    if (e instanceof z48.ZodError) return { content: `Param\xE8tres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
     return { content: `Lecture des donn\xE9es impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true, cards: [] };
   }
 }
 
 // src/services/ai/advisor.ts
-var log34 = createLogger("AI_ADVISOR");
+var log35 = createLogger("AI_ADVISOR");
 var ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12e3, maxSteps: 8, maxTokens: 2500, deadlineMs: 1e5, maxReadCards: 3, maxCards: 8 };
 var SHOW_CARD_PARAM = "show_card";
 function withShowCard(t) {
@@ -33124,7 +33645,7 @@ function supabaseAdvisorStore(ctx) {
     async addMessage(conversationId, m) {
       const { data, error } = await ctx.supabase.from("advisor_messages").insert({ organization_id: org, conversation_id: conversationId, user_id: ctx.user.id, role: m.role, content: m.content.slice(0, 12e3), cards: (m.cards ?? []).slice(0, 12), sources: (m.sources ?? []).slice(0, 20), interrupted: m.interrupted ?? false }).select("id").single();
       if (error) {
-        log34.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
+        log35.warn("message du conseiller non enregistr\xE9", { orgId: org, error: error.message });
         return null;
       }
       await ctx.supabase.from("advisor_conversations").update({ last_message_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", conversationId);
@@ -33222,7 +33743,7 @@ ${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organizatio
             cards.push(c);
             emit2({ type: "card", card: c });
           }
-          if (r.isError) log34.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          if (r.isError) log35.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
           return { role: "tool", toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         })
       );
@@ -33575,21 +34096,21 @@ init_errors2();
 
 // src/integrations/tracking/laposte.ts
 init_empty();
-import { z as z47 } from "npm:zod@4.6.5";
+import { z as z49 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var LAPOSTE_SUIVI_URL = "https://api.laposte.fr/suivi/v2/idships/";
-var responseSchema = z47.object({
-  returnCode: z47.number().optional(),
-  returnMessage: z47.string().optional(),
-  shipment: z47.object({
-    idShip: z47.string().optional(),
-    product: z47.string().nullable().optional(),
-    isFinal: z47.boolean().optional(),
-    estimDate: z47.string().nullable().optional(),
-    deliveryDate: z47.string().nullable().optional(),
-    url: z47.string().nullable().optional(),
-    event: z47.array(z47.object({ code: z47.string().nullable().optional(), label: z47.string().nullable().optional(), date: z47.string().nullable().optional(), order: z47.number().nullable().optional() }).passthrough()).optional()
+var responseSchema = z49.object({
+  returnCode: z49.number().optional(),
+  returnMessage: z49.string().optional(),
+  shipment: z49.object({
+    idShip: z49.string().optional(),
+    product: z49.string().nullable().optional(),
+    isFinal: z49.boolean().optional(),
+    estimDate: z49.string().nullable().optional(),
+    deliveryDate: z49.string().nullable().optional(),
+    url: z49.string().nullable().optional(),
+    event: z49.array(z49.object({ code: z49.string().nullable().optional(), label: z49.string().nullable().optional(), date: z49.string().nullable().optional(), order: z49.number().nullable().optional() }).passthrough()).optional()
   }).passthrough().optional()
 }).passthrough();
 function laPosteConfigured(env = process.env) {
@@ -33633,29 +34154,29 @@ async function laPosteTrack(trackingNumber, env = process.env) {
 
 // src/integrations/tracking/ship24.ts
 init_empty();
-import { z as z48 } from "npm:zod@4.6.5";
+import { z as z50 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var SHIP24_TRACK_URL = "https://api.ship24.com/public/v1/trackers/track";
-var eventSchema = z48.object({
-  status: z48.string().nullable().optional(),
-  occurrenceDatetime: z48.string().nullable().optional(),
-  datetime: z48.string().nullable().optional(),
-  location: z48.string().nullable().optional(),
-  courierCode: z48.string().nullable().optional(),
-  statusMilestone: z48.string().nullable().optional(),
-  statusCode: z48.string().nullable().optional()
+var eventSchema = z50.object({
+  status: z50.string().nullable().optional(),
+  occurrenceDatetime: z50.string().nullable().optional(),
+  datetime: z50.string().nullable().optional(),
+  location: z50.string().nullable().optional(),
+  courierCode: z50.string().nullable().optional(),
+  statusMilestone: z50.string().nullable().optional(),
+  statusCode: z50.string().nullable().optional()
 }).passthrough();
-var trackingSchema = z48.object({
-  shipment: z48.object({
-    statusMilestone: z48.string().nullable().optional(),
-    statusCode: z48.string().nullable().optional(),
-    delivery: z48.object({ estimatedDeliveryDate: z48.string().nullable().optional(), courierEstimatedDeliveryDate: z48.object({ from: z48.string().nullable().optional(), to: z48.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
+var trackingSchema = z50.object({
+  shipment: z50.object({
+    statusMilestone: z50.string().nullable().optional(),
+    statusCode: z50.string().nullable().optional(),
+    delivery: z50.object({ estimatedDeliveryDate: z50.string().nullable().optional(), courierEstimatedDeliveryDate: z50.object({ from: z50.string().nullable().optional(), to: z50.string().nullable().optional() }).nullable().optional() }).passthrough().nullable().optional()
   }).passthrough().nullable().optional(),
-  events: z48.array(eventSchema).optional(),
-  statistics: z48.object({ timestamps: z48.object({ deliveredDatetime: z48.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
+  events: z50.array(eventSchema).optional(),
+  statistics: z50.object({ timestamps: z50.object({ deliveredDatetime: z50.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional()
 }).passthrough();
-var responseSchema2 = z48.object({ data: z48.object({ trackings: z48.array(trackingSchema) }).passthrough() }).passthrough();
+var responseSchema2 = z50.object({ data: z50.object({ trackings: z50.array(trackingSchema) }).passthrough() }).passthrough();
 function ship24Configured(env = process.env) {
   return Boolean(env.SHIP24_API_KEY && env.SHIP24_API_KEY.trim().length >= 10);
 }
@@ -33696,20 +34217,20 @@ async function ship24Track(trackingNumber, opts = {}, env = process.env) {
 
 // src/integrations/tracking/dhl.ts
 init_empty();
-import { z as z49 } from "npm:zod@4.6.5";
+import { z as z51 } from "npm:zod@4.6.5";
 init_errors2();
 init_http2();
 var DHL_TRACK_URL = "https://api-eu.dhl.com/track/shipments";
-var place = z49.object({ address: z49.object({ addressLocality: z49.string().nullable().optional(), countryCode: z49.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
-var event = z49.object({ timestamp: z49.string().nullable().optional(), statusCode: z49.string().nullable().optional(), status: z49.string().nullable().optional(), description: z49.string().nullable().optional(), location: place }).passthrough();
-var responseSchema3 = z49.object({
-  shipments: z49.array(
-    z49.object({
-      id: z49.string().optional(),
-      service: z49.string().nullable().optional(),
+var place = z51.object({ address: z51.object({ addressLocality: z51.string().nullable().optional(), countryCode: z51.string().nullable().optional() }).passthrough().nullable().optional() }).passthrough().nullable().optional();
+var event = z51.object({ timestamp: z51.string().nullable().optional(), statusCode: z51.string().nullable().optional(), status: z51.string().nullable().optional(), description: z51.string().nullable().optional(), location: place }).passthrough();
+var responseSchema3 = z51.object({
+  shipments: z51.array(
+    z51.object({
+      id: z51.string().optional(),
+      service: z51.string().nullable().optional(),
       status: event.nullable().optional(),
-      estimatedTimeOfDelivery: z49.string().nullable().optional(),
-      events: z49.array(event).optional()
+      estimatedTimeOfDelivery: z51.string().nullable().optional(),
+      events: z51.array(event).optional()
     }).passthrough()
   ).optional()
 }).passthrough();
@@ -33775,7 +34296,7 @@ init_errors();
 init_logger();
 init_admin();
 init_alerts();
-var log35 = createLogger("TRACKING");
+var log36 = createLogger("TRACKING");
 function trackingProviders(env = process.env) {
   return { laposte: laPosteConfigured(env), ship24: ship24Configured(env), dhl: dhlConfigured(env) };
 }
@@ -33793,7 +34314,7 @@ async function refreshParcel(admin, parcel, now = /* @__PURE__ */ new Date(), en
     snapshot = provider === "laposte" ? await track.laposte(parcel.tracking_number, env) : provider === "dhl" ? await track.dhl(parcel.tracking_number, env) : await track.ship24(parcel.tracking_number, { destinationCountry: parcel.destination_country }, env);
   } catch (e) {
     const message = isConnectorError(e) ? e.message : "Erreur inattendue lors du suivi.";
-    log35.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
+    log36.warn("suivi en \xE9chec", { parcelId: parcel.id, provider, error: message });
     const retry = new Date(now.getTime() + 6 * 36e5).toISOString();
     await admin.from("tracked_parcels").update({ last_error: message.slice(0, 500), last_checked_at: now.toISOString(), next_check_at: retry, check_count: parcel.check_count + 1 }).eq("id", parcel.id);
     return { parcelId: parcel.id, status: parcel.status, provider, checked: false, message };
@@ -33843,7 +34364,7 @@ async function runDueTracking(now = /* @__PURE__ */ new Date(), admin = createAd
       else failed++;
     } catch (e) {
       failed++;
-      log35.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
+      log36.warn("actualisation planifi\xE9e en \xE9chec", { parcelId: p.id, error: e instanceof Error ? e.message : String(e) });
     }
   }
   return { checked, failed, skipped };
@@ -33879,19 +34400,19 @@ async function probeToolConnectors(fetchImpl = fetch) {
 }
 
 // server/edge/api.ts
-var log36 = createLogger("EDGE_API");
+var log37 = createLogger("EDGE_API");
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 };
-var ebayConnectSchema = z50.object({ extended: z50.boolean().optional() });
-var ebayFinalizeSchema = z50.object({ code: z50.string().min(1).max(2048), state: z50.string().min(16).max(200) });
-var syncSchema = z50.object({ connectionId: uuidParam, scope: z50.enum(["full", "listings", "orders"]).default("full") });
-var scoutSchema = z50.object({ hosts: z50.array(z50.string().min(3).max(120)).min(1).max(25), query: z50.string().min(2).max(80).optional() });
+var ebayConnectSchema = z52.object({ extended: z52.boolean().optional() });
+var ebayFinalizeSchema = z52.object({ code: z52.string().min(1).max(2048), state: z52.string().min(16).max(200) });
+var syncSchema = z52.object({ connectionId: uuidParam, scope: z52.enum(["full", "listings", "orders"]).default("full") });
+var scoutSchema = z52.object({ hosts: z52.array(z52.string().min(3).max(120)).min(1).max(25), query: z52.string().min(2).max(80).optional() });
 var CATALOG_BODY_LIMIT = 21e6;
-var productDraftSchema = z50.object({ text: z50.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
-var activateSchema = z50.object({ key: z50.string().min(1).max(80), attest: z50.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
+var productDraftSchema = z52.object({ text: z52.string().trim().min(3, "Dites ou \xE9crivez le produit \xE0 ajouter.").max(2e3, "Texte trop long (2000 caract\xE8res maximum).") });
+var activateSchema = z52.object({ key: z52.string().min(1).max(80), attest: z52.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 function withCors(res) {
   const headers = new Headers(res.headers);
   for (const [k, v2] of Object.entries(CORS)) headers.set(k, v2);
@@ -33922,7 +34443,7 @@ async function startEbayConnect(request2) {
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1e3).toISOString()
   });
   if (error) throw new AppError("INTERNAL", "Impossible de d\xE9marrer la connexion eBay. R\xE9essayez.");
-  log36.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id, extended });
+  log37.info("connexion eBay d\xE9marr\xE9e (mobile)", { orgId: ctx.organization.id, userId: ctx.user.id, extended });
   return { authorizeUrl: connector.getAuthorizeUrl(state, { extended }), callbackScheme: EBAY_APP_CALLBACK, environment: connector.config()?.environment ?? null, extended };
 }
 async function finalizeEbayConnect(request2) {
@@ -33933,7 +34454,7 @@ async function finalizeEbayConnect(request2) {
   if (error) throw new AppError("INTERNAL", "V\xE9rification de la demande de connexion impossible. R\xE9essayez.");
   if (!row2) throw new AppError("VALIDATION", "Demande de connexion inconnue ou d\xE9j\xE0 utilis\xE9e : relancez la connexion eBay.");
   if (row2.created_by !== ctx.user.id || row2.organization_id !== ctx.organization.id) {
-    log36.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
+    log37.warn("finalisation eBay refus\xE9e : \xE9tat cr\xE9\xE9 par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
     throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas \xE9t\xE9 demand\xE9e depuis votre session : relancez la connexion.");
   }
   if (new Date(row2.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expir\xE9 (15 min) : relancez la connexion eBay.");
@@ -33944,31 +34465,16 @@ async function finalizeEbayConnect(request2) {
     const tokens = await connector.exchangeCode(code);
     const account = await connector.getAccountInfo({ getAccessToken: async () => tokens.accessToken });
     const { connection, isNew } = await upsertOAuthConnection({ organizationId: ctx.organization.id, userId: ctx.user.id, provider: "ebay", environment: config.environment, account, tokens, scopes: ebayScopeList({ extended: isExtendedOAuthState(row2.state) }) });
-    log36.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
+    log37.info("connexion eBay \xE9tablie (mobile)", { connectionId: connection.id, orgId: ctx.organization.id, isNew, environment: config.environment });
     return { connectionId: connection.id, isNew, username: account.username ?? null, environment: config.environment };
   } catch (e) {
     const code2 = oauthErrorCodeFor(e);
-    log36.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
+    log37.error("\xE9chec de la connexion eBay (mobile)", { orgId: ctx.organization.id, code: code2, message: scrubSecrets(e instanceof Error ? e.message : String(e)) });
     throw e;
   }
 }
-async function cronSync() {
-  const due = await listDueConnections();
-  const started = Date.now();
-  const results = [];
-  for (const c of due) {
-    if (Date.now() - started > 1e5) {
-      results.push({ connectionId: c.id, status: "deferred" });
-      continue;
-    }
-    try {
-      const r = await runChannelSync(c.id, { trigger: "scheduled" });
-      results.push({ connectionId: c.id, runId: r.runId, status: r.status, durationMs: r.durationMs, errorSummary: r.errorSummary });
-    } catch (e) {
-      results.push({ connectionId: c.id, status: "skipped", error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-  return { due: due.length, results };
+function cronSync() {
+  return runSyncCron({ budgetMs: EDGE_CRON_SYNC_BUDGET_MS });
 }
 var keyStore = new EbayNotificationKeyStore(() => getEbayConnector().config());
 function ebayWebhookEndpoint() {
@@ -34029,11 +34535,11 @@ async function route(request2) {
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") {
-        return handle(async () => runLibraryChecks((await parseBody(request2, z50.object({ keys: z50.array(z50.string().min(1).max(80)).max(60).optional() }))).keys));
+        return handle(async () => runLibraryChecks((await parseBody(request2, z52.object({ keys: z52.array(z52.string().min(1).max(80)).max(60).optional() }))).keys));
       }
       if (m === "POST" && path === "/cron/library-activate") {
         return handle(async () => {
-          const body = await parseBody(request2, z50.object({ organizationId: uuidParam, keys: z50.array(z50.string().min(1).max(80)).min(1).max(60), requestedBy: z50.string().min(10).max(600) }));
+          const body = await parseBody(request2, z52.object({ organizationId: uuidParam, keys: z52.array(z52.string().min(1).max(80)).min(1).max(60), requestedBy: z52.string().min(10).max(600) }));
           const admin = createAdminSupabaseClient();
           const out = [];
           for (const key2 of body.keys) {
@@ -34052,19 +34558,19 @@ async function route(request2) {
       if (m === "POST" && path === "/cron/sourcing-weekly") return handle(async () => runWeeklyCollection(await parseBody(request2, weeklyRunSchema)));
       if (m === "POST" && path === "/cron/collect-source") {
         return handle(async () => {
-          const body = await parseBody(request2, z50.object({ sourceId: uuidParam, budgetMs: z50.number().int().min(1e4).max(11e4).optional() }));
+          const body = await parseBody(request2, z52.object({ sourceId: uuidParam, budgetMs: z52.number().int().min(1e4).max(11e4).optional() }));
           return runSourceCrawl(body.sourceId, { trigger: "scheduled", budgetMs: body.budgetMs });
         });
       }
       if (m === "POST" && path === "/cron/e2e-search") {
         return handle(async () => {
-          const body = await parseBody(request2, z50.object({ query: z50.string().min(2).max(120), source: z50.string().min(1).max(80) }));
+          const body = await parseBody(request2, z52.object({ query: z52.string().min(2).max(120), source: z52.string().min(1).max(80) }));
           return runSearchSelfTest(body.query, body.source);
         });
       }
       if (m === "POST" && path === "/cron/directory-checks") {
         return handle(async () => {
-          const body = await parseBody(request2, z50.object({ keys: z50.array(z50.string().min(1).max(80)).max(100).optional() }));
+          const body = await parseBody(request2, z52.object({ keys: z52.array(z52.string().min(1).max(80)).max(100).optional() }));
           return runDirectoryChecks({ keys: body.keys });
         });
       }
@@ -34073,14 +34579,14 @@ async function route(request2) {
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
-        return handle(async () => checkReadOnlyRoutes((await parseBody(request2, z50.object({ organizationId: uuidParam.optional() }))).organizationId));
+        return handle(async () => checkReadOnlyRoutes((await parseBody(request2, z52.object({ organizationId: uuidParam.optional() }))).organizationId));
       }
       if (m === "POST" && path === "/cron/deal-check") {
-        return handle(async () => checkDealAnalysis(await parseBody(request2, z50.object({ organizationId: uuidParam, userId: uuidParam, query: z50.string().trim().min(2).max(120), live: z50.boolean().default(false) }))));
+        return handle(async () => checkDealAnalysis(await parseBody(request2, z52.object({ organizationId: uuidParam, userId: uuidParam, query: z52.string().trim().min(2).max(120), live: z52.boolean().default(false) }))));
       }
       if (m === "POST" && path === "/cron/ai-tools-check") {
         return handle(async () => {
-          const body = await parseBody(request2, z50.object({ organizationId: uuidParam.optional() }));
+          const body = await parseBody(request2, z52.object({ organizationId: uuidParam.optional() }));
           return checkAssistantTools(body.organizationId);
         });
       }
@@ -34092,7 +34598,7 @@ async function route(request2) {
         });
       }
     }
-    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request2), parseQuery2(request2, z50.object({ q: z50.string().trim().min(1).max(120) })).q));
+    if (m === "GET" && path === "/suppliers/search") return handle(async () => simpleSupplierSearch(await requireMobileOrgContext(request2), parseQuery2(request2, z52.object({ q: z52.string().trim().min(1).max(120) })).q));
     if (m === "GET" && path === "/sourcing/search") return handle(async () => sourcingSearch(await requireMobileOrgContext(request2), parseQuery2(request2, sourcingSearchQuerySchema)));
     if (m === "GET" && path === "/sourcing/status") return handle(async () => sourcingStatus(await requireMobileOrgContext(request2)));
     if (m === "GET" && path === "/sourcing/library") return handle(async () => sourceLibrary(await requireMobileOrgContext(request2)));
@@ -34106,7 +34612,7 @@ async function route(request2) {
     if (m === "GET" && path === "/radar") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2);
-        const q = parseQuery2(request2, z50.object({ sort: z50.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
+        const q = parseQuery2(request2, z52.object({ sort: z52.enum(["score", "profit", "margin", "availability", "freshness"]).optional() }));
         return buildRadar(ctx, { sort: q.sort });
       });
     }
@@ -34131,7 +34637,7 @@ async function route(request2) {
     if (m === "GET" && path === "/radar/offer") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2);
-        const q = parseQuery2(request2, z50.object({ id: uuidParam, quantity: z50.coerce.number().int().min(1).max(1e5).optional() }));
+        const q = parseQuery2(request2, z52.object({ id: uuidParam, quantity: z52.coerce.number().int().min(1).max(1e5).optional() }));
         return buildRadarOffer(ctx, q.id, q.quantity ? [q.quantity] : []);
       });
     }
@@ -34153,26 +34659,26 @@ async function route(request2) {
     if (m === "GET" && path === "/sourcing/supplier-offers") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2);
-        return supplierOffers(ctx, parseQuery2(request2, z50.object({ supplierId: uuidParam })).supplierId);
+        return supplierOffers(ctx, parseQuery2(request2, z52.object({ supplierId: uuidParam })).supplierId);
       });
     }
     if (m === "POST" && path === "/sourcing/accounts/connect") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2, { write: true });
-        const body = await parseBody(request2, z50.object({ key: z50.string().min(1).max(80), credentials: z50.record(z50.string().max(80), z50.string().max(2e3)) }));
+        const body = await parseBody(request2, z52.object({ key: z52.string().min(1).max(80), credentials: z52.record(z52.string().max(80), z52.string().max(2e3)) }));
         return connectProAccount(ctx, body);
       });
     }
     if (m === "POST" && path === "/sourcing/accounts/sync") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2, { write: true });
-        return syncProAccount(ctx, (await parseBody(request2, z50.object({ connectionId: uuidParam }))).connectionId);
+        return syncProAccount(ctx, (await parseBody(request2, z52.object({ connectionId: uuidParam }))).connectionId);
       });
     }
     if (m === "POST" && path === "/sourcing/accounts/disconnect") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2, { admin: true });
-        return disconnectProAccount(ctx, (await parseBody(request2, z50.object({ connectionId: uuidParam }))).connectionId);
+        return disconnectProAccount(ctx, (await parseBody(request2, z52.object({ connectionId: uuidParam }))).connectionId);
       });
     }
     if (m === "POST" && path === "/sourcing/import/preview") {
@@ -34186,7 +34692,7 @@ async function route(request2) {
     if (m === "POST" && path === "/sourcing/sources/sync") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2, { write: true });
-        return syncSourceNow(ctx, (await parseBody(request2, z50.object({ sourceId: uuidParam }))).sourceId);
+        return syncSourceNow(ctx, (await parseBody(request2, z52.object({ sourceId: uuidParam }))).sourceId);
       });
     }
     if (m === "POST" && path === "/sourcing/sources/schedule") {
@@ -34210,14 +34716,14 @@ async function route(request2) {
     if (m === "GET" && path === "/sourcing/imports") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2);
-        const q = parseQuery2(request2, z50.object({ supplierId: uuidParam.optional(), limit: z50.coerce.number().int().min(1).max(200).optional() }));
+        const q = parseQuery2(request2, z52.object({ supplierId: uuidParam.optional(), limit: z52.coerce.number().int().min(1).max(200).optional() }));
         return listImportJobs(ctx, { supplierId: q.supplierId ?? null, limit: q.limit ?? 50 });
       });
     }
     if (m === "GET" && path === "/sourcing/imports/detail") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2);
-        return getImportJob(ctx, parseQuery2(request2, z50.object({ id: uuidParam })).id);
+        return getImportJob(ctx, parseQuery2(request2, z52.object({ id: uuidParam })).id);
       });
     }
     if (m === "POST" && path === "/sourcing/import") {
@@ -34307,7 +34813,7 @@ async function route(request2) {
     if (m === "GET" && path === "/ebay/listings/prefill") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request2, { write: true });
-        return prefillListing(ctx, parseQuery2(request2, z50.object({ skuId: uuidParam })).skuId);
+        return prefillListing(ctx, parseQuery2(request2, z52.object({ skuId: uuidParam })).skuId);
       });
     }
     if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request2, { write: true })));
@@ -34339,7 +34845,7 @@ async function route(request2) {
 var secretsLoad = null;
 function ensureRuntimeSecrets() {
   secretsLoad ??= loadRuntimeSecrets(process.env).then((s) => {
-    if (s.error) log36.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
+    if (s.error) log37.warn("secrets d'ex\xE9cution incomplets", { error: s.error });
     return s;
   });
   return secretsLoad;

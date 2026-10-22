@@ -5,6 +5,8 @@ import type { AccountInfo, InventoryLevel, ListingRef, NormalizedListing, Normal
 export interface InvalidEntry {
   ref: string | null;
   message: string;
+  /** Date de dernière modification lue dans l'entrée brute, si elle est lisible (sinon inconnue). */
+  modifiedAt?: string | null;
 }
 
 export interface OrdersPage {
@@ -25,6 +27,17 @@ export interface ListingsPage {
   warnings: string[];
   /** true si la limite de pages a été atteinte : la liste est incomplète. */
   truncated: boolean;
+  /** Numéro (1…n) de la page demandée, s'il est connu (reprise d'un parcours interrompu). */
+  pageNumber?: number;
+  /** Nombre total de pages annoncé par le canal, s'il est connu. */
+  totalPages?: number;
+}
+
+export interface GetListingsParams {
+  /** Page de départ (1 par défaut) : reprise d'un parcours interrompu au passage précédent. */
+  startPage?: number;
+  /** Échéance absolue (ms) : aucun appel n'est lancé au-delà (voir core/deadline.ts). */
+  deadline?: number | null;
 }
 
 /**
@@ -41,6 +54,8 @@ export interface GetOrdersParams {
   since: Date;
   /** Borne haute (incluse). Par défaut : maintenant. */
   until?: Date;
+  /** Échéance absolue (ms) : aucun appel n'est lancé au-delà (voir core/deadline.ts). */
+  deadline?: number | null;
 }
 
 export interface RevokeResult {
@@ -73,8 +88,8 @@ export interface MarketplaceConnector {
   refreshToken(refreshToken: string, grantedScopes?: readonly string[] | null): Promise<TokenSet>;
   getAccountInfo(auth: ConnectorAuth): Promise<AccountInfo>;
   getOrders(auth: ConnectorAuth, params: GetOrdersParams): AsyncIterable<OrdersPage>;
-  getListings(auth: ConnectorAuth): AsyncIterable<ListingsPage>;
+  getListings(auth: ConnectorAuth, params?: GetListingsParams): AsyncIterable<ListingsPage>;
   getInventory(auth: ConnectorAuth): AsyncIterable<InventoryLevel[]>;
-  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number): Promise<UpdateInventoryResult>;
+  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number, options?: { deadline?: number | null }): Promise<UpdateInventoryResult>;
   revoke(auth: ConnectorAuth): Promise<RevokeResult>;
 }

@@ -39,6 +39,12 @@ export const WEBHOOK_ORDERS_MAX_PAGES = 20;
  * synchronisation le marque « failed » et synchronise la connexion concernée.
  */
 export const WEBHOOK_ABANDONED_MS = 10 * 60_000;
+/**
+ * La synchronisation lancée par une notification reçoit une échéance interne (moteur) antérieure à
+ * celle du traitement : elle s'arrête proprement (curseur enregistré, run finalisé, verrou libéré)
+ * avant que le traitement ne soit déclaré interrompu et que la plateforme ne coupe la fonction.
+ */
+export const WEBHOOK_SYNC_FINALIZE_MARGIN_MS = 5_000;
 
 export const WEBHOOK_DEADLINE_MESSAGE = `Traitement interrompu : délai maximal de ${WEBHOOK_ROUTE_MAX_DURATION_S} s atteint avant la fin de la synchronisation. Les commandes et annonces concernées seront reprises par la prochaine synchronisation planifiée (le curseur de commandes n’avance que sur des données lues).`;
 
@@ -324,7 +330,7 @@ async function runWithConflictRetry(deps: EbayWebhookDeps, connectionId: string,
   const wait = deps.conflictWaitMs ?? WEBHOOK_CONFLICT_WAIT_MS;
   for (let attempt = 0; ; attempt++) {
     try {
-      const r = await deps.runSync(connectionId, { trigger: "webhook", scope, ...(scope === "orders" ? { orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } } : {}) });
+      const r = await deps.runSync(connectionId, { trigger: "webhook", scope, deadlineAt: deadlineAt - WEBHOOK_SYNC_FINALIZE_MARGIN_MS, ...(scope === "orders" ? { orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } } : {}) });
       return { ok: true, runId: r.runId, status: r.status };
     } catch (e) {
       const conflict = e instanceof AppError && e.code === "CONFLICT";

@@ -1,5 +1,5 @@
 import { ConnectorError } from "@/integrations/core/errors";
-import type { ConnectorAuth, GetOrdersParams, ListingsPage, MarketplaceConnector, OrdersPage, RevokeResult } from "@/integrations/core/connector";
+import type { ConnectorAuth, GetListingsParams, GetOrdersParams, ListingsPage, MarketplaceConnector, OrdersPage, RevokeResult } from "@/integrations/core/connector";
 import type { AccountInfo, InventoryLevel, ListingRef, TokenSet, UpdateInventoryResult } from "@/integrations/core/types";
 import { createLogger } from "@/lib/logger";
 import { ebayEnv, ebayEnvIssues } from "@/lib/env";
@@ -78,19 +78,19 @@ export class EbayConnector implements MarketplaceConnector {
     for await (const page of iterateEbayOrders(config, auth, params)) {
       for (const inv of page.invalid) log.warn("commande eBay ignorée (format inattendu)", { orderId: inv.orderId, reason: inv.message });
       if (page.truncated) log.warn("récupération des commandes tronquée (limite de pages atteinte) : la suite sera reprise au prochain run");
-      yield { orders: page.orders, invalid: page.invalid.map((i) => ({ ref: i.orderId, message: i.message })), truncated: page.truncated, hasMore: page.hasMore };
+      yield { orders: page.orders, invalid: page.invalid.map((i) => ({ ref: i.orderId, message: i.message, modifiedAt: i.modifiedAt })), truncated: page.truncated, hasMore: page.hasMore };
     }
   }
 
-  async *getListings(auth: ConnectorAuth): AsyncIterable<ListingsPage> {
+  /** `params.startPage` : reprise d'un parcours interrompu ; `params.deadline` borne chaque appel. */
+  async *getListings(auth: ConnectorAuth, params: GetListingsParams = {}): AsyncIterable<ListingsPage> {
     const config = this.requireConfig();
-    let pageIndex = 0;
-    for await (const page of iterateGetMyeBaySelling(config, auth)) {
-      pageIndex++;
+    for await (const page of iterateGetMyeBaySelling(config, auth, { startPage: params.startPage, deadline: params.deadline ?? null })) {
       for (const inv of page.invalid) log.warn("annonce eBay ignorée (format inattendu)", { itemId: inv.itemId, reason: inv.message });
-      const truncated = pageIndex >= GET_MY_EBAY_SELLING_MAX_PAGES && page.totalPages > pageIndex;
-      if (truncated) log.warn("liste d'annonces tronquée (limite de pages atteinte)", { pages: pageIndex, totalPages: page.totalPages });
-      yield { listings: page.listings, invalid: page.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page.warnings, truncated };
+      // Numéro ABSOLU de la page (et non le rang dans ce passage) : la limite porte sur le parcours complet.
+      const truncated = page.pageNumber >= GET_MY_EBAY_SELLING_MAX_PAGES && page.totalPages > page.pageNumber;
+      if (truncated) log.warn("liste d'annonces tronquée (limite de pages atteinte)", { pages: page.pageNumber, totalPages: page.totalPages });
+      yield { listings: page.listings, invalid: page.invalid.map((i) => ({ ref: i.itemId, message: i.message })), warnings: page.warnings, truncated, pageNumber: page.pageNumber, totalPages: page.totalPages };
     }
   }
 
@@ -113,8 +113,8 @@ export class EbayConnector implements MarketplaceConnector {
    * ReviseInventoryStatus. Limitation connue : les annonces créées via l'Inventory API (offres)
    * refusent les révisions Trading ; eBay renvoie alors une erreur explicite qui est remontée telle quelle.
    */
-  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number): Promise<UpdateInventoryResult> {
-    return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity);
+  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number, options: { deadline?: number | null } = {}): Promise<UpdateInventoryResult> {
+    return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity, options);
   }
 
   /**

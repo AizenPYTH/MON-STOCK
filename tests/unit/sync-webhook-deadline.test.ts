@@ -70,7 +70,7 @@ function deps(overrides: Partial<Deps> = {}) {
     isConfigured: () => true,
     getPublicKey: async () => ({ key: pem, algorithm: "ECDSA", digest: "SHA1" }),
     findConnections: async () => [connection],
-    runSync: async () => ({ runId: "run-1", status: "success", stats: {} as never, durationMs: 1, errorSummary: null, connectionId: "conn-1" }),
+    runSync: async () => ({ runId: "run-1", status: "success", stats: {} as never, durationMs: 1, errorSummary: null, connectionId: "conn-1", stoppedByBudget: false }),
     schedule: (task) => {
       scheduled.push(task);
     },
@@ -115,7 +115,7 @@ describe("webhook eBay : échéance de la tâche après réponse", () => {
     expect(ev.error).toBe(WEBHOOK_DEADLINE_MESSAGE);
     expect(ev.error).toMatch(/délai maximal.*prochaine synchronisation planifiée/);
     // Périmètre et budget de pages bornés pour tenir dans la durée de la route.
-    expect(runSync).toHaveBeenCalledWith("conn-1", { trigger: "webhook", scope: "orders", orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } });
+    expect(runSync).toHaveBeenCalledWith("conn-1", { trigger: "webhook", scope: "orders", deadlineAt: expect.any(Number), orders: { maxPages: WEBHOOK_ORDERS_MAX_PAGES } });
   });
 
   it("le budget court depuis la RÉCEPTION (le temps passé avant la réponse est décompté)", async () => {

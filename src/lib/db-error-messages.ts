@@ -41,6 +41,7 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   MOVEMENT_QUANTITY_ZERO: { code: "VALIDATION", message: "La quantité d'un mouvement ne peut pas être nulle." },
   MOVEMENT_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Quantité trop importante pour un seul mouvement." },
   MOVEMENT_SIGN_INVALID: { code: "VALIDATION", message: "Sens du mouvement incohérent avec son type (entrée / sortie)." },
+  ORDER_ITEM_CANCELLATION_WITHOUT_SALE: { code: "CONFLICT", message: "Annulation refusée : aucune vente n'a été déduite du stock pour cette ligne de commande (rien à recréditer)." },
   STOCK_QUANTITY_TOO_LARGE: { code: "VALIDATION", message: "Le stock résultant dépasserait la limite autorisée." },
   SKU_NOT_FOUND: { code: "NOT_FOUND", message: "SKU introuvable." },
   SKU_CODE_EXISTS: { code: "CONFLICT", message: "Ce code SKU existe déjà dans votre organisation." },

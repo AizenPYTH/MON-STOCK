@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectorError } from "@/integrations/core/errors";
-import type { OrdersPage } from "@/integrations/core/connector";
+import type { GetOrdersParams, OrdersPage } from "@/integrations/core/connector";
 import { canConnect } from "./helpers";
 import { closePool, createFixture, fakeConnector, listing, order, pages, q, resetFakeConnector, setTestEnv } from "./sync-harness";
 
@@ -37,6 +37,20 @@ function ordersPage(orders: ReturnType<typeof order>[], extra: Partial<OrdersPag
   return { orders, invalid: [], truncated: false, ...extra };
 }
 
+/**
+ * Q-06 : horloge FIXÉE (le test ne dépend plus de la date d'exécution : avant, la fenêtre « curseur →
+ * maintenant » grandissait chaque jour et finissait découpée en plusieurs tranches) …
+ */
+const FIXED_NOW = Date.parse("2026-10-08T12:00:00.000Z");
+const fixedClock = () => FIXED_NOW;
+/** … et connecteur fidèle au filtre eBay : seules les commandes modifiées DANS la tranche demandée. */
+function inSlice(params: GetOrdersParams, orders: ReturnType<typeof order>[]): ReturnType<typeof order>[] {
+  return orders.filter((o) => {
+    const t = Date.parse(o.externalModifiedAt ?? o.placedAt);
+    return t >= params.since.getTime() && t <= (params.until ?? new Date(FIXED_NOW)).getTime();
+  });
+}
+
 async function connectionRow(id: string) {
   const [row] = await q<{ status: string; last_orders_cursor: string | null; last_sync_at: string | null; last_error: string | null; last_successful_sync_at: string | null }>(
     "select status, last_orders_cursor, last_sync_at, last_error, last_successful_sync_at from public.channel_connections where id = $1",
@@ -55,9 +69,9 @@ d("moteur de synchronisation (connecteur simulé, base réelle)", () => {
     const f = await createFixture({ cursor: new Date("2026-10-07T07:00:00.000Z") });
     const c = fakeConnector();
     const bad = order("B", { externalModifiedAt: "2026-10-07T09:00:00.000Z", status: "not-a-status" as never });
-    c.orders = () => pages(ordersPage([order("A", { externalModifiedAt: "2026-10-07T08:00:00.000Z" }), bad, order("C", { externalModifiedAt: "2026-10-07T10:00:00.000Z" })]));
+    c.orders = (params) => pages(ordersPage(inSlice(params, [order("A", { externalModifiedAt: "2026-10-07T08:00:00.000Z" }), bad, order("C", { externalModifiedAt: "2026-10-07T10:00:00.000Z" })])));
 
-    const r1 = await runChannelSync(f.connectionId, { trigger: "manual", scope: "orders" });
+    const r1 = await runChannelSync(f.connectionId, { trigger: "manual", scope: "orders", clock: fixedClock });
     expect(r1.status).toBe("partial");
     expect(r1.stats.orders_created).toBe(2);
     const conn1 = await connectionRow(f.connectionId);
@@ -69,9 +83,9 @@ d("moteur de synchronisation (connecteur simulé, base réelle)", () => {
     // Run suivant : la fenêtre recouvre B (09:00 - 3 h), qui est maintenant valide.
     c.orders = (params) => {
       expect(params.since.getTime()).toBeLessThanOrEqual(new Date("2026-10-07T09:00:00.000Z").getTime());
-      return pages(ordersPage([order("B", { externalModifiedAt: "2026-10-07T09:00:00.000Z" }), order("C", { externalModifiedAt: "2026-10-07T10:00:00.000Z" })]));
+      return pages(ordersPage(inSlice(params, [order("B", { externalModifiedAt: "2026-10-07T09:00:00.000Z" }), order("C", { externalModifiedAt: "2026-10-07T10:00:00.000Z" })])));
     };
-    const r2 = await runChannelSync(f.connectionId, { trigger: "manual", scope: "orders" });
+    const r2 = await runChannelSync(f.connectionId, { trigger: "manual", scope: "orders", clock: fixedClock });
     expect(r2.status).toBe("success");
     expect(r2.stats).toMatchObject({ orders_created: 1, orders_updated: 1 });
     const orders = await q<{ external_order_id: string }>("select external_order_id from public.orders where organization_id = $1 order by 1", [f.orgId]);

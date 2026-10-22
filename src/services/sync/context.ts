@@ -23,6 +23,20 @@ export interface SyncContext {
   log: Logger;
   /** Journalise une erreur non fatale (sans secret) ; elle sera persistée dans sync_errors. */
   recordError: (e: SyncErrorInput) => void;
+  /**
+   * Échéance absolue du run (ms depuis l'époque) : aucune nouvelle page, tranche ou écriture n'est
+   * démarrée au-delà ; le run se termine alors proprement (« partial », reprise au passage suivant).
+   * Absente = aucune échéance.
+   */
+  deadlineAt?: number | null;
+  /** Horloge (injectable dans les tests) ; Date.now par défaut. */
+  clock?: () => number;
+}
+
+/** Temps restant avant l'échéance du run (Infinity sans échéance). */
+export function timeLeftMs(ctx: Pick<SyncContext, "deadlineAt" | "clock">): number {
+  if (ctx.deadlineAt === null || ctx.deadlineAt === undefined) return Number.POSITIVE_INFINITY;
+  return ctx.deadlineAt - (ctx.clock ?? Date.now)();
 }
 
 /** Nettoie les détails avant persistance : aucune clé ni valeur sensible, taille bornée. */

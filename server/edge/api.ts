@@ -76,11 +76,12 @@ import { buildOAuthState, isExtendedOAuthState, OAUTH_STATE_TTL_SECONDS, oauthEr
 import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
-import { findConnectionsByExternalAccount, listDueConnections, upsertOAuthConnection } from "@/services/channels/connection-store";
+import { findConnectionsByExternalAccount, upsertOAuthConnection } from "@/services/channels/connection-store";
 import { computeChallengeResponse } from "@/integrations/ebay/webhook-verify";
 import { EbayNotificationKeyStore } from "@/integrations/ebay/notification-keys";
 import { handleEbayNotification } from "@/services/sync/ebay-webhook";
 import { runChannelSync } from "@/services/sync/engine";
+import { EDGE_CRON_SYNC_BUDGET_MS, runSyncCron } from "@/services/sync/cron";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, activateLibrarySourceFor, getLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
@@ -200,24 +201,14 @@ async function finalizeEbayConnect(request: Request) {
   }
 }
 
-async function cronSync() {
-  const due = await listDueConnections();
-  const started = Date.now();
-  const results: Array<Record<string, unknown>> = [];
-  for (const c of due) {
-    // Budget : la fonction est limitée en durée ; les connexions restantes restent « dues ».
-    if (Date.now() - started > 100_000) {
-      results.push({ connectionId: c.id, status: "deferred" });
-      continue;
-    }
-    try {
-      const r = await runChannelSync(c.id, { trigger: "scheduled" });
-      results.push({ connectionId: c.id, runId: r.runId, status: r.status, durationMs: r.durationMs, errorSummary: r.errorSummary });
-    } catch (e) {
-      results.push({ connectionId: c.id, status: "skipped", error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-  return { due: due.length, results };
+/**
+ * Cron de synchronisation : même service que la route web (src/services/sync/cron.ts) — runs
+ * abandonnés nettoyés, notifications eBay abandonnées reprises (S-06), connexions dues traitées dans
+ * un budget partagé sous la limite d'horloge de l'Edge Function (~150 s) ; chaque run s'arrête
+ * proprement à l'échéance et reprend au passage suivant (D-01).
+ */
+function cronSync() {
+  return runSyncCron({ budgetMs: EDGE_CRON_SYNC_BUDGET_MS });
 }
 
 /** Cache mémoire (par instance) des clés publiques eBay et du jeton d'application. */

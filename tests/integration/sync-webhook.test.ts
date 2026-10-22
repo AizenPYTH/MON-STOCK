@@ -55,7 +55,7 @@ function deps(overrides: Partial<Deps> = {}): Deps & { scheduled: Array<() => Pr
       const rows = await q<ChannelConnection>("select * from public.channel_connections where provider = 'ebay' and (external_account_id = $1 or external_username = $2)", [userId, username]);
       return rows;
     },
-    runSync: async () => ({ runId: "00000000-0000-0000-0000-000000000000", status: "success", stats: {} as never, durationMs: 1, errorSummary: null, connectionId: "x" }),
+    runSync: async () => ({ runId: "00000000-0000-0000-0000-000000000000", status: "success", stats: {} as never, durationMs: 1, errorSummary: null, connectionId: "x", stoppedByBudget: false }),
     schedule: (task) => {
       scheduled.push(task);
     },
@@ -233,7 +233,7 @@ d("webhook eBay", () => {
         expect(options).toMatchObject({ trigger: "webhook", scope: "orders" });
         attempts++;
         if (attempts < 3) throw new AppError("CONFLICT", "Une synchronisation eBay est déjà en cours pour cette connexion.");
-        return { runId: "11111111-1111-1111-1111-111111111111", status: "success" as const, stats: {} as never, durationMs: 1, errorSummary: null, connectionId };
+        return { runId: "11111111-1111-1111-1111-111111111111", status: "success" as const, stats: {} as never, durationMs: 1, errorSummary: null, connectionId, stoppedByBudget: false };
       }),
     });
     const id = `conflict-${Date.now()}`;
@@ -261,15 +261,19 @@ d("webhook eBay", () => {
     const b = await createFixture();
     const c = await createFixture({ status: "expired" });
     const shared = `shared-${Date.now()}`;
-    await q("update public.channel_connections set external_account_id = $1 where id = any($2)", [shared, [a.connectionId, b.connectionId, c.connectionId]]);
+    // D-04 : un compte n'a qu'une connexion non déconnectée PAR ENVIRONNEMENT (index unique) : les deux
+    // connexions actives sont donc production + sandbox ; la connexion expirée est retrouvée par le pseudo.
+    await q("update public.channel_connections set external_account_id = $1 where id = $2", [shared, a.connectionId]);
+    await q("update public.channel_connections set external_account_id = $1, environment = 'sandbox' where id = $2", [shared, b.connectionId]);
+    await q("update public.channel_connections set external_username = $1 where id = $2", [`${shared}-pseudo`, c.connectionId]);
     const synced: string[] = [];
     const dep = deps({
       runSync: async (connectionId) => {
         synced.push(connectionId);
-        return { runId: "x", status: "success", stats: {} as never, durationMs: 1, errorSummary: null, connectionId };
+        return { runId: "x", status: "success", stats: {} as never, durationMs: 1, errorSummary: null, connectionId, stoppedByBudget: false };
       },
     });
-    const body = notificationBody("ITEM_AVAILABILITY", { userId: shared });
+    const body = notificationBody("ITEM_AVAILABILITY", { userId: shared, username: `${shared}-pseudo` });
     const r = await handleEbayNotification(post(body, { "x-ebay-signature": signatureHeader(body) }), dep);
     expect(await r.json()).toMatchObject({ status: "accepted", connections: 2 });
     await dep.scheduled[0]!();
@@ -281,7 +285,9 @@ d("webhook eBay", () => {
     const b = await createFixture();
     const expired = await createFixture({ status: "expired" });
     const shared = `abandoned-${Date.now()}`;
-    await q("update public.channel_connections set external_account_id = $1 where id = any($2)", [shared, [a.connectionId, b.connectionId]]);
+    // D-04 : même compte eBay sur deux environnements (production + sandbox), seul cas encore permis.
+    await q("update public.channel_connections set external_account_id = $1 where id = $2", [shared, a.connectionId]);
+    await q("update public.channel_connections set external_account_id = $1, environment = 'sandbox' where id = $2", [shared, b.connectionId]);
     const old = new Date(Date.now() - WEBHOOK_ABANDONED_MS - 60_000).toISOString();
     const fresh = new Date(Date.now() - 2 * 60_000).toISOString();
     const insert = (eventId: string, topic: string, connectionId: string, orgId: string, receivedAt: string, data: Record<string, unknown> = {}) =>

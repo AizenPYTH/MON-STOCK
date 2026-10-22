@@ -156,14 +156,23 @@ export function buildLastModifiedFilter(since: Date, until?: Date): string {
   return until ? `lastmodifieddate:[${from}..${until.toISOString()}]` : `lastmodifieddate:[${from}..]`;
 }
 
+/** lastModifiedDate d'une commande brute (même illisible par ailleurs), en ISO ; null si absente ou invalide. */
+export function rawModifiedAt(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null || !("lastModifiedDate" in raw)) return null;
+  const v = (raw as { lastModifiedDate: unknown }).lastModifiedDate;
+  if (typeof v !== "string") return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export const EBAY_ORDERS_PAGE_SIZE = 100;
 /** Garde-fou : 50 pages × 100 = 5 000 commandes par run. Le curseur reprend au run suivant. */
 export const EBAY_ORDERS_MAX_PAGES = 50;
 
 export interface OrdersPage {
   orders: NormalizedOrder[];
-  /** Commandes ignorées car au format inattendu (comptées, jamais inventées). */
-  invalid: Array<{ orderId: string | null; message: string }>;
+  /** Commandes au format inattendu (comptées, jamais inventées) ; `modifiedAt` = lastModifiedDate brute si lisible. */
+  invalid: Array<{ orderId: string | null; message: string; modifiedAt: string | null }>;
   total: number | null;
   truncated: boolean;
   /** true si eBay annonce une page suivante (lien `next`) */
@@ -177,7 +186,7 @@ export async function* iterateEbayOrders(config: EbayConfig, auth: ConnectorAuth
     url.searchParams.set("filter", buildLastModifiedFilter(params.since, params.until));
     url.searchParams.set("limit", String(EBAY_ORDERS_PAGE_SIZE));
     url.searchParams.set("offset", String(offset));
-    const json = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders");
+    const json = await ebayRestGet(auth, url.toString(), "fulfillment:getOrders", { deadline: params.deadline ?? null });
     const parsed = ebayOrdersPageSchema.safeParse(json);
     if (!parsed.success) {
       throw new ConnectorError("INVALID_RESPONSE", EBAY_PROVIDER, "Réponse inattendue de la Fulfillment API eBay (liste de commandes illisible).", {
@@ -191,7 +200,7 @@ export async function* iterateEbayOrders(config: EbayConfig, auth: ConnectorAuth
         orders.push(normalizeEbayOrder(raw));
       } catch (e) {
         const id = typeof raw === "object" && raw !== null && "orderId" in raw ? String((raw as { orderId: unknown }).orderId) : null;
-        invalid.push({ orderId: id, message: e instanceof Error ? e.message : String(e) });
+        invalid.push({ orderId: id, message: e instanceof Error ? e.message : String(e), modifiedAt: rawModifiedAt(raw) });
       }
     }
     const total = parsed.data.total ?? null;

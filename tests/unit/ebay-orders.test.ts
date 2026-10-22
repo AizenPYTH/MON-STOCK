@@ -152,7 +152,7 @@ describe("iterateEbayOrders (fetch simulé)", () => {
     for await (const p of iterateEbayOrders(config, auth, { since: new Date("2026-09-01T00:00:00Z"), until: new Date("2026-10-01T00:00:00Z") })) pages.push(p);
     expect(pages).toHaveLength(2);
     expect(pages[0]?.orders).toHaveLength(1);
-    expect(pages[0]?.invalid).toEqual([{ orderId: "bad", message: expect.stringContaining("format inattendu") }]);
+    expect(pages[0]?.invalid).toEqual([{ orderId: "bad", message: expect.stringContaining("format inattendu"), modifiedAt: null }]);
     expect(pages[1]?.orders[0]?.externalOrderId).toBe("12-00000-00001");
     expect(calls[0]).toContain("api.sandbox.ebay.com/sell/fulfillment/v1/order");
     expect(decodeURIComponent(calls[0] ?? "")).toContain("lastmodifieddate:[2026-09-01T00:00:00.000Z..2026-10-01T00:00:00.000Z]");
