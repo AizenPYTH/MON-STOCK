@@ -95,16 +95,14 @@ Toutes les modifications de schéma sont versionnées dans `supabase/migrations/
 | `…002100_analytics_views.sql` | vues analytiques par devise, jours calendaires Europe/Paris, rotation du stock |
 | `…003000_sync_hardening.sql` | ingestion de commandes sans course, stockage atomique des tokens rafraîchis |
 
-**Appliquer sur Supabase** (au choix) :
+**Appliquer sur Supabase** : suivez **[`docs/MIGRATIONS.md`](docs/MIGRATIONS.md)**.
 
-```bash
-# Option A — Supabase CLI
-npx supabase login
-npx supabase link --project-ref <ref>
-npx supabase db push
-
-# Option B — SQL Editor du dashboard : coller chaque fichier dans l'ordre.
-```
+> **Attention : ne lancez pas `supabase db push` sur la production** tant que l'historique n'est pas réconcilié :
+> au 22/10/2026, `supabase_migrations.schema_migrations` de la production ne contient que 13 versions,
+> dont 11 différentes des fichiers du dépôt ; la CLI tenterait de rejouer des migrations déjà appliquées.
+> `docs/MIGRATIONS.md` décrit la comparaison de schéma, la réconciliation (`supabase migration repair`,
+> seulement après validation), la préproduction et le retour arrière. Sur un projet **neuf et vide**
+> (préproduction, DEV), `npx supabase db push` reste la bonne méthode.
 
 **Base locale de test** (PostgreSQL 16 nu + shim reproduisant `auth.uid()`, les rôles `anon/authenticated/service_role`) :
 
