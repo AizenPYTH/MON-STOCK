@@ -97,6 +97,10 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   ADVISOR_STOCK_CHANGED: { code: "CONFLICT", message: "Le stock a changé depuis la préparation : rien n'a été modifié. Redemandez l'ajustement." },
   ADVISOR_PRICE_CHANGED: { code: "CONFLICT", message: "Le prix a changé depuis la préparation : rien n'a été modifié. Redemandez le changement." },
   ADVISOR_RETENTION_POLICY_MISSING: { code: "INTERNAL", message: "Politique de conservation du conseiller absente : purge non effectuée." },
+  // Migration 20261023000600 (suppression de compte, audit M-01).
+  ACCOUNT_DELETE_INVALID: { code: "VALIDATION", message: "Demande de suppression de compte invalide." },
+  ACCOUNT_SOLE_OWNER: { code: "CONFLICT", message: "Suppression du compte impossible : vous êtes le seul propriétaire d'une organisation qui compte d'autres membres. Désignez un autre propriétaire ou retirez les membres, puis réessayez." },
+  ACCOUNT_ORGANIZATIONS_REMAIN: { code: "CONFLICT", message: "Suppression du compte interrompue : une de vos organisations n'a pas encore été supprimée. Réessayez." },
 };
 
 /** Erreurs réseau RÉELLES (client HTTP / DNS / socket) : un message SQL contenant « network » n'en est pas une. */
