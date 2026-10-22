@@ -36,7 +36,7 @@ export function PrimaryAction({ entry: e, canWrite, library }: { entry: Director
       return <ButtonLink href={importHref(e)}>{a.label}</ButtonLink>;
     case "activate_public":
       if (library?.sourceId) return <p className="text-sm text-success">Catalogue public déjà activé dans votre organisation.</p>;
-      if (library && library.activatable) return <ActivateLibraryForm libraryKey={library.key} name={library.name} termsUrl={library.termsUrl} />;
+      if (library && library.activatable) return <ActivateLibraryForm libraryKey={library.key} name={library.name} termsUrl={library.termsUrl} termsConfirmed={library.termsStatus === "confirmed"} />;
       return (
         <p className="text-sm text-muted">
           Activation impossible pour l&apos;instant : {library?.blocked ?? (library?.check ? (CHECK_STATUS_LABEL[library.check.status] ?? library.check.status) : "source pas encore vérifiée par le serveur")}.

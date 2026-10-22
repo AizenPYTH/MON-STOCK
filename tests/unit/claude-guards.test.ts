@@ -22,7 +22,7 @@ describe("garde-fou des commandes", () => {
     "npm test",
     "cd apps/mobile && npm run check",
     "npm --prefix apps/mobile run scan:bundle",
-    "git push -u origin claude/laughing-bardeen-bdn16j 2>&1 | tail -3",
+    "git push -u origin claude/remediation-audit 2>&1 | tail -3",
     "git commit -m \"Bloque eas build et vercel deploy\"",
     "grep -rn 'supabase db push' docs",
     "cat vercel.json .env.example",
@@ -42,6 +42,8 @@ describe("garde-fou des commandes", () => {
     "git push origin testflight-19",
     "git push --force origin claude/x",
     "git push origin main",
+    "git push -u origin claude/laughing-bardeen-bdn16j 2>&1 | tail -3",
+    "git push origin HEAD:refs/heads/claude/laughing-bardeen-bdn16j",
     "git push --tags",
     "git reset --hard HEAD~1",
     "rm -rf src",
@@ -51,6 +53,11 @@ describe("garde-fou des commandes", () => {
     "curl -X POST https://api.supabase.com/v1/projects",
     "gh workflow run ios-testflight-local.yml",
   ])("demande confirmation : %s", (c) => expect(bash(c)).toBe("ask"));
+
+  it("garde-fou défaillant (entrée illisible) : confirmation, jamais un passage silencieux", () => {
+    const out = execFileSync("node", [path.join(root, ".claude/hooks/bash-guard.mjs")], { input: "{ pas du json", encoding: "utf8" });
+    expect(JSON.parse(out).hookSpecificOutput.permissionDecision).toBe("ask");
+  });
 });
 
 describe("garde-fou Supabase", () => {

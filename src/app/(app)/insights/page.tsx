@@ -15,7 +15,7 @@ import { ActionForm } from "@/features/analytics/components/action-form";
 import { RecommendationsTable } from "@/features/analytics/components/recommendations-table";
 import { refreshRecommendationsAction } from "@/features/analytics/actions";
 import { skuLabel, type StockRowView } from "@/features/stock/model";
-import { formatDateTime, formatRelative } from "@/lib/format";
+import { formatDateTime, formatNumber, formatRelative } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Insights" };
 
@@ -96,7 +96,7 @@ export default async function InsightsPage() {
           title="Recommandations de réapprovisionnement"
           description={
             history.lastComputedAt
-              ? `Dernier calcul ${formatRelative(history.lastComputedAt)} (${formatDateTime(history.lastComputedAt)}) · ${history.snapshots} instantané(s) conservé(s), ${history.totalRows} recommandation(s) au total.`
+              ? `Dernier calcul ${formatRelative(history.lastComputedAt)} (${formatDateTime(history.lastComputedAt)}) · ${history.snapshotsIsMinimum ? "au moins " : ""}${history.snapshots} instantané(s) conservé(s), ${formatNumber(history.totalRows)} recommandation(s) au total.`
               : "Aucun calcul enregistré pour le moment."
           }
           actions={

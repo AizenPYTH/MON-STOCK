@@ -9,7 +9,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Checkbox, Input, Select } from "@/components/ui/form";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { getSalesSummary, listOrders } from "@/features/analytics/sales";
+import { getSalesSummary, listOrders, PENDING_ORDERS_MAX } from "@/features/analytics/sales";
 import { flattenSearchParams, ORDER_STATUSES, parseParams, salesListParamsSchema } from "@/features/analytics/schemas";
 import { ORDER_STATUS_LABEL, ORDER_STATUS_VARIANT, PROVIDER_LABEL } from "@/features/analytics/labels";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
@@ -47,6 +47,12 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
       {foreign ? (
         <Callout tone="info" className="mb-5" title="Ventes dans une autre devise">
           Les montants ci-dessus sont en {currency} uniquement. Ventes des 30 derniers jours dans une autre devise, non converties et non additionnées : {foreign}. Les commandes et unités sont, elles, comptées.
+        </Callout>
+      ) : null}
+
+      {result.partial ? (
+        <Callout tone="warning" className="mb-5" title="Liste partielle">
+          Beaucoup de commandes ont du stock non déduit : seules les {formatNumber(PENDING_ORDERS_MAX)} plus récentes sont listées ici. Le total affiché est un minimum.
         </Callout>
       ) : null}
 

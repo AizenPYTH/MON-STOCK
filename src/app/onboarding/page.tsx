@@ -20,11 +20,14 @@ export default async function OnboardingPage() {
   return (
     <div className="flex min-h-full flex-1 flex-col bg-night">
       <header className="mx-auto flex h-[68px] w-full max-w-[1440px] items-center justify-between gap-4 px-4 text-on-night sm:px-6 lg:px-12">
-        <Link href="/" aria-label="MON STOCK — accueil" className="flex min-h-10 items-center rounded-md">
+        {/* prefetch={false} (W-01) : pour un utilisateur connecté, `/` redirige vers /dashboard, qui
+            redirige vers /onboarding tant qu'il n'a pas d'organisation. Précharger ce lien mettrait en
+            cache client une chaîne de redirections dépendante de l'état, rejouée après la création. */}
+        <Link href="/" prefetch={false} aria-label="MON STOCK — accueil" className="flex min-h-10 items-center rounded-md">
           <Wordmark />
         </Link>
         {ctx ? (
-          <Link href="/dashboard" className="inline-flex h-10 items-center gap-1 rounded-[10px] px-3 text-sm font-bold text-on-night-muted hover:bg-night-raised hover:text-on-night">
+          <Link href="/dashboard" prefetch={false} className="inline-flex h-10 items-center gap-1 rounded-[10px] px-3 text-sm font-bold text-on-night-muted hover:bg-night-raised hover:text-on-night">
             <ChevronLeft aria-hidden="true" className="h-4 w-4" />
             Retour à Aujourd&apos;hui
           </Link>

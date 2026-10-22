@@ -5,7 +5,7 @@ import { requireOrgContextForAction } from "@/features/auth/dal";
 import { fail, ok, type ActionResult } from "@/lib/result";
 import { fromPostgrestError, toUserMessage } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { computeRecommendations, persistRecommendations } from "@/features/analytics/replenishment";
+import { computeRecommendationsWithCoverage, persistRecommendations } from "@/features/analytics/replenishment";
 
 const log = createLogger("ANALYTICS");
 
@@ -23,16 +23,17 @@ function revalidateIntelligence() {
 export async function refreshRecommendationsAction(_prev: MessageResult | null, _formData: FormData): Promise<MessageResult> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
-    const drafts = await computeRecommendations(ctx);
+    const { drafts, truncated } = await computeRecommendationsWithCoverage(ctx);
     const { inserted } = await persistRecommendations(ctx, drafts);
-    log.info("recommendations refreshed", { orgId: ctx.organization.id, inserted });
+    log.info("recommendations refreshed", { orgId: ctx.organization.id, inserted, truncated });
     revalidateIntelligence();
     const needed = drafts.filter((d) => d.result.needed).length;
+    const partial = truncated ? " Calcul partiel : le volume de données dépasse la borne de lecture." : "";
     return ok({
       message:
-        inserted === 0
+        (inserted === 0
           ? "Aucun produit ne nécessite d'attention : rien à recommander pour le moment."
-          : `${inserted} produit(s) analysé(s), ${needed} commande(s) recommandée(s).`,
+          : `${inserted} produit(s) analysé(s), ${needed} commande(s) recommandée(s).`) + partial,
     });
   } catch (e) {
     return fail(toUserMessage(e));

@@ -16,7 +16,8 @@ type Sub = { href: string; label: string; countKey?: keyof SidebarCounts };
 type Item = { href: string; label: string; icon: LucideIcon; match: string[]; subs?: Sub[] };
 type Group = { label: string; items: Item[] };
 
-export type SidebarCounts = { pendingMatches?: number; openAlerts?: number; unmappedListings?: number };
+/** null = comptage indisponible (affiché « — », jamais 0). */
+export type SidebarCounts = { pendingMatches?: number | null; openAlerts?: number | null; unmappedListings?: number | null };
 
 export const NAV: Group[] = [
   {
@@ -127,7 +128,13 @@ export function Sidebar({ collapsed = false, onToggle, counts, footer, header, o
               <Link href={s.href as never} onClick={onNavigate} aria-current={on ? "page" : undefined} className={cn("flex h-8 items-center gap-3 rounded-lg pl-[23px] pr-2.5 hover:bg-[rgba(247,248,250,.06)]", on ? "text-on-night" : "text-on-night-muted")}>
                 <span aria-hidden="true" className={cn("h-[18px] w-0.5 shrink-0 rounded-[1px]", on ? "bg-mint" : "bg-night-stroke")} />
                 <span className={cn("flex-1 truncate text-[13.5px] leading-[18px]", on ? "font-bold" : "font-semibold")}>{s.label}</span>
-                {n ? <span className="ms-code text-[11px] text-on-night-muted">{n}</span> : null}
+                {n === null ? (
+                  <span className="ms-code text-[11px] text-on-night-muted" aria-label="nombre inconnu">
+                    —
+                  </span>
+                ) : n ? (
+                  <span className="ms-code text-[11px] text-on-night-muted">{n}</span>
+                ) : null}
               </Link>
             </li>
           );

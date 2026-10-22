@@ -257,7 +257,7 @@ export function useActivateSource() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (key: string) => activateLibrarySource(orgId, key),
+    mutationFn: (input: string | { key: string; termsUrl?: string | null }) => (typeof input === "string" ? activateLibrarySource(orgId, input) : activateLibrarySource(orgId, input.key, input.termsUrl)),
     onSettled: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: [orgId, "source-library"] }),

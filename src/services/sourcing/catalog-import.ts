@@ -154,6 +154,7 @@ export function loadCatalogFile(file: CatalogFileInput): LoadedCatalog {
     try {
       const sheet = readXlsx(bytes, file.sheet);
       notes.push(`Feuille lue : « ${sheet.name} » (${sheet.rows.length} lignes, en-têtes en première ligne).`);
+      if (sheet.truncated) notes.push(`Feuille tronquée : seules les ${sheet.rows.length - 1} premières lignes de données sont lues.`);
       return { sha256, size, format, feedFormat: "csv", content: sheetToCsv(sheet), options: { delimiter: ";" }, notes };
     } catch (e) {
       if (e instanceof XlsxError) throw new AppError("VALIDATION", e.message);

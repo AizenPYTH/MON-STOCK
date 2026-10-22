@@ -62,14 +62,46 @@ export function parseQuery<S extends z.ZodTypeAny>(request: Request, schema: S):
   return parsed.data;
 }
 
+/**
+ * Corps de requête lu en flux et borné en OCTETS : la lecture s'arrête (et le flux est annulé) dès
+ * que `maxBytes` est dépassé, que `Content-Length` soit annoncé ou non (envoi « chunked »).
+ */
+export async function readBodyText(request: Request, maxBytes: number): Promise<string> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && declared.trim() !== "") {
+    const length = Number(declared);
+    if (!Number.isFinite(length) || length < 0) throw new AppError("VALIDATION", "En-tête Content-Length invalide.");
+    if (length > maxBytes) throw new AppError("VALIDATION", "Requête trop volumineuse.");
+  }
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new AppError("VALIDATION", "Requête trop volumineuse.");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    bytes.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 /** Corps JSON (64 Ko max) validé par un schéma Zod. */
 export async function parseBody<S extends z.ZodTypeAny>(request: Request, schema: S, maxBytes = 64_000): Promise<z.infer<S>> {
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > maxBytes) throw new AppError("VALIDATION", "Requête trop volumineuse.");
   let body: unknown;
   try {
-    const text = await request.text();
-    if (text.length > maxBytes) throw new AppError("VALIDATION", "Requête trop volumineuse.");
+    const text = await readBodyText(request, maxBytes);
     body = text ? JSON.parse(text) : {};
   } catch (e) {
     if (isAppError(e)) throw e;

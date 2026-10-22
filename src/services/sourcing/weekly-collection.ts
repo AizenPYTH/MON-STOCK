@@ -14,6 +14,7 @@ import { recordSourceOutcome } from "@/services/sourcing/source-health";
 import { finishSyncRun, recordSyncErrors, startSyncRun, type SyncErrorInput, type SyncRunHandle } from "@/services/sourcing/sync-runs";
 import { EMPTY_CURSOR, endOfCatalogResult, parseCursor, parseStats, weeklyDecision, type CollectCursor, type CollectionStats, type WeeklyDecision } from "@/domain/sourcing/weekly-schedule";
 import type { SyncFrequency } from "@/domain/sourcing/schedule";
+import { sourcingUserAgent } from "@/lib/env";
 
 /**
  * Collecte hebdomadaire des catalogues publics, PAR TRANCHES avec reprise.
@@ -193,7 +194,7 @@ export async function collectionPass(admin: AdminSupabaseClient, source: SourceR
   }
 
   const errors: SyncErrorInput[] = [];
-  const userAgent = deps.userAgent ?? process.env.SOURCING_USER_AGENT ?? "MonStockBot/0.1";
+  const userAgent = deps.userAgent ?? sourcingUserAgent();
   const config = adapterConfigFromSource(source);
   const storageCtx = {
     supabase: admin,

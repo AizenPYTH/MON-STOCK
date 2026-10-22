@@ -2,27 +2,56 @@ import "server-only";
 import type { OrgContext } from "@/features/auth/dal";
 import type { PurchaseOrder, Supplier, SupplierFeed, SupplierSource } from "@/db/types";
 import { computeSupplierScore, type SupplierScoreResult } from "@/domain/sourcing/scoring";
+import { fromPostgrestError } from "@/lib/errors";
+import { createLogger } from "@/lib/logger";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 
 export const SUPPLIER_OFFERS_PAGE_SIZE = 25;
 
 export interface SupplierListItem {
   supplier: Supplier;
-  offersCount: number;
-  sourcesCount: number;
+  /** offres actives ; null si la lecture a échoué (affiché « — », jamais 0) */
+  offersCount: number | null;
+  /** faux si le comptage a atteint la borne de lecture : `offersCount` est alors un minimum */
+  offersCountExact: boolean;
+  /** sources + flux ; null si la lecture a échoué */
+  sourcesCount: number | null;
   sourceTypes: string[];
   lastSyncAt: string | null;
 }
 
+/** Borne de lecture des offres actives pour les compteurs (au-delà : « au moins N »). */
+export const SUPPLIER_OFFERS_SCAN_MAX = 20_000;
+/** Borne de lecture des sources et flux (bien au-delà de l'usage réel). */
+export const SUPPLIER_SOURCES_SCAN_MAX = 10_000;
+
+const log = createLogger("suppliers");
+
+/** Lecture paginée (ordre stable par id) ; null si une page échoue (journalisé, jamais 0 supposé). */
+async function scanRows<T>(label: string, orgId: string, page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { code?: string; message: string } | null }>, max: number): Promise<{ rows: T[]; truncated: boolean } | null> {
+  try {
+    return await fetchRowsUpTo(page, max);
+  } catch (e) {
+    log.warn("lecture des compteurs fournisseurs impossible", { source: label, orgId, error: e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e) });
+    return null;
+  }
+}
+
+/**
+ * Liste des fournisseurs avec leurs compteurs. Les lectures de comptage sont PAGINÉES (PostgREST
+ * plafonne chaque réponse à 1 000 lignes : W-03) ; une lecture en échec donne « — » (W-14).
+ */
 export async function listSuppliers(ctx: OrgContext, options: { archived?: boolean } = {}): Promise<SupplierListItem[]> {
   const orgId = ctx.organization.id;
-  const [{ data: suppliers }, { data: offers }, { data: sources }, { data: feeds }] = await Promise.all([
+  const [suppliersRes, offers, sources, feeds] = await Promise.all([
     ctx.supabase.from("suppliers").select("*").eq("organization_id", orgId).eq("is_archived", options.archived ?? false).order("name").limit(500),
-    ctx.supabase.from("sourcing_offers").select("supplier_id").eq("organization_id", orgId).eq("status", "active").limit(10000),
-    ctx.supabase.from("supplier_sources").select("supplier_id, source_type, last_sync_at").eq("organization_id", orgId).limit(2000),
-    ctx.supabase.from("supplier_feeds").select("supplier_id, format, last_sync_at").eq("organization_id", orgId).limit(2000),
+    scanRows("offres", orgId, (from, to) => ctx.supabase.from("sourcing_offers").select("supplier_id").eq("organization_id", orgId).eq("status", "active").order("id").range(from, to), SUPPLIER_OFFERS_SCAN_MAX),
+    scanRows("sources", orgId, (from, to) => ctx.supabase.from("supplier_sources").select("supplier_id, source_type, last_sync_at").eq("organization_id", orgId).order("id").range(from, to), SUPPLIER_SOURCES_SCAN_MAX),
+    scanRows("flux", orgId, (from, to) => ctx.supabase.from("supplier_feeds").select("supplier_id, format, last_sync_at").eq("organization_id", orgId).order("id").range(from, to), SUPPLIER_SOURCES_SCAN_MAX),
   ]);
+  if (suppliersRes.error) throw fromPostgrestError(suppliersRes.error);
   const offerCounts = new Map<string, number>();
-  for (const o of offers ?? []) offerCounts.set(o.supplier_id, (offerCounts.get(o.supplier_id) ?? 0) + 1);
+  for (const o of offers?.rows ?? []) offerCounts.set(o.supplier_id, (offerCounts.get(o.supplier_id) ?? 0) + 1);
   const sourceInfo = new Map<string, { count: number; types: Set<string>; last: string | null }>();
   const bump = (supplierId: string, type: string, last: string | null) => {
     const cur = sourceInfo.get(supplierId) ?? { count: 0, types: new Set<string>(), last: null };
@@ -31,11 +60,19 @@ export async function listSuppliers(ctx: OrgContext, options: { archived?: boole
     if (last && (!cur.last || last > cur.last)) cur.last = last;
     sourceInfo.set(supplierId, cur);
   };
-  for (const s of sources ?? []) bump(s.supplier_id, s.source_type, s.last_sync_at);
-  for (const f of feeds ?? []) bump(f.supplier_id, f.format.toUpperCase(), f.last_sync_at);
-  return (suppliers ?? []).map((supplier) => {
+  for (const s of sources?.rows ?? []) bump(s.supplier_id, s.source_type, s.last_sync_at);
+  for (const f of feeds?.rows ?? []) bump(f.supplier_id, f.format.toUpperCase(), f.last_sync_at);
+  const sourcesKnown = sources !== null && feeds !== null;
+  return (suppliersRes.data ?? []).map((supplier) => {
     const info = sourceInfo.get(supplier.id);
-    return { supplier, offersCount: offerCounts.get(supplier.id) ?? 0, sourcesCount: info?.count ?? 0, sourceTypes: Array.from(info?.types ?? []), lastSyncAt: info?.last ?? null };
+    return {
+      supplier,
+      offersCount: offers ? (offerCounts.get(supplier.id) ?? 0) : null,
+      offersCountExact: offers ? !offers.truncated : false,
+      sourcesCount: sourcesKnown ? (info?.count ?? 0) : null,
+      sourceTypes: Array.from(info?.types ?? []),
+      lastSyncAt: info?.last ?? null,
+    };
   });
 }
 

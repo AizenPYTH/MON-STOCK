@@ -31,7 +31,7 @@ export function summarizeRestErrors(json: unknown): { message: string; errorIds:
  * Appel REST authentifié par le token utilisateur. En cas de 401, un rafraîchissement
  * forcé est tenté UNE fois ; un second 401 signifie que l'autorisation est révoquée.
  */
-export async function ebayRestGet(auth: ConnectorAuth, url: string, label: string, options: { marketplaceId?: string } = {}): Promise<unknown> {
+export async function ebayRestGet(auth: ConnectorAuth, url: string, label: string, options: { marketplaceId?: string; deadline?: number | null } = {}): Promise<unknown> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
     const res = await fetchWithRetry(
@@ -45,7 +45,7 @@ export async function ebayRestGet(auth: ConnectorAuth, url: string, label: strin
           ...(options.marketplaceId ? { "X-EBAY-C-MARKETPLACE-ID": options.marketplaceId } : {}),
         },
       },
-      { provider: EBAY_PROVIDER, label },
+      { provider: EBAY_PROVIDER, label, deadline: options.deadline ?? null },
     );
     const json = await readJson(res, EBAY_PROVIDER);
     if (res.status === 401) {

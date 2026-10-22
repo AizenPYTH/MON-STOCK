@@ -12,11 +12,47 @@ const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
 });
 
+/** Jeton produit du robot de collecte (sans contact : aucun contact n'est inventé). */
+export const DEFAULT_SOURCING_USER_AGENT = "MonStockBot/0.1";
+
+/** Valeurs d'exemple (documentation) qui ne désignent aucun contact réel. */
+const PLACEHOLDER_CONTACT_RE = /(^|[@./])example\.(com|org|net|test)\b|\(\+contact\)/i;
+
+/** Contact utilisable dans le User-Agent : URL https ou adresse e-mail, jamais une valeur d'exemple. */
+export function botContact(raw: string | null | undefined): string | null {
+  const v = (raw ?? "").trim();
+  if (!v || v.length > 200 || PLACEHOLDER_CONTACT_RE.test(v) || /[\s()]/.test(v)) return null;
+  if (/^https:\/\/[^/\s]+\.[^/\s]+/i.test(v)) return v;
+  if (/^(mailto:)?[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(v)) return v.replace(/^mailto:/i, "");
+  return null;
+}
+
+/**
+ * User-Agent du robot de collecte (Q-19) : SOURCING_USER_AGENT s'il est défini (et n'est pas la
+ * valeur d'exemple de la documentation), sinon « MonStockBot/0.1 ». Le contact configurable
+ * SOURCING_BOT_CONTACT (page « robot » en https ou e-mail réel) est ajouté sous la forme
+ * « (+contact) » s'il n'y figure pas déjà. Sans contact configuré, aucun contact n'est inventé.
+ */
+export function buildSourcingUserAgent(env: Readonly<Record<string, string | undefined>>): string {
+  const configured = (env.SOURCING_USER_AGENT ?? "").trim();
+  const base = configured && !PLACEHOLDER_CONTACT_RE.test(configured) ? configured : DEFAULT_SOURCING_USER_AGENT;
+  const contact = botContact(env.SOURCING_BOT_CONTACT);
+  if (!contact || base.includes("(+")) return base;
+  return `${base} (+${contact})`;
+}
+
+/** User-Agent du robot, lisible sans les autres secrets serveur (sondes, scripts). */
+export function sourcingUserAgent(): string {
+  return buildSourcingUserAgent(process.env);
+}
+
 const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   TOKEN_ENCRYPTION_KEY: z.string().min(32, "TOKEN_ENCRYPTION_KEY doit faire au moins 32 caractères (base64 de 32 octets)."),
   CRON_SECRET: z.string().min(16).optional(),
-  SOURCING_USER_AGENT: z.string().min(1).default("MonStockBot/0.1"),
+  SOURCING_USER_AGENT: z.string().default(DEFAULT_SOURCING_USER_AGENT),
+  /** contact du robot de collecte (URL https d'une page « robot » ou adresse e-mail réelle) */
+  SOURCING_BOT_CONTACT: z.string().optional(),
 });
 
 const ebaySchema = z.object({
@@ -79,7 +115,7 @@ export function serverEnv(): ServerEnv {
   if (!parsed.success) {
     throw new EnvError(formatIssues("Configuration serveur manquante ou invalide :", parsed.error));
   }
-  serverCache = parsed.data;
+  serverCache = { ...parsed.data, SOURCING_USER_AGENT: buildSourcingUserAgent(process.env) };
   return serverCache;
 }
 

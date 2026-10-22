@@ -22,6 +22,8 @@ import { parseQuery } from "@/domain/sourcing/query-parser";
 
 export const EBAY_BROWSE_DEFAULT_MARKETPLACE = "EBAY_FR";
 export const EBAY_BROWSE_DEFAULT_LIMIT = 30;
+/** Délai maximal d'obtention du jeton d'application (OAuth client credentials). */
+export const EBAY_APP_TOKEN_TIMEOUT_MS = 15_000;
 
 const tokenSchema = z.object({ access_token: z.string().min(1), expires_in: z.number().int().positive() });
 
@@ -65,12 +67,27 @@ async function getAppToken(ctx: AdapterRunContext): Promise<string> {
   const now = (ctx.now ?? (() => new Date()))().getTime();
   if (appToken && appToken.key === key && appToken.expiresAt - 5 * 60_000 > now) return appToken.token;
   const fetchImpl = ctx.fetchImpl ?? fetch;
-  const res = await fetchImpl(`${apiBase(env)}/identity/v1/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${base64(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`)}` },
-    body: new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" }).toString(),
-  });
-  const json: unknown = await res.json().catch(() => null);
+  // délai borné (appel + lecture du corps) : jamais plus que le budget de la recherche
+  const timeoutMs = Math.max(1, Math.min(EBAY_APP_TOKEN_TIMEOUT_MS, ctx.timeoutMs ?? EBAY_APP_TOKEN_TIMEOUT_MS));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  let json: unknown;
+  try {
+    res = await fetchImpl(`${apiBase(env)}/identity/v1/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${base64(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`)}` },
+      body: new URLSearchParams({ grant_type: "client_credentials", scope: "https://api.ebay.com/oauth/api_scope" }).toString(),
+      signal: controller.signal,
+    });
+    json = await res.json().catch(() => null);
+    if (controller.signal.aborted) throw new Error("aborted");
+  } catch (e) {
+    if (controller.signal.aborted) throw new Error(`Jeton d'application eBay : délai dépassé (${Math.round(timeoutMs / 1000)} s).`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(res.status === 401 ? "eBay refuse les clés de l'application (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET)." : `Jeton d'application eBay refusé (HTTP ${res.status}).`);
   const t = tokenSchema.parse(json);
   appToken = { token: t.access_token, expiresAt: now + t.expires_in * 1000, key };

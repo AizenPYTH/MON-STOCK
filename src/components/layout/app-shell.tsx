@@ -7,10 +7,12 @@ import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { AdvisorPanel } from "@/features/advisor/components/advisor-panel";
 import { OrgSwitcher } from "@/components/layout/org-switcher";
+import { DisplayedOrganizationGuard } from "@/components/layout/displayed-organization-guard";
 import { DemoBadge } from "@/components/instrument/figure";
 import { initials } from "@/components/instrument/pure";
 import { ToastProvider } from "@/components/ui/toast";
 import { signOutAction } from "@/features/auth/actions";
+import { switchOrganizationAction } from "@/features/organizations/actions";
 import type { ShellAlert } from "@/features/shell/queries";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +39,16 @@ function subscribeCollapsed(cb: () => void) {
 
 export interface ShellProps {
   children: ReactNode;
-  org: { id: string; name: string; isDemo: boolean; currency: string; roleLabel: string; options: { id: string; name: string; isDemo: boolean }[] };
+  org: {
+    id: string;
+    name: string;
+    isDemo: boolean;
+    currency: string;
+    roleLabel: string;
+    options: { id: string; name: string; isDemo: boolean }[];
+    /** l'organisation mémorisée n'est plus accessible : celle-ci a été retenue à sa place (W-28) */
+    fallback?: boolean;
+  };
   user: { name: string; email: string | null };
   readOnly: boolean;
   counts: SidebarCounts;
@@ -169,6 +180,7 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
 
   return (
     <div className="flex min-h-full flex-1 bg-night">
+      <DisplayedOrganizationGuard organizationId={org.id} />
       <a href="#contenu" className="sr-only z-50 rounded-lg bg-mint px-3 py-2 text-sm font-bold text-night focus:not-sr-only focus:fixed focus:left-4 focus:top-3">
         Aller au contenu
       </a>
@@ -191,6 +203,19 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onToggleAdvisor={onAdvisorPage ? undefined : toggleAdvisor} advisorOpen={advisorOpen} onOpenSearch={() => setSearch(true)} onOpenMenu={() => setDrawer(true)} addOpen={addOpen} setAddOpen={setAddOpen} readOnly={readOnly} lastEbaySync={lastEbaySync} alerts={alerts} alertTotal={alertTotal} />
         <main id="contenu" tabIndex={-1} className="flex min-w-0 flex-1 flex-col focus:outline-none">
+          {org.fallback ? (
+            <div role="status" className="flex flex-wrap items-center gap-2.5 px-4 pb-2.5 pt-1 sm:px-8 lg:pl-8 lg:pr-10">
+              <span className="text-[13px] font-semibold text-on-night">
+                Votre organisation habituelle n&apos;est plus accessible (accès retiré ou organisation supprimée) : MON STOCK affiche « {org.name} ».
+              </span>
+              <form action={switchOrganizationAction}>
+                <input type="hidden" name="organization_id" value={org.id} />
+                <button type="submit" className="rounded-lg px-2 py-1 text-[13px] font-bold text-mint underline underline-offset-2 hover:text-on-night">
+                  Continuer avec cette organisation
+                </button>
+              </form>
+            </div>
+          ) : null}
           {org.isDemo ? (
             <div className="flex flex-wrap items-center gap-2.5 px-4 pb-2.5 pt-1 sm:px-8 lg:pl-8 lg:pr-10">
               <DemoBadge />

@@ -4,6 +4,7 @@ import { parseQuery } from "@/domain/sourcing/query-parser";
 import { getSourceAdapter } from "@/integrations/sourcing/registry";
 import type { AdapterSourceConfig, SourceAdapter } from "@/integrations/sourcing/core";
 import { checkRobotsForUrls } from "@/services/sourcing/crawler/robots";
+import { sourcingUserAgent } from "@/lib/env";
 
 /**
  * Essai RÉEL d'un connecteur sur un site candidat (outil d'administration, route cron protégée) :
@@ -69,7 +70,7 @@ async function probeOne(p: z.infer<typeof adapterProbeSchema>["probes"][number])
   if (adapter.access !== "public") return { ...base, status: "refused", message: "Adaptateur à compte : essai réservé aux comptes réels du revendeur." };
   if (p.mode === "catalog" && !(adapter.capabilities.catalog && adapter.fetchCatalog)) return { ...base, status: "refused", message: "Cet adaptateur ne sait pas parcourir un catalogue." };
   const config: AdapterSourceConfig = { baseUrl: p.baseUrl.replace(/\/+$/, ""), settings: p.settings, defaultCurrency: p.currency ?? null, defaultTaxType: "unknown", defaultCountry: null };
-  const userAgent = process.env.SOURCING_USER_AGENT || "MonStockBot/0.1";
+  const userAgent = sourcingUserAgent();
   const parsed = parseQuery(p.query);
   const urls = (p.mode === "search" ? adapter.urlsForQuery?.(config, parsed, p.query) : adapter.urlsForCatalog?.(config)) ?? [];
   try {

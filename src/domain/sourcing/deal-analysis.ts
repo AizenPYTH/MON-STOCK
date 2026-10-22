@@ -20,55 +20,14 @@
  *    si la comparaison porte sur un produit équivalent ET que la marge reste positive.
  */
 import { normalizeProduct, normalizeText } from "@/domain/sourcing/normalizer";
+import { escapeRe, KIND_WORDS, kindOfText, prepareKindText, wordsRegex, type ProductKind } from "@/domain/sourcing/product-kind";
 import { computeUnitEconomics, freshnessOf, type RadarCostSettings, type SupplierOrigin } from "@/domain/sourcing/radar";
 
 // ---------------------------------------------------------------------------------------------
 // 1. Identification du produit (signature d'équivalence)
 
-export type ProductKind =
-  | "device"
-  | "screen"
-  | "battery"
-  | "back_glass"
-  | "frame"
-  | "camera"
-  | "speaker"
-  | "charging_port"
-  | "flex"
-  | "button"
-  | "adhesive"
-  | "screen_protector"
-  | "case"
-  | "charger_cable"
-  | "tool"
-  | "sim_tray"
-  | "board"
-  | "keyboard"
-  | "lot"
-  | "other_part";
-
-/** Mots-clés par type (FR, EN, ES, IT, PL, CS, NL, DE), testés en début de mot sur le titre normalisé. */
-const KIND_WORDS: Array<{ kind: ProductKind; words: string[] }> = [
-  { kind: "lot", words: ["lot de", "lote", "lotes", "palette", "paleta", "palety", "pallet", "job lot", "joblot", "caja", "bundle", "stock lot", "mix lot", "retourenpalette", "retouren paletten"] },
-  { kind: "screen_protector", words: ["verre trempe", "tempered glass", "protection ecran", "protector de pantalla", "protector pantalla", "screen protector", "ochranne sklo", "tvrzene sklo", "pellicola", "panzerglas", "privacy glass", "privacy tempered", "cristal templado", "protector de cristal", "vetro temperato", "folie"] },
-  { kind: "back_glass", words: ["vitre arriere", "back glass", "rear glass", "back cover", "coque arriere", "tapa trasera", "scocca posteriore", "zadni kryt", "klapka", "achterkant", "backcover", "battery cover", "rear housing"] },
-  { kind: "screen", words: ["ecran", "display", "lcd", "oled", "pantalla", "schermo", "wyswietlacz", "displej", "scherm", "bildschirm", "digitizer", "touch screen", "vitre tactile", "vitre simple", "front glass"] },
-  { kind: "battery", words: ["batterie", "battery", "bateria", "batteria", "baterie", "akku", "accu", "bateri"] },
-  { kind: "frame", words: ["chassis", "frame", "marco", "telaio", "ram ", "carcasa", "middle frame", "housing", "behuizing", "topcase", "top case", "bottom case"] },
-  { kind: "camera", words: ["camera", "camara", "fotocamera", "kamera", "objectif", "lens", "lentille"] },
-  { kind: "speaker", words: ["haut parleur", "haut-parleur", "speaker", "altavoz", "altoparlante", "reproduktor", "buzzer", "glosnik", "luidspreker", "ecouteur interne", "earpiece"] },
-  { kind: "charging_port", words: ["connecteur de charge", "port de charge", "charging port", "conector de carga", "dock", "gniazdo", "konektor", "laadpoort", "lightning port"] },
-  { kind: "flex", words: ["nappe", "flex", "cable flex", "kabel", "nastro"] },
-  { kind: "button", words: ["bouton", "button", "boton", "tasto", "tlacitko", "power button", "volume button"] },
-  { kind: "adhesive", words: ["adhesif", "adhesive", "adhesivo", "pegatina", "lepeni", "joint", "sticker", "colle"] },
-  { kind: "case", words: ["coque", "etui", "funda", "custodia", "pouzdro", "hoesje", "case "] },
-  { kind: "charger_cable", words: ["chargeur", "charger", "cargador", "caricabatterie", "nabijecka", "ladegerat", "cable usb", "cable lightning", "cable usb-c", "adaptateur secteur", "power adapter", "usb-c to", "usb-a to"] },
-  { kind: "tool", words: ["tournevis", "screwdriver", "outil", "tool", "tweezer", "pince", "spudger", "destornillador", "kit d'outils", "toolkit", "ventouse"] },
-  { kind: "sim_tray", words: ["rack sim", "tiroir sim", "tiroir carte sim", "sim tray", "bandeja sim", "slot sim", "porta sim", "suplik na sim", "suplik sim", "sim card tray", "tiroir nano sim"] },
-  { kind: "other_part", words: ["blindaje", "shield", "blindage", "plaque metal", "vis ", "screws", "tornillos", "joint etancheite", "mesh", "grille", "nfc", "antena", "antenna", "antenne", "vibreur", "vibrator", "motor vibr", "taptic", "face id", "touch id", "capteur", "sensor", "micro ", "microphone", "microfono", "ic chip", "puce"] },
-  { kind: "board", words: ["carte mere", "motherboard", "logic board", "placa base", "scheda madre", "carte fille", "daughter board", "moederbord"] },
-  { kind: "keyboard", words: ["clavier", "keyboard", "teclado", "tastiera", "klavesnice", "toetsenbord", "trackpad"] },
-];
+export type { ProductKind } from "@/domain/sourcing/product-kind";
+export { detectKind } from "@/domain/sourcing/product-kind";
 
 /** Qualités de pièce qui changent le prix : jamais mélangées entre elles. */
 const QUALITY_WORDS: Array<{ key: string; words: string[] }> = [
@@ -101,20 +60,7 @@ export interface ProductSignature {
   identified: boolean;
 }
 
-const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-/** une expression par groupe de mots (compilée une fois) : mot cherché en début de mot */
-const wordsRegex = (words: string[]) => new RegExp(`(^|[^a-z0-9])(${words.map((w) => escapeRe(normalizeText(w) + (/\s$/.test(w) ? " " : ""))).join("|")})`);
-const KIND_RES = KIND_WORDS.map(({ kind, words }) => ({ kind, re: wordsRegex(words) }));
 const QUALITY_RES = QUALITY_WORDS.map(({ key, words }) => ({ key, re: wordsRegex(words) }));
-
-function kindOfNormalized(t: string): ProductKind {
-  for (const { kind, re } of KIND_RES) if (re.test(t)) return kind;
-  return "device";
-}
-
-export function detectKind(title: string): ProductKind {
-  return kindOfNormalized(` ${normalizeText(title)} `);
-}
 
 function qualityOfNormalized(t: string): string[] {
   const found = new Set<string>();
@@ -134,8 +80,6 @@ export function detectQuality(title: string): string[] {
  */
 const LOOSE_KINDS = new Set<ProductKind>(["flex", "camera", "speaker", "button", "adhesive", "case", "charger_cable", "tool", "sim_tray", "board", "keyboard", "charging_port", "frame", "other_part"]);
 export const DESCRIPTOR_OVERLAP_MIN = 0.5;
-/** pièces qui peuvent porter une capacité sans être un appareil */
-const PART_WITH_STORAGE = new Set<ProductKind>(["board"]);
 
 const FILLER = new Set([
   "para", "pour", "for", "per", "pro", "max", "mini", "plus", "de", "du", "des", "la", "le", "les", "el", "los", "las", "di", "del", "con", "avec", "with", "and", "et", "y", "e", "en", "in", "na", "do", "pre", "z", "w", "the", "a", "an", "un", "une", "+",
@@ -198,12 +142,11 @@ export function productSignature(o: OfferIdentity): ProductSignature {
   const model = o.model ?? n?.model ?? null;
   const condRaw = o.condition && o.condition !== "unknown" ? o.condition : (n?.condition ?? o.condition ?? "unknown");
   const condition = condRaw === "new" || condRaw === "refurbished" || condRaw === "used" ? condRaw : "unknown";
-  // « (100% battery) », « batterie 90 % » : état de batterie d'un appareil, pas une batterie
-  const t = ` ${normalizeText(o.title).replace(/\d{2,3}\s?%?\s?(battery|batterie|bateria|batteria|baterie|akku)( health| sante)?|(battery|batterie|bateria|batteria|baterie|akku)( health| sante)?\s?\d{2,3}(?![0-9])(?!\s?mah)\s?%?/g, " ")} `;
+  // état de batterie (« 90 % battery ») et mémoire vive (« 8GB RAM ») retirés : caractéristiques d'appareil
+  const t = prepareKindText(o.title);
   const storage = (o.storage ?? n?.storage)?.toLowerCase() ?? null;
-  let kind = kindOfNormalized(t);
-  // une capacité (128 Go…) ne qualifie qu'un appareil ou une carte mère
-  if (storage && kind !== "board" && kind !== "lot" && kind !== "device" && !PART_WITH_STORAGE.has(kind)) kind = "device";
+  // une capacité (128 Go…) ne qualifie qu'un appareil ou une carte mère ; « vitre arrière fissurée » = appareil abîmé
+  const kind = kindOfText(t, storage);
   // grades mixtes (« A/B », « A+/A ») : un assortiment, jamais équivalent au grade simple
   const mixed = /(^|[^a-z0-9])([a-d][+]?)\s?\/\s?([a-d][+]?)(\s?\/\s?[a-d][+]?)*(?![a-z0-9])/i.exec(o.title.replace(/\d+\s?(gb|go|tb)\s?\//gi, " "));
   const grade = mixed ? `mix:${mixed[0].trim().toLowerCase().replace(/\s/g, "")}` : ((o.grade ?? n?.grade)?.toLowerCase() ?? null);

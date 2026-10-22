@@ -13,14 +13,34 @@ export async function connect(): Promise<Client> {
   return client;
 }
 
+/** `REQUIRE_DB=1` (CI) : une base injoignable fait ÉCHOUER les tests au lieu de les ignorer. */
+export function isDbRequired(env: Record<string, string | undefined> = process.env): boolean {
+  const v = (env.REQUIRE_DB ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 export async function canConnect(): Promise<boolean> {
   try {
     const c = await connect();
     await c.query("select 1");
     await c.end();
     return true;
-  } catch {
+  } catch (e) {
+    if (isDbRequired()) {
+      // Levée au chargement du fichier (top-level await) : Vitest marque le fichier en échec.
+      throw new Error(`REQUIRE_DB=1 : base d'intégration injoignable (${maskDatabaseUrl(DATABASE_URL)}) : ${pgErrorMessage(e)}`);
+    }
     return false;
+  }
+}
+
+function maskDatabaseUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.password) u.password = "***";
+    return u.toString();
+  } catch {
+    return "(DATABASE_URL illisible)";
   }
 }
 

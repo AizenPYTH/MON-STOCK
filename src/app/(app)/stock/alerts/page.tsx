@@ -10,7 +10,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { getStockAnalytics } from "@/features/analytics/stock-analytics";
-import { computeRecommendations } from "@/features/analytics/replenishment";
+import { computeRecommendationsWithCoverage } from "@/features/analytics/replenishment";
 import { listEventAlerts } from "@/features/analytics/alerts";
 import { alertsParamsSchema, flattenSearchParams, parseParams } from "@/features/analytics/schemas";
 import { ActionForm } from "@/features/analytics/components/action-form";
@@ -26,7 +26,8 @@ const PAGE_SIZE = 50;
 export default async function StockAlertsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await requireOrgContext();
   const params = parseParams(alertsParamsSchema, flattenSearchParams(await searchParams));
-  const [analytics, drafts, eventAlerts] = await Promise.all([getStockAnalytics(ctx), computeRecommendations(ctx), listEventAlerts(ctx)]);
+  const [analytics, recommendations, eventAlerts] = await Promise.all([getStockAnalytics(ctx), computeRecommendationsWithCoverage(ctx), listEventAlerts(ctx)]);
+  const drafts = recommendations.drafts;
   const writable = canWrite(ctx.role);
   const recBySku = new Map(drafts.map((d) => [d.skuId, d] as const));
 
@@ -57,6 +58,9 @@ export default async function StockAlertsPage({ searchParams }: { searchParams: 
       </Scene>
       <Paper>
       {analytics.truncated ? <Callout tone="warning" className="mb-4">Plus de 5 000 SKU actifs : seuls les 5 000 premiers sont analysés ici. Les compteurs sont des minima.</Callout> : null}
+      {recommendations.truncated && !analytics.truncated ? (
+        <Callout tone="warning" className="mb-4">Recommandations partielles : le volume d&apos;offres ou de commandes fournisseur dépasse la borne de lecture. Les quantités en commande et les meilleures offres peuvent être incomplètes.</Callout>
+      ) : null}
 
       <nav aria-label="Niveau de stock" className="mb-4 flex flex-wrap gap-1.5">
         <FilterChip href="/stock/alerts" selected={params.level === "todo"} count={todo.length}>

@@ -3,6 +3,7 @@ import type { OrgContext } from "@/features/auth/dal";
 import type { StockLevel } from "@/domain/inventory/alerts";
 import { STOCK_LEVEL_ORDER } from "@/domain/inventory/alerts";
 import { fromPostgrestError } from "@/lib/errors";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { chunk } from "@/features/analytics/util.pure";
 import { loadStockViews } from "@/features/analytics/stock-analytics";
 import {
@@ -27,39 +28,65 @@ function one<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+/** Bornes de lecture (pages de 1 000 : PostgREST plafonne chaque réponse — W-03). */
+export const REPLENISHMENT_OFFERS_MAX = 20_000;
+export const REPLENISHMENT_PO_ITEMS_MAX = 20_000;
+export const REPLENISHMENT_SUPPLIERS_MAX = 5_000;
+
+export interface RecommendationsResult {
+  drafts: RecommendationDraft[];
+  /** vrai si une lecture (stock, offres, commandes, fournisseurs) a atteint sa borne : résultat partiel */
+  truncated: boolean;
+}
+
+function rethrowDb(e: unknown): never {
+  throw fromPostgrestError(e as Parameters<typeof fromPostgrestError>[0]);
+}
+
 /**
  * Calcule (sans persister) les recommandations de réapprovisionnement de l'organisation :
  * délai = SKU → offre la moins chère (delivery_max_days) → fournisseur (délai moyen) → inconnu (7 j par défaut, signalé),
  * MOQ / fournisseur = offre active la moins chère, à défaut fournisseur par défaut du SKU,
  * en commande = commandes fournisseur envoyées / confirmées / partiellement reçues.
+ * Toutes les lectures sont paginées ; `truncated` signale un résultat partiel (jamais présenté comme complet).
  */
-export async function computeRecommendations(ctx: OrgContext): Promise<RecommendationDraft[]> {
+export async function computeRecommendationsWithCoverage(ctx: OrgContext): Promise<RecommendationsResult> {
   const orgId = ctx.organization.id;
   const [bundle, offersRes, poRes, suppliersRes] = await Promise.all([
     loadStockViews(ctx),
-    ctx.supabase
-      .from("sourcing_offers")
-      .select(OFFER_SELECT)
-      .eq("organization_id", orgId)
-      .eq("status", "active")
-      .not("sku_id", "is", null)
-      .order("normalized_price", { ascending: true, nullsFirst: false })
-      .limit(5000),
-    ctx.supabase
-      .from("purchase_order_items")
-      .select("sku_id, quantity_ordered, quantity_received, purchase_orders!inner(status)")
-      .eq("organization_id", orgId)
-      .in("purchase_orders.status", [...ON_ORDER_STATUSES])
-      .limit(5000),
-    ctx.supabase.from("suppliers").select("id, name, average_lead_time_days, default_moq").eq("organization_id", orgId).eq("is_archived", false).limit(2000),
+    fetchRowsUpTo(
+      (from, to) =>
+        ctx.supabase
+          .from("sourcing_offers")
+          .select(OFFER_SELECT)
+          .eq("organization_id", orgId)
+          .eq("status", "active")
+          .not("sku_id", "is", null)
+          .order("normalized_price", { ascending: true, nullsFirst: false })
+          .order("id", { ascending: true })
+          .range(from, to),
+      REPLENISHMENT_OFFERS_MAX,
+    ).catch(rethrowDb),
+    fetchRowsUpTo(
+      (from, to) =>
+        ctx.supabase
+          .from("purchase_order_items")
+          .select("id, sku_id, quantity_ordered, quantity_received, purchase_orders!inner(status)")
+          .eq("organization_id", orgId)
+          .in("purchase_orders.status", [...ON_ORDER_STATUSES])
+          .order("id", { ascending: true })
+          .range(from, to),
+      REPLENISHMENT_PO_ITEMS_MAX,
+    ).catch(rethrowDb),
+    fetchRowsUpTo(
+      (from, to) => ctx.supabase.from("suppliers").select("id, name, average_lead_time_days, default_moq").eq("organization_id", orgId).eq("is_archived", false).order("id", { ascending: true }).range(from, to),
+      REPLENISHMENT_SUPPLIERS_MAX,
+    ).catch(rethrowDb),
   ]);
-  if (offersRes.error) throw fromPostgrestError(offersRes.error);
-  if (poRes.error) throw fromPostgrestError(poRes.error);
-  if (suppliersRes.error) throw fromPostgrestError(suppliersRes.error);
 
   const offersBySku = new Map<string, OfferLike[]>();
   const offerSuppliers = new Map<string, SupplierLike>();
-  for (const o of offersRes.data ?? []) {
+  for (const o of offersRes.rows) {
     if (!o.sku_id) continue;
     const list = offersBySku.get(o.sku_id) ?? [];
     list.push(o);
@@ -67,9 +94,9 @@ export async function computeRecommendations(ctx: OrgContext): Promise<Recommend
     const s = one(o.supplier);
     if (s) offerSuppliers.set(o.supplier_id, s);
   }
-  const suppliers = new Map<string, SupplierLike>((suppliersRes.data ?? []).map((s) => [s.id, s]));
+  const suppliers = new Map<string, SupplierLike>(suppliersRes.rows.map((s) => [s.id, s]));
   const onOrder = onOrderBySku(
-    (poRes.data ?? []).map((pi) => ({
+    poRes.rows.map((pi) => ({
       sku_id: pi.sku_id,
       quantity_ordered: pi.quantity_ordered,
       quantity_received: pi.quantity_received,
@@ -92,7 +119,15 @@ export async function computeRecommendations(ctx: OrgContext): Promise<Recommend
     });
     if (shouldSnapshot(draft)) drafts.push(draft);
   }
-  return sortDrafts(drafts, viewsById);
+  return {
+    drafts: sortDrafts(drafts, viewsById),
+    truncated: bundle.truncated || offersRes.truncated || poRes.truncated || suppliersRes.truncated,
+  };
+}
+
+/** Recommandations seules (appelants qui n'affichent pas la complétude, ex. outils du conseiller). */
+export async function computeRecommendations(ctx: OrgContext): Promise<RecommendationDraft[]> {
+  return (await computeRecommendationsWithCoverage(ctx)).drafts;
 }
 
 /** Persiste un instantané : les recommandations ouvertes précédentes sont marquées « ignorées » (remplacées). */
@@ -210,8 +245,11 @@ export async function listOpenRecommendations(ctx: OrgContext, limit = 200): Pro
 }
 
 export interface RecommendationHistory {
-  totalRows: number;
+  /** null si le comptage a échoué (affiché « — ») */
+  totalRows: number | null;
   snapshots: number;
+  /** vrai si les instantanés n'ont pas tous été lus : `snapshots` est un minimum */
+  snapshotsIsMinimum: boolean;
   lastComputedAt: string | null;
 }
 
@@ -221,6 +259,9 @@ export async function getRecommendationHistory(ctx: OrgContext): Promise<Recomme
     ctx.supabase.from("replenishment_recommendations").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
     ctx.supabase.from("replenishment_recommendations").select("computed_at").eq("organization_id", orgId).order("computed_at", { ascending: false }).limit(1000),
   ]);
-  const stamps = new Set((listRes.data ?? []).map((r) => r.computed_at));
-  return { totalRows: countRes.count ?? 0, snapshots: stamps.size, lastComputedAt: listRes.data?.[0]?.computed_at ?? null };
+  const rows = listRes.data ?? [];
+  const stamps = new Set(rows.map((r) => r.computed_at));
+  const totalRows = countRes.error ? null : (countRes.count ?? 0);
+  // Seules les 1 000 lignes les plus récentes sont lues : au-delà, le nombre d'instantanés est un minimum.
+  return { totalRows, snapshots: stamps.size, snapshotsIsMinimum: listRes.error !== null || totalRows === null || totalRows > rows.length, lastComputedAt: rows[0]?.computed_at ?? null };
 }

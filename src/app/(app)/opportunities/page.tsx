@@ -8,7 +8,7 @@ import { SceneStatGrid } from "@/features/analytics/components/scene-stats";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
-import { findOpportunities, type OpportunityView } from "@/features/analytics/opportunities";
+import { findOpportunities, OPPORTUNITY_OFFERS_MAX, type OpportunityView } from "@/features/analytics/opportunities";
 import { SOURCE_TYPE_LABEL, SOURCING_EVENT_LABEL, TAX_LABEL } from "@/features/analytics/labels";
 import { UNKNOWN_COST_LABEL } from "@/domain/pricing/margin";
 import { formatDays, formatMoney, formatNumber, formatPercent, formatRelative, NOT_PROVIDED } from "@/lib/format";
@@ -160,6 +160,12 @@ export default async function OpportunitiesPage() {
         ) : null}
       </Scene>
       <Paper>
+
+      {data.offersTruncated ? (
+        <Callout tone="info" className="mb-4">
+          Analyse partielle : seules les {formatNumber(OPPORTUNITY_OFFERS_MAX)} offres associées les moins chères ont été lues. Les nombres d&apos;offres par produit sont des minimums et certains produits peuvent manquer.
+        </Callout>
+      ) : null}
 
       {data.missingFees.length > 0 && data.items.length > 0 ? (
         <Callout tone="info" className="mb-4" action={<ButtonLink href="/settings/organization" variant="secondary" size="sm">Renseigner les frais</ButtonLink>}>

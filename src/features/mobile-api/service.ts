@@ -257,6 +257,11 @@ export async function intelligence(ctx: OrgContext): Promise<IntelligenceDTO> {
 // ---------------------------------------------------------------------------------------------
 export async function suppliers(ctx: OrgContext): Promise<SupplierDTO[]> {
   const rows = await listSuppliers(ctx);
+  // Le contrat mobile n'a pas de compteur « inconnu » : une lecture en échec est une erreur
+  // explicite plutôt qu'un 0 trompeur (W-14).
+  if (rows.some((r) => r.offersCount === null || r.sourcesCount === null)) {
+    throw new AppError("EXTERNAL_API", "Les compteurs des fournisseurs sont momentanément indisponibles. Réessayez dans un instant.");
+  }
   return rows.map(({ supplier: s, offersCount, sourcesCount, sourceTypes, lastSyncAt }) => ({
     id: s.id,
     name: s.name,
@@ -267,8 +272,8 @@ export async function suppliers(ctx: OrgContext): Promise<SupplierDTO[]> {
     internalScore: s.internal_score,
     averageLeadTimeDays: s.average_lead_time_days,
     defaultMoq: s.default_moq,
-    offersCount,
-    sourcesCount,
+    offersCount: offersCount ?? 0,
+    sourcesCount: sourcesCount ?? 0,
     sourceTypes,
     lastSyncAt,
   }));

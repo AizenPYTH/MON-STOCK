@@ -11,6 +11,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { exitIfProductionTarget } from "./lib/production-guard";
 
 function hasReactServerCondition(): boolean {
   const argv = process.execArgv;
@@ -23,6 +24,8 @@ function usage(): never {
 }
 
 async function main(): Promise<void> {
+  // D-03 : refuse la base de production sauf dérogation nommée (MONSTOCK_ALLOW_PRODUCTION=<ref>).
+  exitIfProductionTarget("sync:run");
   if (!hasReactServerCondition()) {
     const script = fileURLToPath(import.meta.url);
     const result = spawnSync(process.execPath, ["--conditions", "react-server", ...process.execArgv, script, ...process.argv.slice(2)], { stdio: "inherit", env: process.env });

@@ -138,6 +138,12 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           </Callout>
         ) : null}
 
+        {list.bestOffersPartial ? (
+          <Callout tone="info" className="mb-3">
+            Meilleures offres fournisseur partielles sur cette page : toutes les offres n&apos;ont pas pu être lues. Une offre peut manquer.
+          </Callout>
+        ) : null}
+
         {list.rows.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-6 py-10 text-center">
             <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-background text-muted">

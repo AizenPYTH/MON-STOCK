@@ -19,21 +19,23 @@ export function PublicHeader() {
   return (
     <header className="bg-night text-on-night">
       <div className="mx-auto flex h-[68px] w-full max-w-[1440px] items-center gap-4 px-4 sm:px-6 lg:gap-7 lg:px-12">
-        <Link href="/" aria-label="MON STOCK — accueil" className="flex min-h-10 items-center rounded-md">
+        {/* prefetch={false} (W-01) : pour un visiteur connecté (ex. /invite), `/`, `/login` et `/signup`
+            redirigent selon l'état du compte ; ces chaînes ne doivent pas être mises en cache côté client. */}
+        <Link href="/" prefetch={false} aria-label="MON STOCK — accueil" className="flex min-h-10 items-center rounded-md">
           <Wordmark />
         </Link>
         <nav aria-label="Site" className="hidden flex-1 items-center gap-[22px] md:flex">
           {SITE_LINKS.map((l) => (
-            <Link key={l.href} href={l.href as never} className="rounded-md py-2 text-sm font-semibold text-on-night-muted hover:text-on-night">
+            <Link key={l.href} href={l.href as never} prefetch={false} className="rounded-md py-2 text-sm font-semibold text-on-night-muted hover:text-on-night">
               {l.label}
             </Link>
           ))}
         </nav>
         <nav aria-label="Compte" className="ml-auto flex items-center gap-1.5 whitespace-nowrap md:ml-0">
-          <Link href="/login" className="inline-flex h-10 items-center rounded-[10px] px-3.5 text-sm font-bold text-on-night hover:bg-night-raised">
+          <Link href="/login" prefetch={false} className="inline-flex h-10 items-center rounded-[10px] px-3.5 text-sm font-bold text-on-night hover:bg-night-raised">
             Se connecter
           </Link>
-          <Link href="/signup" className="hidden h-10 items-center rounded-[10px] bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed sm:inline-flex">
+          <Link href="/signup" prefetch={false} className="hidden h-10 items-center rounded-[10px] bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed sm:inline-flex">
             Créer un compte
           </Link>
         </nav>

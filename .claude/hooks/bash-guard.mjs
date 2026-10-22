@@ -38,6 +38,12 @@ const RISKY = [
 
 /** Branches distantes autorisées sans confirmation : les branches de travail `claude/…`. */
 const WORK_BRANCH = /^(HEAD:)?(refs\/heads\/)?claude\/[\w.\/-]+$/;
+/**
+ * Branches qui déclenchent un déploiement de production (Vercel publie la production à chaque
+ * push) : jamais sans confirmation, même si elles ont la forme d'une branche de travail.
+ */
+const PRODUCTION_BRANCHES = new Set(["main", "master", "claude/laughing-bardeen-bdn16j"]);
+const branchName = (ref) => ref.replace(/^HEAD:/, "").replace(/^refs\/heads\//, "");
 
 function readStdin() {
   return new Promise((resolve) => {
@@ -71,6 +77,8 @@ function checkGitPush(seg) {
   const [remote, ...refs] = positional;
   if (remote && remote !== "origin") return `git push vers le dépôt « ${remote} »`;
   if (refs.length === 0) return "git push sans branche explicite";
+  const prod = refs.find((r) => PRODUCTION_BRANCHES.has(branchName(r)));
+  if (prod) return `git push de « ${prod} », branche de production (chaque push publie le site)`;
   const other = refs.find((r) => !WORK_BRANCH.test(r));
   if (other) return `git push de « ${other} » (seules les branches de travail claude/… passent sans confirmation ; un tag testflight-* lance une build TestFlight)`;
   return null;
@@ -175,7 +183,8 @@ try {
   // `bash -c "…"` / `sh -c '…'` : la commande interne est analysée comme une commande normale.
   const inner = [...command.matchAll(/\b(?:bash|sh|zsh)\s+-c\s+("([^"]*)"|'([^']*)')/g)].map((m) => m[2] ?? m[3]);
   for (const c of [command, ...inner]) inspect(c, cwd);
-} catch {
-  // Garde-fou défaillant : ne rien décider (les règles de settings.json s'appliquent).
+} catch (e) {
+  // Garde-fou défaillant : on ne laisse rien passer sans confirmation (échec « fermé »).
+  ask(`garde-fou indisponible (${e instanceof Error ? e.message.slice(0, 80) : "erreur"})`, "commande non analysée");
 }
 process.exit(0);

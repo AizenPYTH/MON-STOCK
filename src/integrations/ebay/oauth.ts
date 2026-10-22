@@ -40,7 +40,16 @@ function basicAuth(config: EbayConfig): string {
   return "Basic " + Buffer.from(`${config.clientId}:${config.clientSecret}`, "utf8").toString("base64");
 }
 
+/**
+ * Nouvelles tentatives automatiques de la demande de token. L'échange du code d'autorisation n'est
+ * JAMAIS rejoué (code à usage unique : si eBay l'a consommé avant une coupure ou un 5xx, un second
+ * POST répondrait invalid_grant et masquerait la vraie cause). Rafraîchissement et jeton d'application
+ * sont idempotents : nouvelles tentatives bornées.
+ */
+export const TOKEN_REQUEST_RETRIES = { exchangeCode: 0, other: 2 } as const;
+
 async function tokenRequest(config: EbayConfig, body: URLSearchParams, label: string): Promise<z.infer<typeof tokenResponseSchema>> {
+  const retries = body.get("grant_type") === "authorization_code" ? TOKEN_REQUEST_RETRIES.exchangeCode : TOKEN_REQUEST_RETRIES.other;
   const res = await fetchWithRetry(
     config.tokenUrl,
     {
@@ -48,7 +57,7 @@ async function tokenRequest(config: EbayConfig, body: URLSearchParams, label: st
       headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basicAuth(config), Accept: "application/json" },
       body: body.toString(),
     },
-    { provider: EBAY_PROVIDER, label, retries: 2, timeoutMs: 20_000 },
+    { provider: EBAY_PROVIDER, label, retries, timeoutMs: 20_000 },
   );
   const json = await readJson(res, EBAY_PROVIDER);
   if (!res.ok) {

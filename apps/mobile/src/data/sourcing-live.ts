@@ -66,6 +66,10 @@ export interface LibraryEntry {
   currency: string;
   access: "public_json" | "public_html" | "official_api";
   termsUrl: string;
+  /** « unverified » : MON STOCK n'a pas confirmé que termsUrl est la page des conditions (champ absent sur un ancien serveur) */
+  termsStatus?: "confirmed" | "unverified";
+  /** l'activation exige l'adresse de la page des conditions lue par l'utilisateur */
+  requiresTermsUrl?: boolean;
   notes: string;
   check: { status: string; checkedAt: string; productCount: number | null; message: string | null; sample: unknown } | null;
   activatable: boolean;
@@ -100,8 +104,10 @@ export async function fetchLibrary(organizationId: string): Promise<{ entries: L
   return callApi<{ entries: LibraryEntry[] }>("/sourcing/library", { organizationId });
 }
 
-export async function activateLibrarySource(organizationId: string, key: string): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
-  return callApi("/sourcing/library/activate", { method: "POST", organizationId, body: { key, attest: true } });
+/** Activation (validation de l'utilisateur) : page des conditions lue, exigée quand elle n'est pas confirmée par MON STOCK. */
+export async function activateLibrarySource(organizationId: string, key: string, termsUrl?: string | null): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
+  const url = termsUrl?.trim();
+  return callApi("/sourcing/library/activate", { method: "POST", organizationId, body: { key, attest: true, ...(url ? { termsUrl: url } : {}) } });
 }
 
 /** Exemples d'offres relevées lors de la vérification (preuve affichée telle quelle). */

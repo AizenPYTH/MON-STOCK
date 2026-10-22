@@ -5,8 +5,11 @@
  */
 import { createAdminSupabaseClient } from "../src/lib/supabase/admin";
 import { createDemoOrganizationForUser, seedDemoData } from "../src/features/demo/seed-data";
+import { exitIfProductionTarget } from "./lib/production-guard";
 
 async function main() {
+  // D-03 : jamais de données de démonstration dans la base de production (dérogation : MONSTOCK_ALLOW_PRODUCTION=<ref>).
+  exitIfProductionTarget("seed:demo");
   const args = process.argv.slice(2);
   const get = (flag: string) => {
     const i = args.indexOf(flag);

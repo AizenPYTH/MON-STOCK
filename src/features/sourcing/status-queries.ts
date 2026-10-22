@@ -1,5 +1,7 @@
 import "server-only";
 import type { OrgContext } from "@/features/auth/dal";
+import { fromPostgrestError } from "@/lib/errors";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { listCatalogSources } from "@/integrations/sourcing/catalog";
 import { listSourceAdapters } from "@/integrations/sourcing/registry";
 import { adapterKeyOf } from "@/services/sourcing/adapter-runtime";
@@ -44,10 +46,15 @@ export async function countOfferStatsBySource(supabase: DbClient, organizationId
 /** État des sources de l'organisation (catalogue + registre + base), calculé à chaque affichage. */
 export async function loadSourcingStatus(ctx: OrgContext): Promise<{ items: SourcingStatusItem[]; offerCountsIncomplete: boolean }> {
   const orgId = ctx.organization.id;
-  const [{ data: sources }, { data: connections }] = await Promise.all([
-    ctx.supabase.from("supplier_sources").select("id, source_type, status, automated_access_confirmed, robots_allowed, config").eq("organization_id", orgId).limit(1000),
-    ctx.supabase.from("supplier_connections").select("id, connector_key, status, source_id").eq("organization_id", orgId).limit(200),
-  ]);
+  // Lectures PAGINÉES (PostgREST plafonne chaque réponse à 1 000 lignes — W-03) ; une erreur est
+  // remontée au lieu d'afficher un état « aucune source » trompeur (W-14).
+  const page = <T,>(res: { rows: T[] }) => res.rows;
+  const [sources, connections] = await Promise.all([
+    fetchRowsUpTo((from, to) => ctx.supabase.from("supplier_sources").select("id, source_type, status, automated_access_confirmed, robots_allowed, config").eq("organization_id", orgId).order("id").range(from, to), 10_000).then(page),
+    fetchRowsUpTo((from, to) => ctx.supabase.from("supplier_connections").select("id, connector_key, status, source_id").eq("organization_id", orgId).order("id").range(from, to), 10_000).then(page),
+  ]).catch((e: unknown) => {
+    throw fromPostgrestError(e as Parameters<typeof fromPostgrestError>[0]);
+  });
   const connectionBySource = new Map<string, { connector_key: string; status: string }>();
   const orphanConnections: Array<{ connectorKey: string; status: string }> = [];
   for (const c of connections ?? []) {

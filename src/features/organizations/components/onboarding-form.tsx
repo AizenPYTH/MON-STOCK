@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { DemoBadge } from "@/components/instrument";
@@ -15,6 +15,11 @@ import { AuthCard, AuthField, AuthFrame, authInputClass, AuthSubmit, TextInput }
 export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }) {
   const [state, action] = useActionState<ActionResult | null, FormData>(createOrganizationAction, null);
   const [demoState, demoAction] = useActionState<ActionResult | null, FormData>(createDemoOrganizationAction, null);
+  // Anti double-soumission (W-01) : une seule création à la fois, réelle OU démo. Le serveur refuse
+  // aussi une seconde création identique rapprochée (creation-guard.ts).
+  const createLock = useSubmissionLock(state);
+  const demoLock = useSubmissionLock(demoState);
+  const anyLocked = createLock.locked || demoLock.locked;
   const err = state && !state.ok ? state : null;
   const demoErr = demoState && !demoState.ok ? demoState : null;
   return (
@@ -39,13 +44,15 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
               {demoErr.error}
             </div>
           ) : null}
-          <form action={demoAction}>
-            <SecondarySubmit pendingText="Génération des données…">Créer une organisation de démonstration</SecondarySubmit>
+          <form action={demoAction} onSubmit={(e) => (anyLocked ? e.preventDefault() : demoLock.lock())}>
+            <SecondarySubmit pendingText="Génération des données…" locked={anyLocked}>
+              Créer une organisation de démonstration
+            </SecondarySubmit>
           </form>
         </section>
       }
     >
-      <form action={action}>
+      <form action={action} onSubmit={(e) => (anyLocked ? e.preventDefault() : createLock.lock())}>
         <AuthCard>
           <AuthField id="name" label="Nom de l'organisation" error={err?.fieldErrors?.name}>
             {(d, inv) => <TextInput id="name" name="name" placeholder="Ex. Ma Boutique Reconditionnée" required invalid={inv} describedBy={d} />}
@@ -65,20 +72,43 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
               )}
             </AuthField>
           </div>
-          <AuthSubmit pendingText="Création…">Créer l&apos;organisation</AuthSubmit>
+          <AuthSubmit pendingText="Création…" locked={anyLocked} lockedText="Ouverture du tableau de bord…">
+            Créer l&apos;organisation
+          </AuthSubmit>
         </AuthCard>
       </form>
     </AuthFrame>
   );
 }
 
+/** Durée maximale du verrou après un envoi sans réponse d'erreur (redirection perdue, onglet rouvert…). */
+const SUBMISSION_LOCK_MS = 15_000;
+
+/**
+ * Verrou posé à l'envoi d'un formulaire d'action. Il tombe dès que l'action renvoie un nouveau
+ * résultat (erreur affichée) ; si elle a redirigé, aucun résultat ne revient : il tombe après
+ * SUBMISSION_LOCK_MS par sécurité.
+ */
+function useSubmissionLock(state: ActionResult | null): { locked: boolean; lock: () => void } {
+  // `undefined` : aucun envoi en attente ; sinon, l'état au moment de l'envoi.
+  const [lockedOn, setLockedOn] = useState<ActionResult | null | undefined>(undefined);
+  const locked = lockedOn !== undefined && lockedOn === state;
+  useEffect(() => {
+    if (!locked) return;
+    const t = setTimeout(() => setLockedOn(undefined), SUBMISSION_LOCK_MS);
+    return () => clearTimeout(t);
+  }, [locked]);
+  return { locked, lock: () => setLockedOn(state) };
+}
+
 /** Bouton secondaire 52 px avec état d'envoi (la génération des données de démonstration peut durer). */
-function SecondarySubmit({ children, pendingText }: { children: string; pendingText: string }) {
+function SecondarySubmit({ children, pendingText, locked = false }: { children: string; pendingText: string; locked?: boolean }) {
   const { pending } = useFormStatus();
+  const busy = pending || locked;
   return (
-    <button type="submit" disabled={pending} aria-busy={pending || undefined} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-surface px-5 text-[15px] font-extrabold text-foreground transition-colors hover:bg-line-soft disabled:opacity-60">
-      {pending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
-      {pending ? pendingText : children}
+    <button type="submit" disabled={busy} aria-busy={busy || undefined} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-surface px-5 text-[15px] font-extrabold text-foreground transition-colors hover:bg-line-soft disabled:opacity-60">
+      {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
+      {busy ? pendingText : children}
     </button>
   );
 }

@@ -29,6 +29,9 @@ export interface StockListResult {
 /** Les statuts dépendant de la vitesse sont calculés côté serveur sur un ensemble borné. */
 export const POST_FILTER_LIMIT = 2000;
 
+/** Borne de lecture des produits pour les listes de marques et catégories des filtres. */
+const FACET_SCAN_MAX = 20_000;
+
 export async function listStock(ctx: OrgContext, params: StockListParams): Promise<StockListResult> {
   const orgId = ctx.organization.id;
   const supabase = ctx.supabase;
@@ -106,14 +109,15 @@ export async function listStock(ctx: OrgContext, params: StockListParams): Promi
   return { rows, total: count ?? rows.length, page, pageSize: STOCK_PAGE_SIZE, facets: await facets(), truncated: false };
 
   async function facets() {
-    const [{ data: brands }, { data: cats }, { data: sups }] = await Promise.all([
-      supabase.from("products").select("brand").eq("organization_id", orgId).eq("is_archived", false).not("brand", "is", null).limit(1000),
-      supabase.from("products").select("category").eq("organization_id", orgId).eq("is_archived", false).not("category", "is", null).limit(1000),
+    // Marques / catégories : lectures paginées (PostgREST plafonne chaque réponse à 1 000 lignes — W-03).
+    const [{ rows: brands }, { rows: cats }, { data: sups }] = await Promise.all([
+      fetchRowsUpTo((rFrom, rTo) => supabase.from("products").select("brand").eq("organization_id", orgId).eq("is_archived", false).not("brand", "is", null).order("id").range(rFrom, rTo), FACET_SCAN_MAX),
+      fetchRowsUpTo((rFrom, rTo) => supabase.from("products").select("category").eq("organization_id", orgId).eq("is_archived", false).not("category", "is", null).order("id").range(rFrom, rTo), FACET_SCAN_MAX),
       supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("is_archived", false).order("name").limit(500),
     ]);
     return {
-      brands: Array.from(new Set((brands ?? []).map((b) => b.brand).filter((x): x is string => Boolean(x)))).sort(),
-      categories: Array.from(new Set((cats ?? []).map((c) => c.category).filter((x): x is string => Boolean(x)))).sort(),
+      brands: Array.from(new Set(brands.map((b) => b.brand).filter((x): x is string => Boolean(x)))).sort(),
+      categories: Array.from(new Set(cats.map((c) => c.category).filter((x): x is string => Boolean(x)))).sort(),
       suppliers: sups ?? [],
     };
   }

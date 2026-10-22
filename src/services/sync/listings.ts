@@ -1,9 +1,11 @@
 import "server-only";
+import { z } from "zod";
 import type { Json, TablesInsert } from "@/db/database.types";
 import { fromPostgrestError } from "@/lib/errors";
+import { isDeadlineExceeded } from "@/integrations/core/deadline";
 import { variationKey } from "@/integrations/core/variation";
 import type { NormalizedListing } from "@/integrations/core/types";
-import { chunk, fetchAllRows, type SyncContext } from "@/services/sync/context";
+import { chunk, fetchAllRows, timeLeftMs, type SyncContext } from "@/services/sync/context";
 import { suggestSkusForListing, type SkuCandidate } from "@/services/sync/matching";
 
 export interface ListingsPhaseResult {
@@ -15,9 +17,49 @@ export interface ListingsPhaseResult {
   invalid: number;
   /** true si toutes les pages ont été lues (sinon on ne marque rien comme terminé). */
   complete: boolean;
+  /** true si le parcours complet des annonces s'est terminé pendant ce run (lu en entier ou tronqué). */
+  passFinished: boolean;
+  /** true si l'échéance du run (ou le plafond de pages par run) a interrompu proprement le parcours. */
+  stoppedByDeadline: boolean;
+  /** Pages lues pendant ce run. */
+  pagesRead: number;
+  /** Parcours en cours à enregistrer (null : parcours terminé, le prochain repartira de la page 1). */
+  pass: ListingsPassState | null;
+}
+
+/**
+ * Parcours des annonces actives réparti sur plusieurs runs (comptes de plusieurs milliers
+ * d'annonces : un run borné ne peut pas tout lire). Enregistré dans channel_connections.sync_state
+ * après chaque page écrite ; « vue pendant le parcours » = last_synced_at ≥ passStartedAt.
+ */
+export const listingsPassStateSchema = z.object({
+  passStartedAt: z.string().datetime({ offset: true }),
+  nextPage: z.number().int().min(1),
+  runs: z.number().int().min(0),
+  truncated: z.boolean(),
+  /** une annonce illisible SANS identifiant : impossible de la protéger, rien ne sera terminé */
+  unreferencedInvalid: z.boolean(),
+});
+export type ListingsPassState = z.infer<typeof listingsPassStateSchema>;
+
+export interface SyncListingsOptions {
+  /** Parcours interrompu au run précédent (repris), ou null pour en commencer un. */
+  pass?: ListingsPassState | null;
+  /** Enregistre durablement le parcours après chaque page écrite (avant de lire la suivante). */
+  onPageComplete?: (pass: ListingsPassState) => Promise<void>;
+  /** Plafond de pages lues par run (borne CPU / mémoire de la plateforme). */
+  maxPagesPerRun?: number;
 }
 
 const UPSERT_CHUNK = 200;
+/** Plafond par défaut de pages d'annonces (200 annonces, détail complet) lues par run. */
+export const LISTINGS_MAX_PAGES_PER_RUN = 6;
+/** Temps minimal restant pour demander une nouvelle page d'annonces (Trading : réponses lourdes). */
+export const LISTINGS_PAGE_MIN_REMAINING_MS = 15_000;
+/** Temps minimal restant pour une association automatique (une RPC). */
+export const AUTO_MAP_MIN_REMAINING_MS = 1_000;
+/** Temps minimal restant pour calculer les suggestions (calcul coûteux, fait en fin de parcours). */
+export const SUGGESTIONS_MIN_REMAINING_MS = 20_000;
 const MAX_LISTINGS_TO_SCORE = 500;
 const MAX_SKU_CANDIDATES = 5000;
 
@@ -79,73 +121,124 @@ export function listingToRows(ctx: Pick<SyncContext, "organizationId" | "salesCh
 }
 
 export function emptyListingsResult(): ListingsPhaseResult {
-  return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false };
+  return { fetched: 0, upserted: 0, ended: 0, autoMapped: 0, suggestionsCreated: 0, invalid: 0, complete: false, passFinished: false, stoppedByDeadline: false, pagesRead: 0, pass: null };
 }
 
 /**
- * Lit toutes les annonces actives, les enregistre par paquets (upsert idempotent : une page en
- * échec n'annule pas les paquets déjà écrits, et le run suivant les réécrit), puis marque
- * « terminées » les annonces absentes — UNIQUEMENT si la liste lue est complète.
- * `result` est un accumulateur conservé par l'appelant si une exception interrompt la phase.
+ * Lit les annonces actives page par page, les enregistre par paquets (upsert idempotent : une page en
+ * échec n'annule pas les paquets déjà écrits, et le run suivant les réécrit), puis — UNIQUEMENT en fin
+ * de parcours complet et non tronqué — marque « terminées » les annonces actives non revues pendant le
+ * parcours. Le parcours peut s'étaler sur plusieurs runs (échéance, plafond de pages) : il reprend à la
+ * dernière page confirmée, en relisant celle-ci (une annonce terminée entre deux runs décale les pages
+ * suivantes ; la relecture évite d'en sauter). Une annonce illisible (I-33) est considérée « revue » :
+ * elle n'est jamais terminée à tort. `result` est un accumulateur conservé par l'appelant.
  */
-export async function syncListings(ctx: SyncContext, result: ListingsPhaseResult = emptyListingsResult()): Promise<ListingsPhaseResult> {
+export async function syncListings(ctx: SyncContext, result: ListingsPhaseResult = emptyListingsResult(), options: SyncListingsOptions = {}): Promise<ListingsPhaseResult> {
   const { admin, log } = ctx;
-  const nowIso = new Date().toISOString();
-  const seen = new Set<string>();
-  let truncated = false;
+  const nowIso = new Date((ctx.clock ?? Date.now)()).toISOString();
+  const resumed = options.pass ?? null;
+  const pass: ListingsPassState = resumed ? { ...resumed, runs: resumed.runs + 1 } : { passStartedAt: nowIso, nextPage: 1, runs: 1, truncated: false, unreferencedInvalid: false };
+  result.pass = pass;
+  const startPage = pass.nextPage > 1 ? pass.nextPage - 1 : 1;
+  if (resumed) log.info("reprise du parcours des annonces", { startPage, passStartedAt: pass.passStartedAt, runs: pass.runs });
+  const maxPages = Math.max(1, options.maxPagesPerRun ?? LISTINGS_MAX_PAGES_PER_RUN);
+  let finished = false;
 
-  for await (const page of ctx.connector.getListings(ctx.auth)) {
-    result.fetched += page.listings.length;
-    result.invalid += page.invalid.length;
-    for (const inv of page.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
-    for (const w of page.warnings) log.warn("avertissement eBay (GetMyeBaySelling)", { warning: w });
-    if (page.truncated) truncated = true;
-    const rows = page.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
-    for (const r of rows) seen.add(listingKey(r.external_listing_id, r.external_variation_id ?? ""));
-    for (const part of chunk(rows, UPSERT_CHUNK)) {
-      // Seules les colonnes fournies sont mises à jour : le mapping (sku_id, mapping_status…) est préservé.
-      const { data, error } = await admin.from("channel_listings").upsert(part, { onConflict: "sales_channel_id,external_listing_id,external_variation_id" }).select("id");
-      if (error) throw fromPostgrestError(error);
-      result.upserted += data?.length ?? 0;
+  try {
+    let iteration = 0;
+    for await (const page of ctx.connector.getListings(ctx.auth, { startPage, deadline: ctx.deadlineAt ?? null })) {
+      const pageNumber = page.pageNumber ?? startPage + iteration;
+      iteration++;
+      result.fetched += page.listings.length;
+      result.invalid += page.invalid.length;
+      for (const inv of page.invalid) ctx.recordError({ code: "INVALID_LISTING", message: inv.message, entityType: "listing", entityRef: inv.ref });
+      for (const w of page.warnings) log.warn("avertissement eBay (GetMyeBaySelling)", { warning: w });
+      if (page.truncated) pass.truncated = true;
+      const rows = page.listings.flatMap((l) => listingToRows(ctx, l, nowIso));
+      for (const part of chunk(rows, UPSERT_CHUNK)) {
+        // Seules les colonnes fournies sont mises à jour : le mapping (sku_id, mapping_status…) est préservé.
+        const { data, error } = await admin.from("channel_listings").upsert(part, { onConflict: "sales_channel_id,external_listing_id,external_variation_id" }).select("id");
+        if (error) throw fromPostgrestError(error);
+        result.upserted += data?.length ?? 0;
+      }
+      // Annonces illisibles mais existantes : « revues » (jamais terminées à tort, I-33).
+      const invalidRefs = [...new Set(page.invalid.map((i) => i.ref).filter((r): r is string => Boolean(r)))];
+      if (page.invalid.some((i) => !i.ref)) pass.unreferencedInvalid = true;
+      for (const refs of chunk(invalidRefs, 200)) {
+        const { error } = await admin.from("channel_listings").update({ last_synced_at: nowIso }).eq("sales_channel_id", ctx.salesChannelId).eq("organization_id", ctx.organizationId).eq("status", "active").in("external_listing_id", refs);
+        if (error) throw fromPostgrestError(error);
+      }
+      result.pagesRead++;
+      pass.nextPage = pageNumber + 1;
+      // Page écrite : la progression est enregistrée avant de lire la suivante.
+      if (options.onPageComplete) await options.onPageComplete({ ...pass });
+      const lastKnown = page.truncated || (page.totalPages !== undefined && pageNumber >= page.totalPages);
+      if (lastKnown) {
+        finished = true;
+        break;
+      }
+      if (result.pagesRead >= maxPages || timeLeftMs(ctx) < LISTINGS_PAGE_MIN_REMAINING_MS) {
+        result.stoppedByDeadline = true;
+        break;
+      }
     }
+    if (!result.stoppedByDeadline) finished = true;
+  } catch (e) {
+    // Appel coupé (ou non lancé) par l'échéance du run : parcours repris au passage suivant.
+    if (!isDeadlineExceeded(e)) throw e;
+    result.stoppedByDeadline = true;
   }
-  result.complete = !truncated;
-  if (truncated) {
+
+  result.passFinished = finished;
+  result.complete = finished && !pass.truncated;
+  if (finished && pass.truncated) {
     // Liste incomplète (limite de pages atteinte) : on ne marque rien comme terminé pour ne pas
     // « terminer » à tort des annonces réellement actives.
     ctx.recordError({ code: "LISTINGS_TRUNCATED", message: "Liste d'annonces incomplète (limite de pages atteinte) : aucune annonce n'a été marquée terminée lors de ce run.", entityType: "phase", entityRef: "listings" });
     log.warn("liste d'annonces tronquée : étape « annonces terminées » ignorée", { fetched: result.fetched });
   }
+  if (result.complete && pass.unreferencedInvalid) {
+    ctx.recordError({ code: "LISTINGS_END_SKIPPED", message: "Une annonce eBay illisible n'a pas d'identifiant : par prudence, aucune annonce n'a été marquée terminée lors de ce parcours.", entityType: "phase", entityRef: "listings" });
+  }
 
-  // Annonces actives connues mais absentes de la liste active eBay → terminées (uniquement si la liste est complète).
-  const active = result.complete
-    ? await fetchAllRows((from, to) =>
-        admin
-          .from("channel_listings")
-          .select("id, external_listing_id, external_variation_id")
-          .eq("sales_channel_id", ctx.salesChannelId)
-          .eq("organization_id", ctx.organizationId)
-          .eq("status", "active")
-          .order("id")
-          .range(from, to),
-      ).catch((e: { code?: string; message: string }) => {
-        throw fromPostgrestError(e);
-      })
-    : [];
-  const toEnd = active.filter((r) => !seen.has(listingKey(r.external_listing_id, r.external_variation_id))).map((r) => r.id);
+  // Annonces actives connues mais non revues pendant le parcours → terminées (uniquement si le parcours est complet).
+  const active =
+    result.complete && !pass.unreferencedInvalid
+      ? await fetchAllRows((from, to) =>
+          admin
+            .from("channel_listings")
+            .select("id, last_synced_at")
+            .eq("sales_channel_id", ctx.salesChannelId)
+            .eq("organization_id", ctx.organizationId)
+            .eq("status", "active")
+            .order("id")
+            .range(from, to),
+        ).catch((e: { code?: string; message: string }) => {
+          throw fromPostgrestError(e);
+        })
+      : [];
+  const passStart = new Date(pass.passStartedAt).getTime();
+  const toEnd = active.filter((r) => !r.last_synced_at || new Date(r.last_synced_at).getTime() < passStart).map((r) => r.id);
   for (const ids of chunk(toEnd, 500)) {
     const { error } = await admin.from("channel_listings").update({ status: "ended", ended_at: nowIso, last_synced_at: nowIso }).in("id", ids).eq("organization_id", ctx.organizationId);
     if (error) throw fromPostgrestError(error);
     result.ended += ids.length;
   }
+  if (finished) result.pass = null;
 
-  result.autoMapped = await autoMapBySku(ctx);
-  result.suggestionsCreated = await computeSuggestions(ctx);
+  const mapped = await autoMapBySku(ctx);
+  result.autoMapped = mapped.mapped;
+  if (mapped.stoppedByDeadline) result.stoppedByDeadline = true;
+  if (finished && timeLeftMs(ctx) >= SUGGESTIONS_MIN_REMAINING_MS) {
+    result.suggestionsCreated = await computeSuggestions(ctx);
+  } else if (finished) {
+    log.info("suggestions d'association reportées au prochain parcours (échéance du run proche)");
+  }
   return result;
 }
 
 /** Association automatique UNIQUEMENT sur correspondance exacte (insensible à la casse) SKU eBay = code SKU interne. */
-async function autoMapBySku(ctx: SyncContext): Promise<number> {
+async function autoMapBySku(ctx: SyncContext): Promise<{ mapped: number; stoppedByDeadline: boolean }> {
   const { admin } = ctx;
   const toAppError = (e: { code?: string; message: string }) => {
     throw fromPostgrestError(e);
@@ -163,7 +256,7 @@ async function autoMapBySku(ctx: SyncContext): Promise<number> {
       .range(from, to),
   ).catch(toAppError);
   const candidates = unmapped.filter((l) => l.external_sku && l.external_sku.trim().length > 0);
-  if (candidates.length === 0) return 0;
+  if (candidates.length === 0) return { mapped: 0, stoppedByDeadline: false };
 
   const skus = await fetchAllRows((from, to) => admin.from("skus").select("id, code").eq("organization_id", ctx.organizationId).eq("is_active", true).order("id").range(from, to)).catch(toAppError);
   const byCode = new Map<string, string>();
@@ -173,6 +266,8 @@ async function autoMapBySku(ctx: SyncContext): Promise<number> {
   for (const l of candidates) {
     const skuId = byCode.get((l.external_sku ?? "").trim().toUpperCase());
     if (!skuId) continue;
+    // Idempotent : les associations restantes seront faites au run suivant.
+    if (timeLeftMs(ctx) < AUTO_MAP_MIN_REMAINING_MS) return { mapped, stoppedByDeadline: true };
     // La RPC rattache aussi les lignes de commandes passées non résolues (sans toucher au stock).
     const { error: mapError } = await admin.rpc("map_listing_to_sku", { p_listing_id: l.id, p_sku_id: skuId, p_source: "auto_sku_match" });
     if (mapError) {
@@ -181,7 +276,7 @@ async function autoMapBySku(ctx: SyncContext): Promise<number> {
     }
     mapped++;
   }
-  return mapped;
+  return { mapped, stoppedByDeadline: false };
 }
 
 /** Calcule des suggestions (jamais appliquées) pour les annonces restées sans correspondance. */

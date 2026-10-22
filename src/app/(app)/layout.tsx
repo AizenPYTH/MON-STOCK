@@ -20,10 +20,16 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         currency: ctx.organization.default_currency,
         roleLabel: ROLE_LABEL[ctx.role] ?? ctx.role,
         options: ctx.memberships.map((m) => ({ id: m.organization.id, name: m.organization.name, isDemo: m.organization.is_demo })),
+        fallback: ctx.fallback === true,
       }}
       user={{ name: ctx.profile.full_name ?? ctx.user.email ?? "Mon compte", email: ctx.user.email ?? null }}
       readOnly={ctx.role === "viewer"}
-      counts={{ pendingMatches: shell.counts.pendingMatches, openAlerts: shell.counts.openAlerts + shell.counts.outOfStock, unmappedListings: shell.counts.unmappedListings }}
+      counts={{
+        pendingMatches: shell.counts.pendingMatches,
+        // Inconnu si l'un des deux comptages a échoué : jamais une somme partielle (W-14).
+        openAlerts: shell.counts.openAlerts === null || shell.counts.outOfStock === null ? null : shell.counts.openAlerts + shell.counts.outOfStock,
+        unmappedListings: shell.counts.unmappedListings,
+      }}
       lastEbaySync={shell.lastEbaySync}
       alerts={shell.alerts}
       alertTotal={shell.counts.openAlerts}

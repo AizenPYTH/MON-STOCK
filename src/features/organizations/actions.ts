@@ -11,6 +11,7 @@ import { createLogger } from "@/lib/logger";
 import type { Json } from "@/db/database.types";
 import { changeRoleSchema, createOrganizationSchema, inviteMemberSchema, memberRefSchema, updateOrganizationSchema } from "@/features/organizations/schemas";
 import { feedbackCodeFromError, inviteErrorCode, organizationDbErrorMessage, type FeedbackCode } from "@/features/organizations/feedback";
+import { findRecentDuplicateOrganization, finishOrganizationCreation, openExistingOrganization } from "@/features/organizations/creation-guard";
 
 const log = createLogger("ORG");
 
@@ -25,7 +26,6 @@ function dbErrorMessage(error: { code?: string; message?: string; details?: stri
   return organizationDbErrorMessage(error.message) ?? toUserMessage(fromPostgrestError(error));
 }
 
-
 export async function createOrganizationAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return fail("Connexion requise.");
@@ -33,6 +33,15 @@ export async function createOrganizationAction(_prev: ActionResult | null, formD
   if (!parsed.success) return fail("Vérifiez les champs du formulaire.", { fieldErrors: fieldErrors(parsed.error.issues) });
 
   const supabase = await createServerSupabaseClient();
+  // Garde anti-doublon (W-01) : même nom, même utilisateur, quelques instants plus tôt → c'est une
+  // répétition (double envoi, nouvel essai après un réaffichage de l'onboarding). On ouvre
+  // l'organisation déjà créée au lieu d'en créer une seconde.
+  const existing = await findRecentDuplicateOrganization(supabase, { userId: user.id, name: parsed.data.name, isDemo: false });
+  if (existing) {
+    await openExistingOrganization(supabase, user.id, existing);
+    log.info("organization creation repeated: existing one opened", { orgId: existing, userId: user.id });
+    finishOrganizationCreation();
+  }
   const slug = uniqueOrganizationSlug(parsed.data.name);
   const { data: orgId, error } = await supabase.rpc("create_organization_with_owner", { p_name: parsed.data.name, p_slug: slug, p_is_demo: false });
   if (error || !orgId) return fail(toUserMessage(fromPostgrestError(error ?? { message: "Création impossible" })));
@@ -46,7 +55,7 @@ export async function createOrganizationAction(_prev: ActionResult | null, formD
     if (updErr) log.warn("organization settings not applied", { orgId, reason: updErr.message });
   }
   log.info("organization created", { orgId, userId: user.id });
-  redirect("/dashboard");
+  finishOrganizationCreation();
 }
 
 /**

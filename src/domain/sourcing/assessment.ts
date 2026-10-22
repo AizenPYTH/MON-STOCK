@@ -278,7 +278,7 @@ export function quantityScenarios(i: ScenarioInput, settings: RadarCostSettings,
     if (seen.has(w.q)) continue;
     seen.add(w.q);
     const eco = computeUnitEconomics(
-      { salePrice: i.salePrice, saleLabel: i.saleLabel, purchasePrice: i.purchasePrice, purchaseTaxType: i.purchaseTaxType, supplierShipping: i.supplierShipping, moq: w.q, supplierOrigin: i.supplierOrigin, originLabel: i.originLabel },
+      { salePrice: i.salePrice, saleLabel: i.saleLabel, purchasePrice: i.purchasePrice, purchaseTaxType: i.purchaseTaxType, supplierShipping: i.supplierShipping, moq: i.moq, quantity: w.q, supplierOrigin: i.supplierOrigin, originLabel: i.originLabel },
       settings,
     );
     const unitLanded = eco.landedCost;

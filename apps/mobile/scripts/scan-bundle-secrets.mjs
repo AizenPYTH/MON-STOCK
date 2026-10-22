@@ -10,7 +10,13 @@ import { join } from "node:path";
 
 const root = process.argv[2] ?? "dist";
 
-/** Noms et motifs qui ne doivent JAMAIS apparaître dans l'application. */
+/**
+ * Noms et motifs qui ne doivent JAMAIS apparaître dans l'application.
+ * Liste alignée sur les secrets serveur : src/lib/env.ts et server/edge/runtime-secrets.ts (M-22).
+ * OPENAI_API_KEY n'y figure pas : le nom apparaît légitimement dans deux messages d'interface
+ * (« clé à ajouter par l'administrateur ») ; son ACCÈS par variable d'environnement est en revanche
+ * détecté par SERVER_ENV_ACCESS ci-dessous, et une valeur de clé OpenAI par FORBIDDEN_REGEX.
+ */
 const FORBIDDEN_LITERALS = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "TOKEN_ENCRYPTION_KEY",
@@ -18,14 +24,39 @@ const FORBIDDEN_LITERALS = [
   "CRON_SECRET",
   "BRAVE_SEARCH_API_KEY",
   "EBAY_WEBHOOK_VERIFICATION_TOKEN",
+  "SENDCLOUD_SECRET_KEY",
+  "SENDCLOUD_PUBLIC_KEY",
+  "SHIP24_API_KEY",
+  "DHL_API_KEY",
+  "LAPOSTE_OKAPI_KEY",
+  "PACKLINK_API_KEY",
+  "BOXTAL_V1_LOGIN",
+  "BOXTAL_V1_PASSWORD",
+  "server_runtime_secrets", // RPC réservée à service_role
   "createAdminSupabaseClient",
   "This module cannot be imported from a Client Component module", // server-only
   "-----BEGIN PRIVATE KEY-----",
   "-----BEGIN EC PRIVATE KEY-----",
+  "-----BEGIN RSA PRIVATE KEY-----",
+  "-----BEGIN OPENSSH PRIVATE KEY-----",
 ];
+
+/** Secrets serveur dont le NOM peut apparaître dans un texte, mais jamais être lu dans l'environnement. */
+const SERVER_ENV_NAMES = ["OPENAI_API_KEY", "OPENAI_MODEL", "EBAY_CLIENT_ID", "EBAY_RU_NAME", "SOURCING_USER_AGENT", "BOXTAL_CONTENT_CODE", "BOXTAL_API_URL", "SUPABASE_DB_URL"];
+const SERVER_ENV_ACCESS = new RegExp(`\\b(?:process\\.env|Deno\\.env\\.get\\(|env)\\s*(?:\\.\\s*|\\[\\s*|\\(\\s*)["'\`]?(?:${SERVER_ENV_NAMES.join("|")})\\b`);
+
+// Littéraux complets entre guillemets : les préfixes seuls peuvent apparaître dans des bibliothèques
+// (ex. détection du format de clé dans supabase-js).
+const Q = "[\"'`]";
 const FORBIDDEN_REGEX = [
-  // Littéral complet entre guillemets : le préfixe seul apparaît dans supabase-js (détection du format de clé).
-  { name: "clé secrète Supabase (sb_secret_)", re: /["'`]sb_secret_[A-Za-z0-9_-]{20,}["'`]/ },
+  { name: "clé secrète Supabase (sb_secret_)", re: new RegExp(`${Q}sb_secret_[A-Za-z0-9_-]{20,}${Q}`) },
+  { name: "clé OpenAI (sk-…)", re: new RegExp(`${Q}sk-(?:proj-|svcacct-|admin-|None-)?[A-Za-z0-9_-]{20,}${Q}`) },
+  { name: "clé OpenAI (marqueur T3BlbkFJ)", re: /[A-Za-z0-9_-]{8,}T3BlbkFJ[A-Za-z0-9_-]{8,}/ },
+  { name: "clé Ship24 (apik_…)", re: new RegExp(`${Q}apik_[A-Za-z0-9]{16,}${Q}`) },
+  { name: "jeton d'accès GitHub", re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\b/ },
+  { name: "clé d'accès AWS", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/ },
+  { name: "jeton utilisateur eBay (v^1.1#)", re: /v\^1\.1#i\^1#/ },
+  { name: "accès à un secret serveur par variable d'environnement", re: SERVER_ENV_ACCESS },
 ];
 const JWT = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 

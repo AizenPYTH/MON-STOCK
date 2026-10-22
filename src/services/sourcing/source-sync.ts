@@ -9,6 +9,7 @@ import { createLogger } from "@/lib/logger";
 import { FREQUENCY_LABEL, isScheduleDue, sourceDisplayStatus, SOURCE_STATUS_LABEL, type SyncFrequency } from "@/domain/sourcing/schedule";
 import { ingestFeed, parseFeedConfig, type IngestMode } from "@/services/sourcing/feed-ingestion";
 import { runSourceCrawl } from "@/services/sourcing/crawler/crawler-manager";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import { syncSupplierConnection } from "@/services/sourcing/supplier-connectors";
 import { recordSourceOutcome } from "@/services/sourcing/source-health";
 import { CATALOG_IMPORT_KIND } from "@/services/sourcing/catalog-import";
@@ -86,9 +87,9 @@ interface SyncOutcome {
 }
 
 /** Exécute la synchronisation d'une source selon sa nature (crawl public, flux distant, API). */
-async function runSourceOnce(admin: AdminSupabaseClient, source: SourceRow, kind: SourceKind, trigger: "manual" | "scheduled", createdBy: string | null): Promise<SyncOutcome> {
+async function runSourceOnce(admin: AdminSupabaseClient, source: SourceRow, kind: SourceKind, trigger: "manual" | "scheduled", createdBy: string | null, budgetMs?: number): Promise<SyncOutcome> {
   if (kind === "public_web") {
-    const r = await runSourceCrawl(source.id, { trigger, createdBy, admin });
+    const r = await runSourceCrawl(source.id, { trigger, createdBy, admin, ...(budgetMs !== undefined ? { budgetMs: Math.min(CRAWL_MAX_BUDGET_MS, budgetMs) } : {}) });
     return { ok: r.status === "success" || r.status === "partial", status: r.status, message: r.message, runIds: r.runId ? [r.runId] : [] };
   }
   if (kind === "remote_feed") {
@@ -143,33 +144,107 @@ export async function syncSourceNow(ctx: OrgContext, sourceId: string, admin: Ad
   return { status: outcome.status, message: outcome.message, ...health };
 }
 
-/** Cron : sources planifiées échues (reprise progressive après échec), une à la fois par hôte. */
-export async function runScheduledSources(now: Date = new Date(), admin: AdminSupabaseClient = createAdminSupabaseClient(), limit = 40): Promise<{ sourceId: string; status: SyncOutcome["status"]; message: string }[]> {
-  const { data } = await admin.from("supplier_sources").select(SOURCE_COLUMNS).neq("sync_frequency", "manual").neq("status", "paused").limit(500);
-  const sources = ((data ?? []) as unknown as SourceRow[]).filter((s) => isScheduleDue(s, now));
+/** Plafond du budget d'un parcours de catalogue (même valeur que CRAWL_BUDGET_MS du crawler). */
+const CRAWL_MAX_BUDGET_MS = 90_000;
+/** Budget de temps global d'un passage planifié (la fonction serveur est coupée à 150 s). */
+export const SCHEDULED_SOURCES_BUDGET_MS = 100_000;
+/** Temps minimal restant pour lancer une source (sinon : reportée, prioritaire au passage suivant). */
+export const SOURCE_MIN_START_MS = 30_000;
+/** Marge laissée après la dernière source (journal, enregistrement de l'état). */
+export const SOURCE_SAFETY_MS = 10_000;
+/** Prise en charge d'une source : si la fonction est coupée pendant son traitement, elle repasse après ce délai (en fin de file). */
+export const SOURCE_CLAIM_LEASE_MS = 30 * 60_000;
+/** Taille de page de lecture des sources planifiées (ordre stable, toutes les organisations). */
+const DUE_PAGE_SIZE = 500;
+
+export interface DueSourcesRun {
+  ran: { sourceId: string; status: SyncOutcome["status"]; message: string }[];
+  /** sources échues non lancées faute de temps (en tête de file au passage suivant) */
+  deferred: string[];
+  due: number;
+  budgetMs: number;
+}
+
+/**
+ * File équitable des sources échues : la plus en retard d'abord (next_run_at, puis dernière
+ * synchronisation, puis identifiant : ordre STABLE), sur toutes les organisations (lecture paginée,
+ * pas de sous-ensemble arbitraire).
+ */
+export function orderDueSources<T extends Pick<SourceRow, "id" | "next_run_at" | "last_sync_at">>(sources: T[]): T[] {
+  const at = (s: T) => s.next_run_at ?? s.last_sync_at ?? "";
+  return [...sources].sort((a, b) => at(a).localeCompare(at(b)) || (a.last_sync_at ?? "").localeCompare(b.last_sync_at ?? "") || a.id.localeCompare(b.id));
+}
+
+async function loadScheduledSources(admin: AdminSupabaseClient): Promise<SourceRow[]> {
+  const rows = await fetchAllRows<SourceRow>(
+    (from, to) =>
+      admin
+        .from("supplier_sources")
+        .select(SOURCE_COLUMNS)
+        .neq("sync_frequency", "manual")
+        .neq("status", "paused")
+        .order("next_run_at", { ascending: true, nullsFirst: true })
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: SourceRow[] | null; error: { message: string } | null }>,
+    { pageSize: DUE_PAGE_SIZE, maxRows: 20_000 },
+  );
+  return rows;
+}
+
+/**
+ * Cron : sources planifiées échues (reprise progressive après échec), une à la fois, dans un budget
+ * de temps global vérifié AVANT chaque source et propagé au crawl. Chaque source est « prise en
+ * charge » (next_run_at repoussé) avant d'être traitée : une fonction coupée ne la fait pas
+ * repasser en tête à chaque passage, et deux passages simultanés ne la traitent pas deux fois.
+ */
+export async function runDueSources(options: { now?: Date; admin?: AdminSupabaseClient; limit?: number; budgetMs?: number; clock?: () => number } = {}): Promise<DueSourcesRun> {
+  const now = options.now ?? new Date();
+  const admin = options.admin ?? createAdminSupabaseClient();
+  const limit = options.limit ?? 40;
+  const budgetMs = options.budgetMs ?? SCHEDULED_SOURCES_BUDGET_MS;
+  const clock = options.clock ?? Date.now;
+  const deadline = clock() + budgetMs;
+  const all = await loadScheduledSources(admin);
+  const sources = orderDueSources(all.filter((s) => isScheduleDue(s, now)));
   const { urlFeeds, connections } = await sourceContext(admin, sources.map((s) => s.id));
-  const out: { sourceId: string; status: SyncOutcome["status"]; message: string }[] = [];
-  // sources d'un même hôte traitées l'une après l'autre (politesse), ordre : la plus en retard d'abord
-  sources.sort((a, b) => (a.next_run_at ?? a.last_sync_at ?? "").localeCompare(b.next_run_at ?? b.last_sync_at ?? ""));
-  for (const source of sources.slice(0, limit)) {
+  const ran: DueSourcesRun["ran"] = [];
+  const deferred: string[] = [];
+  let attempted = 0;
+  for (const source of sources) {
     const kind = kindOf(source, urlFeeds.has(source.id), connections.has(source.id));
     if (kind === "file_import" || kind === "manual" || kind === "live_search") continue;
     if (kind === "public_web" && !source.automated_access_confirmed) continue;
     // catalogue public hebdomadaire : collecte par tranches avec reprise (weekly-collection), jamais d'une traite
     if (kind === "public_web" && source.sync_frequency === "weekly") continue;
+    const remaining = deadline - clock();
+    if (attempted >= limit || remaining < SOURCE_MIN_START_MS) {
+      deferred.push(source.id);
+      continue;
+    }
+    // Prise en charge atomique (compare-and-set sur next_run_at).
+    const lease = new Date(now.getTime() + SOURCE_CLAIM_LEASE_MS).toISOString();
+    const claim = admin.from("supplier_sources").update({ next_run_at: lease }).eq("id", source.id);
+    const { data: claimed, error: claimErr } = await (source.next_run_at ? claim.eq("next_run_at", source.next_run_at) : claim.is("next_run_at", null)).select("id");
+    if (claimErr || !claimed || claimed.length === 0) continue;
+    attempted++;
     let outcome: SyncOutcome;
     try {
-      outcome = await runSourceOnce(admin, source, kind, "scheduled", null);
+      outcome = await runSourceOnce(admin, source, kind, "scheduled", null, Math.max(10_000, remaining - SOURCE_SAFETY_MS));
     } catch (e) {
       outcome = { ok: false, status: "failed", message: e instanceof Error ? e.message : String(e), runIds: [] };
     }
-    // une synchronisation déjà en cours n'est pas un échec de la source
+    // une synchronisation déjà en cours n'est pas un échec de la source (elle repasse après la prise en charge)
     if (!outcome.ok && /déjà en cours/.test(outcome.message)) continue;
     await recordSourceOutcome(admin, { sourceId: source.id, organizationId: source.organization_id, sourceName: source.name, frequency: source.sync_frequency, previousFailures: source.consecutive_failures, ok: outcome.ok, error: outcome.ok ? null : outcome.message, now });
-    out.push({ sourceId: source.id, status: outcome.status, message: outcome.message });
+    ran.push({ sourceId: source.id, status: outcome.status, message: outcome.message });
   }
-  log.info("scheduled sources", { due: sources.length, ran: out.length });
-  return out;
+  log.info("scheduled sources", { due: sources.length, ran: ran.length, deferred: deferred.length });
+  return { ran, deferred, due: sources.length, budgetMs };
+}
+
+/** Compatibilité : sources lancées lors du passage (voir runDueSources pour les sources reportées). */
+export async function runScheduledSources(now: Date = new Date(), admin: AdminSupabaseClient = createAdminSupabaseClient(), limit = 40): Promise<{ sourceId: string; status: SyncOutcome["status"]; message: string }[]> {
+  return (await runDueSources({ now, admin, limit })).ran;
 }
 
 export const sourceScheduleSchema = z.object({

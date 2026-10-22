@@ -12,7 +12,7 @@
  *   GET  /api/sourcing/search?q=…         recherche d'offres (sources connectées en direct + offres stockées)
  *   GET  /api/sourcing/status             état des sources de l'organisation
  *   GET  /api/sourcing/library            bibliothèque de sources (catalogue + état d'activation)
- *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (attestation de l'utilisateur)
+ *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (validation tracée de l'utilisateur ; page des conditions lue si non confirmée)
  *   GET  /api/radar?sort=…                radar d'opportunités d'achat (offres réelles × ventes réelles × coûts)
  *   GET  /api/radar/offer?id=&quantity=   détail d'une offre : appréciation, scénarios de quantité, offres concurrentes
  *   POST /api/radar/settings              paramètres de coûts (TVA, frais, emballage, retours, douane) — administrateur
@@ -82,7 +82,7 @@ import { EbayNotificationKeyStore } from "@/integrations/ebay/notification-keys"
 import { handleEbayNotification } from "@/services/sync/ebay-webhook";
 import { runChannelSync } from "@/services/sync/engine";
 import { runSourcingSync } from "@/services/sourcing/sync";
-import { activateLibrarySource, activateLibrarySourceFor, getLibrarySource, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
+import { activateLibrarySource, libraryActivateSchema, librarySourcesToRevalidate, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
 import { runChainSelfTest, runImportSelfTest, runSearchSelfTest } from "@/services/sourcing/e2e-check";
 import { checkListing, disconnectEbay, disconnectSchema, ebayAccountSetup, listingRequestSchema, prefillListing, publishListingForOrg } from "@/services/channels/ebay-listing-service";
@@ -126,7 +126,6 @@ const scoutSchema = z.object({ hosts: z.array(z.string().min(3).max(120)).min(1)
 /** Fichier de 15 Mo en base64 (+ mapping) : seule route qui accepte un corps volumineux. */
 const CATALOG_BODY_LIMIT = 21_000_000;
 const productDraftSchema = z.object({ text: z.string().trim().min(3, "Dites ou écrivez le produit à ajouter.").max(2000, "Texte trop long (2000 caractères maximum).") });
-const activateSchema = z.object({ key: z.string().min(1).max(80), attest: z.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }) });
 
 function withCors(res: Response): Response {
   const headers = new Headers(res.headers);
@@ -289,26 +288,18 @@ export async function route(request: Request): Promise<Response> {
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
       if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
       if (m === "POST" && path === "/cron/library-checks") {
-        return handle(async () => runLibraryChecks((await parseBody(request, z.object({ keys: z.array(z.string().min(1).max(80)).max(60).optional() }))).keys));
-      }
-      if (m === "POST" && path === "/cron/library-activate") {
+        // Lot borné (les moins récemment vérifiées d'abord) dans un budget de temps global.
         return handle(async () => {
-          const body = await parseBody(request, z.object({ organizationId: uuidParam, keys: z.array(z.string().min(1).max(80)).min(1).max(60), requestedBy: z.string().min(10).max(600) }));
-          const admin = createAdminSupabaseClient();
-          const out: { key: string; sourceId: string | null; alreadyActive: boolean; error: string | null }[] = [];
-          for (const key of body.keys) {
-            const terms = getLibrarySource(key)?.termsUrl ?? "?";
-            const attestation = `${body.requestedBy} Conditions du fournisseur : ${terms}. robots.txt vérifié par le serveur. Activation enregistrée le ${new Date().toISOString()}.`;
-            try {
-              const r = await activateLibrarySourceFor(admin, body.organizationId, key, attestation, { adapter: getLibrarySource(key)?.adapter });
-              out.push({ key, sourceId: r.sourceId, alreadyActive: r.alreadyActive, error: null });
-            } catch (e) {
-              out.push({ key, sourceId: null, alreadyActive: false, error: e instanceof Error ? e.message : String(e) });
-            }
-          }
-          return out;
+          const body = await parseBody(request, z.object({ keys: z.array(z.string().min(1).max(80)).max(60).optional(), batchSize: z.number().int().min(1).max(20).optional() }));
+          return runLibraryChecks({ keys: body.keys, batchSize: body.batchSize });
         });
       }
+      // Activation planifiée supprimée (I-05) : l'activation exige la validation de l'utilisateur dans l'application.
+      if (m === "POST" && path === "/cron/library-activate") {
+        return errorResponse(new AppError("FORBIDDEN", "Activation de sources par tâche planifiée supprimée : chaque activation exige la validation tracée d'un utilisateur de l'organisation (application ou site web).", { status: 410 }));
+      }
+      // Rapport en lecture seule : sources de la bibliothèque actives à faire revalider par le titulaire (rien n'est désactivé).
+      if (m === "POST" && path === "/cron/library-review-report") return handle(() => librarySourcesToRevalidate());
       if (m === "POST" && path === "/cron/sourcing-weekly") return handle(async () => runWeeklyCollection(await parseBody(request, weeklyRunSchema)));
       if (m === "POST" && path === "/cron/collect-source") {
         return handle(async () => {
@@ -359,8 +350,8 @@ export async function route(request: Request): Promise<Response> {
     if (m === "POST" && path === "/sourcing/library/activate") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        const body = await parseBody(request, activateSchema);
-        return activateLibrarySource(ctx, body.key);
+        const body = await parseBody(request, libraryActivateSchema);
+        return activateLibrarySource(ctx, body.key, { termsUrl: body.termsUrl ?? null }, "mobile");
       });
     }
     if (m === "GET" && path === "/radar") {

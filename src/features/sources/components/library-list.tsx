@@ -61,7 +61,7 @@ export function LibraryCard({ entry: e, canActivate }: { entry: LibraryEntryDTO;
           <details className="rounded-xl border border-border px-3 py-1">
             <summary className="min-h-10 cursor-pointer py-2 text-sm font-bold">Activer cette source</summary>
             <div className="pt-2">
-              <ActivateLibraryForm libraryKey={e.key} name={e.name} termsUrl={e.termsUrl} />
+              <ActivateLibraryForm libraryKey={e.key} name={e.name} termsUrl={e.termsUrl} termsConfirmed={e.termsStatus === "confirmed"} />
             </div>
           </details>
         ) : null}

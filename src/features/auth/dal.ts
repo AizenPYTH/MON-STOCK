@@ -1,10 +1,12 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import type { User } from "@supabase/supabase-js";
 import { createServerSupabaseClient, type ServerSupabaseClient } from "@/lib/supabase/server";
 import type { Organization, OrgRole, UserProfile } from "@/db/types";
 import { AppError } from "@/lib/errors";
+import { DISPLAYED_ORGANIZATION_HEADER, parseDisplayedOrganization } from "@/lib/displayed-organization";
 
 /**
  * Data Access Layer d'authentification. Toutes les pages et actions passent par ici :
@@ -32,6 +34,12 @@ export interface OrgContext {
   organization: Organization;
   role: OrgRole;
   memberships: Array<{ organization: Pick<Organization, "id" | "name" | "slug" | "is_demo">; role: OrgRole }>;
+  /**
+   * Vrai si l'organisation mémorisée dans le profil n'est plus accessible (adhésion retirée,
+   * organisation supprimée, aucune mémorisée) et qu'une autre a été retenue à sa place (W-28) :
+   * l'interface le signale au lieu de basculer en silence.
+   */
+  fallback?: boolean;
 }
 
 /**
@@ -57,12 +65,19 @@ export async function resolveOrgContext(
   if (memberships.length === 0) return null;
 
   let current: (typeof memberships)[number] | undefined;
+  let fallback = false;
   if (preferredOrganizationId) {
     current = memberships.find((m) => m.organization.id === preferredOrganizationId);
     if (!current) return null;
   } else {
     const wantedId = profile?.current_organization_id ?? null;
-    current = memberships.find((m) => m.organization.id === wantedId) ?? memberships[0];
+    current = memberships.find((m) => m.organization.id === wantedId);
+    if (!current) {
+      // Organisation mémorisée perdue (le retrait d'un membre remet current_organization_id à null en
+      // base) : on retient la première adhésion, mais on le signale (W-28).
+      current = memberships[0];
+      fallback = true;
+    }
   }
   if (!current) return null;
 
@@ -79,7 +94,7 @@ export async function resolveOrgContext(
       updated_at: new Date().toISOString(),
     };
 
-  return { supabase, user, profile: effectiveProfile, organization, role: current.role, memberships };
+  return { supabase, user, profile: effectiveProfile, organization, role: current.role, memberships, fallback };
 }
 
 export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
@@ -116,6 +131,7 @@ export async function requireOrgContextForAction(options: { write?: boolean; adm
   if (!ctx) {
     throw new AppError("FORBIDDEN", "Vous n'êtes membre d'aucune organisation active (accès retiré ?).", { action: { label: "Choisir une organisation", href: "/onboarding" } });
   }
+  assertDisplayedOrganization(ctx, await displayedOrganizationFromRequest());
   if (options.admin && !["owner", "admin"].includes(ctx.role)) {
     throw new AppError("FORBIDDEN", "Cette action est réservée aux administrateurs de l'organisation.");
   }
@@ -123,6 +139,42 @@ export async function requireOrgContextForAction(options: { write?: boolean; adm
     throw new AppError("FORBIDDEN", "Votre rôle (lecture seule) ne permet pas cette action.");
   }
   return ctx;
+}
+
+/**
+ * Organisation affichée par l'onglet qui envoie la requête (en-tête posé par le navigateur, voir
+ * src/lib/displayed-organization.ts), ou null : formulaire sans JavaScript, client ancien, appel hors
+ * requête (tests). Absente, la vérification est simplement sautée (comportement antérieur).
+ */
+async function displayedOrganizationFromRequest(): Promise<string | null> {
+  try {
+    return parseDisplayedOrganization((await headers()).get(DISPLAYED_ORGANIZATION_HEADER));
+  } catch {
+    return null;
+  }
+}
+
+/** Message lorsque l'onglet affiche une autre organisation que l'organisation active (W-07). */
+export function organizationChangedMessage(displayedName: string, activeName: string): string {
+  return `Cet onglet affiche l'organisation « ${displayedName} », mais l'organisation active est maintenant « ${activeName} » (changée dans un autre onglet). Rien n'a été enregistré : rechargez la page pour continuer.`;
+}
+
+/**
+ * Refuse une action si l'onglet affiche une autre organisation que celle retenue par le serveur
+ * (W-07) : plus aucune écriture silencieuse dans l'organisation choisie depuis un autre onglet.
+ */
+export function assertDisplayedOrganization(ctx: Pick<OrgContext, "organization" | "memberships">, displayedId: string | null): void {
+  if (!displayedId || displayedId === ctx.organization.id.toLowerCase()) return;
+  const displayed = ctx.memberships.find((m) => m.organization.id.toLowerCase() === displayedId);
+  if (!displayed) {
+    throw new AppError("FORBIDDEN", "Vous n'avez plus accès à l'organisation affichée dans cet onglet. Rien n'a été enregistré : rechargez la page.", {
+      action: { label: "Recharger", href: "/dashboard" },
+    });
+  }
+  throw new AppError("CONFLICT", organizationChangedMessage(displayed.organization.name, ctx.organization.name), {
+    action: { label: "Recharger", href: "/dashboard" },
+    details: { displayedOrganizationId: displayedId, activeOrganizationId: ctx.organization.id },
+  });
 }
 
 export function canWrite(role: OrgRole): boolean {

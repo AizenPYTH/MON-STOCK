@@ -4,6 +4,7 @@ import type { OrgContext } from "@/features/auth/dal";
 import type { DailySalesRow, InventoryMovement, Order, OrderItem } from "@/db/types";
 import { fromPostgrestError } from "@/lib/errors";
 import { orIlikeAny } from "@/lib/postgrest";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { dayKey, fillDailySeries, shiftDayKey, summarizeSalesWindows, zonedDayStartIso, type DailyPoint, type SalesWindows } from "@/features/analytics/series.pure";
 import type { SalesListParams } from "@/features/analytics/schemas";
 
@@ -35,7 +36,17 @@ export interface OrderListResult {
   page: number;
   pageSize: number;
   channels: ChannelRef[];
+  /**
+   * Filtre « stock non déduit » : plus de PENDING_ORDERS_MAX commandes concernées (ou plus de
+   * PENDING_ITEMS_MAX lignes) → seule une partie est listée, et l'écran le dit (W-03).
+   */
+  partial?: boolean;
 }
+
+/** Lignes « non déduites » lues (par pages de 1 000) pour le filtre « stock non déduit ». */
+export const PENDING_ITEMS_MAX = 20_000;
+/** Commandes transmises au filtre `in` (taille d'URL raisonnable). */
+export const PENDING_ORDERS_MAX = 300;
 
 export async function listOrders(ctx: OrgContext, params: SalesListParams, pageSize = SALES_PAGE_SIZE): Promise<OrderListResult> {
   const orgId = ctx.organization.id;
@@ -45,13 +56,25 @@ export async function listOrders(ctx: OrgContext, params: SalesListParams, pageS
 
   // Filtre « ventes non déduites » : commandes ayant au moins une ligne rattachée à un SKU et non appliquée.
   let idFilter: string[] | null = null;
+  let partial = false;
   if (params.inventory === "pending") {
-    const { data, error } = await supabase.from("order_items").select("order_id").eq("organization_id", orgId).eq("inventory_applied", false).not("sku_id", "is", null).limit(2000);
-    if (error) throw fromPostgrestError(error);
-    idFilter = Array.from(new Set((data ?? []).map((d) => d.order_id)));
+    // Lecture PAGINÉE (PostgREST plafonne chaque réponse à 1 000 lignes : un `.limit(2000)` en
+    // renverrait 1 000 sans le dire). Ordre stable : lignes les plus récentes d'abord.
+    let pending: { rows: Array<{ order_id: string }>; truncated: boolean };
+    try {
+      pending = await fetchRowsUpTo(
+        (from, to) => supabase.from("order_items").select("order_id").eq("organization_id", orgId).eq("inventory_applied", false).not("sku_id", "is", null).order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, to),
+        PENDING_ITEMS_MAX,
+      );
+    } catch (e) {
+      throw fromPostgrestError(e as Parameters<typeof fromPostgrestError>[0]);
+    }
+    const ids = Array.from(new Set(pending.rows.map((d) => d.order_id)));
+    partial = pending.truncated || ids.length > PENDING_ORDERS_MAX;
+    idFilter = ids.slice(0, PENDING_ORDERS_MAX);
     if (idFilter.length === 0) {
       const { data: channels } = await channelsPromise;
-      return { rows: [], total: 0, page: params.page, pageSize, channels: channels ?? [] };
+      return { rows: [], total: 0, page: params.page, pageSize, channels: channels ?? [], partial };
     }
   }
 
@@ -63,7 +86,7 @@ export async function listOrders(ctx: OrgContext, params: SalesListParams, pageS
   // Bornes en jours civils Europe/Paris (comme les statistiques), converties en instants UTC.
   if (params.from) query = query.gte("placed_at", zonedDayStartIso(params.from));
   if (params.to) query = query.lt("placed_at", zonedDayStartIso(shiftDayKey(params.to, 1)));
-  if (idFilter) query = query.in("id", idFilter.slice(0, 1000)).not("status", "in", "(cancelled,refunded)");
+  if (idFilter) query = query.in("id", idFilter).not("status", "in", "(cancelled,refunded)");
 
   const from = (params.page - 1) * pageSize;
   const [{ data, error, count }, { data: channels }] = await Promise.all([query.order("placed_at", { ascending: false }).range(from, from + pageSize - 1), channelsPromise]);
@@ -95,7 +118,7 @@ export async function listOrders(ctx: OrgContext, params: SalesListParams, pageS
     const agg = itemsByOrder.get(o.id) ?? { count: 0, units: 0, unmapped: 0, pending: 0 };
     return { order, channel: one(channel), itemsCount: agg.count, units: agg.units, unmappedItems: agg.unmapped, pendingInventoryItems: agg.pending };
   });
-  return { rows, total: count ?? rows.length, page: params.page, pageSize, channels: channels ?? [] };
+  return { rows, total: count ?? rows.length, page: params.page, pageSize, channels: channels ?? [], partial };
 }
 
 export interface OrderItemView {

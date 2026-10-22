@@ -125,10 +125,21 @@ export interface AlertsRunSummary {
   organizations: number;
   alerts: number;
   events: number;
+  /** alertes non évaluées faute de temps (les moins récemment évaluées passent en premier au passage suivant) */
+  deferred?: number;
 }
 
-export async function evaluateSourcingAlerts(now: Date = new Date(), admin: AdminSupabaseClient = createAdminSupabaseClient(), organizationId?: string): Promise<AlertsRunSummary> {
-  let q = admin.from("sourcing_alerts").select("id, organization_id, query_text, parsed, criteria, sku_id, created_at, last_checked_at, organization:organizations(default_currency)").eq("is_active", true).limit(1000);
+export async function evaluateSourcingAlerts(now: Date = new Date(), admin: AdminSupabaseClient = createAdminSupabaseClient(), organizationId?: string, opts: { budgetMs?: number; clock?: () => number } = {}): Promise<AlertsRunSummary> {
+  const clock = opts.clock ?? Date.now;
+  const deadline = opts.budgetMs !== undefined ? clock() + opts.budgetMs : Number.POSITIVE_INFINITY;
+  // Ordre stable : les alertes jamais évaluées, puis les moins récemment évaluées.
+  let q = admin
+    .from("sourcing_alerts")
+    .select("id, organization_id, query_text, parsed, criteria, sku_id, created_at, last_checked_at, organization:organizations(default_currency)")
+    .eq("is_active", true)
+    .order("last_checked_at", { ascending: true, nullsFirst: true })
+    .order("id", { ascending: true })
+    .limit(1000);
   if (organizationId) q = q.eq("organization_id", organizationId);
   const { data: alerts, error: alertsError } = await q;
   if (alertsError) throw new Error(`Impossible de charger les alertes de sourcing : ${alertsError.message}`);
@@ -136,11 +147,22 @@ export async function evaluateSourcingAlerts(now: Date = new Date(), admin: Admi
   for (const a of alerts ?? []) byOrg.set(a.organization_id, [...(byOrg.get(a.organization_id) ?? []), a]);
   let totalEvents = 0;
   let totalAlerts = 0;
+  let deferred = 0;
   for (const [orgId, list] of byOrg) {
+    if (clock() >= deadline) {
+      deferred += list.length;
+      continue;
+    }
     const run = await startSyncRun(admin, { organizationId: orgId, sourceKind: "sourcing_alerts", provider: "sourcing_alerts", trigger: organizationId ? "manual" : "scheduled" });
     let events = 0;
     let errors = 0;
+    let done = 0;
     for (const a of list) {
+      if (clock() >= deadline) {
+        deferred++;
+        continue;
+      }
+      done++;
       try {
         const r = await evaluateAlert(admin, a, a.organization?.default_currency ?? "EUR", now);
         events += r.created;
@@ -151,7 +173,7 @@ export async function evaluateSourcingAlerts(now: Date = new Date(), admin: Admi
       }
     }
     totalEvents += events;
-    await finishSyncRun(admin, run, { status: errors === 0 ? "success" : errors === list.length ? "failed" : "partial", recordsProcessed: list.length, errorCount: errors, stats: { events } });
+    await finishSyncRun(admin, run, { status: errors === 0 && done === list.length ? "success" : errors === list.length ? "failed" : "partial", recordsProcessed: done, errorCount: errors, stats: { events, deferred: list.length - done } });
   }
-  return { organizations: byOrg.size, alerts: totalAlerts, events: totalEvents };
+  return { organizations: byOrg.size, alerts: totalAlerts, events: totalEvents, deferred };
 }

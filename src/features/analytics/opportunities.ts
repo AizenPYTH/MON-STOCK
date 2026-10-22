@@ -3,6 +3,7 @@ import type { OrgContext } from "@/features/auth/dal";
 import type { UnknownCost } from "@/domain/pricing/margin";
 import type { VelocityResult } from "@/domain/inventory/velocity";
 import { fromPostgrestError } from "@/lib/errors";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import type { MarginContext } from "@/features/stock/model";
 import { skuLabel, type StockRowView } from "@/features/stock/model";
 import { loadStockViews } from "@/features/analytics/stock-analytics";
@@ -75,8 +76,16 @@ export interface SourcingEventView {
   skuCode: string | null;
 }
 
+/**
+ * Borne de lecture des offres rapprochées (triées par prix croissant, lues par pages : PostgREST
+ * plafonne chaque réponse à 1 000 lignes — W-03). Au-delà, l'analyse est signalée partielle.
+ */
+export const OPPORTUNITY_OFFERS_MAX = 20_000;
+
 export interface OpportunitiesData {
   items: OpportunityView[];
+  /** vrai si la borne de lecture des offres a été atteinte : analyse partielle, affichée comme telle */
+  offersTruncated: boolean;
   totalLinkedSkus: number;
   potentialCount: number;
   unprofitableCount: number;
@@ -97,26 +106,32 @@ export async function findOpportunities(ctx: OrgContext, opts: { limit?: number 
   const since7d = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const [bundle, offersRes, eventsRes] = await Promise.all([
     loadStockViews(ctx),
-    ctx.supabase
-      .from("sourcing_offers")
-      .select(OFFER_SELECT)
-      .eq("organization_id", orgId)
-      .eq("status", "active")
-      .not("sku_id", "is", null)
-      .not("normalized_price", "is", null)
-      .order("normalized_price", { ascending: true })
-      .limit(5000),
+    fetchRowsUpTo(
+      (from, to) =>
+        ctx.supabase
+          .from("sourcing_offers")
+          .select(OFFER_SELECT)
+          .eq("organization_id", orgId)
+          .eq("status", "active")
+          .not("sku_id", "is", null)
+          .not("normalized_price", "is", null)
+          .order("normalized_price", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      OPPORTUNITY_OFFERS_MAX,
+    ).catch((e: unknown) => {
+      throw fromPostgrestError(e as Parameters<typeof fromPostgrestError>[0]);
+    }),
     ctx.supabase.from("sourcing_alert_events").select(EVENT_SELECT).eq("organization_id", orgId).gte("triggered_at", since7d).order("triggered_at", { ascending: false }).limit(20),
   ]);
-  if (offersRes.error) throw fromPostgrestError(offersRes.error);
   if (eventsRes.error) throw fromPostgrestError(eventsRes.error);
 
   const viewsById = new Map<string, StockRowView>();
   for (const v of bundle.views) if (v.row.sku_id) viewsById.set(v.row.sku_id, v);
 
-  type OfferRow = NonNullable<typeof offersRes.data>[number];
+  type OfferRow = (typeof offersRes.rows)[number];
   const bestBySku = new Map<string, { offer: OfferRow; count: number }>();
-  for (const o of offersRes.data ?? []) {
+  for (const o of offersRes.rows) {
     if (!o.sku_id) continue;
     const entry = bestBySku.get(o.sku_id);
     if (!entry) bestBySku.set(o.sku_id, { offer: o, count: 1 });
@@ -209,6 +224,7 @@ export async function findOpportunities(ctx: OrgContext, opts: { limit?: number 
   const insufficientCount = items.filter((i) => i.evaluation.status === "insufficient_data").length;
   return {
     items: opts.limit ? items.slice(0, opts.limit) : items,
+    offersTruncated: offersRes.truncated,
     totalLinkedSkus: items.length,
     potentialCount,
     unprofitableCount,

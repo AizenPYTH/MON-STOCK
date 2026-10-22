@@ -7,7 +7,8 @@ import { createLogger } from "@/lib/logger";
 import { getStockAnalytics } from "@/features/analytics/stock-analytics";
 import { loadDailySales } from "@/features/analytics/sales";
 import { getOperationalCounts } from "@/features/analytics/dashboard";
-import { computeRecommendations } from "@/features/analytics/replenishment";
+import { computeRecommendationsWithCoverage } from "@/features/analytics/replenishment";
+import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { buildChannelCards, type ChannelCard } from "@/features/analytics/channels.pure";
 import { fillDailySeries, summarizeSalesWindows, type ForeignCurrencyTotal } from "@/features/analytics/series.pure";
 import { buildRadar } from "@/services/radar/radar";
@@ -96,6 +97,43 @@ export interface TodayDashboard {
   unavailable: string[];
 }
 
+/** Borne de lecture des commandes des 36 dernières heures (marge du jour), lues par pages (W-03). */
+export const MARGIN_ORDERS_MAX = 20_000;
+
+const MARGIN_ORDER_SELECT = "currency, fee_total, placed_at, items:order_items(quantity, unit_price, sku:skus(cost_price, currency))";
+
+/**
+ * Commandes des 36 dernières heures pour la marge du jour. null si la lecture échoue OU dépasse la
+ * borne : la marge est alors inconnue (« — »), jamais calculée sur une partie des commandes.
+ */
+export async function loadMarginOrders(ctx: OrgContext, now: Date): Promise<MarginOrderLike[] | null> {
+  const orgId = ctx.organization.id;
+  const since = new Date(now.getTime() - 36 * 3_600_000).toISOString();
+  try {
+    const { rows, truncated } = await fetchRowsUpTo(
+      (from, to) =>
+        ctx.supabase
+          .from("orders")
+          .select(MARGIN_ORDER_SELECT)
+          .eq("organization_id", orgId)
+          .in("status", [...ACTIVE_ORDER])
+          .gte("placed_at", since)
+          .order("placed_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      MARGIN_ORDERS_MAX,
+    );
+    if (truncated) {
+      log.warn("marge du jour non calculée : borne de lecture atteinte", { orgId, max: MARGIN_ORDERS_MAX });
+      return null;
+    }
+    return rows as unknown as MarginOrderLike[];
+  } catch (e) {
+    log.warn("marge du jour indisponible", { orgId, error: e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e) });
+    return null;
+  }
+}
+
 async function settle<T>(label: string, p: Promise<T>, unavailable: string[]): Promise<T | null> {
   try {
     return await p;
@@ -112,18 +150,12 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
   const now = new Date();
   const unavailable: string[] = [];
 
-  const [stock, dailyRows, counts, toShipRes, marginRes, recentRes, channelsRes, connectionsRes, radar, jobs, accounts, drafts] = await Promise.all([
+  const [stock, dailyRows, counts, toShipRes, marginOrders, recentRes, channelsRes, connectionsRes, radar, jobs, accounts, recommendations] = await Promise.all([
     getStockAnalytics(ctx),
     loadDailySales(ctx, 30),
     getOperationalCounts(ctx),
     ctx.supabase.from("orders").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("status", "paid").neq("provider", "manual"),
-    ctx.supabase
-      .from("orders")
-      .select("currency, fee_total, placed_at, items:order_items(quantity, unit_price, sku:skus(cost_price, currency))")
-      .eq("organization_id", orgId)
-      .in("status", [...ACTIVE_ORDER])
-      .gte("placed_at", new Date(now.getTime() - 36 * 3_600_000).toISOString())
-      .limit(2000),
+    loadMarginOrders(ctx, now),
     ctx.supabase
       .from("orders")
       .select("id, provider, status, placed_at, total, currency, channel:sales_channels(name), items:order_items(title, sku:skus(code))")
@@ -135,8 +167,11 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
     settle<RadarDTO>("radar d'achat", buildRadar(ctx, { now }), unavailable),
     settle<ImportJobDTO[]>("imports de catalogues", listImportJobs(ctx, { limit: 50 }), unavailable),
     settle<ProAccountsHubDTO>("comptes fournisseurs", proAccountsHub(ctx), unavailable),
-    settle("recommandations de réapprovisionnement", computeRecommendations(ctx), unavailable),
+    settle("recommandations de réapprovisionnement", computeRecommendationsWithCoverage(ctx), unavailable),
   ]);
+  const drafts = recommendations?.drafts ?? null;
+  // Calcul partiel (borne de lecture atteinte) : signalé comme tel, jamais présenté comme complet (W-03).
+  if (recommendations?.truncated) unavailable.push("recommandations de réapprovisionnement (calcul partiel)");
   if (recentRes.error) throw fromPostgrestError(recentRes.error);
 
   // --- ventes : 14 derniers jours, jour en cours en dernier ---
@@ -146,7 +181,7 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
   const last14Days = series.map((p) => ({ day: p.day, amount: p.revenue }));
   const revenue14 = Math.round(series.reduce((s, p) => s + p.revenue, 0) * 100) / 100;
   // marge : null si la requête échoue (jamais 0 supposé)
-  const marginToday = marginRes.error ? null : marginTodayPercent((marginRes.data ?? []) as unknown as MarginOrderLike[], currency, now);
+  const marginToday = marginOrders === null ? null : marginTodayPercent(marginOrders, currency, now);
 
   // --- stock ---
   const views = stock.all;

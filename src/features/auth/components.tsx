@@ -105,12 +105,17 @@ function PasswordInput({ invalid, describedBy, ...props }: InputHTMLAttributes<H
   );
 }
 
-export function AuthSubmit({ children, pendingText }: { children: ReactNode; pendingText: string }) {
+/**
+ * Bouton d'envoi : désactivé pendant l'envoi, et tant que `locked` (ex. création réussie, redirection
+ * en cours) pour empêcher un second envoi.
+ */
+export function AuthSubmit({ children, pendingText, locked = false, lockedText }: { children: ReactNode; pendingText: string; locked?: boolean; lockedText?: string }) {
   const { pending } = useFormStatus();
+  const busy = pending || locked;
   return (
-    <button type="submit" disabled={pending} aria-busy={pending || undefined} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-mint px-5 text-base font-extrabold text-night transition-colors hover:bg-mint-pressed disabled:opacity-60">
-      {pending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
-      {pending ? pendingText : children}
+    <button type="submit" disabled={busy} aria-busy={busy || undefined} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-mint px-5 text-base font-extrabold text-night transition-colors hover:bg-mint-pressed disabled:opacity-60">
+      {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
+      {pending ? pendingText : locked ? (lockedText ?? pendingText) : children}
     </button>
   );
 }

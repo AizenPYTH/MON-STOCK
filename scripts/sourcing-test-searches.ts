@@ -18,6 +18,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { exitIfProductionTarget } from "./lib/production-guard";
 
 const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/mon_stock_test";
 
@@ -37,6 +38,8 @@ function maskUrl(url: string): string {
 }
 
 async function main(): Promise<void> {
+  // D-03 : crée une organisation « TEST » : jamais sur la production sauf dérogation nommée.
+  exitIfProductionTarget("sourcing:test-searches");
   if (!hasReactServerCondition()) {
     const script = fileURLToPath(import.meta.url);
     const result = spawnSync(process.execPath, ["--conditions", "react-server", ...process.execArgv, script, ...process.argv.slice(2)], { stdio: "inherit", env: process.env });

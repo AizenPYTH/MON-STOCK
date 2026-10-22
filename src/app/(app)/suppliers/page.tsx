@@ -31,8 +31,11 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   const archived = sp.archived === "1";
   const [rows, pendingDiscovered] = await Promise.all([listSuppliers(ctx, { archived }), archived ? Promise.resolve([]) : listPendingDiscoveredSources(ctx)]);
   const writable = canWrite(ctx.role);
-  const offers = rows.reduce((a, r) => a + r.offersCount, 0);
-  const withSource = rows.filter((r) => r.sourcesCount > 0).length;
+  // Compteur inconnu (lecture en échec) : total inconnu « — », jamais 0 (W-14) ; borne atteinte : minimum (W-03).
+  const offersKnown = rows.every((r) => r.offersCount !== null);
+  const offers = offersKnown ? rows.reduce((a, r) => a + (r.offersCount ?? 0), 0) : null;
+  const offersExact = rows.every((r) => r.offersCountExact);
+  const withSource = rows.every((r) => r.sourcesCount !== null) ? rows.filter((r) => (r.sourcesCount ?? 0) > 0).length : null;
   return (
     <>
       <Scene>
@@ -57,7 +60,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
           className="mt-6 max-w-[820px]"
           stats={[
             { label: archived ? "Archivés" : "Fournisseurs", value: formatNumber(rows.length) },
-            { label: "Offres actives", value: formatNumber(offers) },
+            { label: "Offres actives", value: offers !== null && !offersExact ? `au moins ${formatNumber(offers)}` : formatNumber(offers) },
             { label: "Avec une source", value: formatNumber(withSource) },
             { label: "Découvertes à valider", value: archived ? null : formatNumber(pendingDiscovered.length), tone: pendingDiscovered.length > 0 ? "warning" : undefined, href: pendingDiscovered.length > 0 ? "#decouvertes" : undefined },
           ]}
@@ -102,7 +105,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                 </tr>
               </THead>
               <TBody>
-                {rows.map(({ supplier, offersCount, sourcesCount, sourceTypes, lastSyncAt }) => (
+                {rows.map(({ supplier, offersCount, offersCountExact, sourcesCount, sourceTypes, lastSyncAt }) => (
                   <TR key={supplier.id}>
                     <TD>
                       <Link href={`/suppliers/${supplier.id}` as never} className="flex items-center gap-2.5 hover:underline">
@@ -116,10 +119,14 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                     <TD className="ms-code text-xs">{supplier.country ?? "—"}</TD>
                     <TD>{supplier.internal_score === null || supplier.internal_score === undefined || !Number.isFinite(Number(supplier.internal_score)) ? <span className="text-xs font-semibold text-ink-3">Données insuffisantes</span> : <Badge variant="success">{Math.round(Number(supplier.internal_score))}/100</Badge>}</TD>
                     <TD align="right" className="font-bold">
-                      {formatNumber(offersCount)}
+                      {offersCount !== null && !offersCountExact ? <span title="Comptage partiel : borne de lecture atteinte">≥ {formatNumber(offersCount)}</span> : formatNumber(offersCount)}
                     </TD>
                     <TD>
-                      {sourcesCount === 0 ? (
+                      {sourcesCount === null ? (
+                        <span className="text-xs font-semibold text-ink-3" aria-label="inconnu">
+                          —
+                        </span>
+                      ) : sourcesCount === 0 ? (
                         <span className="text-xs font-semibold text-ink-3">Aucune source</span>
                       ) : (
                         <span className="flex flex-wrap gap-1">

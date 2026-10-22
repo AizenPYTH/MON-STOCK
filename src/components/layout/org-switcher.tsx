@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import Link from "next/link";
+import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { switchOrganizationAction } from "@/features/organizations/actions";
 import { DemoBadge } from "@/components/instrument/figure";
 import { initials } from "@/components/instrument/pure";
@@ -10,7 +11,8 @@ type Option = { id: string; name: string; isDemo: boolean };
 
 /**
  * Sélecteur d'organisation (barre latérale nuit) : carré d'initiales, nom, badge DÉMO, rôle ·
- * devise ; menu blanc des organisations, le choix est envoyé au serveur (formulaire).
+ * devise ; menu blanc des organisations, le choix est envoyé au serveur (formulaire), et entrée
+ * « Nouvelle organisation » (W-28 : /onboarding sait créer une organisation supplémentaire).
  */
 export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed = false }: { options: Option[]; currentId: string; roleLabel: string; currency: string; collapsed?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -30,17 +32,16 @@ export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed
     };
   }, [open]);
   if (!current) return null;
-  const multi = options.length > 1;
   return (
     <div ref={ref} className="relative shrink-0">
       <button
         type="button"
-        onClick={() => multi && setOpen((v) => !v)}
-        aria-expanded={multi ? open : undefined}
-        aria-haspopup={multi ? "menu" : undefined}
-        aria-label={`Organisation active : ${current.name}${multi ? ". Changer" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={`Organisation active : ${current.name}. Changer ou créer une organisation`}
         title={current.name}
-        className={cn("flex min-h-[52px] w-full items-center gap-2.5 rounded-xl border border-night-stroke py-2 text-left", collapsed ? "justify-center px-1.5" : "px-2.5", multi ? "hover:bg-night-raised" : "cursor-default")}
+        className={cn("flex min-h-[52px] w-full items-center gap-2.5 rounded-xl border border-night-stroke py-2 text-left hover:bg-night-raised", collapsed ? "justify-center px-1.5" : "px-2.5")}
       >
         <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-night-raised text-[11.5px] font-extrabold tracking-[.3px] text-on-night">{initials(current.name)}</span>
         {collapsed ? null : (
@@ -54,7 +55,7 @@ export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed
                 {roleLabel} · {currency}
               </span>
             </span>
-            {multi ? <ChevronsUpDown aria-hidden="true" className="h-4 w-4 shrink-0 text-on-night-subtle" /> : null}
+            <ChevronsUpDown aria-hidden="true" className="h-4 w-4 shrink-0 text-on-night-subtle" />
           </>
         )}
       </button>
@@ -72,6 +73,14 @@ export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed
               </button>
             </form>
           ))}
+          <div className="my-1 border-t border-border" />
+          {/* prefetch={false} : /onboarding dépend de l'état du compte (voir W-01). */}
+          <Link href="/onboarding" prefetch={false} role="menuitem" onClick={() => setOpen(false)} className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left text-sm font-semibold hover:bg-line-soft">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-selection">
+              <Plus aria-hidden="true" className="h-4 w-4" />
+            </span>
+            Nouvelle organisation
+          </Link>
         </div>
       ) : null}
     </div>

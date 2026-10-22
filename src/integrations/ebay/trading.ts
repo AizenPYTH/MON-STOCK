@@ -276,7 +276,7 @@ export function parseReviseInventoryStatusResponse(xml: string): { warnings: str
 }
 
 /** Appel Trading API authentifié (POST XML) ; un token refusé est rafraîchi une fois. Renvoie le XML brut. */
-export async function tradingCall(config: EbayConfig, auth: ConnectorAuth, callName: string, body: string): Promise<string> {
+export async function tradingCall(config: EbayConfig, auth: ConnectorAuth, callName: string, body: string, options: { deadline?: number | null } = {}): Promise<string> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const token = await auth.getAccessToken({ forceRefresh: attempt > 0 });
     const res = await fetchWithRetry(
@@ -292,7 +292,7 @@ export async function tradingCall(config: EbayConfig, auth: ConnectorAuth, callN
         },
         body,
       },
-      { provider: EBAY_PROVIDER, label: `trading:${callName}`, timeoutMs: 60_000 },
+      { provider: EBAY_PROVIDER, label: `trading:${callName}`, timeoutMs: 60_000, deadline: options.deadline ?? null },
     );
     const xml = await readBodyText(res, EBAY_PROVIDER, `trading:${callName}`);
     if (res.status === 401 && attempt === 0) continue;
@@ -309,10 +309,15 @@ export async function tradingCall(config: EbayConfig, auth: ConnectorAuth, callN
   throw new ConnectorError("AUTH_EXPIRED", EBAY_PROVIDER, "Impossible de synchroniser eBay : le token d'autorisation a expiré ou a été révoqué.", { details: { callName } });
 }
 
-export async function* iterateGetMyeBaySelling(config: EbayConfig, auth: ConnectorAuth): AsyncGenerator<GetMyeBaySellingPage> {
-  for (let page = 1; page <= GET_MY_EBAY_SELLING_MAX_PAGES; page++) {
-    const xml = await tradingCall(config, auth, "GetMyeBaySelling", buildGetMyeBaySellingRequest(page));
-    const parsed = parseGetMyeBaySellingResponse(xml);
+/**
+ * Pages d'annonces actives, à partir de `startPage` (reprise d'un parcours interrompu). `pageNumber`
+ * est le numéro DEMANDÉ (eBay ne le renvoie pas toujours). Chaque appel respecte `deadline`.
+ */
+export async function* iterateGetMyeBaySelling(config: EbayConfig, auth: ConnectorAuth, options: { startPage?: number; deadline?: number | null } = {}): AsyncGenerator<GetMyeBaySellingPage> {
+  const first = Math.max(1, Math.trunc(options.startPage ?? 1));
+  for (let page = first; page <= GET_MY_EBAY_SELLING_MAX_PAGES; page++) {
+    const xml = await tradingCall(config, auth, "GetMyeBaySelling", buildGetMyeBaySellingRequest(page), { deadline: options.deadline ?? null });
+    const parsed = { ...parseGetMyeBaySellingResponse(xml), pageNumber: page };
     yield parsed;
     if (page >= parsed.totalPages) return;
   }

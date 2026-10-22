@@ -4,6 +4,7 @@ import { checkRobotsForUrls } from "@/services/sourcing/crawler/robots";
 import { parseJsonLdPage } from "@/integrations/sourcing/jsonld-public/parser";
 import { sitemapJsonLdAdapter } from "@/integrations/sourcing/sitemap-jsonld";
 import { parseQuery } from "@/domain/sourcing/query-parser";
+import { sourcingUserAgent } from "@/lib/env";
 
 /**
  * Éclaireur de sources (outil d'administration, jamais exposé aux utilisateurs) : pour un hôte
@@ -29,7 +30,7 @@ export interface ScoutReport {
   error: string | null;
 }
 
-const UA = () => process.env.SOURCING_USER_AGENT || "MonStockBot/0.1";
+const UA = () => sourcingUserAgent();
 
 export function detectPlatform(html: string): Platform {
   if (/cdn\.shopify\.com|Shopify\.theme|shopify-section/i.test(html)) return "shopify";

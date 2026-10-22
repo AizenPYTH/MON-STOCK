@@ -236,9 +236,11 @@ export interface UnitEconomicsInput {
   saleLabel: string;
   purchasePrice: number | null;
   purchaseTaxType: "ht" | "ttc" | "unknown";
-  /** transport fournisseur pour la commande minimale (réparti sur `moq`) */
+  /** transport fournisseur pour la commande (réparti sur `quantity`, sinon sur `moq`) */
   supplierShipping: number | null;
   moq: number | null;
+  /** quantité réellement achetée (scénario) ; à défaut la quantité minimale */
+  quantity?: number | null;
   supplierOrigin: SupplierOrigin;
   /** code pays affiché dans les messages (douane) */
   originLabel?: string | null;
@@ -277,22 +279,27 @@ export function computeUnitEconomics(input: UnitEconomicsInput, s: RadarCostSett
   const sale = input.salePrice;
   const vatRate = s.vatRate;
 
-  // TVA sur l'achat : récupérable uniquement si déclarée récupérable (régime normal)
+  // TVA sur l'achat : récupérable uniquement si déclarée récupérable (régime normal). Hors UE, le
+  // fournisseur ne facture pas la TVA française : elle est due à l'import (voir plus bas).
+  const nonEu = input.supplierOrigin === "non_eu";
   let purchaseCost: number;
   if (input.purchaseTaxType === "ht") {
-    if (s.vatRecoverable === true) purchaseCost = price;
+    if (s.vatRecoverable === true || nonEu) purchaseCost = price;
     else if (s.vatRecoverable === false && vatRate !== null) {
       purchaseCost = r2(price * (1 + vatRate / 100));
       cautions.push("TVA non récupérable : TVA ajoutée au prix d'achat HT.");
     } else {
       purchaseCost = price;
-      missing.push("récupération de la TVA sur achats (paramètres de coûts)");
+      if (s.vatRecoverable === false) missing.push("taux de TVA (TVA non récupérable à ajouter au prix d'achat HT)");
+      else missing.push("récupération de la TVA sur achats (paramètres de coûts)");
     }
   } else if (input.purchaseTaxType === "ttc") {
     if (s.vatRecoverable === true && vatRate !== null) purchaseCost = r2(price / (1 + vatRate / 100));
     else {
       purchaseCost = price;
       if (s.vatRecoverable === null) missing.push("récupération de la TVA sur achats (paramètres de coûts)");
+      // TVA récupérable mais taux inconnu : le prix TTC est retenu tel quel, ce qui surestime le coût
+      else if (s.vatRecoverable === true) missing.push("taux de TVA (conversion du prix d'achat TTC en HT)");
     }
   } else {
     purchaseCost = price;
@@ -300,21 +307,37 @@ export function computeUnitEconomics(input: UnitEconomicsInput, s: RadarCostSett
   }
   breakdown.push({ label: "Prix d'achat retenu", amount: purchaseCost });
 
-  // transport fournisseur
+  // transport fournisseur, réparti sur la quantité achetée (à défaut la quantité minimale)
+  const units = Math.max(1, input.quantity ?? input.moq ?? 1);
   let landed = purchaseCost;
+  let shippingPerUnit: number | null = null;
   if (input.supplierShipping !== null) {
-    const perUnit = r2(input.supplierShipping / Math.max(1, input.moq ?? 1));
-    landed = r2(landed + perUnit);
-    breakdown.push({ label: `Transport fournisseur (÷ ${Math.max(1, input.moq ?? 1)})`, amount: perUnit });
+    shippingPerUnit = r2(input.supplierShipping / units);
+    landed = r2(landed + shippingPerUnit);
+    breakdown.push({ label: `Transport fournisseur (÷ ${units})`, amount: shippingPerUnit });
   } else missing.push("transport fournisseur");
 
-  // douane
-  if (input.supplierOrigin === "non_eu") {
+  // douane : valeur en douane CIF (marchandise + transport), puis TVA à l'import sur CIF + droits
+  if (nonEu) {
+    const customsValue = r2(price + (shippingPerUnit ?? 0));
+    if (shippingPerUnit === null) cautions.push("Douane calculée sans le transport (inconnu) : la valeur en douane (CIF) est sous-estimée.");
+    let duty: number | null = null;
     if (s.importDutyPercent !== null) {
-      const duty = r2((price * s.importDutyPercent) / 100);
+      duty = r2((customsValue * s.importDutyPercent) / 100);
       landed = r2(landed + duty);
-      breakdown.push({ label: `Douane / import (${s.importDutyPercent} %)`, amount: duty });
+      breakdown.push({ label: `Douane / import (${s.importDutyPercent} % de la valeur CIF)`, amount: duty });
     } else missing.push(`droits de douane (fournisseur hors UE${input.originLabel ? ` : ${input.originLabel}` : ""})`);
+    if (input.purchaseTaxType === "ht") {
+      if (s.vatRecoverable === true) cautions.push("TVA à l'import avancée au dédouanement (récupérable) : à financer jusqu'à sa déduction.");
+      else if (s.vatRecoverable === false) {
+        if (vatRate !== null) {
+          const importVat = r2(((customsValue + (duty ?? 0)) * vatRate) / 100);
+          landed = r2(landed + importVat);
+          breakdown.push({ label: `Douane : TVA à l'import non récupérable (${vatRate} %)`, amount: importVat });
+          if (duty === null) cautions.push("TVA à l'import calculée sans les droits de douane (inconnus).");
+        } else missing.push("taux de TVA (TVA à l'import non récupérable)");
+      }
+    } else if (input.purchaseTaxType === "ttc") cautions.push("Prix TTC d'un fournisseur hors UE : TVA à l'import supposée incluse (livraison droits acquittés) — à vérifier.");
   } else if (input.supplierOrigin === "unknown") cautions.push("Pays du fournisseur inconnu : frais d'import éventuels non évalués.");
   breakdown.push({ label: "Coût d'achat rendu", amount: landed });
 

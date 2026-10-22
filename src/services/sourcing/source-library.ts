@@ -1,4 +1,5 @@
 import "server-only";
+import { z } from "zod";
 import type { Json } from "@/db/database.types";
 import type { OrgContext } from "@/features/auth/dal";
 import { AppError } from "@/lib/errors";
@@ -23,8 +24,13 @@ const log = createLogger("SOURCE_LIBRARY");
  *      pour les chemins utilisés, puis une recherche publique qui doit renvoyer des produits avec
  *      prix. Le résultat (preuve : statut HTTP, nombre de produits, exemples) est enregistré dans
  *      sourcing_library_checks.
+ *      Chaque passage traite un LOT borné, les sources les moins récemment vérifiées d'abord,
+ *      dans un budget de temps global : une source en fin de liste n'est jamais oubliée.
  *   2. Seules les sources dont la dernière vérification est « ok » peuvent être activées, et
- *      l'activation exige l'attestation de l'utilisateur (conditions d'utilisation lues).
+ *      l'activation exige une VALIDATION HUMAINE tracée (utilisateur, date) : l'utilisateur
+ *      déclare avoir lu les conditions d'utilisation. Quand MON STOCK n'a pas de preuve que
+ *      `termsUrl` est la bonne page (« non vérifiée »), l'utilisateur doit indiquer l'adresse de
+ *      la page des conditions qu'il a lue. Aucune activation n'est faite par une tâche planifiée.
  *   3. Une source activée devient une supplier_source normale de l'organisation : la recherche
  *      en direct existante (robots.txt, politesse, budget, provenance) s'applique telle quelle.
  * =============================================================================
@@ -45,8 +51,14 @@ export interface LibrarySource {
   currency: string;
   /** HT/TTC documenté par la source (inconnu tant que non vérifié) */
   taxType: "ht" | "ttc" | "unknown";
-  /** page des conditions à lire avant l'attestation */
+  /**
+   * Page à ouvrir pour lire les conditions. Tant que `termsEvidence` est absent, rien ne prouve
+   * que c'est la bonne page (souvent la page d'accueil, ou le chemin standard des boutiques
+   * Shopify) : elle est présentée comme « non vérifiée ».
+   */
   termsUrl: string;
+  /** preuve que `termsUrl` est bien la page des conditions (sinon : non vérifiée) */
+  termsEvidence?: string;
   access: LibraryAccess;
   /** ce qu'on sait de la source, et d'où ça vient */
   notes: string;
@@ -56,7 +68,20 @@ export interface LibrarySource {
   blocked?: string;
 }
 
+/** Chemin standard des conditions d'une boutique Shopify : existence NON vérifiée (statut « non vérifiée »). */
 const shopifyTerms = (base: string) => `${base}/policies/terms-of-service`;
+
+export type TermsStatus = "confirmed" | "unverified";
+
+/** Page des conditions confirmée (preuve enregistrée) ou non vérifiée. */
+export function termsStatusOf(s: Pick<LibrarySource, "termsEvidence">): TermsStatus {
+  return s.termsEvidence ? "confirmed" : "unverified";
+}
+
+export const TERMS_STATUS_LABEL: Record<TermsStatus, string> = {
+  confirmed: "Page des conditions confirmée",
+  unverified: "Page des conditions non vérifiée par MON STOCK (page d'accueil ou chemin supposé) : localisez les conditions sur le site",
+};
 
 export const SOURCE_LIBRARY: readonly LibrarySource[] = [
   {
@@ -70,6 +95,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     currency: "EUR",
     taxType: "unknown",
     termsUrl: "https://developer.ebay.com/join/api-license-agreement",
+    termsEvidence: "Contrat de licence de l'API eBay publié par eBay (programme développeurs) : accès par l'API officielle Buy Browse, pas de collecte de pages.",
     access: "official_api",
     notes: "API officielle Buy Browse (clés de l'application eBay du serveur). Offres publiées par des vendeurs pros et particuliers ; quantité non fournie par la recherche.",
     probeQuery: "iphone 13 128",
@@ -114,7 +140,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     country: "NL",
     currency: "EUR",
     taxType: "unknown",
-    termsUrl: shopifyTerms("https://www.mobilesentrix.eu"),
+    termsUrl: "https://www.mobilesentrix.eu",
     access: "public_html",
     notes: "Distributeur de pièces (centre logistique aux Pays-Bas). Collecte réelle par le serveur MON STOCK le 13/10/2026 : 8 fiches en EUR via le plan du site et les données structurées (le point d'entrée Shopify répond 404).",
     probeQuery: "iphone 13 screen",
@@ -204,7 +230,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     country: "NL",
     currency: "EUR",
     taxType: "unknown",
-    termsUrl: shopifyTerms("https://www.refreshedapples.com"),
+    termsUrl: "https://www.refreshedapples.com",
     access: "public_html",
     notes: "Grossiste néerlandais d'iPhone d'occasion par grade. Contrôle serveur du 10/10/2026 : 117 fiches avec prix lisibles (plan du site + données structurées). Minimum de commande annoncé par lots : à vérifier avant achat.",
     probeQuery: "iphone",
@@ -279,7 +305,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     country: "NL",
     currency: "EUR",
     taxType: "unknown",
-    termsUrl: shopifyTerms("https://www.pulledmacparts.nl"),
+    termsUrl: "https://www.pulledmacparts.nl",
     access: "public_html",
     notes: "Pièces MacBook d'origine récupérées (Pays-Bas). Collecte réelle par le serveur MON STOCK le 13/10/2026 : 253 produits (catalogue Shopify, devise absente) et 21 fiches en EUR (plan du site + données structurées), ex. écran MacBook Pro 14 M1 445 €.",
     probeQuery: "macbook",
@@ -294,7 +320,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     country: "EU",
     currency: "EUR",
     taxType: "unknown",
-    termsUrl: shopifyTerms("https://mobinova.eu"),
+    termsUrl: "https://mobinova.eu",
     access: "public_html",
     notes: "Pièces iPhone (châssis, écrans…). Collecte réelle par le serveur MON STOCK le 13/10/2026 : 22 fiches en EUR via le plan du site (le catalogue Shopify répond HTTP 429), ex. châssis iPhone 14 Pro Max 75 €.",
     probeQuery: "iphone 13",
@@ -309,7 +335,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     country: "FR",
     currency: "EUR",
     taxType: "unknown",
-    termsUrl: shopifyTerms("https://da-pieces.com"),
+    termsUrl: "https://da-pieces.com",
     access: "public_html",
     notes: "Pièces smartphone (France). Collecte réelle par le serveur MON STOCK le 13/10/2026 : 8 fiches en EUR via le plan du site (le catalogue Shopify répond HTTP 429), ex. haut-parleur iPhone 11 2 €.",
     probeQuery: "iphone 12",
@@ -399,7 +425,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     country: "NL",
     currency: "EUR",
     taxType: "unknown",
-    termsUrl: shopifyTerms("https://bestellaptops.nl"),
+    termsUrl: "https://bestellaptops.nl",
     access: "public_html",
     notes: "Ordinateurs portables reconditionnés (Pays-Bas). Collecte réelle par le serveur MON STOCK le 13/10/2026 : 8 fiches en EUR via le plan du site (le catalogue Shopify répond HTTP 429), ex. Dell Latitude 5480 i5 8 Go 199,99 €.",
     probeQuery: "dell latitude",
@@ -760,6 +786,7 @@ export const SOURCE_LIBRARY: readonly LibrarySource[] = [
     currency: "EUR",
     taxType: "ht",
     termsUrl: "https://www.utopya.fr/c-g-v",
+    termsEvidence: "CGV d'Utopya lues (article 14 cité dans les notes) : elles interdisent l'accès automatisé, d'où le blocage.",
     access: "public_json",
     notes: "Distributeur B2B de pièces et accessoires (Paris). Sa FAQ indique ne proposer ni export Excel ni API ; ses CGV (art. 14) interdisent tout accès automatisé (robots, scrapers, scripts), sauf API officielle sous contrat écrit.",
     probeQuery: "iphone 13",
@@ -787,8 +814,18 @@ export interface LibraryCheckResult {
   durationMs: number;
 }
 
+export type LibraryCheckRuntime = Pick<AdapterRunContext, "fetchImpl" | "resolver" | "sleep" | "now"> & {
+  /** délai maximal de la recherche de contrôle (20 s par défaut) */
+  timeoutMs?: number;
+};
+
+/** Délai minimal entre deux requêtes vers la boutique pendant une vérification. */
+export const LIBRARY_CHECK_MIN_DELAY_MS = 1_500;
+/** Crawl-delay au-delà duquel la vérification n'est pas tentée (elle ne tiendrait pas dans le budget). */
+export const LIBRARY_CHECK_MAX_CRAWL_DELAY_S = 30;
+
 /** Vérifie UNE source : robots.txt puis vraie recherche publique (aucune donnée enregistrée côté organisation). */
-export async function checkLibrarySource(s: LibrarySource, runtime: Pick<AdapterRunContext, "fetchImpl" | "resolver" | "sleep" | "now"> = {}): Promise<LibraryCheckResult> {
+export async function checkLibrarySource(s: LibrarySource, runtime: LibraryCheckRuntime = {}): Promise<LibraryCheckResult> {
   const t0 = Date.now();
   const adapter = getSourceAdapter(s.adapter);
   const base = { key: s.key, adapter: s.adapter, robotsAllowed: null as boolean | null, httpStatus: null as number | null, productCount: 0, sample: [] as LibraryCheckResult["sample"] };
@@ -797,13 +834,20 @@ export async function checkLibrarySource(s: LibrarySource, runtime: Pick<Adapter
   const config = adapterConfig(s);
   const parsed = parseQuery(s.probeQuery);
   const userAgent = serverEnv().SOURCING_USER_AGENT;
+  let minDelayMs = LIBRARY_CHECK_MIN_DELAY_MS;
   if (adapter.urlsForQuery) {
     const urls = adapter.urlsForQuery(config, parsed, s.probeQuery);
     const robots = await checkRobotsForUrls(s.baseUrl, urls, userAgent, runtime.fetchImpl ?? fetch, runtime.resolver).catch((e: unknown) => ({ allowed: false, details: e instanceof Error ? e.message : String(e), crawlDelay: null }) as const);
     base.robotsAllowed = robots.allowed;
     if (!robots.allowed) return { ...base, status: "robots_disallowed", message: robots.details, durationMs: Date.now() - t0 };
+    // Crawl-delay demandé par le site : appliqué entre deux requêtes (jamais moins que notre délai minimal).
+    if (robots.crawlDelay !== null) {
+      if (robots.crawlDelay > LIBRARY_CHECK_MAX_CRAWL_DELAY_S) return { ...base, status: "http_error", message: `robots.txt demande ${robots.crawlDelay} s entre deux requêtes : vérification automatique non tentée (trop lente), à faire manuellement.`, durationMs: Date.now() - t0 };
+      minDelayMs = Math.max(minDelayMs, Math.ceil(robots.crawlDelay * 1000));
+    }
   }
-  const r = await adapter.search(config, parsed, s.probeQuery, { userAgent, timeoutMs: 20_000, minDelayMs: 1_500, ...runtime });
+  const { timeoutMs = 20_000, ...ctx } = runtime;
+  const r = await adapter.search(config, parsed, s.probeQuery, { userAgent, timeoutMs, minDelayMs, ...ctx });
   const last = r.requests[r.requests.length - 1];
   base.httpStatus = last?.status ?? null;
   const priced = r.offers.filter((o) => o.price !== null && o.price > 0);
@@ -817,42 +861,179 @@ export async function checkLibrarySource(s: LibrarySource, runtime: Pick<Adapter
   return { ...base, status: "ok", message: `${priced.length} produit(s) avec prix pour « ${s.probeQuery} ».`, durationMs: Date.now() - t0 };
 }
 
-/**
- * Vérification avec détection de plateforme : l'adaptateur déclaré d'abord, puis l'autre adaptateur
- * JSON public si la boutique ne répond pas au premier (une boutique Shopify n'expose pas l'API
- * WooCommerce, et inversement). L'adaptateur retenu est celui qui a réellement renvoyé des produits.
- */
-export async function checkLibrarySourceDetect(s: LibrarySource, runtime: Parameters<typeof checkLibrarySource>[1] = {}): Promise<LibraryCheckResult> {
-  const first = await checkLibrarySource(s, runtime);
-  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || s.access === "official_api") return first;
-  const messages = [first.message];
-  const order: LibrarySource["adapter"][] = ["shopify-storefront", "woocommerce-store", "sitemap-jsonld"];
-  for (const other of order.filter((a) => a !== s.adapter)) {
-    const next = await checkLibrarySource({ ...s, adapter: other }, runtime);
-    if (next.status === "ok") return next;
-    messages.push(`${other} : ${next.message}`);
-  }
-  return { ...first, message: messages.join(" | ").slice(0, 500) };
+/** Adaptateurs publics essayés pour détecter la plateforme d'une boutique. */
+export const DETECT_ADAPTERS: readonly LibrarySource["adapter"][] = ["shopify-storefront", "woocommerce-store", "sitemap-jsonld"];
+
+/** Dernière vérification enregistrée (pour l'ordre des adaptateurs du passage suivant). */
+export interface PreviousLibraryCheck {
+  status: string;
+  adapter: string | null;
 }
 
-/** Vérifie toute la bibliothèque (séquentiellement : un hôte à la fois) et enregistre les preuves. */
-export async function runLibraryChecks(keys?: string[]): Promise<LibraryCheckResult[]> {
-  const admin = createAdminSupabaseClient();
-  const out: LibraryCheckResult[] = [];
-  for (const s of SOURCE_LIBRARY) {
-    if (keys && !keys.includes(s.key)) continue;
-    // conditions du fournisseur : aucune requête, même de vérification
-    if (s.blocked) continue;
+/**
+ * Adaptateurs à essayer lors d'UN passage : l'adaptateur principal (celui qui a réussi la fois
+ * précédente, sinon l'adaptateur déclaré), puis AU PLUS UN adaptateur de repli. Le repli tourne
+ * d'un passage à l'autre (celui qui suit le dernier essayé) : tous finissent par être essayés
+ * sans qu'un passage enchaîne trois boutiques lentes.
+ */
+export function libraryAdapterPlan(s: Pick<LibrarySource, "adapter" | "access">, previous: PreviousLibraryCheck | null = null): LibrarySource["adapter"][] {
+  const known = (a: string | null | undefined): a is LibrarySource["adapter"] => typeof a === "string" && (DETECT_ADAPTERS as readonly string[]).includes(a);
+  const primary = previous?.status === "ok" && known(previous.adapter) ? previous.adapter : s.adapter;
+  if (s.access === "official_api" || !(DETECT_ADAPTERS as readonly string[]).includes(s.adapter)) return [primary];
+  const cycle = [s.adapter, ...DETECT_ADAPTERS.filter((a) => a !== s.adapter)].filter((a) => a !== primary);
+  if (cycle.length === 0) return [primary];
+  const lastIdx = previous && previous.status !== "ok" && known(previous.adapter) ? cycle.indexOf(previous.adapter) : -1;
+  return [primary, cycle[(lastIdx + 1) % cycle.length]!];
+}
+
+/**
+ * Vérification avec détection de plateforme : l'adaptateur principal d'abord, puis UN adaptateur de
+ * repli si la boutique ne répond pas au premier (une boutique Shopify n'expose pas l'API
+ * WooCommerce, et inversement). L'adaptateur retenu est celui qui a réellement renvoyé des
+ * produits ; en cas d'échec, l'adaptateur enregistré est le dernier essayé (rotation du repli).
+ */
+export async function checkLibrarySourceDetect(s: LibrarySource, runtime: LibraryCheckRuntime = {}, opts: { previous?: PreviousLibraryCheck | null; deadline?: number; clock?: () => number } = {}): Promise<LibraryCheckResult> {
+  const clock = opts.clock ?? Date.now;
+  const [primary, fallback] = libraryAdapterPlan(s, opts.previous ?? null);
+  const first = await checkLibrarySource(primary === s.adapter ? s : { ...s, adapter: primary! }, runtime);
+  if (first.status === "ok" || first.status === "robots_disallowed" || first.status === "not_configured" || !fallback) return first;
+  if (opts.deadline !== undefined && opts.deadline - clock() < LIBRARY_CHECK_FALLBACK_MIN_MS) {
+    return { ...first, message: `${first.message} | repli ${fallback} reporté au prochain passage (budget de temps)`.slice(0, 500) };
+  }
+  const next = await checkLibrarySource({ ...s, adapter: fallback }, runtime);
+  if (next.status === "ok") return next;
+  return { ...first, adapter: fallback, durationMs: first.durationMs + next.durationMs, message: `${primary} : ${first.message} | ${fallback} : ${next.message}`.slice(0, 500) };
+}
+
+/** Sources vérifiées par passage planifié (les moins récemment vérifiées d'abord). */
+export const LIBRARY_CHECK_BATCH = 6;
+/** Budget de temps global d'un passage (la fonction serveur est coupée à 150 s). */
+export const LIBRARY_CHECK_BUDGET_MS = 110_000;
+/** Temps minimal restant pour commencer la vérification d'une source. */
+export const LIBRARY_CHECK_MIN_START_MS = 25_000;
+/** Temps minimal restant pour tenter l'adaptateur de repli. */
+export const LIBRARY_CHECK_FALLBACK_MIN_MS = 22_000;
+
+export interface LibraryCheckRow {
+  key: string;
+  checked_at: string | null;
+  last_attempt_at?: string | null;
+  status: string;
+  adapter: string | null;
+}
+
+/** Date de dernière prise en charge d'une source : vérification terminée ou tentative interrompue. */
+function lastTouched(row: LibraryCheckRow | undefined): string {
+  if (!row) return "";
+  const a = row.checked_at ?? "";
+  const b = row.last_attempt_at ?? "";
+  return a > b ? a : b;
+}
+
+/**
+ * File équitable : sources non bloquées, jamais vérifiées d'abord, puis la moins récemment prise en
+ * charge (vérification ou tentative interrompue), à égalité dans l'ordre de la bibliothèque.
+ */
+export function orderLibraryChecks(entries: readonly LibrarySource[], rows: readonly LibraryCheckRow[]): LibrarySource[] {
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  return entries
+    .map((s, i) => ({ s, i, at: lastTouched(byKey.get(s.key)) }))
+    .filter((x) => !x.s.blocked)
+    .sort((a, b) => a.at.localeCompare(b.at) || a.i - b.i)
+    .map((x) => x.s);
+}
+
+export interface LibraryChecksRun {
+  results: LibraryCheckResult[];
+  /** sources du lot non vérifiées faute de temps (prioritaires au prochain passage) */
+  deferred: string[];
+  /** sources non vérifiées lors de ce passage (hors lot ou reportées) */
+  pending: number;
+  batchSize: number;
+  budgetMs: number;
+  durationMs: number;
+}
+
+export interface LibraryChecksOptions {
+  /** clés demandées explicitement (sinon : un lot des moins récemment vérifiées) */
+  keys?: string[];
+  batchSize?: number;
+  budgetMs?: number;
+  admin?: AdminSupabaseClient;
+  runtime?: LibraryCheckRuntime;
+  clock?: () => number;
+  /** vérification injectable (tests) */
+  check?: typeof checkLibrarySourceDetect;
+}
+
+const withDeadline = <T>(p: Promise<T>, ms: number, onTimeout: () => T): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => resolve(onTimeout()), Math.max(1, ms));
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+
+/**
+ * Vérifie un LOT de la bibliothèque (séquentiellement : un hôte à la fois) dans un budget de temps
+ * global et enregistre les preuves. Chaque source est marquée « tentée » avant sa vérification :
+ * si la fonction est coupée pendant une source lente, celle-ci passe en fin de file au passage
+ * suivant au lieu de bloquer toutes les autres.
+ */
+export async function runLibraryChecks(input: string[] | LibraryChecksOptions = {}): Promise<LibraryChecksRun> {
+  const opts: LibraryChecksOptions = Array.isArray(input) ? { keys: input } : input;
+  const admin = opts.admin ?? createAdminSupabaseClient();
+  const clock = opts.clock ?? Date.now;
+  const check = opts.check ?? checkLibrarySourceDetect;
+  const budgetMs = opts.budgetMs ?? LIBRARY_CHECK_BUDGET_MS;
+  const batchSize = Math.max(1, opts.batchSize ?? LIBRARY_CHECK_BATCH);
+  const started = clock();
+  const deadline = started + budgetMs;
+
+  const { data: rows, error: rowsErr } = await admin.from("sourcing_library_checks").select("key, checked_at, last_attempt_at, status, adapter");
+  if (rowsErr) throw new Error(`Lecture des vérifications impossible : ${rowsErr.message}`);
+  const previous = new Map(((rows ?? []) as LibraryCheckRow[]).map((r) => [r.key, r]));
+  const eligible = opts.keys ? SOURCE_LIBRARY.filter((s) => opts.keys!.includes(s.key) && !s.blocked) : orderLibraryChecks(SOURCE_LIBRARY, (rows ?? []) as LibraryCheckRow[]);
+  const batch = opts.keys ? eligible : eligible.slice(0, batchSize);
+
+  const results: LibraryCheckResult[] = [];
+  const deferred: string[] = [];
+  for (const s of batch) {
+    const remaining = deadline - clock();
+    if (remaining < LIBRARY_CHECK_MIN_START_MS) {
+      deferred.push(s.key);
+      continue;
+    }
+    const prev = previous.get(s.key) ?? null;
+    const attemptAt = new Date(clock()).toISOString();
+    const mark = prev
+      ? await admin.from("sourcing_library_checks").update({ last_attempt_at: attemptAt }).eq("key", s.key)
+      : await admin.from("sourcing_library_checks").upsert({ key: s.key, checked_at: attemptAt, last_attempt_at: attemptAt, status: "unreachable", adapter: s.adapter, message: "Vérification commencée et non terminée (fonction interrompue ?) : elle sera reprise." });
+    if (mark.error) log.warn("tentative de vérification non marquée", { key: s.key, error: mark.error.message });
+
+    const sourceBudget = remaining - 5_000;
     let r: LibraryCheckResult;
     try {
-      r = await checkLibrarySourceDetect(s);
+      r = await withDeadline(
+        check(s, { ...opts.runtime, timeoutMs: Math.min(opts.runtime?.timeoutMs ?? 20_000, Math.max(5_000, Math.floor(sourceBudget / 3))) }, { previous: prev, deadline: deadline - 5_000, clock }),
+        sourceBudget,
+        () => ({ key: s.key, status: "unreachable", adapter: prev?.adapter ?? s.adapter, robotsAllowed: null, httpStatus: null, productCount: 0, sample: [], message: `Vérification interrompue : budget de ${Math.round(budgetMs / 1000)} s du passage atteint.`, durationMs: sourceBudget }),
+      );
     } catch (e) {
       r = { key: s.key, status: "unreachable", adapter: s.adapter, robotsAllowed: null, httpStatus: null, productCount: 0, sample: [], message: e instanceof Error ? e.message.slice(0, 500) : String(e), durationMs: 0 };
     }
-    out.push(r);
+    results.push(r);
     const { error } = await admin.from("sourcing_library_checks").upsert({
       key: r.key,
-      checked_at: new Date().toISOString(),
+      checked_at: new Date(clock()).toISOString(),
+      last_attempt_at: attemptAt,
       status: r.status,
       adapter: r.adapter,
       robots_allowed: r.robotsAllowed,
@@ -864,7 +1045,9 @@ export async function runLibraryChecks(keys?: string[]): Promise<LibraryCheckRes
     });
     if (error) log.error("enregistrement de la vérification impossible", { key: r.key, error: error.message });
   }
-  return out;
+  const pending = eligible.length - results.length;
+  log.info("vérifications de la bibliothèque", { checked: results.length, deferred: deferred.length, pending });
+  return { results, deferred, pending, batchSize, budgetMs, durationMs: clock() - started };
 }
 
 export interface LibraryEntryDTO {
@@ -876,6 +1059,11 @@ export interface LibraryEntryDTO {
   currency: string;
   access: LibraryAccess;
   termsUrl: string;
+  /** « confirmed » : page des conditions prouvée ; « unverified » : page d'accueil ou chemin supposé */
+  termsStatus: TermsStatus;
+  termsLabel: string;
+  /** l'activation exige que l'utilisateur indique la page des conditions qu'il a lue */
+  requiresTermsUrl: boolean;
   notes: string;
   check: { status: LibraryCheckResult["status"]; checkedAt: string; productCount: number | null; message: string | null; sample: Json } | null;
   /** activable : dernière vérification réelle « ok » */
@@ -902,6 +1090,7 @@ export async function sourceLibrary(ctx: OrgContext): Promise<{ entries: Library
   return {
     entries: SOURCE_LIBRARY.map((s) => {
       const c = byKey.get(s.key);
+      const termsStatus = termsStatusOf(s);
       return {
         key: s.key,
         name: s.name,
@@ -911,6 +1100,9 @@ export async function sourceLibrary(ctx: OrgContext): Promise<{ entries: Library
         currency: s.currency,
         access: s.access,
         termsUrl: s.termsUrl,
+        termsStatus,
+        termsLabel: TERMS_STATUS_LABEL[termsStatus],
+        requiresTermsUrl: termsStatus !== "confirmed",
         notes: s.notes,
         check: c ? { status: c.status as LibraryCheckResult["status"], checkedAt: c.checked_at, productCount: c.product_count, message: c.message, sample: c.sample } : null,
         activatable: !s.blocked && c?.status === "ok",
@@ -921,34 +1113,83 @@ export async function sourceLibrary(ctx: OrgContext): Promise<{ entries: Library
   };
 }
 
-/**
- * Active une source vérifiée pour l'organisation : fournisseur + supplier_source (adaptateur,
- * URL, devise, pays), sous la session de l'utilisateur (RLS). L'attestation (conditions lues)
- * est enregistrée avec la date et l'utilisateur.
- */
-export async function activateLibrarySource(ctx: OrgContext, key: string): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
-  const s = getLibrarySource(key);
-  const termsUrl = s?.termsUrl ?? "";
-  const attestation = `Conditions d'utilisation (${termsUrl}) déclarées lues et accès automatisé attesté par l'utilisateur ${ctx.user.email ?? ctx.user.id} le ${new Date().toISOString()} (application mobile).`;
-  return activateLibrarySourceFor(ctx.supabase, ctx.organization.id, key, attestation);
+/** Même site (domaine identique ou sous-domaine, « www. » ignoré) : la page des conditions doit appartenir au fournisseur. */
+export function termsUrlMatchesSite(termsUrl: string, website: string): boolean {
+  let t: URL;
+  let w: URL;
+  try {
+    t = new URL(termsUrl);
+    w = new URL(website);
+  } catch {
+    return false;
+  }
+  if (t.protocol !== "https:" || t.username || t.password) return false;
+  const strip = (h: string) => h.toLowerCase().replace(/^www\./, "");
+  const th = strip(t.hostname);
+  const wh = strip(w.hostname);
+  return th === wh || th.endsWith(`.${wh}`) || wh.endsWith(`.${th}`);
 }
 
 /**
- * Activation d'une source de la bibliothèque pour une organisation, avec le client fourni :
- * session de l'utilisateur (RLS, application mobile) ou client serveur (activation demandée
- * par le titulaire du compte et tracée dans `access_conditions`).
+ * Corps de l'activation (Edge POST /sourcing/library/activate et site web) : attestation de
+ * l'utilisateur, et page des conditions qu'il a lue (exigée quand MON STOCK ne l'a pas confirmée).
+ */
+export const libraryActivateSchema = z.object({
+  key: z.string().min(1).max(80),
+  attest: z.literal(true, { error: "Confirmez avoir lu les conditions d'utilisation de la source." }),
+  termsUrl: z.string().trim().url("Adresse de la page des conditions invalide.").max(500).optional(),
+});
+
+/** Validation humaine d'une activation : qui, quand, quelle page des conditions a été lue. */
+export interface LibraryActivationReview {
+  /** utilisateur qui valide (auth.users.id) — jamais une tâche planifiée */
+  userId: string;
+  /** libellé de l'utilisateur dans la trace (e-mail, sinon identifiant) */
+  userLabel: string;
+  /** page des conditions lue par l'utilisateur (exigée tant que la page connue n'est pas confirmée) */
+  termsUrl?: string | null;
+  channel: "web" | "mobile";
+  at?: Date;
+}
+
+/** Trace enregistrée dans supplier_sources.access_conditions : uniquement ce que l'utilisateur a déclaré et ce que le serveur a vérifié. */
+export function activationTrace(s: LibrarySource, review: LibraryActivationReview, termsUrl: string, checkedAt: string | null): string {
+  const at = (review.at ?? new Date()).toISOString();
+  const status = termsStatusOf(s) === "confirmed" ? "page des conditions confirmée par MON STOCK" : "page des conditions indiquée par l'utilisateur, NON vérifiée par MON STOCK";
+  return `Validation humaine : ${review.userLabel} (${review.userId}) déclare le ${at} (${review.channel === "web" ? "site web" : "application mobile"}) avoir lu les conditions d'utilisation (${termsUrl} — ${status}) et qu'elles autorisent cet accès automatisé. Contrôle serveur distinct : robots.txt et produits avec prix${checkedAt ? ` le ${checkedAt}` : ""}.`;
+}
+
+/** Activation depuis l'application (session de l'utilisateur, RLS) : la validation est celle de l'utilisateur connecté. */
+export async function activateLibrarySource(ctx: OrgContext, key: string, input: { termsUrl?: string | null } = {}, channel: LibraryActivationReview["channel"] = "mobile"): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
+  return activateLibrarySourceFor(ctx.supabase, ctx.organization.id, key, { userId: ctx.user.id, userLabel: ctx.user.email ?? ctx.user.id, termsUrl: input.termsUrl ?? null, channel });
+}
+
+/**
+ * Activation d'une source de la bibliothèque pour une organisation, sous la session de
+ * l'utilisateur qui valide (RLS). Exige : source non bloquée, dernière vérification serveur « ok »,
+ * validation humaine (utilisateur, date) et, si la page des conditions n'est pas confirmée,
+ * l'adresse de la page que l'utilisateur a lue (même site que le fournisseur).
  */
 export async function activateLibrarySourceFor(
   db: OrgContext["supabase"] | AdminSupabaseClient,
   organizationId: string,
   key: string,
-  attestation: string,
+  review: LibraryActivationReview,
   /** adaptateur imposé : celui de la bibliothèque, vérifié en mode catalogue (collecte complète), plutôt que celui qui a répondu à la recherche de contrôle */
   opts: { adapter?: string } = {},
 ): Promise<{ sourceId: string; supplierId: string; alreadyActive: boolean }> {
   const s = getLibrarySource(key);
   if (!s) throw new AppError("NOT_FOUND", "Source inconnue.");
   if (s.blocked) throw new AppError("FORBIDDEN", s.blocked);
+  if (!review.userId) throw new AppError("FORBIDDEN", "L'activation d'une source exige la validation d'un utilisateur identifié.");
+  const confirmed = termsStatusOf(s) === "confirmed";
+  const declared = review.termsUrl?.trim() || null;
+  if (!confirmed && !declared) {
+    throw new AppError("VALIDATION", `La page des conditions d'utilisation de ${s.name} n'a pas été vérifiée par MON STOCK : indiquez l'adresse exacte de la page des conditions que vous avez lue sur ${s.website} (mettez l'application à jour si ce champ n'apparaît pas).`);
+  }
+  if (declared && !termsUrlMatchesSite(declared, s.website)) throw new AppError("VALIDATION", `La page des conditions doit être une adresse https du site du fournisseur (${s.website}).`);
+  const termsUrl = declared ?? s.termsUrl;
+
   const { data: check } = await db.from("sourcing_library_checks").select("status, checked_at, adapter").eq("key", key).maybeSingle();
   if (check?.status !== "ok") throw new AppError("VALIDATION", "Cette source n'a pas passé la vérification en direct (robots.txt + produits avec prix) : elle ne peut pas être activée.");
 
@@ -956,6 +1197,7 @@ export async function activateLibrarySourceFor(
   const found = (existing ?? []).find((r) => (r.config as { library_key?: unknown } | null)?.library_key === key);
   if (found) return { sourceId: found.id, supplierId: found.supplier_id, alreadyActive: true };
 
+  const reviewedAt = (review.at ?? new Date()).toISOString();
   const country = s.country.length === 2 && s.country !== "EU" ? s.country : null;
   const { data: supplier, error: supErr } = await db
     .from("suppliers")
@@ -974,8 +1216,12 @@ export async function activateLibrarySourceFor(
       country,
       default_currency: s.currency,
       default_tax_type: s.taxType,
-      access_conditions: attestation.slice(0, 2000),
+      access_conditions: activationTrace(s, { ...review, at: new Date(reviewedAt) }, termsUrl, check.checked_at).slice(0, 2000),
       automated_access_confirmed: true,
+      access_reviewed_by: review.userId,
+      access_reviewed_at: reviewedAt,
+      terms_url: termsUrl.slice(0, 500),
+      terms_status: confirmed ? "confirmed" : "user_declared",
       robots_checked_at: check.checked_at,
       robots_allowed: s.access === "official_api" ? null : true,
       sync_frequency: "manual",
@@ -989,6 +1235,51 @@ export async function activateLibrarySourceFor(
     await db.from("suppliers").delete().eq("id", supplier.id).eq("organization_id", organizationId);
     throw srcErr ?? new AppError("INTERNAL", "Source non créée.");
   }
-  log.info("source de bibliothèque activée", { orgId: organizationId, key });
+  log.info("source de bibliothèque activée", { orgId: organizationId, key, termsStatus: confirmed ? "confirmed" : "user_declared" });
   return { sourceId: source.id, supplierId: supplier.id, alreadyActive: false };
+}
+
+/** Source de la bibliothèque active dans une organisation, à faire revalider par le titulaire. */
+export interface LibrarySourceToRevalidate {
+  organizationId: string;
+  sourceId: string;
+  libraryKey: string;
+  name: string;
+  status: string;
+  termsUrl: string | null;
+  termsStatus: TermsStatus;
+  reasons: string[];
+}
+
+/** Attestation générée par l'ancienne activation planifiée (`/cron/library-activate`, supprimée). */
+export const GENERATED_ATTESTATION_RE = /robots\.txt vérifié par le serveur|Activation enregistrée le/;
+
+/**
+ * Rapport (lecture seule) : sources de la bibliothèque activées sans validation humaine tracée,
+ * avec une attestation générée par une tâche planifiée, ou dont la page des conditions n'est pas
+ * confirmée. Rien n'est désactivé : la décision appartient au titulaire du compte.
+ */
+export async function librarySourcesToRevalidate(admin: AdminSupabaseClient = createAdminSupabaseClient()): Promise<LibrarySourceToRevalidate[]> {
+  const { data, error } = await admin
+    .from("supplier_sources")
+    .select("id, organization_id, name, status, config, access_conditions, access_reviewed_by, access_reviewed_at, terms_url, terms_status")
+    .neq("status", "paused")
+    .order("organization_id")
+    .order("id")
+    .limit(1000);
+  if (error) throw new Error(`Lecture des sources impossible : ${error.message}`);
+  const out: LibrarySourceToRevalidate[] = [];
+  for (const r of data ?? []) {
+    const key = (r.config as { library_key?: unknown } | null)?.library_key;
+    if (typeof key !== "string") continue;
+    const lib = getLibrarySource(key);
+    const termsStatus: TermsStatus = r.terms_status === "confirmed" || (!r.terms_status && lib && termsStatusOf(lib) === "confirmed") ? "confirmed" : "unverified";
+    const reasons: string[] = [];
+    if (!r.access_reviewed_by || !r.access_reviewed_at) reasons.push("aucune validation humaine tracée (utilisateur, date)");
+    if (r.access_conditions && GENERATED_ATTESTATION_RE.test(r.access_conditions)) reasons.push("attestation générée par une tâche planifiée");
+    if (termsStatus !== "confirmed") reasons.push("page des conditions non confirmée");
+    if (lib?.blocked) reasons.push("source désormais bloquée par les conditions du fournisseur");
+    if (reasons.length) out.push({ organizationId: r.organization_id, sourceId: r.id, libraryKey: key, name: r.name, status: r.status, termsUrl: r.terms_url ?? lib?.termsUrl ?? null, termsStatus, reasons });
+  }
+  return out;
 }

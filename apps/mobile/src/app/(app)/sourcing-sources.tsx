@@ -9,13 +9,14 @@ import { CHECK_STATUS_LABEL, LIBRARY_ACCESS_LABEL, LIBRARY_SEGMENT_LABEL, sample
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatMoney } from "~/lib/format";
 import { safeExternalUrl } from "~/lib/url";
-import { BottomSheet, Button, Card, DetailHeader, EmptyState, ErrorState, Screen, SectionHeader, SkeletonList, StatusChip, Txt, useToast } from "~/components/ui";
+import { BottomSheet, Button, Card, DetailHeader, EmptyState, ErrorState, Screen, SectionHeader, SkeletonList, StatusChip, TextField, Txt, useToast } from "~/components/ui";
 import { color, space } from "~/theme/tokens";
 
 /**
  * Bibliothèque de sources fournisseurs : chaque source affiche le résultat de sa DERNIÈRE
  * VÉRIFICATION RÉELLE par le serveur (robots.txt + produits avec prix, exemples à l'appui).
- * Seules les sources vérifiées sont activables, après attestation des conditions d'utilisation.
+ * Seules les sources vérifiées sont activables, après validation de l'utilisateur (conditions
+ * d'utilisation lues ; adresse de la page des conditions exigée quand MON STOCK ne l'a pas confirmée).
  */
 export default function SourcingSourcesScreen() {
   const library = useSourceLibrary();
@@ -23,6 +24,7 @@ export default function SourcingSourcesScreen() {
   const { permissions } = useActiveOrg();
   const toast = useToast();
   const [pending, setPending] = useState<LibraryEntry | null>(null);
+  const [termsUrl, setTermsUrl] = useState("");
 
   if (library.isPending)
     return (
@@ -47,9 +49,15 @@ export default function SourcingSourcesScreen() {
   function confirm() {
     if (!pending) return;
     const entry = pending;
-    activate.mutate(entry.key, {
+    const needsTerms = entry.requiresTermsUrl === true;
+    if (needsTerms && !/^https:\/\/\S+$/.test(termsUrl.trim())) {
+      toast({ text: "Indiquez l'adresse https de la page des conditions que vous avez lue.", tone: "error" });
+      return;
+    }
+    activate.mutate(needsTerms ? { key: entry.key, termsUrl: termsUrl.trim() } : entry.key, {
       onSuccess: () => {
         setPending(null);
+        setTermsUrl("");
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         toast({ text: `${entry.name} activée : elle sera interrogée à chaque recherche.` });
       },
@@ -99,9 +107,22 @@ export default function SourcingSourcesScreen() {
         visible={pending !== null}
         onClose={() => setPending(null)}
         title={`Activer ${pending?.name ?? ""} ?`}
-        description="Le serveur MON STOCK lira automatiquement les offres publiques de cette source lors de vos recherches (robots.txt respecté, une requête à la fois). En activant, vous attestez avoir lu ses conditions d'utilisation et qu'elles autorisent cet usage."
+        description="Le serveur MON STOCK lira automatiquement les offres publiques de cette source lors de vos recherches (robots.txt respecté, une requête à la fois). En activant, vous attestez avoir lu ses conditions d'utilisation et qu'elles autorisent cet usage ; votre validation est enregistrée avec la date."
       >
-        {pending ? <Button label="Lire les conditions d'utilisation" variant="secondary" onPress={() => { const u = safeExternalUrl(pending.termsUrl); if (u) void WebBrowser.openBrowserAsync(u).catch(() => {}); }} /> : null}
+        {pending ? <Button label={pending.requiresTermsUrl ? "Ouvrir le site du fournisseur" : "Lire les conditions d'utilisation"} variant="secondary" onPress={() => { const u = safeExternalUrl(pending.termsUrl); if (u) void WebBrowser.openBrowserAsync(u).catch(() => {}); }} /> : null}
+        {pending?.requiresTermsUrl ? (
+          <TextField
+            label="Adresse de la page des conditions lue"
+            hint="Page des conditions non vérifiée par MON STOCK : trouvez les CGU / CGV sur le site et collez leur adresse."
+            value={termsUrl}
+            onChangeText={setTermsUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            placeholder="https://…"
+            testID="source-terms-url"
+          />
+        ) : null}
         <Button label="J'atteste et j'active" loading={activate.isPending} onPress={confirm} testID="source-activate-confirm" />
         <Button label="Annuler" variant="ghost" onPress={() => setPending(null)} />
       </BottomSheet>

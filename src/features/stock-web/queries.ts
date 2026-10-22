@@ -28,6 +28,8 @@ export interface StockWebList {
   truncated: boolean;
   facets: { brands: string[]; categories: string[]; suppliers: Array<{ id: string; name: string }> };
   bestOffers: Record<string, BestOfferChip>;
+  /** lecture des offres de la page incomplète (borne atteinte) : une « meilleure offre » peut manquer */
+  bestOffersPartial: boolean;
   analytics: StockAnalytics;
   /** codes de la liste filtrée (fiche suivante / précédente) */
   orderedCodes: string[];
@@ -66,22 +68,42 @@ export async function loadStockWebList(ctx: OrgContext, p: StockWebParams): Prom
     facets = { brands: uniq(bundle.views.map((v) => v.row.brand)), categories: uniq(bundle.views.map((v) => v.row.category)), suppliers };
   }
 
-  return { rows, total, page: p.base.page, pageSize: WEB_PAGE_SIZE, truncated, facets, bestOffers: await bestOffersFor(ctx, rows), analytics, orderedCodes };
+  const best = await bestOffersFor(ctx, rows);
+  return { rows, total, page: p.base.page, pageSize: WEB_PAGE_SIZE, truncated, facets, bestOffers: best.offers, bestOffersPartial: best.partial, analytics, orderedCodes };
 }
 
-/** Offres actives rapprochées des SKU de la page (une requête), la moins chère par SKU. */
-async function bestOffersFor(ctx: OrgContext, rows: StockRowView[]): Promise<Record<string, BestOfferChip>> {
+/** Borne de lecture des offres des SKU d'une page (lues par pages de 1 000, triées par prix : W-03). */
+export const PAGE_OFFERS_MAX = 5_000;
+
+/**
+ * Offres actives rapprochées des SKU de la page, la moins chère par SKU. Lecture paginée et triée par
+ * prix croissant : si la borne est atteinte, les offres manquantes sont les plus chères (une meilleure
+ * offre déjà trouvée reste juste) mais un SKU peut n'avoir aucune offre lue → `partial`.
+ */
+async function bestOffersFor(ctx: OrgContext, rows: StockRowView[]): Promise<{ offers: Record<string, BestOfferChip>; partial: boolean }> {
   const ids = rows.map((v) => v.row.sku_id).filter((id): id is string => Boolean(id));
-  if (ids.length === 0) return {};
-  const { data } = await ctx.supabase
-    .from("sourcing_offers")
-    .select("sku_id, normalized_price, normalized_currency, tax_type, last_seen_at, supplier:suppliers(name)")
-    .eq("organization_id", ctx.organization.id)
-    .eq("status", "active")
-    .in("sku_id", ids)
-    .limit(1000);
-  const bySku = new Map<string, NonNullable<typeof data>>();
-  for (const o of data ?? []) {
+  if (ids.length === 0) return { offers: {}, partial: false };
+  let loaded: { rows: Array<{ sku_id: string | null; normalized_price: number | null; normalized_currency: string | null; tax_type: BestOfferChip["taxType"]; last_seen_at: string; supplier: unknown }>; truncated: boolean };
+  try {
+    loaded = await fetchRowsUpTo(
+      (from, to) =>
+        ctx.supabase
+          .from("sourcing_offers")
+          .select("sku_id, normalized_price, normalized_currency, tax_type, last_seen_at, supplier:suppliers(name)")
+          .eq("organization_id", ctx.organization.id)
+          .eq("status", "active")
+          .in("sku_id", ids)
+          .order("normalized_price", { ascending: true, nullsFirst: false })
+          .order("id", { ascending: true })
+          .range(from, to),
+      PAGE_OFFERS_MAX,
+    );
+  } catch {
+    // Puce « meilleure offre » secondaire : son absence ne bloque pas l'écran, mais elle est signalée.
+    return { offers: {}, partial: true };
+  }
+  const bySku = new Map<string, typeof loaded.rows>();
+  for (const o of loaded.rows) {
     if (!o.sku_id) continue;
     const list = bySku.get(o.sku_id) ?? [];
     list.push(o);
@@ -94,7 +116,7 @@ async function bestOffersFor(ctx: OrgContext, rows: StockRowView[]): Promise<Rec
     const supplier = (best.supplier as { name: string } | null)?.name ?? null;
     out[skuId] = { price: best.normalized_price, currency: best.normalized_currency ?? "EUR", supplier, taxType: best.tax_type, lastSeenAt: best.last_seen_at };
   }
-  return out;
+  return { offers: out, partial: loaded.truncated };
 }
 
 /**
