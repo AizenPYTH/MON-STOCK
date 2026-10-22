@@ -1,9 +1,14 @@
 import { Children, cloneElement, isValidElement, type InputHTMLAttributes, type LabelHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import Link from "next/link";
+import { CircleAlert, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Contrôle de saisie : contour ≥ 3:1 (WCAG 1.4.11), focus = contour bleu + halo, erreur = contour rouge.
+ * Au doigt (pointer: coarse), texte 16 px pour éviter le zoom automatique d'iOS.
+ */
 const control =
-  "block w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-foreground placeholder:font-semibold placeholder:text-ink-3 focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:bg-line-soft disabled:text-muted aria-invalid:border-danger-line aria-invalid:focus:ring-danger-line";
+  "block w-full rounded-xl border border-border-control bg-surface px-3 py-2 text-sm font-semibold text-foreground transition-[border-color,box-shadow] duration-150 ease-standard placeholder:font-medium placeholder:text-ink-3 hover:border-muted focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25 disabled:cursor-not-allowed disabled:border-border disabled:bg-surface-3 disabled:text-muted aria-invalid:border-danger aria-invalid:focus:ring-danger/25 pointer-coarse:text-base";
 
 export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={cn("mb-1.5 block text-sm font-bold text-foreground", className)} {...props} />;
@@ -43,7 +48,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
 }
 
 export function Checkbox({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input type="checkbox" className={cn("h-4 w-4 rounded border-border accent-night focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", className)} {...props} />;
+  return <input type="checkbox" className={cn("h-4 w-4 shrink-0 cursor-pointer rounded border-border-control accent-inverse disabled:cursor-not-allowed pointer-coarse:h-5 pointer-coarse:w-5", className)} {...props} />;
 }
 
 /**
@@ -81,8 +86,9 @@ export function Field({ label, htmlFor, hint, error, children, className, requir
       {errs.length > 0 ? (
         <div id={errorId} role="alert" className="space-y-0.5">
           {errs.map((e) => (
-            <p key={e} className="text-xs text-danger">
-              {e}
+            <p key={e} className="flex items-start gap-1 text-xs font-semibold text-danger">
+              <CircleAlert aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+              <span>{e}</span>
             </p>
           ))}
         </div>
@@ -94,10 +100,13 @@ export function Field({ label, htmlFor, hint, error, children, className, requir
 export function FormError({ message, action }: { message?: string | null; action?: { label: string; href: string } }) {
   if (!message) return null;
   return (
-    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
-      <span>{message}</span>
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger-line bg-danger-soft px-3 py-2.5 text-sm font-semibold text-danger-ink">
+      <span className="flex min-w-0 items-start gap-2">
+        <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+        <span className="min-w-0">{message}</span>
+      </span>
       {action ? (
-        <Link href={action.href as never} className="font-bold underline underline-offset-2">
+        <Link href={action.href as never} className="font-bold underline underline-offset-2 hover:no-underline">
           {action.label}
         </Link>
       ) : null}
@@ -108,8 +117,9 @@ export function FormError({ message, action }: { message?: string | null; action
 export function FormSuccess({ message }: { message?: string | null }) {
   if (!message) return null;
   return (
-    <div role="status" className="rounded-xl border border-[#bfe9d3] bg-success-soft px-3 py-2 text-sm font-semibold text-success">
-      {message}
+    <div role="status" className="flex items-start gap-2 rounded-xl border border-success-line bg-success-soft px-3 py-2.5 text-sm font-semibold text-success-ink">
+      <CircleCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+      <span className="min-w-0">{message}</span>
     </div>
   );
 }

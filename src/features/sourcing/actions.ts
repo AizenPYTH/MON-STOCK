@@ -13,6 +13,18 @@ import { applyConfirmedMatch } from "@/services/sourcing/matching-service";
 import { evaluateSourcingAlerts, type AlertCriteria } from "@/services/sourcing/alerts";
 import { searchSkus } from "@/features/stock/queries";
 import { getOfferMatchSuggestions, type OfferMatchSuggestion } from "@/features/sourcing/queries";
+import { z } from "zod";
+
+/**
+ * Identifiants reçus du navigateur (W-20) : validés comme UUID AVANT toute requête (une valeur
+ * quelconque produisait une erreur Postgres traduite en message générique).
+ */
+const uuidSchema = z.string().uuid();
+function uuidOrNull(value: unknown): string | null {
+  const parsed = uuidSchema.safeParse(typeof value === "string" ? value.trim() : value);
+  return parsed.success ? parsed.data : null;
+}
+const NOT_FOUND_ALERT = "Alerte introuvable (déjà supprimée ?) : rechargez la page.";
 
 export interface SkuSearchResult {
   skuId: string;
@@ -43,7 +55,9 @@ export async function searchSkusAction(q: string): Promise<ActionResult<SkuSearc
 export async function suggestMatchesAction(offerId: string): Promise<ActionResult<OfferMatchSuggestion[]>> {
   try {
     const ctx = await requireOrgContextForAction();
-    const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, title_original, ean, mpn, external_product_id, brand").eq("organization_id", ctx.organization.id).eq("id", String(offerId ?? "")).maybeSingle();
+    const id = uuidOrNull(offerId);
+    if (!id) return fail("Offre introuvable.");
+    const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, title_original, ean, mpn, external_product_id, brand").eq("organization_id", ctx.organization.id).eq("id", id).maybeSingle();
     if (!offer) return ok([]);
     return ok(await getOfferMatchSuggestions(ctx, offer));
   } catch (e) {
@@ -81,7 +95,8 @@ export async function linkOfferToSkuAction(_prev: ActionResult<{ skuCode: string
 export async function unlinkOfferAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
-    const offerId = String(formData.get("offer_id") ?? "");
+    const offerId = uuidOrNull(formData.get("offer_id"));
+    if (!offerId) return fail("Offre introuvable.");
     const { data: offer } = await ctx.supabase.from("sourcing_offers").select("id, supplier_id, sku_id").eq("organization_id", ctx.organization.id).eq("id", offerId).maybeSingle();
     if (!offer) return fail("Offre introuvable.");
     if (!offer.sku_id) return ok({ message: "Cette offre n'est associée à aucun SKU." });
@@ -134,6 +149,8 @@ export async function decideMatchAction(_prev: MessageResult | null, formData: F
     }
     revalidatePath("/sourcing/matches");
     if (match.offer_id) revalidatePath(`/sourcing/offers/${match.offer_id}`);
+    // W-26 : compteur « Correspondances » de la coquille.
+    revalidatePath("/", "layout");
     return ok({ message: parsed.data.decision === "reject" ? "Correspondance rejetée." : "Correspondance confirmée." });
   } catch (e) {
     return fail(toUserMessage(e));
@@ -191,10 +208,13 @@ export async function saveAlertAction(_prev: ActionResult | null, formData: Form
 export async function toggleAlertAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
-    const id = String(formData.get("alert_id") ?? "");
+    const id = uuidOrNull(formData.get("alert_id"));
+    if (!id) return fail(NOT_FOUND_ALERT);
     const active = String(formData.get("active") ?? "true") === "true";
-    const { error } = await ctx.supabase.from("sourcing_alerts").update({ is_active: active }).eq("organization_id", ctx.organization.id).eq("id", id);
+    const { data, error } = await ctx.supabase.from("sourcing_alerts").update({ is_active: active }).eq("organization_id", ctx.organization.id).eq("id", id).select("id");
     if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    // Aucune ligne modifiée (autre organisation, déjà supprimée, droits) : pas de faux succès.
+    if (!data || data.length === 0) return fail(NOT_FOUND_ALERT);
     revalidatePath("/sourcing/alerts");
     return ok({ message: active ? "Alerte réactivée." : "Alerte mise en pause." });
   } catch (e) {
@@ -205,9 +225,11 @@ export async function toggleAlertAction(_prev: MessageResult | null, formData: F
 export async function deleteAlertAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
-    const id = String(formData.get("alert_id") ?? "");
-    const { error } = await ctx.supabase.from("sourcing_alerts").delete().eq("organization_id", ctx.organization.id).eq("id", id);
+    const id = uuidOrNull(formData.get("alert_id"));
+    if (!id) return fail(NOT_FOUND_ALERT);
+    const { data, error } = await ctx.supabase.from("sourcing_alerts").delete().eq("organization_id", ctx.organization.id).eq("id", id).select("id");
     if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    if (!data || data.length === 0) return fail(NOT_FOUND_ALERT);
     revalidatePath("/sourcing/alerts");
     return ok({ message: "Alerte supprimée." });
   } catch (e) {
@@ -218,7 +240,9 @@ export async function deleteAlertAction(_prev: MessageResult | null, formData: F
 export async function markAlertEventsSeenAction(_prev: MessageResult | null, formData: FormData): Promise<MessageResult> {
   try {
     const ctx = await requireOrgContextForAction({ write: true });
-    const alertId = String(formData.get("alert_id") ?? "");
+    const rawAlertId = String(formData.get("alert_id") ?? "").trim();
+    const alertId = rawAlertId ? uuidOrNull(rawAlertId) : null;
+    if (rawAlertId && !alertId) return fail(NOT_FOUND_ALERT);
     let q = ctx.supabase.from("sourcing_alert_events").update({ seen_at: new Date().toISOString() }).eq("organization_id", ctx.organization.id).is("seen_at", null);
     if (alertId) q = q.eq("alert_id", alertId);
     const { error } = await q;

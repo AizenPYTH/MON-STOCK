@@ -2,6 +2,7 @@ import "server-only";
 import type { LlmTool } from "./llm";
 import { z } from "zod";
 import type { ServerSupabaseClient } from "@/lib/supabase/server";
+import { buyerPseudonymizer, ephemeralPseudonymKey, type BuyerPseudonymizer } from "./privacy";
 
 /**
  * Outils de l'assistant « Intelligence » : LECTURE SEULE des données réelles de l'organisation
@@ -13,6 +14,8 @@ import type { ServerSupabaseClient } from "@/lib/supabase/server";
  *
  * Les résultats sont des données brutes (montants, quantités, dates) que le modèle doit citer
  * telles quelles ; un résultat vide est renvoyé comme tel (« aucune vente »), jamais complété.
+ * Données personnelles : le pseudo d'un acheteur est remplacé par un alias (« Acheteur XXXX »)
+ * avant d'être transmis au modèle (voir privacy.ts).
  */
 
 export interface ToolContext {
@@ -20,6 +23,23 @@ export interface ToolContext {
   organizationId: string;
   currency: string;
   now?: Date;
+  /** alias stables des acheteurs (par conversation) ; à défaut, alias propres à ce contexte */
+  pseudonyms?: BuyerPseudonymizer;
+  /** échéance du tour : les lectures longues ne sont plus attendues au-delà */
+  signal?: AbortSignal;
+}
+
+const fallbackPseudonyms = new WeakMap<ToolContext, BuyerPseudonymizer>();
+
+/** Alias des acheteurs pour ce contexte (stables pendant toute la requête). */
+export function pseudonymsOf(ctx: ToolContext): BuyerPseudonymizer {
+  if (ctx.pseudonyms) return ctx.pseudonyms;
+  let p = fallbackPseudonyms.get(ctx);
+  if (!p) {
+    p = buyerPseudonymizer(ephemeralPseudonymKey());
+    fallbackPseudonyms.set(ctx, p);
+  }
+  return p;
 }
 
 const DAY = 86_400_000;
@@ -268,7 +288,8 @@ async function recentOrders(ctx: ToolContext, raw: unknown) {
   return {
     period: { days: input.days },
     ordersInPeriod: count ?? 0,
-    orders: (data ?? []).map((o) => ({ ...o, stockDeducted: o.inventory_applied, inventory_applied: undefined })),
+    orders: (data ?? []).map((o) => ({ ...o, buyer_username: undefined, buyer: pseudonymsOf(ctx).alias(o.buyer_username), stockDeducted: o.inventory_applied, inventory_applied: undefined })),
+    note: "buyer = alias stable de l'acheteur (« Acheteur XXXX ») : son identité n'est pas transmise.",
   };
 }
 

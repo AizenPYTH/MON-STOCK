@@ -74,6 +74,19 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   PURCHASE_ORDER_RECEIPT_REQUIRED: { code: "VALIDATION", message: "Indiquez au moins une quantité reçue." },
   PURCHASE_ORDER_STALE: { code: "CONFLICT", message: "La commande a été modifiée entre-temps : rechargez la page et réessayez." },
   INVALID_RECEIPTS: { code: "VALIDATION", message: "Réception invalide : vérifiez les quantités saisies." },
+  // Migrations 20261023000300 à 20261023000340 (audit D-08, D-09, D-17).
+  MOVEMENT_DATE_OUT_OF_RANGE: { code: "VALIDATION", message: "Date du mouvement invalide : elle ne peut être ni dans le futur, ni antérieure de plus de 7 jours." },
+  RESERVATION_DELTA_INVALID: { code: "VALIDATION", message: "Variation de la quantité réservée invalide." },
+  ORGANIZATION_CREATION_LIMIT: { code: "RATE_LIMITED", message: "Vous avez créé 3 organisations au cours des dernières 24 heures : réessayez plus tard." },
+  DEMO_ORGANIZATION_EXISTS: { code: "CONFLICT", message: "Vous avez déjà une organisation de démonstration : ouvrez-la (ou supprimez-la) au lieu d'en créer une autre." },
+  ORGANIZATION_NOT_FOUND: { code: "NOT_FOUND", message: "Organisation introuvable." },
+  ORGANIZATION_DELETE_CONFIRMATION: { code: "VALIDATION", message: "Pour confirmer la suppression, saisissez exactement le nom de l'organisation." },
+  ORGANIZATION_HAS_MEMBERS: { code: "CONFLICT", message: "Suppression impossible : d'autres membres font partie de cette organisation. Retirez-les d'abord." },
+  ORGANIZATION_HAS_ORDERS: { code: "CONFLICT", message: "Suppression impossible : cette organisation contient des commandes." },
+  ORGANIZATION_HAS_CONNECTION: { code: "CONFLICT", message: "Suppression impossible : déconnectez d'abord les comptes reliés (eBay, fournisseurs)." },
+  SOURCE_NOT_FOUND: { code: "NOT_FOUND", message: "Source introuvable." },
+  ATTESTATION_INVALID: { code: "VALIDATION", message: "Attestation invalide (texte limité à 2 000 caractères)." },
+  ATTESTATION_TEXT_REQUIRED: { code: "VALIDATION", message: "Décrivez les conditions d'accès vérifiées pour attester l'accès automatisé." },
 };
 
 /** Erreurs réseau RÉELLES (client HTTP / DNS / socket) : un message SQL contenant « network » n'en est pas une. */

@@ -9,7 +9,7 @@ import { barcodeBars, relativeHeights, rulerPosition, shares, type BarcodeItem, 
  * réelles passées en paramètre ; animation par transform (scaleX / scaleY) depuis la base.
  */
 
-const LEVEL_FILL: Record<BarcodeLevel, string> = { ok: "rgba(247,248,250,.86)", low: "var(--amber)", out: "var(--danger-on-night)" };
+const LEVEL_FILL: Record<BarcodeLevel, string> = { ok: "color-mix(in srgb, var(--on-night) 86%, transparent)", low: "var(--amber)", out: "var(--danger-on-night)" };
 export const LEVEL_LABEL: Record<BarcodeLevel, string> = { ok: "En stock", low: "Stock faible", out: "Rupture" };
 
 /** Code-barres du stock : une barre par référence, largeur = ventes 30 j, couleur = niveau. */
@@ -77,7 +77,7 @@ export function DayBars({ days, height = 96, label, href }: { days: { day: strin
         <span
           key={d.day}
           title={`${d.day} : ${d.amount}`}
-          className={cn("ms-grow-y block flex-1 rounded-[3px]", i === last ? "border-[1.5px] border-mint bg-[rgba(139,232,190,.16)]" : "bg-[rgba(247,248,250,.26)]")}
+          className={cn("ms-grow-y block flex-1 rounded-[3px]", i === last ? "border-[1.5px] border-mint bg-mint/16" : "bg-on-night/26")}
           style={{ height: `${Math.max(i === last ? 0.18 : 0.04, h[i] ?? 0) * 100}%`, animationDelay: `${120 + Math.min(i, 30) * 18}ms` }}
         />
       ))}

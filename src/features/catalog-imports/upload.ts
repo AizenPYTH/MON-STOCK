@@ -6,6 +6,7 @@ import { isCrossSiteRequest } from "@/features/integrations/oauth-flow";
 import { fail, ok, type ActionResult } from "@/lib/result";
 import { isAppError, toUserMessage } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
+import { normalizeBaseUrl } from "@/lib/site";
 import { catalogImportSchema, catalogPreviewSchema, importCatalogFile, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
 import type { CatalogImportDTO, CatalogPreviewDTO } from "@/features/mobile-api/contract";
 import { assertContentLength, buildCatalogBody, CatalogRequestError, fileToCatalogInput, parseOptions, validationMessage } from "@/features/catalog-imports/request";
@@ -22,8 +23,10 @@ export async function handleCatalogRequest(request: Request, kind: "preview" | "
   const reply = (r: ActionResult<CatalogPreviewDTO | CatalogImportDTO>, status = 200) => NextResponse.json(r, { status, headers: { "Cache-Control": "no-store" } });
   try {
     const selfOrigin = new URL(request.url).origin;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-    if (isCrossSiteRequest(request.headers, [selfOrigin, ...(appUrl ? [appUrl] : [])])) return reply(fail("Requête refusée : elle ne provient pas de MON STOCK."), 403);
+    // Adresse publique normalisée (W-08) : comparée à l'en-tête Origin (schéma + hôte, sans `/`).
+    const appUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL);
+    const appOrigin = appUrl && URL.canParse(appUrl) ? new URL(appUrl).origin : null;
+    if (isCrossSiteRequest(request.headers, [selfOrigin, ...(appOrigin ? [appOrigin] : [])])) return reply(fail("Requête refusée : elle ne provient pas de MON STOCK."), 403);
     assertContentLength(request.headers.get("content-length"));
     const ctx = await requireOrgContextForAction({ write: true });
     let form: FormData;
@@ -32,7 +35,7 @@ export async function handleCatalogRequest(request: Request, kind: "preview" | "
     } catch {
       // Au-delà de 10 Mo, le proxy Next.js ne transmet qu'un corps tronqué (proxyClientMaxBodySize par défaut).
       const big = Number(request.headers.get("content-length") ?? 0) > 10 * 1024 * 1024;
-      return reply(fail(big ? "Fichier non reçu en entier par le serveur web (plus de 10 Mo) : découpez-le ou importez-le depuis l'application iPhone (15 Mo maximum)." : "Fichier non reçu : réessayez (15 Mo maximum)."), 400);
+      return reply(fail(big ? "Fichier non reçu en entier par le serveur web : depuis le site, 4 Mo maximum. Découpez-le ou importez-le depuis l'application iPhone (15 Mo maximum)." : "Fichier non reçu : réessayez (4 Mo maximum depuis le site)."), 400);
     }
     const options = parseOptions(form.get("options"));
     const file = await fileToCatalogInput(form.get("file"), form.get("sheet"), options.fileSize);

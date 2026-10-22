@@ -4,8 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const getUser = vi.fn();
+const ssrCalls: unknown[][] = [];
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => ({ auth: { getUser } }),
+  // Le proxy utilise getClaims() (W-11) : simulé à partir du même état que getUser().
+  createServerClient: (...args: unknown[]) => (
+    ssrCalls.push(args),
+    {
+      auth: {
+        getUser,
+        getClaims: vi.fn(async () => {
+          const r = (await getUser()) as { data: { user: { id: string } | null } };
+          return { data: r.data.user ? { claims: { sub: r.data.user.id } } : null, error: null };
+        }),
+      },
+    }
+  ),
 }));
 
 const { isPublicPath, isMachinePath, isServerActionRequest, updateSession } = await import("@/lib/supabase/proxy");
@@ -49,6 +62,17 @@ describe("Proxy : routes publiques", () => {
     expect(isMachinePath("/api/webhooks-admin")).toBe(false);
   });
 
+  it("W-13 : /sitemap.xml et /robots.txt publics (proxy exclu par le matcher ET chemins publics)", async () => {
+    const { config } = await import("@/proxy");
+    const matcher = new RegExp(`^${config.matcher[0]!}$`);
+    expect(matcher.test("/sitemap.xml")).toBe(false);
+    expect(matcher.test("/robots.txt")).toBe(false);
+    expect(matcher.test("/dashboard")).toBe(true);
+    expect(isPublicPath("/sitemap.xml")).toBe(true);
+    expect(isPublicPath("/robots.txt")).toBe(true);
+    expect(isPublicPath("/sitemap.xmlx")).toBe(false);
+  });
+
   it("détecte les appels de Server Actions", () => {
     expect(isServerActionRequest({ method: "POST", headers: new Headers({ "Next-Action": "abc" }) })).toBe(true);
     expect(isServerActionRequest({ method: "GET", headers: new Headers({ "Next-Action": "abc" }) })).toBe(false);
@@ -65,6 +89,26 @@ describe("Proxy : updateSession", () => {
   });
   afterEach(() => {
     process.env = { ...env };
+  });
+
+  it("W-08 / W-05 : URL et clé collées telles quelles normalisées ; cookies httpOnly, secure, sameSite lax", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = ' "project.supabase.co/" ';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = " 'anon-key' ";
+    getUser.mockResolvedValue({ data: { user: { id: "u1" } } });
+    ssrCalls.length = 0;
+    await updateSession(new NextRequest("https://app.example/stock"));
+    const [url, key, opts] = ssrCalls[0] as [string, string, { cookieOptions: Record<string, unknown> }];
+    expect(url).toBe("https://project.supabase.co");
+    expect(key).toBe("anon-key");
+    expect(opts.cookieOptions).toMatchObject({ httpOnly: true, secure: true, sameSite: "lax", path: "/" });
+  });
+
+  it("W-08 : URL Supabase illisible → pas d'exception dans le proxy (la page affiche le diagnostic)", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://";
+    ssrCalls.length = 0;
+    const res = await updateSession(new NextRequest("https://app.example/stock"));
+    expect(res.status).toBe(200);
+    expect(ssrCalls).toEqual([]);
   });
 
   it("redirige un visiteur sans session vers /login en conservant la page demandée", async () => {

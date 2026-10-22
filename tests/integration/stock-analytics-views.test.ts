@@ -108,7 +108,8 @@ d("Intelligence : vues analytiques", () => {
       const ch = await manualChannelId(c, org);
       await asSuperuser(c);
       await c.query("update public.skus set created_at = now() - interval '60 days' where id = $1", [sku]);
-      await asUser(c, u);
+      // Mouvement antidaté de 20 jours : seul le serveur peut antidater au-delà de 7 jours (20261023000300, D-17).
+      await asService(c);
       // Fenêtre de 30 j : 0 unité pendant 10 j, 10 unités pendant 10 j, 6 unités pendant 10 j → moyenne 160 / 30.
       await c.query("select public.apply_inventory_movement($1, $2, 'receipt', 10, 'manual', null, null, null, now() - interval '20 days')", [org, sku]);
       await ingest(c, org, ch, "R-1", { placedAt: new Date(Date.now() - 10 * 86_400_000).toISOString(), lines: [{ sku: "AN-ROT", qty: 4, price: 10 }] });

@@ -9,7 +9,7 @@
  */
 import { Pool, types } from "pg";
 import type { ChannelProvider } from "@/db/types";
-import type { ConnectorAuth, GetOrdersParams, ListingsPage, MarketplaceConnector, OrdersPage, RevokeResult } from "@/integrations/core/connector";
+import type { ConnectorAuth, GetListingsParams, GetOrdersParams, ListingsPage, MarketplaceConnector, OrdersPage, RevokeResult } from "@/integrations/core/connector";
 import type { AccountInfo, InventoryLevel, ListingRef, NormalizedListing, NormalizedOrder, TokenSet, UpdateInventoryResult } from "@/integrations/core/types";
 import { DATABASE_URL } from "./helpers";
 
@@ -334,7 +334,7 @@ export function createPgRestClient(): PgRestClient {
 // ---------------------------------------------------------------------------------------------
 
 export type OrdersScript = (params: GetOrdersParams, auth: ConnectorAuth) => AsyncIterable<OrdersPage>;
-export type ListingsScript = (auth: ConnectorAuth) => AsyncIterable<ListingsPage>;
+export type ListingsScript = (auth: ConnectorAuth, params: GetListingsParams) => AsyncIterable<ListingsPage>;
 
 export class FakeConnector implements MarketplaceConnector {
   readonly provider: ChannelProvider = "ebay";
@@ -351,7 +351,7 @@ export class FakeConnector implements MarketplaceConnector {
   };
   account: AccountInfo = { externalAccountId: "ebay-user-1", username: "vendeur_test", accountType: "BUSINESS", registrationMarketplaceId: "EBAY_FR" };
   pushed: Array<{ ref: ListingRef; quantity: number }> = [];
-  calls = { refresh: 0, orders: [] as GetOrdersParams[] };
+  calls = { refresh: 0, orders: [] as GetOrdersParams[], listings: [] as GetListingsParams[] };
 
   isConfigured() {
     return true;
@@ -380,8 +380,9 @@ export class FakeConnector implements MarketplaceConnector {
     this.calls.orders.push(params);
     return this.orders(params, auth);
   }
-  getListings(auth: ConnectorAuth) {
-    return this.listings(auth);
+  getListings(auth: ConnectorAuth, params: GetListingsParams = {}) {
+    this.calls.listings.push(params);
+    return this.listings(auth, params);
   }
   async *getInventory(): AsyncIterable<InventoryLevel[]> {}
   async updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number): Promise<UpdateInventoryResult> {

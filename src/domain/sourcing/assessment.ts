@@ -69,6 +69,8 @@ export interface AssessmentInput {
 const ORIGIN_RELIABILITY: Record<PriceOrigin, number> = {
   verified_live: 80,
   supplier_communicated: 65,
+  // annonce de tiers (eBay Browse) : prix demandé, quantité inconnue, vendeur non vérifié
+  marketplace_listing: 45,
   catalog_import: 60,
   observed_public: 50,
   manual_entry: 45,
@@ -125,6 +127,7 @@ export function assessSourceReliability(i: Pick<AssessmentInput, "priceOrigin" |
   reasons.push(
     {
       verified_live: "Prix lu en direct via l'API du fournisseur.",
+      marketplace_listing: "Annonce publiée sur une place de marché : prix demandé par un vendeur tiers, pas une vente constatée.",
       supplier_communicated: "Prix communiqué par le fournisseur (flux ou fichier).",
       catalog_import: "Prix importé d'un fichier fournisseur.",
       observed_public: "Prix relevé sur une page publique.",

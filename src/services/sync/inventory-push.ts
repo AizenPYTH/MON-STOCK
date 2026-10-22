@@ -3,6 +3,7 @@ import type { AdminSupabaseClient } from "@/lib/supabase/admin";
 import { AppError, fromPostgrestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { describeError } from "@/integrations/core/errors";
+import { isDeadlineExceeded } from "@/integrations/core/deadline";
 import type { ConnectorAuth, MarketplaceConnector } from "@/integrations/core/connector";
 import type { ListingRef } from "@/integrations/core/types";
 import { fetchAllRows, timeLeftMs, type SyncContext } from "@/services/sync/context";
@@ -51,13 +52,14 @@ export async function pushQuantityToChannel(
   auth: ConnectorAuth,
   listing: MappedListingRow,
   quantity: number,
+  options: { deadline?: number | null } = {},
 ): Promise<{ quantity: number; warnings: string[] }> {
   const ref = listingRefOf(listing);
   if (!ref) {
     throw new AppError("VALIDATION", `L'annonce « ${listing.title} » est une variation sans SKU eBay : eBay ne permet pas d'en modifier la quantité sans SKU.`);
   }
   const qty = Math.max(0, Math.trunc(quantity));
-  const result = await connector.updateListingInventory(auth, ref, qty);
+  const result = await connector.updateListingInventory(auth, ref, qty, { deadline: options.deadline ?? null });
   const { error } = await admin.from("channel_listings").update({ quantity_available: qty, last_synced_at: new Date().toISOString() }).eq("id", listing.id);
   if (error) throw fromPostgrestError(error);
   log.info("quantité envoyée au canal", { listingId: listing.id, externalListingId: listing.external_listing_id, variation: listing.external_variation_id || null, quantity: qty, warnings: result.warnings.length });
@@ -122,9 +124,14 @@ export async function pushInventory(ctx: SyncContext): Promise<InventoryPushResu
     }
     budget--;
     try {
-      await pushQuantityToChannel(admin, ctx.connector, ctx.auth, row, clamped);
+      await pushQuantityToChannel(admin, ctx.connector, ctx.auth, row, clamped, { deadline: ctx.deadlineAt ?? null });
       result.pushed++;
     } catch (e) {
+      if (isDeadlineExceeded(e)) {
+        // Appel non lancé ou coupé par l'échéance : la suite au prochain run.
+        result.stoppedByDeadline = true;
+        break;
+      }
       const d = describeError(e);
       if (d.code === "AUTH_EXPIRED") throw e;
       result.failed++;

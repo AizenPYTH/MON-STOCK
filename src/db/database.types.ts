@@ -7,9 +7,15 @@ export type Database = {
   "public": {
           Tables: {
             "ai_usage_events": {
-  Row: { created_at: string; id: string; kind: string; organization_id: string; user_id: string };
-  Insert: { created_at?: string; id?: string; kind: string; organization_id: string; user_id?: string };
-  Update: { created_at?: string; id?: string; kind?: string; organization_id?: string; user_id?: string };
+  Row: { created_at: string; id: string; input_tokens: number | null; kind: string; organization_id: string; output_tokens: number | null; user_id: string };
+  Insert: { created_at?: string; id?: string; input_tokens?: number | null; kind: string; organization_id: string; output_tokens?: number | null; user_id?: string };
+  Update: { created_at?: string; id?: string; input_tokens?: number | null; kind?: string; organization_id?: string; output_tokens?: number | null; user_id?: string };
+  Relationships: [];
+},
+"advisor_retention_policy": {
+  Row: { action_days: number; card_days: number; conversation_days: number; id: boolean; updated_at: string; usage_event_days: number };
+  Insert: { action_days?: number; card_days?: number; conversation_days?: number; id?: boolean; updated_at?: string; usage_event_days?: number };
+  Update: { action_days?: number; card_days?: number; conversation_days?: number; id?: boolean; updated_at?: string; usage_event_days?: number };
   Relationships: [];
 },
 "alerts": {
@@ -54,14 +60,14 @@ isOneToOne: true
                   ]
                 },"channel_connections": {
                   Row: {
-                    "auto_sync": boolean,"connected_at": string | null,"created_at": string,"disconnected_at": string | null,"environment": string,"external_account_id": string | null,"external_username": string | null,"id": string,"last_error": string | null,"last_orders_cursor": string | null,"last_successful_sync_at": string | null,"last_sync_at": string | null,"metadata": NonNullable<Json>,"organization_id": string,"provider": Database["public"]['Enums']["channel_provider"],"push_inventory": boolean,"refresh_token_expires_at": string | null,"sales_channel_id": string,"scopes": (string)[],"status": Database["public"]['Enums']["connection_status"],"sync_interval_minutes": number,"token_expires_at": string | null,"updated_at": string
+                    "auto_sync": boolean,"connected_at": string | null,"created_at": string,"disconnected_at": string | null,"environment": string,"external_account_id": string | null,"external_username": string | null,"id": string,"last_error": string | null,"last_orders_cursor": string | null,"last_successful_sync_at": string | null,"last_sync_at": string | null,"last_sync_attempt_at": string | null,"sales_stock_cutoff_at": string | null,"sync_state": NonNullable<Json>,"metadata": NonNullable<Json>,"organization_id": string,"provider": Database["public"]['Enums']["channel_provider"],"push_inventory": boolean,"refresh_token_expires_at": string | null,"sales_channel_id": string,"scopes": (string)[],"status": Database["public"]['Enums']["connection_status"],"sync_interval_minutes": number,"token_expires_at": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "auto_sync"?: boolean,"connected_at"?: string | null,"created_at"?: string,"disconnected_at"?: string | null,"environment"?: string,"external_account_id"?: string | null,"external_username"?: string | null,"id"?: string,"last_error"?: string | null,"last_orders_cursor"?: string | null,"last_successful_sync_at"?: string | null,"last_sync_at"?: string | null,"metadata"?: NonNullable<Json>,"organization_id": string,"provider": Database["public"]['Enums']["channel_provider"],"push_inventory"?: boolean,"refresh_token_expires_at"?: string | null,"sales_channel_id": string,"scopes"?: (string)[],"status"?: Database["public"]['Enums']["connection_status"],"sync_interval_minutes"?: number,"token_expires_at"?: string | null,"updated_at"?: string
+                    "auto_sync"?: boolean,"connected_at"?: string | null,"created_at"?: string,"disconnected_at"?: string | null,"environment"?: string,"external_account_id"?: string | null,"external_username"?: string | null,"id"?: string,"last_error"?: string | null,"last_orders_cursor"?: string | null,"last_successful_sync_at"?: string | null,"last_sync_at"?: string | null,"last_sync_attempt_at"?: string | null,"sales_stock_cutoff_at"?: string | null,"sync_state"?: NonNullable<Json>,"metadata"?: NonNullable<Json>,"organization_id": string,"provider": Database["public"]['Enums']["channel_provider"],"push_inventory"?: boolean,"refresh_token_expires_at"?: string | null,"sales_channel_id": string,"scopes"?: (string)[],"status"?: Database["public"]['Enums']["connection_status"],"sync_interval_minutes"?: number,"token_expires_at"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "auto_sync"?: boolean,"connected_at"?: string | null,"created_at"?: string,"disconnected_at"?: string | null,"environment"?: string,"external_account_id"?: string | null,"external_username"?: string | null,"id"?: string,"last_error"?: string | null,"last_orders_cursor"?: string | null,"last_successful_sync_at"?: string | null,"last_sync_at"?: string | null,"metadata"?: NonNullable<Json>,"organization_id"?: string,"provider"?: Database["public"]['Enums']["channel_provider"],"push_inventory"?: boolean,"refresh_token_expires_at"?: string | null,"sales_channel_id"?: string,"scopes"?: (string)[],"status"?: Database["public"]['Enums']["connection_status"],"sync_interval_minutes"?: number,"token_expires_at"?: string | null,"updated_at"?: string
+                    "auto_sync"?: boolean,"connected_at"?: string | null,"created_at"?: string,"disconnected_at"?: string | null,"environment"?: string,"external_account_id"?: string | null,"external_username"?: string | null,"id"?: string,"last_error"?: string | null,"last_orders_cursor"?: string | null,"last_successful_sync_at"?: string | null,"last_sync_at"?: string | null,"last_sync_attempt_at"?: string | null,"sales_stock_cutoff_at"?: string | null,"sync_state"?: NonNullable<Json>,"metadata"?: NonNullable<Json>,"organization_id"?: string,"provider"?: Database["public"]['Enums']["channel_provider"],"push_inventory"?: boolean,"refresh_token_expires_at"?: string | null,"sales_channel_id"?: string,"scopes"?: (string)[],"status"?: Database["public"]['Enums']["connection_status"],"sync_interval_minutes"?: number,"token_expires_at"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -182,14 +188,14 @@ isOneToOne: true
                   ]
                 },"inventory_movements": {
                   Row: {
-                    "channel": string | null,"created_at": string,"created_by": string | null,"id": string,"note": string | null,"occurred_at": string,"organization_id": string,"quantity": number,"quantity_after": number,"reference_id": string | null,"reference_type": string | null,"sku_id": string,"type": Database["public"]['Enums']["movement_type"]
+                    "channel": string | null,"created_at": string,"created_by": string | null,"id": string,"note": string | null,"occurred_at": string,"organization_id": string,"quantity": number,"quantity_after": number,"reference_id": string | null,"reference_generation": number | null,"reference_type": string | null,"sku_id": string,"type": Database["public"]['Enums']["movement_type"]
                   }
                   ComputedFields: never
                   Insert: {
-                    "channel"?: string | null,"created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"occurred_at"?: string,"organization_id": string,"quantity": number,"quantity_after": number,"reference_id"?: string | null,"reference_type"?: string | null,"sku_id": string,"type": Database["public"]['Enums']["movement_type"]
+                    "channel"?: string | null,"created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"occurred_at"?: string,"organization_id": string,"quantity": number,"quantity_after": number,"reference_id"?: string | null,"reference_generation"?: number | null,"reference_type"?: string | null,"sku_id": string,"type": Database["public"]['Enums']["movement_type"]
                   }
                   Update: {
-                    "channel"?: string | null,"created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"occurred_at"?: string,"organization_id"?: string,"quantity"?: number,"quantity_after"?: number,"reference_id"?: string | null,"reference_type"?: string | null,"sku_id"?: string,"type"?: Database["public"]['Enums']["movement_type"]
+                    "channel"?: string | null,"created_at"?: string,"created_by"?: string | null,"id"?: string,"note"?: string | null,"occurred_at"?: string,"organization_id"?: string,"quantity"?: number,"quantity_after"?: number,"reference_id"?: string | null,"reference_generation"?: number | null,"reference_type"?: string | null,"sku_id"?: string,"type"?: Database["public"]['Enums']["movement_type"]
                   }
                   Relationships: [
                     {
@@ -872,10 +878,20 @@ isOneToOne: false
       referencedColumns: ["sku_id"]
     }
                   ]
-                },"sourcing_import_jobs": {
-  Row: { created_by: string | null; defaults: Json; duplicates: number; feed_id: string | null; file_name: string | null; file_sha256: string | null; file_size: number | null; finished_at: string | null; format: string; id: string; mapping: Json; message: string | null; mode: string; offers_created: number; offers_expired: number; offers_rejected: number; offers_unchanged: number; offers_updated: number; organization_id: string; origin: string; products_unrecognized: number; rows_invalid: number; rows_read: number; rows_valid: number; sheet: string | null; source_id: string | null; started_at: string; status: string; supplier_id: string | null; sync_run_id: string | null; truncated: boolean };
-  Insert: { created_by?: string | null; defaults?: Json; duplicates?: number; feed_id?: string | null; file_name?: string | null; file_sha256?: string | null; file_size?: number | null; finished_at?: string | null; format: string; id?: string; mapping?: Json; message?: string | null; mode?: string; offers_created?: number; offers_expired?: number; offers_rejected?: number; offers_unchanged?: number; offers_updated?: number; organization_id: string; origin?: string; products_unrecognized?: number; rows_invalid?: number; rows_read?: number; rows_valid?: number; sheet?: string | null; source_id?: string | null; started_at?: string; status?: string; supplier_id?: string | null; sync_run_id?: string | null; truncated?: boolean };
-  Update: { created_by?: string | null; defaults?: Json; duplicates?: number; feed_id?: string | null; file_name?: string | null; file_sha256?: string | null; file_size?: number | null; finished_at?: string | null; format?: string; id?: string; mapping?: Json; message?: string | null; mode?: string; offers_created?: number; offers_expired?: number; offers_rejected?: number; offers_unchanged?: number; offers_updated?: number; organization_id?: string; origin?: string; products_unrecognized?: number; rows_invalid?: number; rows_read?: number; rows_valid?: number; sheet?: string | null; source_id?: string | null; started_at?: string; status?: string; supplier_id?: string | null; sync_run_id?: string | null; truncated?: boolean };
+                },"sourcing_host_policies": {
+  Row: { crawl_delay_seconds: number | null; host: string; next_allowed_at: string; robots_error: string | null; robots_fetched_at: string | null; robots_http_status: number | null; robots_rules: Json | null; robots_status: string | null; updated_at: string };
+  Insert: { crawl_delay_seconds?: number | null; host: string; next_allowed_at?: string; robots_error?: string | null; robots_fetched_at?: string | null; robots_http_status?: number | null; robots_rules?: Json | null; robots_status?: string | null; updated_at?: string };
+  Update: { crawl_delay_seconds?: number | null; host?: string; next_allowed_at?: string; robots_error?: string | null; robots_fetched_at?: string | null; robots_http_status?: number | null; robots_rules?: Json | null; robots_status?: string | null; updated_at?: string };
+  Relationships: [];
+},"sourcing_import_chunks": {
+  Row: { chunk_index: number; first_index: number; job_id: string; organization_id: string; processed_at: string | null; row_count: number; rows: Json; stats: Json; status: string };
+  Insert: { chunk_index: number; first_index: number; job_id: string; organization_id: string; processed_at?: string | null; row_count: number; rows: Json; stats?: Json; status?: string };
+  Update: { chunk_index?: number; first_index?: number; job_id?: string; organization_id?: string; processed_at?: string | null; row_count?: number; rows?: Json; stats?: Json; status?: string };
+  Relationships: [];
+},"sourcing_import_jobs": {
+  Row: { attempts: number; chunks_done: number; chunks_total: number; heartbeat_at: string | null; lease_expires_at: string | null; lease_owner: string | null; params: Json; rows_processed: number; rows_total: number | null; created_by: string | null; defaults: Json; duplicates: number; feed_id: string | null; file_name: string | null; file_sha256: string | null; file_size: number | null; finished_at: string | null; format: string; id: string; mapping: Json; message: string | null; mode: string; offers_created: number; offers_expired: number; offers_rejected: number; offers_unchanged: number; offers_updated: number; organization_id: string; origin: string; products_unrecognized: number; rows_invalid: number; rows_read: number; rows_valid: number; sheet: string | null; source_id: string | null; started_at: string; status: string; supplier_id: string | null; sync_run_id: string | null; truncated: boolean };
+  Insert: { attempts?: number; chunks_done?: number; chunks_total?: number; heartbeat_at?: string | null; lease_expires_at?: string | null; lease_owner?: string | null; params?: Json; rows_processed?: number; rows_total?: number | null; created_by?: string | null; defaults?: Json; duplicates?: number; feed_id?: string | null; file_name?: string | null; file_sha256?: string | null; file_size?: number | null; finished_at?: string | null; format: string; id?: string; mapping?: Json; message?: string | null; mode?: string; offers_created?: number; offers_expired?: number; offers_rejected?: number; offers_unchanged?: number; offers_updated?: number; organization_id: string; origin?: string; products_unrecognized?: number; rows_invalid?: number; rows_read?: number; rows_valid?: number; sheet?: string | null; source_id?: string | null; started_at?: string; status?: string; supplier_id?: string | null; sync_run_id?: string | null; truncated?: boolean };
+  Update: { attempts?: number; chunks_done?: number; chunks_total?: number; heartbeat_at?: string | null; lease_expires_at?: string | null; lease_owner?: string | null; params?: Json; rows_processed?: number; rows_total?: number | null; created_by?: string | null; defaults?: Json; duplicates?: number; feed_id?: string | null; file_name?: string | null; file_sha256?: string | null; file_size?: number | null; finished_at?: string | null; format?: string; id?: string; mapping?: Json; message?: string | null; mode?: string; offers_created?: number; offers_expired?: number; offers_rejected?: number; offers_unchanged?: number; offers_updated?: number; organization_id?: string; origin?: string; products_unrecognized?: number; rows_invalid?: number; rows_read?: number; rows_valid?: number; sheet?: string | null; source_id?: string | null; started_at?: string; status?: string; supplier_id?: string | null; sync_run_id?: string | null; truncated?: boolean };
   Relationships: [];
 },"sourcing_import_issues": {
   Row: { excerpt: Json | null; id: string; job_id: string; kind: string; line: number | null; message: string; organization_id: string; reference: string | null };
@@ -924,9 +940,9 @@ isOneToOne: false
     { foreignKeyName: "advisor_messages_conversation_id_fkey"; columns: ["conversation_id"]; isOneToOne: false; referencedRelation: "advisor_conversations"; referencedColumns: ["id"] },
   ];
 },"advisor_actions": {
-  Row: { amount: number | null; conversation_id: string | null; created_at: string; currency: string | null; decided_at: string | null; error: string | null; expires_at: string; id: string; kind: string; organization_id: string; payload: Json; result: Json | null; sku_id: string | null; status: string; summary: string; user_id: string };
-  Insert: { amount?: number | null; conversation_id?: string | null; created_at?: string; currency?: string | null; decided_at?: string | null; error?: string | null; expires_at: string; id?: string; kind: string; organization_id: string; payload: Json; result?: Json | null; sku_id?: string | null; status?: string; summary: string; user_id?: string };
-  Update: { amount?: number | null; conversation_id?: string | null; created_at?: string; currency?: string | null; decided_at?: string | null; error?: string | null; expires_at?: string; id?: string; kind?: string; organization_id?: string; payload?: Json; result?: Json | null; sku_id?: string | null; status?: string; summary?: string; user_id?: string };
+  Row: { amount: number | null; claimed_at: string | null; conversation_id: string | null; created_at: string; currency: string | null; decided_at: string | null; error: string | null; expires_at: string; id: string; kind: string; organization_id: string; payload: Json; result: Json | null; sku_id: string | null; status: string; summary: string; user_id: string };
+  Insert: { amount?: number | null; claimed_at?: string | null; conversation_id?: string | null; created_at?: string; currency?: string | null; decided_at?: string | null; error?: string | null; expires_at: string; id?: string; kind: string; organization_id: string; payload: Json; result?: Json | null; sku_id?: string | null; status?: string; summary: string; user_id?: string };
+  Update: { amount?: number | null; claimed_at?: string | null; conversation_id?: string | null; created_at?: string; currency?: string | null; decided_at?: string | null; error?: string | null; expires_at?: string; id?: string; kind?: string; organization_id?: string; payload?: Json; result?: Json | null; sku_id?: string | null; status?: string; summary?: string; user_id?: string };
   Relationships: [
     { foreignKeyName: "advisor_actions_conversation_id_fkey"; columns: ["conversation_id"]; isOneToOne: false; referencedRelation: "advisor_conversations"; referencedColumns: ["id"] },
   ];
@@ -1496,7 +1512,31 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "sourcing_close_full_collection":
+            "sourcing_reserve_host_slot":
+{ Args: { "p_host": string,"p_min_interval_ms": number,"p_max_wait_ms": number }; Returns: number
+                           },
+"sourcing_prepare_catalog_import":
+{ Args: { "p_organization_id": string,"p_supplier_id": string | null,"p_supplier_name": string | null,"p_source_type": string,"p_currency": string,"p_tax_type": string,"p_country": string | null,"p_feed_format": string,"p_field_mapping": Json,"p_options": Json }; Returns: { "supplier_id": string,"supplier_name": string,"source_id": string,"feed_id": string,"supplier_created": boolean }[]
+                           },
+"ai_reserve_usage":
+{ Args: { "p_organization_id": string,"p_user_id": string,"p_kind": string,"p_user_limit": number | null,"p_user_window_seconds": number | null,"p_org_limit": number | null,"p_org_window_seconds": number | null,"p_org_kinds": string[],"p_org_token_limit"?: number | null,"p_burst_limit"?: number | null,"p_burst_window_seconds"?: number | null }; Returns: Json
+                           },
+"ai_record_usage_tokens":
+{ Args: { "p_event_id": string,"p_input_tokens": number,"p_output_tokens": number }; Returns: boolean
+                           },
+"advisor_execute_action":
+{ Args: { "p_action_id": string }; Returns: Json
+                           },
+"advisor_recover_stuck_actions":
+{ Args: { "p_older_than"?: string,"p_action_id"?: string | null }; Returns: number
+                           },
+"advisor_purge_expired":
+{ Args: { "p_now"?: string }; Returns: Json
+                           },
+"advisor_purge_ebay_account":
+{ Args: { "p_username": string }; Returns: Json
+                           },
+"sourcing_close_full_collection":
 { Args: { "p_source_id": string,"p_started_at": string }; Returns: { "seen": number,"missed": number,"expired": number }[]
                            },
 "accept_invitation":

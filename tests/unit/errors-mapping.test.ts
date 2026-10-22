@@ -85,7 +85,8 @@ describe("fromPostgrestError", () => {
     }
     expect(toUserMessage(new PostgrestError('relation "secret_table" x'))).toContain("Une erreur inattendue");
     expect(toUserMessage({ code: "23505", message: 'duplicate key value violates unique constraint "skus_org_code_uidx"', details: null })).toBe("Cet enregistrement existe déjà (doublon).");
-    expect(toUserMessage(new Error("Erreur métier lisible"))).toBe("Erreur métier lisible");
+    // W-19 : une Error ordinaire n'affiche plus son texte (seules les AppError le font).
+    expect(toUserMessage(new Error("Erreur technique brute"))).toMatch(/^Une erreur inattendue s'est produite\..*réf\. [0-9A-F]{8}/);
   });
 });
 

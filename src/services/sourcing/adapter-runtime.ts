@@ -110,17 +110,51 @@ export function hostOf(url: string | null | undefined): string | null {
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Réservation PARTAGÉE du prochain créneau d'un hôte (base de données : entre utilisateurs,
+ * organisations et instances) : renvoie l'attente en ms, ou -1 si elle dépasse `maxWaitMs`.
+ */
+export type HostSlotReserver = (host: string, minIntervalMs: number, maxWaitMs: number) => Promise<number>;
+
+/** L'hôte a été sollicité trop récemment (créneau partagé indisponible dans le délai accepté). */
+export class HostBusyError extends Error {
+  constructor(host: string, delayMs: number) {
+    super(`Hôte ${host} sollicité très récemment : délai de politesse de ${Math.ceil(delayMs / 1000)} s entre deux requêtes (robots.txt / MON STOCK). Réessayez dans quelques secondes.`);
+    this.name = "HostBusyError";
+  }
+}
+
+/**
  * Planificateur par hôte : au plus une requête en vol par hôte et un délai minimal entre deux
- * requêtes vers le même hôte, quel que soit le nombre de sources interrogées en parallèle.
+ * requêtes vers le même hôte, quel que soit le nombre de sources interrogées en parallèle. Le
+ * délai d'un hôte peut être relevé (Crawl-delay de robots.txt, I-16) ; avec un `reserve`, le
+ * créneau est en plus réservé en base, donc partagé par toutes les instances.
  */
 export class HostScheduler {
   private readonly chains = new Map<string, Promise<void>>();
   private readonly lastAt = new Map<string, number>();
+  private readonly hostDelay = new Map<string, number>();
+  private readonly sharedHosts = new Set<string>();
   constructor(
     private readonly minDelayMs: number,
     private readonly sleep: (ms: number) => Promise<void> = defaultSleep,
     private readonly clock: () => number = () => Date.now(),
+    private readonly shared: { reserve?: HostSlotReserver; maxWaitMs?: number } = {},
   ) {}
+
+  /**
+   * Politique d'un hôte : délai propre (ex. Crawl-delay, jamais inférieur au délai minimal) et
+   * réservation partagée du créneau (sites publics ; pas les API officielles, limitées autrement).
+   */
+  setHostPolicy(host: string, policy: { delayMs?: number | null; shared?: boolean }): void {
+    const h = host.toLowerCase();
+    const d = policy.delayMs;
+    if (d !== null && d !== undefined && Number.isFinite(d) && d > 0) this.hostDelay.set(h, Math.max(this.hostDelay.get(h) ?? 0, d));
+    if (policy.shared) this.sharedHosts.add(h);
+  }
+
+  delayFor(host: string): number {
+    return Math.max(this.minDelayMs, this.hostDelay.get(host.toLowerCase()) ?? 0);
+  }
 
   async run<T>(host: string, fn: () => Promise<T>): Promise<T> {
     const previous = this.chains.get(host) ?? Promise.resolve();
@@ -131,9 +165,16 @@ export class HostScheduler {
     this.chains.set(host, previous.then(() => gate));
     await previous;
     try {
+      const delay = this.delayFor(host);
       const last = this.lastAt.get(host);
       if (last !== undefined) {
-        const wait = this.minDelayMs - (this.clock() - last);
+        const wait = delay - (this.clock() - last);
+        if (wait > 0) await this.sleep(wait);
+      }
+      if (this.shared.reserve && this.sharedHosts.has(host.toLowerCase())) {
+        const maxWait = this.shared.maxWaitMs ?? delay;
+        const wait = await this.shared.reserve(host, delay, maxWait);
+        if (wait < 0) throw new HostBusyError(host, delay);
         if (wait > 0) await this.sleep(wait);
       }
       this.lastAt.set(host, this.clock());

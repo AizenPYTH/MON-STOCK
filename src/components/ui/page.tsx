@@ -1,56 +1,29 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "@/components/ui/section-header";
 
-export function PageHeader({ title, description, actions, eyebrow }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode }) {
+/*
+ * Motifs de page partagés. Les composants autrefois définis ici vivent maintenant dans leurs
+ * propres fichiers ; ils restent réexportés pour ne casser aucun import existant.
+ */
+export { EmptyState } from "@/components/ui/empty-state";
+export { Callout, Alert } from "@/components/ui/callout";
+export { Stat, StatTile } from "@/components/ui/stat-tile";
+export { Skeleton, SkeletonText, LoadingRegion, PageHeaderSkeleton, TableSkeleton, StatTileSkeleton } from "@/components/ui/skeleton";
+export { SectionHeader } from "@/components/ui/section-header";
+export { ErrorState } from "@/components/ui/error-state";
+
+/** En-tête d'une page posée sur le papier (sans scène nuit) : sur-titre mono, titre h1, description, actions. */
+export function PageHeader({ title, description, actions, eyebrow, className }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode; className?: string }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className={cn("mb-6 flex flex-wrap items-end justify-between gap-4", className)}>
       <div className="min-w-0">
-        {eyebrow ? <div className="ms-mono mb-1 text-[11px] leading-[14px] text-muted">{eyebrow}</div> : null}
-        <h1 className="text-[24px] font-extrabold leading-[30px] tracking-[-0.5px] text-foreground sm:text-[28px] sm:leading-[34px]">{title}</h1>
-        {description ? <p className="mt-1 max-w-2xl text-sm text-muted">{description}</p> : null}
+        {eyebrow ? <div className="ms-mono mb-1.5 text-[11px] leading-[14px] text-ink-3">{eyebrow}</div> : null}
+        <h1 className="text-[24px] font-extrabold leading-[30px] tracking-[-0.5px] text-foreground sm:text-[28px] sm:leading-[34px] sm:tracking-[-0.6px]">{title}</h1>
+        {description ? <p className="mt-1.5 max-w-2xl text-sm text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-    </div>
-  );
-}
-
-export function EmptyState({ title, description, action, icon, className }: { title: ReactNode; description?: ReactNode; action?: ReactNode; icon?: ReactNode; className?: string }) {
-  return (
-    <div className={cn("flex flex-col items-center justify-center rounded-2xl border border-dashed border-border-strong bg-surface px-6 py-14 text-center", className)}>
-      {icon ? <div className="mb-3 text-muted">{icon}</div> : null}
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      {description ? <p className="mt-1 max-w-md text-sm text-muted">{description}</p> : null}
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
-
-export function Callout({ tone = "info", title, children, action, className }: { tone?: "info" | "warning" | "danger" | "success" | "neutral"; title?: ReactNode; children?: ReactNode; action?: ReactNode; className?: string }) {
-  const tones = {
-    info: "border-[#cfdcf3] bg-info-soft text-info",
-    warning: "border-[#f1dcb8] bg-warning-soft text-warning",
-    danger: "border-danger-line bg-danger-soft text-danger",
-    success: "border-[#bfe9d3] bg-success-soft text-success",
-    neutral: "border-border bg-surface-muted text-muted-strong",
-  }[tone];
-  return (
-    <div className={cn("flex flex-wrap items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold", tones, className)}>
-      <div className="min-w-0">
-        {title ? <div className="font-bold">{title}</div> : null}
-        {children ? <div className={title ? "mt-0.5" : ""}>{children}</div> : null}
-      </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
-    </div>
-  );
-}
-
-export function Stat({ label, value, hint, tone, className }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: "success" | "warning" | "danger" | "neutral"; className?: string }) {
-  const toneClass = tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : tone === "success" ? "text-success" : "text-foreground";
-  return (
-    <div className={cn("rounded-2xl border border-border bg-surface px-5 py-4", className)}>
-      <div className="ms-mono text-[10px] leading-[13px] text-ink-3">{label}</div>
-      <div className={cn("mt-1.5 text-2xl font-semibold tracking-tight tnum", toneClass)}>{value}</div>
-      {hint ? <div className="mt-1 text-xs text-muted">{hint}</div> : null}
     </div>
   );
 }
@@ -58,15 +31,7 @@ export function Stat({ label, value, hint, tone, className }: { label: ReactNode
 export function Section({ title, description, actions, children, className }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={cn("space-y-3", className)}>
-      {title ? (
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">{title}</h2>
-            {description ? <p className="text-sm text-muted">{description}</p> : null}
-          </div>
-          {actions}
-        </div>
-      ) : null}
+      {title ? <SectionHeader title={title} description={description} actions={actions} /> : null}
       {children}
     </section>
   );
@@ -74,67 +39,14 @@ export function Section({ title, description, actions, children, className }: { 
 
 export function DescriptionList({ items, className }: { items: Array<{ label: ReactNode; value: ReactNode }>; className?: string }) {
   return (
-    <dl className={cn("grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2", className)}>
+    <dl className={cn("grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2", className)}>
       {items.map((it, i) => (
         <div key={i} className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted">{it.label}</dt>
-          <dd className="mt-0.5 text-sm text-foreground break-words">{it.value}</dd>
+          <dt className="ms-mono text-[10.5px] leading-[14px] text-ink-3">{it.label}</dt>
+          <dd className="mt-1 break-words text-sm font-semibold text-foreground">{it.value}</dd>
         </div>
       ))}
     </dl>
-  );
-}
-
-export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden="true" className={cn("animate-pulse rounded-md bg-surface-muted", className)} />;
-}
-
-/** Conteneur de chargement annoncé aux lecteurs d'écran (utilisé par les `loading.tsx`). */
-export function LoadingRegion({ label = "Chargement…", children, className }: { label?: string; children: ReactNode; className?: string }) {
-  return (
-    <div role="status" aria-busy="true" aria-live="polite" className={cn("space-y-4", className)}>
-      <span className="sr-only">{label}</span>
-      {children}
-    </div>
-  );
-}
-
-/** Squelette d'en-tête de page (titre + description + actions). */
-export function PageHeaderSkeleton({ actions = 0 }: { actions?: number }) {
-  return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div className="space-y-2">
-        <Skeleton className="h-7 w-56 max-w-full" />
-        <Skeleton className="h-4 w-80 max-w-full" />
-      </div>
-      {actions > 0 ? (
-        <div className="flex gap-2">
-          {Array.from({ length: actions }, (_, i) => (
-            <Skeleton key={i} className="h-9 w-28" />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** Squelette de tableau dense (lignes fantômes). */
-export function TableSkeleton({ rows = 8 }: { rows?: number }) {
-  return (
-    <div aria-hidden="true" className="overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="border-b border-border bg-surface-muted/60 px-4 py-3">
-        <Skeleton className="h-3 w-1/3" />
-      </div>
-      <div className="divide-y divide-border">
-        {Array.from({ length: rows }, (_, i) => (
-          <div key={i} className="flex items-center gap-4 px-4 py-3">
-            <Skeleton className="h-4 flex-1" />
-            <Skeleton className="hidden h-4 w-24 sm:block" />
-            <Skeleton className="h-4 w-16" />
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

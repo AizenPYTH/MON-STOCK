@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import type { Database } from "@/db/database.types";
 import { publicEnv } from "@/lib/env";
 import { isWebPreview, previewClient } from "@/lib/supabase/preview";
+import { sessionCookieOptions, shouldUseSecureCookies } from "@/lib/supabase/cookie-options";
 
 /**
  * Client Supabase côté serveur (Server Components, Server Actions, Route Handlers).
@@ -16,6 +17,8 @@ export async function createServerSupabaseClient() {
   if (isWebPreview()) return (await previewClient()) as unknown as SsrClient;
   const env = publicEnv();
   return createServerClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    // Mêmes attributs que le proxy (W-05) : httpOnly, secure en HTTPS, sameSite lax.
+    cookieOptions: sessionCookieOptions(shouldUseSecureCookies(new URL(env.NEXT_PUBLIC_APP_URL).protocol)),
     cookies: {
       getAll() {
         return cookieStore.getAll();

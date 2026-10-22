@@ -259,8 +259,9 @@ d("Matrice d'isolation multi-tenant (générée)", () => {
       const cases: Array<[string, unknown[], RegExp]> = [
         ["select public.apply_inventory_movement($1, $2, 'receipt', 1)", [b.orgId, b.ids["skus"]], /FORBIDDEN/],
         ["select public.apply_inventory_movement($1, $2, 'receipt', 1)", [a.orgId, b.ids["skus"]], /SKU_NOT_FOUND/],
-        ["select public.adjust_reserved_quantity($1, $2, 1)", [b.orgId, b.ids["skus"]], /FORBIDDEN/],
-        ["select public.adjust_reserved_quantity($1, $2, 1)", [a.orgId, b.ids["skus"]], /SKU_NOT_FOUND/],
+        // adjust_reserved_quantity : EXECUTE retiré à authenticated (20261023000300, Q-17/D-17).
+        ["select public.adjust_reserved_quantity($1, $2, 1)", [b.orgId, b.ids["skus"]], /FORBIDDEN|permission denied for function adjust_reserved_quantity/],
+        ["select public.adjust_reserved_quantity($1, $2, 1)", [a.orgId, b.ids["skus"]], /SKU_NOT_FOUND|permission denied for function adjust_reserved_quantity/],
         ["select public.create_sku($1, '{}'::jsonb, '{\"code\":\"X\"}'::jsonb, null, '{\"name\":\"X\"}'::jsonb, 0)", [b.orgId], /FORBIDDEN/],
         ["select public.create_sku($1, '{}'::jsonb, '{\"code\":\"X\"}'::jsonb, $2, null, 0)", [a.orgId, b.ids["products"]], /PRODUCT_NOT_FOUND/],
         ["select public.create_sku($1, '{}'::jsonb, jsonb_build_object('code', 'X', 'default_supplier_id', $2::text), null, '{\"name\":\"X\"}'::jsonb, 0)", [a.orgId, b.ids["suppliers"]], /CROSS_ORGANIZATION_REFERENCE/],

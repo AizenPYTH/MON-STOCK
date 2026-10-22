@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_test";
-const { relayAdvisorChat, relayAdvisorSpeech } = await import("@/features/advisor/relay");
+const { relayAdvisorChat, relayAdvisorSpeech, readBodyBounded, BODY_LIMIT_BYTES } = await import("@/features/advisor/relay");
 const { AppError } = await import("@/lib/errors");
 
 type Ctx = Awaited<ReturnType<Parameters<typeof relayAdvisorChat>[1]["getContext"]>>;
@@ -110,6 +110,8 @@ describe("relayAdvisorSpeech (web → Edge /advisor/speech)", () => {
     expect(url).toBe(`https://project.supabase.co/functions/v1/api/advisor/speech?messageId=${MSG}&voice=cedar`);
     expect(new Headers(init.headers).get("authorization")).toBe("Bearer jwt");
     expect(new Headers(init.headers).get("x-organization-id")).toBe("org-1");
+    // W-27 : l'audio n'est jamais conservé dans le cache du navigateur.
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("identifiant invalide : 400 sans appeler l'Edge ; voix inconnue ignorée", async () => {
@@ -126,5 +128,32 @@ describe("relayAdvisorSpeech (web → Edge /advisor/speech)", () => {
     const res = await relayAdvisorSpeech(speechRequest(`messageId=${MSG}`), { getContext: async () => ctx, fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ ok: false, error: { code: "RATE_LIMITED", message: "Limite atteinte." } });
+  });
+});
+
+describe("W-27 : corps de la question lu de façon bornée", () => {
+  it("annonce trop longue (Content-Length) : 413 sans lecture ni appel à l'Edge", async () => {
+    const fetchImpl = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ pull: (c) => c.close() });
+    const req = new Request(`${ORIGIN}/api/advisor/chat`, { method: "POST", headers: { "Content-Type": "application/json", Origin: ORIGIN, "Sec-Fetch-Site": "same-origin", "Content-Length": String(BODY_LIMIT_BYTES + 1) }, body, duplex: "half" } as RequestInit);
+    const res = await relayAdvisorChat(req, deps(fetchImpl as unknown as typeof fetch));
+    expect(res.status).toBe(413);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("flux sans longueur annoncée : arrêt dès que la borne (en OCTETS) est dépassée", async () => {
+    const enc = new TextEncoder();
+    let chunks = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        chunks++;
+        c.enqueue(enc.encode("é".repeat(1000))); // 2 000 octets, 1 000 caractères
+        if (chunks > 50) c.close();
+      },
+    });
+    const req = new Request(`${ORIGIN}/x`, { method: "POST", body, duplex: "half" } as RequestInit);
+    expect(await readBodyBounded(req, BODY_LIMIT_BYTES)).toBeNull();
+    expect(chunks).toBeLessThanOrEqual(Math.ceil(BODY_LIMIT_BYTES / 2000) + 2);
+    expect(await readBodyBounded(new Request(`${ORIGIN}/x`, { method: "POST", body: JSON.stringify({ message: "Bilan ?" }) }), BODY_LIMIT_BYTES)).toBe('{"message":"Bilan ?"}');
   });
 });

@@ -3,7 +3,9 @@ import type { OrgContext } from "@/features/auth/dal";
 import { speakableText } from "@/domain/ai/speakable";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { aiError, logApiError, openAISdk } from "./llm";
+import type { AdminSupabaseClient } from "@/lib/supabase/admin";
+import { aiError, logApiError, openAISdk, safeLogText } from "./llm";
+import { AI_LIMITS, reserveAiUsage } from "./quota";
 
 const log = createLogger("AI_SPEECH");
 
@@ -12,11 +14,16 @@ const log = createLogger("AI_SPEECH");
  * temps réel de ChatGPT, qui est un autre service).
  *
  * - Seules les RÉPONSES DU CONSEILLER déjà reçues sont lues : la route reçoit l'identifiant du
- *   message, relu sous la session de l'utilisateur (RLS : ses conversations uniquement). Aucun
- *   texte arbitraire n'est synthétisé ; chaque réponse a déjà été décomptée du quota IA.
+ *   message, relu sous la session de l'utilisateur (RLS : ses conversations uniquement). Les
+ *   réponses (rôle « assistant ») ne sont écrites que par le serveur : aucun texte arbitraire
+ *   n'est synthétisé (audit S-10).
+ * - CHAQUE lecture vocale est décomptée en base (quota « speech », fonction SQL atomique, partagée
+ *   par toutes les instances, fail-closed) : 60 par heure et par utilisateur, plafond quotidien par
+ *   organisation (S-10, S-23). Plus de limite en mémoire d'instance.
  * - L'application garde l'audio en cache local : une réponse n'est synthétisée qu'une fois.
- * - Limite de débit par utilisateur (par instance du serveur) contre les appels répétés.
- * - Échantillon fixe (comparaison des voix) : décompté du quota IA.
+ * - Échantillon fixe (comparaison des voix) : décompté du quota IA (questions).
+ * - Aucun audio n'est conservé côté serveur : il est relayé en flux ; durée de cache HTTP privée
+ *   bornée (ADVISOR_AUDIO_MAX_AGE_SECONDS, défaut 1 jour).
  */
 
 export const TTS_DEFAULT_MODEL = "gpt-4o-mini-tts";
@@ -54,23 +61,20 @@ export function ttsVoice(requested?: string | null, env: Record<string, string |
 }
 
 // ---------------------------------------------------------------------------
-// Limite de débit (mémoire de l'instance ; le cache de l'application évite les répétitions)
+// Limites (en base, voir quota.ts) et cache de l'audio
 // ---------------------------------------------------------------------------
 
-export const TTS_RATE = { perUserPerHour: 60 } as const;
-const recent = new Map<string, number[]>();
+export const TTS_RATE = { perUserPerHour: AI_LIMITS.speechPerUserPerHour, perOrganizationPerDay: AI_LIMITS.speechPerOrgPerDay } as const;
 
-export function checkSpeechRate(userId: string, now = Date.now()): void {
-  const hourAgo = now - 3_600_000;
-  const list = (recent.get(userId) ?? []).filter((t) => t > hourAgo);
-  if (list.length >= TTS_RATE.perUserPerHour) throw new AppError("RATE_LIMITED", "Trop de lectures vocales demandées : réessayez dans quelques minutes.");
-  list.push(now);
-  recent.set(userId, list);
-  if (recent.size > 5_000) recent.clear();
+/** Durée du cache HTTP privé de l'audio (s) : ADVISOR_AUDIO_MAX_AGE_SECONDS, 0 à 7 jours, défaut 1 jour. */
+export function audioCacheSeconds(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.ADVISOR_AUDIO_MAX_AGE_SECONDS);
+  return Number.isInteger(n) && n >= 0 && n <= 604_800 ? n : 86_400;
 }
 
-export function resetSpeechRate() {
-  recent.clear();
+export function audioCacheControl(env: Record<string, string | undefined> = process.env): string {
+  const s = audioCacheSeconds(env);
+  return s === 0 ? "private, no-store" : `private, max-age=${s}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,8 +102,8 @@ async function synthesize(input: string, voice: TtsVoice, deps: { sdk?: SpeechSd
   } catch (e) {
     // jamais masqué : configuration (clé, modèle), quota ou panne sont journalisés (sans secret)
     logApiError(e, model, false);
-    if (e instanceof AppError) log.warn("synthèse vocale indisponible", { what, code: e.code, message: e.message });
-    else log.warn("synthèse vocale en échec", { what, voice, model, error: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+    if (e instanceof AppError) log.warn("synthèse vocale indisponible", { what, code: e.code });
+    else log.warn("synthèse vocale en échec", { what, voice, model, error: e instanceof Error ? safeLogText(e.message) : "erreur" });
     throw aiError(e);
   }
 }
@@ -107,14 +111,15 @@ async function synthesize(input: string, voice: TtsVoice, deps: { sdk?: SpeechSd
 export async function synthesizeAdvisorMessage(
   ctx: Pick<OrgContext, "supabase" | "organization" | "user">,
   messageId: string,
-  opts: { voice?: string | null; sdk?: SpeechSdkLike; env?: Record<string, string | undefined>; now?: number } = {},
+  opts: { voice?: string | null; sdk?: SpeechSdkLike; env?: Record<string, string | undefined>; admin?: AdminSupabaseClient } = {},
 ): Promise<SpeechAudio> {
   const { data, error } = await ctx.supabase.from("advisor_messages").select("content, role").eq("id", messageId).eq("organization_id", ctx.organization.id).eq("user_id", ctx.user.id).maybeSingle();
   if (error) throw new AppError("INTERNAL", "Réponse illisible. Réessayez.");
   if (!data || data.role !== "assistant") throw new AppError("NOT_FOUND", "Réponse introuvable.");
   const input = speakableText(data.content, TTS_MAX_CHARS);
   if (!input) throw new AppError("VALIDATION", "Rien à lire pour cette réponse.");
-  checkSpeechRate(ctx.user.id, opts.now);
+  // Décompté en base AVANT l'appel au fournisseur (refus si le quota ne peut pas être vérifié).
+  await reserveAiUsage(ctx, "speech", opts.admin);
   return synthesize(input, ttsVoice(opts.voice, opts.env), opts, "message");
 }
 

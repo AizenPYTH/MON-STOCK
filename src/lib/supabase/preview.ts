@@ -1,4 +1,5 @@
 import "server-only";
+import { isWebPreviewEnv } from "@/lib/site";
 
 /**
  * APERÇU VISUEL du site (contrôle des écrans sans aucun accès à Supabase) : base en mémoire de
@@ -7,12 +8,7 @@ import "server-only";
  * impossible sur un vrai déploiement (l'URL y désigne le vrai projet).
  */
 export function isWebPreview(): boolean {
-  if (process.env.MONSTOCK_WEB_PREVIEW !== "1") return false;
-  try {
-    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host === "preview.invalid";
-  } catch {
-    return false;
-  }
+  return isWebPreviewEnv();
 }
 
 type PreviewModule = typeof import("../../../apps/mobile/preview/demo-db");

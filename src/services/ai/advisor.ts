@@ -3,8 +3,12 @@ import type { OrgContext } from "@/features/auth/dal";
 import type { AdvisorCardDTO, AdvisorChatRequest, AdvisorReplyDTO, AdvisorStreamEvent } from "@/features/mobile-api/contract";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { aiError, llmClient, type LlmClient, type LlmMessage, type LlmTool } from "./llm";
+import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
+import { aiError, budgetedCallOptions, llmClient, type LlmClient, type LlmMessage, type LlmTool } from "./llm";
 import { ADVISOR_FUTURE_CAPABILITIES, ADVISOR_TOOL_DEFINITIONS, ADVISOR_TOOLS, runAdvisorTool, type AdvisorToolContext } from "./advisor-tools";
+import { turnBudget } from "./deadline";
+import { buyerPseudonymizer, cardsForStorage, UNTRUSTED_RULE } from "./privacy";
+import { aiMeter, type AiMeter } from "./quota";
 
 const log = createLogger("AI_ADVISOR");
 
@@ -21,6 +25,13 @@ const log = createLogger("AI_ADVISOR");
  * commandes en direct puis détail d'une commande). Le coût reste borné par la date limite (100 s),
  * le quota de questions et le cache de 60 s des lectures eBay ; la plupart des questions n'utilisent
  * qu'1 ou 2 étapes.
+ *
+ * Échéance (audit S-11, I-14) : un `AbortSignal` global (100 s ou déconnexion du client) est propagé
+ * à chaque appel au modèle et aux lectures des outils ; chaque appel a un délai = min(55 s, temps
+ * restant) et n'est relancé que si le budget le permet. À l'échéance, la réponse partielle est
+ * enregistrée proprement (marquée « interrompue »).
+ * Coût (S-09, I-14) : CHAQUE appel au modèle est réservé dans le quota (fonction SQL atomique,
+ * fail-closed) et ses jetons sont enregistrés.
  */
 
 export const ADVISOR_LIMITS = { historyMessages: 12, historyChars: 12_000, maxSteps: 8, maxTokens: 2500, deadlineMs: 100_000, maxReadCards: 3, maxCards: 8 } as const;
@@ -73,8 +84,10 @@ export const ADVISOR_SYSTEM_STABLE = [
   "- Lecture EN DIRECT chez eBay (outils ebay_*) pour l'état actuel ou ce que MON STOCK ne stocke pas : ebay_order_details (une commande : frais, taxes, remises, remboursements, annulation, suivis, livraison prévue, ville/pays de l'acheteur), ebay_orders_live (commandes récentes, même non synchronisées, à expédier), ebay_listing_details (une annonce : observateurs, offres reçues, quantités, dates, état), ebay_sold_unsold (vendus et invendus ≤ 60 j), ebay_feedback (évaluations, négatives), ebay_messages (en-têtes, non lus), ebay_account_overview (limites de vente, politiques, programmes, réputation).",
   "- Analyse complète (autorisation eBay supplémentaire) : ebay_finances (frais par type, remboursements, litiges, versements, solde), ebay_traffic (impressions, vues, clic, conversion), ebay_seller_standards (niveau vendeur), ebay_promotions (Promoted Listings, promotions). Si l'outil répond que l'analyse complète manque, dis-le clairement : un administrateur doit « Autoriser l'analyse complète » dans Réglages → Intégrations. Ne remplace jamais ces données par une estimation.",
   "- Chaque résultat eBay en direct porte readAtParis : cite la source et l'heure (« d'après eBay, lu à 14 h 05 »). Un résultat available=false : explique la raison donnée (non connecté, autorisation expirée, refus d'eBay) sans rien compléter.",
-  "- Messages eBay : ebay_messages donne seulement les en-têtes. N'appelle ebay_message (texte d'un message) que si l'utilisateur demande explicitement le contenu d'un message dans sa question.",
-  "- Données de l'acheteur (pseudo, nom, ville, code postal, pays) : ne cite que ce qui répond à la question.",
+  "- Messages eBay : ebay_messages donne seulement les en-têtes. N'appelle ebay_message (texte d'un message) que si l'utilisateur demande explicitement le contenu d'un message dans sa question actuelle, en citant mot pour mot sa demande (user_request).",
+  "- Acheteurs : ils sont désignés par un alias stable (« Acheteur XXXX ») et leur pays ; leur identité, leur ville et leur code postal ne te sont pas transmis (l'utilisateur les voit dans les cartes). Utilise l'alias, ne devine jamais une identité.",
+  "- Certains outils (finances, messages, données des acheteurs eBay) sont réservés aux rôles rédacteur et administrateur : si l'outil répond « forbidden », explique-le simplement.",
+  UNTRUSTED_RULE,
   "",
   "Règles absolues :",
   "- Chaque chiffre (montant, quantité, date, pourcentage) doit venir d'un résultat d'outil de cette conversation. N'invente, n'extrapole ni ne complète jamais une donnée absente : dis qu'elle manque.",
@@ -89,7 +102,7 @@ export const ADVISOR_SYSTEM_STABLE = [
 
 export function advisorSystemVolatile(org: { name: string; currency: string; role: string }, today: string, voice: boolean): string {
   return [
-    `Organisation : « ${org.name} » ; devise principale ${org.currency} ; rôle de l'utilisateur : ${org.role}${org.role === "viewer" ? " (lecture seule : ne prépare aucune modification)" : ""}.`,
+    `Organisation : « ${org.name} » ; devise principale ${org.currency} ; rôle de l'utilisateur : ${org.role}${org.role === "viewer" ? " (lecture seule : ne prépare aucune modification ; finances, messages et données des acheteurs eBay ne lui sont pas accessibles)" : ""}.`,
     `Nous sommes le ${today} (heure de Paris).`,
     voice
       ? "La question a été DICTÉE et ta réponse sera LUE À VOIX HAUTE : 2 à 4 phrases courtes, chiffres arrondis à l'unité quand c'est sans ambiguïté, pas de liste, pas de symboles ni d'abréviations ; renvoie au détail affiché à l'écran."
@@ -107,19 +120,29 @@ export interface AdvisorStore {
   addMessage(conversationId: string, m: { role: "user" | "assistant"; content: string; cards?: AdvisorCardDTO[]; sources?: string[]; interrupted?: boolean }): Promise<string | null>;
 }
 
-export function supabaseAdvisorStore(ctx: OrgContext): AdvisorStore {
+/**
+ * Questions de l'utilisateur : écrites sous SA session (RLS : role = 'user' seulement). Réponses du
+ * conseiller : écrites par le serveur (service_role, audit S-10) dans une conversation dont la
+ * propriété a été vérifiée sous la session de l'utilisateur (openConversation). Les cartes reçues
+ * ici sont déjà la version ENREGISTRABLE (sans données personnelles, cardsForStorage).
+ */
+export function supabaseAdvisorStore(ctx: OrgContext, admin?: AdminSupabaseClient): AdvisorStore {
   const org = ctx.organization.id;
+  const owned = new Set<string>();
+  const server = () => (admin ??= createAdminSupabaseClient());
   return {
     async openConversation(conversationId, firstMessage) {
       if (conversationId) {
         const { data, error } = await ctx.supabase.from("advisor_conversations").select("id").eq("id", conversationId).eq("organization_id", org).eq("user_id", ctx.user.id).maybeSingle();
         if (error) throw new AppError("INTERNAL", "Conversation illisible. Réessayez.");
         if (!data) throw new AppError("NOT_FOUND", "Conversation introuvable : démarrez-en une nouvelle.");
+        owned.add(data.id);
         return data.id;
       }
       const title = firstMessage.replace(/\s+/g, " ").trim().slice(0, 80) || "Nouvelle conversation";
       const { data, error } = await ctx.supabase.from("advisor_conversations").insert({ organization_id: org, user_id: ctx.user.id, title }).select("id").single();
       if (error || !data) throw new AppError("INTERNAL", "Impossible de créer la conversation. Réessayez.");
+      owned.add(data.id);
       return data.id;
     },
     async history(conversationId) {
@@ -128,13 +151,13 @@ export function supabaseAdvisorStore(ctx: OrgContext): AdvisorStore {
       return (data ?? []).reverse().map((m) => ({ role: m.role as "user" | "assistant" | "notice", content: m.content }));
     },
     async addMessage(conversationId, m) {
-      const { data, error } = await ctx.supabase
-        .from("advisor_messages")
-        .insert({ organization_id: org, conversation_id: conversationId, user_id: ctx.user.id, role: m.role, content: m.content.slice(0, 12_000), cards: (m.cards ?? []).slice(0, 12) as never, sources: (m.sources ?? []).slice(0, 20) as never, interrupted: m.interrupted ?? false })
-        .select("id")
-        .single();
+      if (!owned.has(conversationId)) throw new AppError("NOT_FOUND", "Conversation introuvable : démarrez-en une nouvelle.");
+      const row = { organization_id: org, conversation_id: conversationId, user_id: ctx.user.id, role: m.role, content: m.content.slice(0, 12_000), cards: (m.role === "user" ? [] : (m.cards ?? []).slice(0, 12)) as never, sources: (m.sources ?? []).slice(0, 20) as never, interrupted: m.interrupted ?? false };
+      const client = m.role === "user" ? ctx.supabase : server();
+      const { data, error } = await client.from("advisor_messages").insert(row).select("id").single();
       if (error) {
-        log.warn("message du conseiller non enregistré", { orgId: org, error: error.message });
+        // Jamais le contenu ni le message d'erreur complet (données personnelles possibles) : le code seul.
+        log.warn("message du conseiller non enregistré", { orgId: org, role: m.role, code: error.code ?? null });
         return null;
       }
       await ctx.supabase.from("advisor_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conversationId);
@@ -177,109 +200,152 @@ export interface AdvisorDeps {
   runTool?: typeof runAdvisorTool;
   now?: Date;
   signal?: AbortSignal;
+  /** quota par appel au modèle (défaut : fonction SQL atomique) */
+  meter?: AiMeter;
+  /** échéance du tour en ms (défaut : ADVISOR_LIMITS.deadlineMs) */
+  deadlineMs?: number;
 }
 
 export async function runAdvisorTurn(ctx: OrgContext, req: AdvisorChatRequest, emit: (e: AdvisorStreamEvent) => void, deps: AdvisorDeps = {}): Promise<AdvisorReplyDTO> {
   const client = deps.client ?? llmClient();
   const store = deps.store ?? supabaseAdvisorStore(ctx);
   const runTool = deps.runTool ?? runAdvisorTool;
+  const meter = deps.meter ?? aiMeter(ctx);
   const now = deps.now ?? new Date();
-  const started = Date.now();
-
-  const conversationId = await store.openConversation(req.conversationId ?? null, req.message);
-  emit({ type: "conversation", conversationId });
-  const previous = await store.history(conversationId);
-  await store.addMessage(conversationId, { role: "user", content: req.message });
-
-  const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short", timeZone: "Europe/Paris" }).format(now);
-  // Partie stable en tête (préfixe identique d'une question à l'autre → cache d'invite du fournisseur).
-  const system = `${ADVISOR_SYSTEM_STABLE}\n\n${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice))}`;
-  // Historique + question ; un tour utilisateur resté sans réponse (interruption) est fusionné.
-  const convo = historyForModel([...previous, { role: "user", content: req.message }]);
-  const toolCtx: AdvisorToolContext = { supabase: ctx.supabase, organizationId: ctx.organization.id, currency: ctx.organization.default_currency, org: ctx, conversationId, now, question: req.message };
-
-  const cards: AdvisorCardDTO[] = [];
-  let readCards = 0;
-  const sources: string[] = [];
-  let answer = "";
-  let model: string | null = null;
-  let interrupted = false;
-  let streamed = "";
+  // Échéance globale : propagée aux appels au modèle et aux lectures des outils.
+  const budget = turnBudget(deps.deadlineMs ?? ADVISOR_LIMITS.deadlineMs, deps.signal);
 
   try {
-    for (let step = 0; step < ADVISOR_LIMITS.maxSteps; step++) {
-      if (Date.now() - started > ADVISOR_LIMITS.deadlineMs) {
-        interrupted = true;
-        break;
-      }
-      streamed = "";
-      const response = await client.complete(
-        { system, tools: ADVISOR_MODEL_TOOLS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
-        {
-          signal: deps.signal,
-          onText: (delta) => {
-            streamed += delta;
-            emit({ type: "text", delta });
-          },
-        },
-      );
-      model = response.model;
-      if (response.finish === "refusal") {
-        answer = "Je ne peux pas répondre à cette demande. Reformulez-la sur votre activité (ventes, stock, commandes, expéditions).";
-        break;
-      }
-      const text = response.text.trim();
-      const calls = response.toolCalls;
-      if (response.finish !== "tool_calls" || calls.length === 0) {
-        answer = text;
-        if (response.finish === "length") interrupted = true;
-        break;
-      }
-      if (text) answer = text; // texte d'attente éventuel
-      convo.push({ role: "assistant", content: response.text, toolCalls: calls });
-      const results = await Promise.all(
-        calls.map(async (call) => {
-          const spec = ADVISOR_TOOLS[call.name];
-          emit({ type: "status", label: spec ? spec.label : call.name });
-          const { show, input } = splitShowCard(call.input);
-          const r = await runTool(toolCtx, call.name, input);
-          if (spec && !sources.includes(spec.label)) sources.push(spec.label);
-          const always = spec?.category === "prepare";
-          for (const c of r.cards) {
-            if (!always && (!show || readCards >= ADVISOR_LIMITS.maxReadCards)) continue;
-            if (cards.length >= ADVISOR_LIMITS.maxCards) break;
-            if (!always) readCards++;
-            cards.push(c);
-            emit({ type: "card", card: c });
-          }
-          if (r.isError) log.warn("outil du conseiller en erreur", { tool: call.name, error: r.content.slice(0, 200) });
-          return { role: "tool" as const, toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
-        }),
-      );
-      convo.push(...results);
-      if (step === ADVISOR_LIMITS.maxSteps - 1) interrupted = true;
-    }
-  } catch (e) {
-    if (deps.signal?.aborted) {
-      interrupted = true;
-      answer = answer || streamed;
-    } else {
-      const err = aiError(e);
-      const partial = (answer || streamed).trim();
-      await store.addMessage(conversationId, { role: "assistant", content: partial ? `${partial}\n\n(réponse interrompue : ${err.message})` : `Réponse impossible : ${err.message}`, cards, sources, interrupted: true });
-      throw err;
-    }
-  }
+    const conversationId = await store.openConversation(req.conversationId ?? null, req.message);
+    emit({ type: "conversation", conversationId });
+    const previous = await store.history(conversationId);
+    await store.addMessage(conversationId, { role: "user", content: req.message });
 
-  if (!answer.trim()) {
-    answer = interrupted ? "Je n'ai pas pu terminer l'analyse dans le temps imparti. Posez une question plus précise (période, produit)." : "Je n'ai pas de réponse à formuler. Reformulez votre question.";
-  } else if (interrupted) {
-    answer = `${answer}\n\n(réponse interrompue : demandez la suite ou précisez la question)`;
+    const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short", timeZone: "Europe/Paris" }).format(now);
+    // Partie stable en tête (préfixe identique d'une question à l'autre → cache d'invite du fournisseur).
+    const system = `${ADVISOR_SYSTEM_STABLE}\n\n${advisorSystemVolatile({ name: ctx.organization.name, currency: ctx.organization.default_currency, role: ctx.role }, today, Boolean(req.voice))}`;
+    // Historique + question ; un tour utilisateur resté sans réponse (interruption) est fusionné.
+    const convo = historyForModel([...previous, { role: "user", content: req.message }]);
+    const toolCtx: AdvisorToolContext = {
+      supabase: ctx.supabase,
+      organizationId: ctx.organization.id,
+      currency: ctx.organization.default_currency,
+      org: ctx,
+      conversationId,
+      now,
+      question: req.message,
+      // Alias des acheteurs stables pour TOUTE la conversation (clé : identifiant de conversation, jamais transmis au modèle).
+      pseudonyms: buyerPseudonymizer(conversationId),
+      signal: budget.signal,
+    };
+
+    const cards: AdvisorCardDTO[] = [];
+    let readCards = 0;
+    const sources: string[] = [];
+    let answer = "";
+    let model: string | null = null;
+    let interrupted = false;
+    let stopNote: string | null = null;
+    let streamed = "";
+
+    try {
+      for (let step = 0; step < ADVISOR_LIMITS.maxSteps; step++) {
+        const call = budgetedCallOptions(budget.deadlineAt);
+        if (!call || budget.signal.aborted) {
+          interrupted = true;
+          break;
+        }
+        // Quota : chaque appel au modèle est réservé AVANT d'être fait (refus = arrêt propre).
+        let eventId: string | null;
+        try {
+          eventId = await meter.beforeModelCall();
+        } catch (e) {
+          interrupted = true;
+          stopNote = e instanceof AppError ? e.message : "Contrôle du quota IA indisponible.";
+          break;
+        }
+        streamed = "";
+        const response = await client.complete(
+          { system, tools: ADVISOR_MODEL_TOOLS, messages: convo, maxTokens: ADVISOR_LIMITS.maxTokens, effort: "medium", cacheKey: "mon-stock-advisor" },
+          {
+            signal: budget.signal,
+            timeoutMs: call.timeoutMs,
+            maxRetries: call.maxRetries,
+            onText: (delta) => {
+              streamed += delta;
+              emit({ type: "text", delta });
+            },
+          },
+        );
+        await meter.afterModelCall(eventId, response.usage ?? null);
+        model = response.model;
+        if (response.finish === "refusal") {
+          answer = "Je ne peux pas répondre à cette demande. Reformulez-la sur votre activité (ventes, stock, commandes, expéditions).";
+          break;
+        }
+        const text = response.text.trim();
+        const calls = response.toolCalls;
+        if (response.finish !== "tool_calls" || calls.length === 0) {
+          answer = text;
+          if (response.finish === "length") interrupted = true;
+          break;
+        }
+        if (text) answer = text; // texte d'attente éventuel
+        convo.push({ role: "assistant", content: response.text, toolCalls: calls });
+        const results = await Promise.all(
+          calls.map(async (c) => {
+            const spec = ADVISOR_TOOLS[c.name];
+            emit({ type: "status", label: spec ? spec.label : c.name });
+            const { show, input } = splitShowCard(c.input);
+            const r = await runTool(toolCtx, c.name, input);
+            if (spec && !sources.includes(spec.label)) sources.push(spec.label);
+            const always = spec?.category === "prepare";
+            for (const cd of r.cards) {
+              if (!always && (!show || readCards >= ADVISOR_LIMITS.maxReadCards)) continue;
+              if (cards.length >= ADVISOR_LIMITS.maxCards) break;
+              if (!always) readCards++;
+              cards.push(cd);
+              emit({ type: "card", card: cd });
+            }
+            // Journal : nom de l'outil seulement (le contenu peut citer des données personnelles).
+            if (r.isError) log.warn("outil du conseiller en erreur", { tool: c.name });
+            return { role: "tool" as const, toolCallId: c.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
+          }),
+        );
+        convo.push(...results);
+        if (step === ADVISOR_LIMITS.maxSteps - 1) interrupted = true;
+      }
+    } catch (e) {
+      if (budget.signal.aborted) {
+        // Échéance atteinte ou client déconnecté : réponse partielle enregistrée proprement.
+        interrupted = true;
+        answer = answer || streamed;
+        if (budget.timedOut()) stopNote = "délai de réponse atteint";
+      } else {
+        const err = aiError(e);
+        const partial = (answer || streamed).trim();
+        await store.addMessage(conversationId, { role: "assistant", content: partial ? `${partial}\n\n(réponse interrompue : ${err.message})` : `Réponse impossible : ${err.message}`, cards: cardsForStorage(cards), sources, interrupted: true });
+        throw err;
+      }
+    }
+
+    if (!answer.trim()) {
+      answer = stopNote && !budget.timedOut()
+        ? stopNote
+        : interrupted
+          ? "Je n'ai pas pu terminer l'analyse dans le temps imparti. Posez une question plus précise (période, produit)."
+          : "Je n'ai pas de réponse à formuler. Reformulez votre question.";
+    } else if (interrupted) {
+      answer = `${answer}\n\n(réponse interrompue${stopNote ? ` : ${stopNote}` : " : demandez la suite ou précisez la question"})`;
+    }
+    // Historique enregistré : cartes expurgées des données personnelles ; l'écran reçoit la version complète.
+    const messageId = await store.addMessage(conversationId, { role: "assistant", content: answer, cards: cardsForStorage(cards), sources, interrupted });
+    const reply: AdvisorReplyDTO = { conversationId, messageId, answer, cards, sources, interrupted, model };
+    emit({ type: "done", reply });
+    return reply;
+  } finally {
+    budget.dispose();
   }
-  const messageId = await store.addMessage(conversationId, { role: "assistant", content: answer, cards, sources, interrupted });
-  const reply: AdvisorReplyDTO = { conversationId, messageId, answer, cards, sources, interrupted, model };
-  emit({ type: "done", reply });
-  return reply;
 }
 
 /** Réponse en flux NDJSON (une ligne JSON par événement) pour l'application mobile. */

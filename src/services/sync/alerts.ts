@@ -62,3 +62,5 @@ export async function resolveAlerts(admin: AdminSupabaseClient, organizationId: 
 
 export const connectionExpiredKey = (connectionId: string) => `connection_expired:${connectionId}`;
 export const syncFailedKey = (connectionId: string) => `sync_failed:${connectionId}`;
+/** I-10 : commandes illisibles bloquant le curseur de commandes d'une connexion. */
+export const ordersBlockedKey = (connectionId: string) => `sync_orders_blocked:${connectionId}`;

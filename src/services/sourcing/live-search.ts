@@ -11,7 +11,8 @@ import type { RawOffer } from "@/domain/sourcing/types";
 import type { AccessLevel, AdapterRunContext, AdapterSearchResult, AdapterSourceConfig, RetrievalMethod, SourceAdapter } from "@/integrations/sourcing/core";
 import { getSourceAdapter } from "@/integrations/sourcing/registry";
 import { checkRobotsForUrls, type RobotsCheck } from "@/services/sourcing/crawler/robots";
-import { adapterConfigFromSource, adapterKeyOf, hostOf, HostScheduler, withProvenance } from "@/services/sourcing/adapter-runtime";
+import { adapterConfigFromSource, adapterKeyOf, hostOf, HostScheduler, withProvenance, type HostSlotReserver } from "@/services/sourcing/adapter-runtime";
+import { MAX_CRAWL_DELAY_MS, sharedHostReserver, sharedRobotsCache } from "@/services/sourcing/host-politeness";
 import { storeOffer, type StorageContext } from "@/services/sourcing/offer-storage";
 import { loadConnectionCredentials } from "@/services/sourcing/supplier-connectors";
 import { recordCompletedSyncRun } from "@/services/sourcing/sync-runs";
@@ -136,6 +137,8 @@ export interface LiveSearchRuntime {
   recordRun: (candidate: LiveSourceCandidate, report: LiveSourceReport, startedAt: Date) => Promise<void>;
   /** mémorise les colonnes robots_* de la source */
   recordRobots?: (candidate: LiveSourceCandidate, robots: RobotsCheck) => Promise<void>;
+  /** réservation du créneau d'un hôte public, partagée entre instances (I-16) */
+  reserveHostSlot?: HostSlotReserver;
   cache: Map<string, CacheEntry>;
   perSourceTimeoutMs: number;
   maxSources: number;
@@ -221,6 +224,9 @@ async function querySource(c: LiveSourceCandidate, input: LiveSearchInput, rt: L
     if (rt.recordRobots) await rt.recordRobots(c, robots).catch((e: unknown) => log.warn("robots status not recorded", { sourceId: c.sourceId, error: e instanceof Error ? e.message : String(e) }));
     if (!robots.allowed) return report(c, "robots_disallowed", `robots.txt : ${robots.details}`, { durationMs: Date.now() - t0 }, startedAt);
     disallowedUrls = robots.disallowedUrls;
+    // Crawl-delay appliqué entre deux requêtes vers cet hôte, créneau partagé entre toutes les recherches (I-16)
+    const host = hostOf(c.config.baseUrl ?? urls[0] ?? null);
+    if (host) scheduler.setHostPolicy(host, { delayMs: robots.crawlDelay !== null ? Math.min(MAX_CRAWL_DELAY_MS, Math.ceil(robots.crawlDelay * 1000)) : null, shared: true });
   }
 
   let credentials: Record<string, string> | undefined;
@@ -337,7 +343,8 @@ async function querySource(c: LiveSourceCandidate, input: LiveSearchInput, rt: L
 /** Orchestration pure (injectable) : utilisée par runLiveSearch et par les tests avec des adaptateurs simulés. */
 export async function executeLiveSearch(candidates: LiveSourceCandidate[], input: LiveSearchInput, rt: LiveSearchRuntime): Promise<LiveSearchSummary> {
   const startedAt = rt.now();
-  const scheduler = new HostScheduler(rt.publicMinDelayMs, rt.sleep);
+  // attente maximale d'un créneau partagé : la moitié du budget d'une source (au-delà : hôte « occupé »)
+  const scheduler = new HostScheduler(rt.publicMinDelayMs, rt.sleep, undefined, { reserve: rt.reserveHostSlot, maxWaitMs: Math.max(rt.publicMinDelayMs, Math.floor(rt.perSourceTimeoutMs / 2)) });
   const reports: LiveSourceReport[] = new Array(candidates.length);
   const offerIds = new Set<string>();
   const maxSources = Math.max(0, input.maxSources ?? rt.maxSources);
@@ -534,7 +541,9 @@ export async function runLiveSearch(ctx: LiveSearchContext, input: LiveSearchInp
     parallelism: LIVE_SEARCH_PARALLELISM,
     publicMinDelayMs: LIVE_SEARCH_PUBLIC_MIN_DELAY_MS,
     accountMinDelayMs: LIVE_SEARCH_ACCOUNT_MIN_DELAY_MS,
-    checkRobots: (c, urls) => checkRobotsForUrls(c.config.baseUrl ?? urls[0]!, urls, userAgent, fetchImpl),
+    // robots.txt lu au plus une fois par 24 h et par hôte (cache mémoire + base partagé)
+    checkRobots: (c, urls) => checkRobotsForUrls(c.config.baseUrl ?? urls[0]!, urls, userAgent, fetchImpl, overrides.resolver, sharedRobotsCache(admin)),
+    reserveHostSlot: sharedHostReserver(admin),
     recordRobots: async (c, robots) => {
       await admin.from("supplier_sources").update({ robots_checked_at: now().toISOString(), robots_allowed: robots.allowed, ...(robots.crawlDelay !== null ? { crawl_delay_seconds: Math.ceil(robots.crawlDelay) } : {}) }).eq("id", c.sourceId);
     },

@@ -158,6 +158,7 @@ export function ageDaysText(days: number | null): string {
 /** Origine du prix en quelques mots (cartes du radar). */
 export const PRICE_ORIGIN_SHORT: Record<RadarItemDTO["offer"]["priceOrigin"], string> = {
   verified_live: "Prix vérifié en direct",
+  marketplace_listing: "Annonce publiée (prix demandé)",
   observed_public: "Site public",
   catalog_import: "Catalogue importé",
   supplier_communicated: "Communiqué par le fournisseur",

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Field, FormError, FormSuccess, Input, Select } from "@/components/ui/form";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import type { ActionResult } from "@/lib/result";
+import { enforceWebUploadLimit, WEB_UPLOAD_MAX_LABEL } from "@/lib/upload-limits";
 import { RAW_OFFER_FIELDS, RAW_OFFER_FIELD_LABELS } from "@/domain/sourcing/types";
 import { createFeedAction, previewFeedAction, type FeedPreviewResult } from "@/features/suppliers/actions";
 
@@ -67,8 +68,8 @@ export function FeedForm({ supplierId, defaultCurrency }: { supplierId: string; 
             <Field label="URL du flux" htmlFor="fd_url" error={fe.url} className="sm:col-span-2">
               <Input id="fd_url" name="url" type="url" placeholder="https://fournisseur.example/export.csv" />
             </Field>
-            <Field label="ou fichier à importer" htmlFor="fd_file" error={fe.file} className="sm:col-span-2" hint="20 Mo maximum. Sans URL, le flux se met à jour par import manuel.">
-              <Input id="fd_file" name="file" type="file" accept=".csv,.txt,.xml,.json,text/csv,application/xml,text/xml,application/json" />
+            <Field label="ou fichier à importer" htmlFor="fd_file" error={fe.file} className="sm:col-span-2" hint={`${WEB_UPLOAD_MAX_LABEL} maximum depuis le site. Sans URL, le flux se met à jour par import manuel.`}>
+              <Input id="fd_file" name="file" type="file" accept=".csv,.txt,.xml,.json,text/csv,application/xml,text/xml,application/json" onChange={(e) => enforceWebUploadLimit(e.currentTarget)} />
             </Field>
             <Field label="Devise par défaut" htmlFor="fd_currency" error={fe.default_currency}>
               <Input id="fd_currency" name="default_currency" defaultValue={defaultCurrency} maxLength={3} />

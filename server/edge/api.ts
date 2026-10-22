@@ -31,6 +31,7 @@
  *   POST /api/sourcing/feeds              ajout du flux (attestation d'accord du fournisseur, identifiants chiffrés)
  *   GET  /api/sourcing/imports            historique des imports (fichier, empreinte, compteurs, utilisateur)
  *   GET  /api/sourcing/imports/detail?id= détail d'un import et lignes ignorées avec leur raison
+ *   POST /api/sourcing/imports/resume     reprise d'un import par lots en cours (rédacteur)
  *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
  *   POST /api/ebay/connect                URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur) ; { extended: true } = analyse complète
  *   GET|POST /api/ebay/webhook            notifications eBay (suppression de compte, commandes) — signées par eBay
@@ -76,11 +77,12 @@ import { buildOAuthState, isExtendedOAuthState, OAUTH_STATE_TTL_SECONDS, oauthEr
 import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
-import { findConnectionsByExternalAccount, listDueConnections, upsertOAuthConnection } from "@/services/channels/connection-store";
+import { findConnectionsByExternalAccount, upsertOAuthConnection } from "@/services/channels/connection-store";
 import { computeChallengeResponse } from "@/integrations/ebay/webhook-verify";
 import { EbayNotificationKeyStore } from "@/integrations/ebay/notification-keys";
 import { handleEbayNotification } from "@/services/sync/ebay-webhook";
 import { runChannelSync } from "@/services/sync/engine";
+import { EDGE_CRON_SYNC_BUDGET_MS, runSyncCron } from "@/services/sync/cron";
 import { runSourcingSync } from "@/services/sourcing/sync";
 import { activateLibrarySource, libraryActivateSchema, librarySourcesToRevalidate, runLibraryChecks, sourceLibrary } from "@/services/sourcing/source-library";
 import { scoutHosts } from "@/services/sourcing/source-scout";
@@ -90,14 +92,15 @@ import { decideMatch, listMatchSuggestions, matchDecisionSchema } from "@/servic
 import { buildRadar, buildRadarOffer, radarSettingsSchema, saveCostSettings } from "@/services/radar/radar";
 import { directoryForOrg, runDirectoryChecks } from "@/services/sourcing/supplier-directory";
 import { connectProAccount, disconnectProAccount, proAccountsHub, supplierOffers, syncProAccount } from "@/services/sourcing/pro-accounts";
-import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg } from "@/services/sourcing/catalog-import";
+import { catalogImportSchema, catalogPreviewSchema, getImportJob, importCatalogFile, listImportJobs, previewCatalogFileForOrg, resumeImportJob } from "@/services/sourcing/catalog-import";
+import { runPendingImportJobs } from "@/services/sourcing/import-jobs";
 import { listSourcesForOrg, setSourceSchedule, sourceScheduleSchema, syncSourceNow } from "@/services/sourcing/source-sync";
 import { simpleSupplierSearch } from "@/services/sourcing/simple-search";
 import { adapterProbeSchema, runAdapterProbes } from "@/services/sourcing/adapter-probe";
 import { createRemoteFeed, previewRemoteFeed, remoteFeedCreateSchema, remoteFeedPreviewSchema } from "@/services/sourcing/remote-feeds";
 import { aiConfigured, aiModel, llmClient } from "@/services/ai/llm";
-import { synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
-import { enforceAiQuota } from "@/services/ai/quota";
+import { audioCacheControl, synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_CHOICES, ttsVoice } from "@/services/ai/speech";
+import { aiMeter, enforceAiQuota } from "@/services/ai/quota";
 import { draftProductFromText } from "@/services/ai/product-draft";
 import { askAssistant, assistantRequestSchema } from "@/services/ai/assistant";
 import { advisorNdjsonStream, runAdvisorTurn } from "@/services/ai/advisor";
@@ -123,6 +126,9 @@ const ebayConnectSchema = z.object({ extended: z.boolean().optional() });
 const ebayFinalizeSchema = z.object({ code: z.string().min(1).max(2048), state: z.string().min(16).max(200) });
 const syncSchema = z.object({ connectionId: uuidParam, scope: z.enum(["full", "listings", "orders"]).default("full") });
 const scoutSchema = z.object({ hosts: z.array(z.string().min(3).max(120)).min(1).max(25), query: z.string().min(2).max(80).optional() });
+/** Imports par lots dans l'Edge : durée (limite d'horloge ~150 s) et calcul (~2 s de CPU) bornés par requête. */
+const IMPORT_EDGE_BUDGET_MS = 90_000;
+const IMPORT_EDGE_CPU_BUDGET_MS = 1_200;
 /** Fichier de 15 Mo en base64 (+ mapping) : seule route qui accepte un corps volumineux. */
 const CATALOG_BODY_LIMIT = 21_000_000;
 const productDraftSchema = z.object({ text: z.string().trim().min(3, "Dites ou écrivez le produit à ajouter.").max(2000, "Texte trop long (2000 caractères maximum).") });
@@ -199,24 +205,14 @@ async function finalizeEbayConnect(request: Request) {
   }
 }
 
-async function cronSync() {
-  const due = await listDueConnections();
-  const started = Date.now();
-  const results: Array<Record<string, unknown>> = [];
-  for (const c of due) {
-    // Budget : la fonction est limitée en durée ; les connexions restantes restent « dues ».
-    if (Date.now() - started > 100_000) {
-      results.push({ connectionId: c.id, status: "deferred" });
-      continue;
-    }
-    try {
-      const r = await runChannelSync(c.id, { trigger: "scheduled" });
-      results.push({ connectionId: c.id, runId: r.runId, status: r.status, durationMs: r.durationMs, errorSummary: r.errorSummary });
-    } catch (e) {
-      results.push({ connectionId: c.id, status: "skipped", error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-  return { due: due.length, results };
+/**
+ * Cron de synchronisation : même service que la route web (src/services/sync/cron.ts) — runs
+ * abandonnés nettoyés, notifications eBay abandonnées reprises (S-06), connexions dues traitées dans
+ * un budget partagé sous la limite d'horloge de l'Edge Function (~150 s) ; chaque run s'arrête
+ * proprement à l'échéance et reprend au passage suivant (D-01).
+ */
+function cronSync() {
+  return runSyncCron({ budgetMs: EDGE_CRON_SYNC_BUDGET_MS });
 }
 
 /** Cache mémoire (par instance) des clés publiques eBay et du jeton d'application. */
@@ -286,7 +282,12 @@ export async function route(request: Request): Promise<Response> {
       const auth = authorizeCron(request);
       if (!auth.ok) return auth.response;
       if (m === "POST" && path === "/cron/sync") return handle(cronSync);
-      if (m === "POST" && path === "/cron/sourcing") return handle(() => runSourcingSync());
+      if (m === "POST" && path === "/cron/sourcing") {
+        // Budget global ; `phase` lance une étape seule (ex. cron séparé pour les alertes).
+        return handle(async () => runSourcingSync(new Date(), { phase: (await parseBody(request, z.object({ phase: z.enum(["all", "alerts", "sources", "imports"]).optional() }))).phase }));
+      }
+      // Reprise des imports de catalogues / flux en cours (traitement par lots, budget borné).
+      if (m === "POST" && path === "/cron/sourcing-imports") return handle(() => runPendingImportJobs({ budgetMs: IMPORT_EDGE_BUDGET_MS, cpuBudgetMs: IMPORT_EDGE_CPU_BUDGET_MS }));
       if (m === "POST" && path === "/cron/library-checks") {
         // Lot borné (les moins récemment vérifiées d'abord) dans un budget de temps global.
         return handle(async () => {
@@ -475,7 +476,14 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, catalogImportSchema, CATALOG_BODY_LIMIT);
-        return importCatalogFile(ctx, body);
+        // Traitement par lots dans le budget de la requête ; au-delà, `result.pending` et reprise.
+        return importCatalogFile(ctx, body, { budgetMs: IMPORT_EDGE_BUDGET_MS, cpuBudgetMs: IMPORT_EDGE_CPU_BUDGET_MS });
+      });
+    }
+    if (m === "POST" && path === "/sourcing/imports/resume") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return resumeImportJob(ctx, (await parseBody(request, z.object({ id: uuidParam }))).id, { budgetMs: IMPORT_EDGE_BUDGET_MS, cpuBudgetMs: IMPORT_EDGE_CPU_BUDGET_MS });
       });
     }
     if (m === "POST" && path === "/ai/product-draft") {
@@ -493,7 +501,7 @@ export async function route(request: Request): Promise<Response> {
         const body = await parseBody(request, assistantRequestSchema);
         llmClient();
         await enforceAiQuota(ctx, "assistant");
-        return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body);
+        return askAssistant({ supabase: ctx.supabase, organizationId: ctx.organization.id, organizationName: ctx.organization.name, currency: ctx.organization.default_currency }, body, { meter: aiMeter(ctx) });
       });
     }
     if (m === "GET" && path === "/advisor/status") {
@@ -509,7 +517,7 @@ export async function route(request: Request): Promise<Response> {
         if (!/^[0-9a-f-]{36}$/i.test(messageId)) throw new AppError("VALIDATION", "Réponse à lire invalide.");
         llmClient(); // « non configuré » sans clé
         const audio = await synthesizeAdvisorMessage(ctx, messageId, { voice: url.searchParams.get("voice") });
-        return new Response(audio, { status: 200, headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+        return new Response(audio, { status: 200, headers: { "Content-Type": "audio/mpeg", "Cache-Control": audioCacheControl(), "X-Content-Type-Options": "nosniff" } });
       } catch (e) {
         return errorResponse(e);
       }

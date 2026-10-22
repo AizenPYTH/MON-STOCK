@@ -2,23 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/db/database.types";
 import { safeInternalPath } from "@/lib/utils";
+import { isWebPreviewEnv, publicSupabaseAnonKey, publicSupabaseUrl } from "@/lib/site";
+import { sessionCookieOptions, shouldUseSecureCookies } from "@/lib/supabase/cookie-options";
 
-/** Aperçu visuel (voir src/lib/supabase/preview.ts) : mêmes garde-fous, sans import serveur. */
-function webPreview(): boolean {
-  if (process.env.MONSTOCK_WEB_PREVIEW !== "1") return false;
-  try {
-    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host === "preview.invalid";
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Routes accessibles sans session. Tout le reste (pages de l'application, /onboarding,
  * routes API non listées) exige une session ; la vraie autorisation est faite dans la
  * couche d'accès aux données (DAL) et par la RLS.
  */
-export const PUBLIC_PATHS = ["/confidentialite", "/conditions", "/mentions-legales", "/support", "/login", "/signup", "/reset-password", "/update-password", "/auth", "/api/webhooks", "/api/cron", "/api/integrations/ebay/callback", "/invite"] as const;
+export const PUBLIC_PATHS = ["/sitemap.xml", "/robots.txt", "/confidentialite", "/conditions", "/mentions-legales", "/support", "/login", "/signup", "/reset-password", "/update-password", "/auth", "/api/webhooks", "/api/cron", "/api/integrations/ebay/callback", "/invite"] as const;
 
 // Routes machine-à-machine : pas de session à rafraîchir (webhooks signés, cron protégé par secret).
 export const MACHINE_PATHS = ["/api/webhooks", "/api/cron"] as const;
@@ -66,18 +59,21 @@ export function loginRedirectUrl(request: Pick<NextRequest, "nextUrl">): URL {
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });
 
-  if (isMachinePath(request.nextUrl.pathname) || webPreview()) {
+  // Aperçu visuel (voir src/lib/supabase/preview.ts) : même règle que le client serveur.
+  if (isMachinePath(request.nextUrl.pathname) || isWebPreviewEnv()) {
     return response;
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Valeurs normalisées comme dans les pages (W-08) : guillemets, espaces, schéma manquant.
+  const url = publicSupabaseUrl();
+  const key = publicSupabaseAnonKey();
   if (!url || !key) {
     // Configuration absente : on laisse passer, les pages afficheront une erreur explicite.
     return response;
   }
 
   const supabase = createServerClient<Database>(url, key, {
+    cookieOptions: sessionCookieOptions(shouldUseSecureCookies(request.nextUrl.protocol)),
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -94,11 +90,15 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     },
   });
 
-  // IMPORTANT : getUser() valide le JWT auprès de Supabase (pas getSession()) et rafraîchit
-  // la session si l'access token a expiré (refresh token encore valide).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // W-11 : getClaims() (auth-js 2.117) VÉRIFIE le JWT — signature contrôlée localement avec les
+  // clés publiques du projet (JWKS, mises en cache par processus) si le projet signe en asymétrique
+  // (ES256/RS256), sinon repli automatique sur getUser() (appel réseau, comme avant). Jamais une
+  // lecture non vérifiée (≠ getSession()). Il rafraîchit aussi la session expirée (cookies réécrits).
+  // Différence assumée : une session révoquée reste acceptée ICI jusqu'à l'expiration du jeton
+  // d'accès ; le proxy n'est qu'un filtre optimiste — la DAL (getCurrentUser → getUser(), réseau)
+  // reste l'autorité pour toute donnée et toute action.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const user = typeof claimsData?.claims?.sub === "string" && claimsData.claims.sub ? { id: claimsData.claims.sub } : null;
 
   const { pathname } = request.nextUrl;
 

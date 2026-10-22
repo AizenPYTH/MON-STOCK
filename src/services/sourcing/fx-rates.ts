@@ -87,6 +87,8 @@ export async function loadLatestRates(): Promise<{ date: string; rates: Record<s
   const rates: Record<string, number> = { EUR: 1 };
   for (const r of rows ?? []) rates[r.quote_currency.toUpperCase()] = Number(r.rate);
   cache = { loadedAt: Date.now(), date: latest.rate_date, rates };
+  // signalé une fois par chargement (au plus une fois par heure), pas à chaque conversion
+  if (isFxRateStale(latest.rate_date)) log.warn("fx rates stale", { date: latest.rate_date, ageDays: fxRateAgeDays(latest.rate_date), maxAgeDays: FX_MAX_AGE_DAYS });
   return { date: latest.rate_date, rates };
 }
 
@@ -106,7 +108,5 @@ export async function getFxRate(from: string, to: string): Promise<FxQuote | nul
   if (!latest) return null;
   const rate = crossRate(latest.rates, f, t);
   if (rate === null) return null;
-  const stale = isFxRateStale(latest.date);
-  if (stale) log.warn("fx rates stale", { date: latest.date, maxAgeDays: FX_MAX_AGE_DAYS });
-  return { rate, date: latest.date, stale };
+  return { rate, date: latest.date, stale: isFxRateStale(latest.date) };
 }

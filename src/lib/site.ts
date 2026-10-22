@@ -26,3 +26,31 @@ export function siteUrl(): string {
   if (vercel) return vercel;
   return "http://localhost:3000";
 }
+
+type EnvLike = Record<string, string | undefined>;
+
+/**
+ * URL Supabase publique NORMALISÉE (espaces, guillemets, schéma manquant, `/` final) : exactement la
+ * valeur de `publicEnv()`, mais lisible hors `server-only` (proxy, next.config, instrumentation) —
+ * W-08 : une valeur collée telle quelle doit fonctionner partout, pas seulement dans les pages.
+ */
+export function publicSupabaseUrl(env: EnvLike = process.env): string | undefined {
+  const v = normalizeBaseUrl(env.NEXT_PUBLIC_SUPABASE_URL);
+  return v && URL.canParse(v) ? v : undefined;
+}
+
+/** Clé anon Supabase nettoyée (même règle que `publicEnv()`). */
+export function publicSupabaseAnonKey(env: EnvLike = process.env): string | undefined {
+  return cleanEnvValue(env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}
+
+/**
+ * Aperçu visuel (base en mémoire) : MONSTOCK_WEB_PREVIEW=1 ET URL Supabase « preview.invalid ».
+ * Règle UNIQUE pour le proxy et le client serveur (même normalisation), impossible sur un vrai
+ * déploiement (l'URL y désigne le vrai projet).
+ */
+export function isWebPreviewEnv(env: EnvLike = process.env): boolean {
+  if (env.MONSTOCK_WEB_PREVIEW !== "1") return false;
+  const url = publicSupabaseUrl(env);
+  return url !== undefined && new URL(url).host === "preview.invalid";
+}

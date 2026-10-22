@@ -12,6 +12,8 @@ import { formatDateTime, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ACCEPT_ATTRIBUTE, fileIssue, fileSizeLabel, IMPORT_MODE_HELP, IMPORT_MODE_LABEL, IMPORT_PART_COLOR, mappingIssues, TAX_OPTIONS, taxTypeOf, withTaxType, type ImportMode, type ImportTone, type TaxChoice } from "@/features/catalog-imports/labels";
 import { MappingEditor } from "@/features/catalog-imports/components/mapping-editor";
+import { describeUploadResponse, TOO_LARGE_ONLINE, UNREACHABLE_UPLOAD } from "@/features/catalog-imports/upload-response";
+import { WEB_UPLOAD_MAX_LABEL, webUploadTooLargeMessage } from "@/lib/upload-limits";
 import { PreviewSample } from "@/features/catalog-imports/components/preview-sample";
 import { Steps } from "@/features/catalog-imports/components/steps";
 import { ChoiceChips } from "@/features/catalog-imports/components/choice-chips";
@@ -19,8 +21,6 @@ import { StatusPill } from "@/features/catalog-imports/components/status-pill";
 
 const PREVIEW_URL = "/sourcing/imports/new/preview";
 const IMPORT_URL = "/sourcing/imports/new/import";
-/** Hébergé sur Vercel, le site refuse les envois de plus de ~4,5 Mo (limite de la plateforme, réponse 413). */
-const TOO_LARGE_ONLINE = "Fichier trop volumineux pour être envoyé par le site (environ 4 Mo maximum en ligne) : importez-le depuis l'application iPhone (15 Mo maximum) ou configurez un flux automatique.";
 const STEPS = ["Fournisseur", "Fichier", "Colonnes", "Vérifier", "Résultat"];
 /** Au-delà, le choix du fournisseur passe d'une rangée de puces à une liste déroulante. */
 const MAX_SUPPLIER_CHIPS = 16;
@@ -33,19 +33,22 @@ async function postCatalog<T>(url: string, file: File, options: Record<string, u
   // options AVANT le fichier, avec sa taille attendue : le serveur refuse un fichier reçu tronqué
   fd.set("options", JSON.stringify({ ...options, fileSize: file.size }));
   fd.set("file", file);
+  // Refus immédiat, avant l'envoi, de ce que la plateforme refuserait (W-09).
+  if (webUploadTooLargeMessage(file.size)) return { ok: false, error: TOO_LARGE_ONLINE };
   let res: Response;
   try {
     res = await fetch(url, { method: "POST", body: fd, credentials: "same-origin" });
   } catch {
-    return { ok: false, error: "Le serveur MON STOCK est injoignable : vérifiez votre connexion puis réessayez." };
+    return { ok: false, error: UNREACHABLE_UPLOAD };
   }
-  if (res.redirected || !(res.headers.get("content-type") ?? "").includes("application/json")) {
-    return { ok: false, error: res.status === 413 ? TOO_LARGE_ONLINE : "Votre session a expiré. Reconnectez-vous pour continuer : rien n'a été enregistré.", action: { label: "Se reconnecter", href: "/login" } };
-  }
+  // Redirection vers /login, 413, 5xx, délai dépassé : chacun son message (W-21).
+  const failure = describeUploadResponse({ redirected: res.redirected, url: res.url, status: res.status, contentType: res.headers.get("content-type") });
+  if (failure) return failure;
   try {
     return (await res.json()) as ActionResult<T>;
   } catch {
-    return { ok: false, error: res.status === 413 ? TOO_LARGE_ONLINE : `Réponse du serveur illisible (HTTP ${res.status}).` };
+    // Corps coupé en cours de lecture (connexion interrompue) ou JSON invalide.
+    return { ok: false, error: res.status === 413 ? TOO_LARGE_ONLINE : `Réponse du serveur incomplète ou illisible (HTTP ${res.status}). Vérifiez l'historique des imports avant de réessayer.` };
   }
 }
 
@@ -55,7 +58,7 @@ function StepTitle({ children }: { children: ReactNode }) {
 
 /**
  * Assistant d'import du catalogue / de la grille tarifaire d'un fournisseur (CSV, Excel .xlsx,
- * XML ou JSON, 15 Mo maximum), en v5 : étapes sur la scène nuit (Fournisseur → Fichier →
+ * XML ou JSON ; 4 Mo depuis le site, 15 Mo depuis l'iPhone), en v5 : étapes sur la scène nuit (Fournisseur → Fichier →
  * Colonnes → Vérifier → Résultat), une étape à la fois sur le papier, historique à droite.
  * Rien n'est enregistré avant la confirmation de l'étape « Vérifier » ; les prix sont datés.
  */
@@ -112,7 +115,8 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
     setFile(null);
     setAllRows(false);
     if (!f) return;
-    const issue = fileIssue(f);
+    // Contrôle du format puis de la limite d'envoi depuis le site (dès le choix du fichier).
+    const issue = fileIssue(f) ?? (webUploadTooLargeMessage(f.size) ? TOO_LARGE_ONLINE : null);
     if (issue) {
       setError(issue);
       if (fileInput.current) fileInput.current.value = "";
@@ -181,7 +185,7 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
         <SceneHeader
           eyebrow="Sourcing · imports de catalogues"
           title="Importer un catalogue"
-          description="CSV, Excel, XML ou JSON · 15 Mo max. Rien n'est enregistré avant votre confirmation."
+          description={`CSV, Excel, XML ou JSON · ${WEB_UPLOAD_MAX_LABEL} max depuis le site (15 Mo depuis l'iPhone). Rien n'est enregistré avant votre confirmation.`}
           actions={
             <ButtonLink href="/sourcing/imports" variant="night">
               Historique des imports
@@ -282,7 +286,7 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                 >
                   <FileUp aria-hidden="true" className="h-6 w-6 text-muted" />
                   <span className="text-[15px] font-bold leading-5">Déposez le fichier ici ou choisissez-le</span>
-                  <span className="text-[13px] font-semibold leading-[18px] text-ink-3">CSV, XLSX, XML ou JSON reçu par e-mail ou téléchargé depuis l&apos;espace pro du fournisseur · 15 Mo maximum</span>
+                  <span className="text-[13px] font-semibold leading-[18px] text-ink-3">CSV, XLSX, XML ou JSON reçu par e-mail ou téléchargé depuis l&apos;espace pro du fournisseur · {WEB_UPLOAD_MAX_LABEL} maximum depuis le site (15 Mo depuis l&apos;iPhone)</span>
                   <input ref={fileInput} id={`${id}-file`} type="file" accept={ACCEPT_ATTRIBUTE} onChange={(e) => choose(e.target.files?.[0] ?? null)} disabled={busy !== null} className="sr-only" />
                   {busy === "preview" ? (
                     <span role="status" className="text-[13px] font-bold text-info">

@@ -113,16 +113,18 @@ d("Découverte de sources (schéma réel, garde même organisation, RLS)", () =>
       const acctCheck = activationCheck(readDiscoveredConfig(acctRow.config), adapters, acctRow.robots_allowed);
       expect(acctCheck.ok).toBe(false);
 
-      // un lecteur ne peut pas valider (RLS : aucune ligne modifiée)
+      // un lecteur ne peut pas valider : l'attestation n'est plus modifiable directement (D-09,
+      // droits par colonne) et la RPC d'attestation est réservée aux rédacteurs
       await asUser(c, viewer);
-      const denied = await c.query("update public.supplier_sources set automated_access_confirmed = true where id = $1", [pub.sourceId]);
-      expect(denied.rowCount).toBe(0);
+      await expectQueryError(c, "update public.supplier_sources set automated_access_confirmed = true where id = $1", [pub.sourceId], "permission denied");
+      await expectQueryError(c, "select public.attest_supplier_source_access($1, 'Conditions vérifiées', true)", [pub.sourceId], "FORBIDDEN");
 
-      // le propriétaire valide (même mise à jour que validateDiscoveredSourceAction)
+      // le propriétaire valide (mêmes écritures que validateDiscoveredSourceAction : UPDATE puis RPC)
       await asUser(c, owner);
       const cfg = activatedConfig(pubRow.config, "shopify-storefront", { userId: owner, at: new Date() });
-      const ok = await c.query("update public.supplier_sources set config = $2, automated_access_confirmed = true, status = 'active' where id = $1", [pub.sourceId, JSON.stringify(cfg)]);
+      const ok = await c.query("update public.supplier_sources set config = $2, status = 'active' where id = $1", [pub.sourceId, JSON.stringify(cfg)]);
       expect(ok.rowCount).toBe(1);
+      await c.query("select public.attest_supplier_source_access($1, 'Accès automatisé attesté par l''utilisateur (test).', true)", [pub.sourceId]);
       // et ignore la source à compte
       const dis = await c.query("update public.supplier_sources set status = 'paused', config = $2 where id = $1", [acct.sourceId, JSON.stringify(dismissedConfig(acctRow.config, { userId: owner, at: new Date() }))]);
       expect(dis.rowCount).toBe(1);

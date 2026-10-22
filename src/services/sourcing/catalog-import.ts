@@ -8,6 +8,7 @@ import type { CatalogFileFormat, CatalogImportDTO, CatalogPreviewDTO, ImportJobD
 import { RAW_OFFER_FIELDS } from "@/domain/sourcing/types";
 import { fieldMappingSchema, looseHeader, mapRow, parseFeedContent, previewFeed, suggestMappingDetailed, type FeedFormat, type FeedOptions, type FieldMapping, type MappingConfidence } from "@/services/sourcing/feed-parsers";
 import { ingestFeed, type IngestResult } from "@/services/sourcing/feed-ingestion";
+import { processImportJob } from "@/services/sourcing/import-jobs";
 import { rowIdentity } from "@/domain/sourcing/import-quality";
 import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
 import { readXlsx, sheetToCsv, XlsxError } from "@/services/sourcing/xlsx";
@@ -282,86 +283,48 @@ export async function previewCatalogFileForOrg(ctx: OrgContext, input: z.infer<t
   return dto;
 }
 
+/** Budgets d'exécution d'un import dans la requête qui le lance (la suite est reprise par lots). */
+export interface ImportRunBudget {
+  /** durée maximale du traitement dans cette requête (défaut 90 s) */
+  budgetMs?: number;
+  /** calcul maximal (Edge : ~2 s de CPU par requête) */
+  cpuBudgetMs?: number;
+}
+
+/**
+ * Fournisseur → source « Import de catalogue » → flux sans URL, en UNE transaction (RPC, RLS de
+ * l'utilisateur) : recherche du fournisseur par égalité insensible à la casse (aucun joker, S-18),
+ * verrou contre deux imports simultanés, aucun objet orphelin en cas d'échec.
+ */
+async function prepareCatalogImport(ctx: OrgContext, input: z.infer<typeof catalogImportSchema>, loaded: LoadedCatalog): Promise<{ supplierId: string; supplierName: string; sourceId: string; feedId: string }> {
+  const { data, error } = await ctx.supabase.rpc("sourcing_prepare_catalog_import", {
+    p_organization_id: ctx.organization.id,
+    p_supplier_id: input.supplierId ?? null,
+    p_supplier_name: input.supplierId ? null : (input.supplierName ?? "").trim(),
+    p_source_type: loaded.feedFormat.toUpperCase(),
+    p_currency: input.defaults.currency,
+    p_tax_type: input.defaults.taxType,
+    p_country: input.defaults.country ?? null,
+    p_feed_format: loaded.feedFormat,
+    p_field_mapping: input.mapping as unknown as Json,
+    p_options: loaded.options as unknown as Json,
+  });
+  if (error) {
+    if (error.code === "P0002") throw new AppError("NOT_FOUND", "Fournisseur introuvable dans cette organisation.");
+    throw fromPostgrestError(error);
+  }
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) throw new AppError("INTERNAL", "Préparation de l'import impossible (aucun fournisseur renvoyé).");
+  return { supplierId: row.supplier_id, supplierName: row.supplier_name, sourceId: row.source_id, feedId: row.feed_id };
+}
+
 /** Import réel (rôle rédacteur requis par l'appelant ; écritures sous RLS pour fournisseur, source, flux). */
-export async function importCatalogFile(ctx: OrgContext, input: z.infer<typeof catalogImportSchema>): Promise<CatalogImportDTO> {
+export async function importCatalogFile(ctx: OrgContext, input: z.infer<typeof catalogImportSchema>, budget: ImportRunBudget = {}): Promise<CatalogImportDTO> {
   const orgId = ctx.organization.id;
   const loaded = loadCatalogFile(input.file);
 
-  // 1. Fournisseur
-  let supplierId = input.supplierId ?? null;
-  let supplierName = input.supplierName ?? "";
-  if (supplierId) {
-    const { data, error } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).eq("id", supplierId).maybeSingle();
-    if (error) throw fromPostgrestError(error);
-    if (!data) throw new AppError("NOT_FOUND", "Fournisseur introuvable dans cette organisation.");
-    supplierName = data.name;
-  } else {
-    const { data: existing } = await ctx.supabase.from("suppliers").select("id, name").eq("organization_id", orgId).ilike("name", supplierName).limit(1).maybeSingle();
-    if (existing) supplierId = existing.id;
-    else {
-      const { data, error } = await ctx.supabase
-        .from("suppliers")
-        .insert({ organization_id: orgId, name: supplierName, currency: input.defaults.currency, country: input.defaults.country ?? null })
-        .select("id")
-        .single();
-      if (error || !data) throw fromPostgrestError(error ?? { message: "Fournisseur non créé" });
-      supplierId = data.id;
-    }
-  }
-
-  // 2. Source « Import de catalogue » de ce fournisseur (réutilisée)
-  const sourceType = loaded.feedFormat.toUpperCase() as "CSV" | "XML" | "JSON";
-  const { data: sources, error: srcErr } = await ctx.supabase
-    .from("supplier_sources")
-    .select("id, config")
-    .eq("organization_id", orgId)
-    .eq("supplier_id", supplierId)
-    .eq("source_type", sourceType)
-    .limit(20);
-  if (srcErr) throw fromPostgrestError(srcErr);
-  let sourceId = (sources ?? []).find((s) => (s.config as { kind?: string } | null)?.kind === CATALOG_IMPORT_KIND)?.id ?? null;
-  if (!sourceId) {
-    const { data, error } = await ctx.supabase
-      .from("supplier_sources")
-      .insert({
-        organization_id: orgId,
-        supplier_id: supplierId,
-        name: `Import de catalogue — ${supplierName}`,
-        source_type: sourceType,
-        default_currency: input.defaults.currency,
-        default_tax_type: input.defaults.taxType,
-        country: input.defaults.country ?? null,
-        automated_access_confirmed: true,
-        access_conditions: "Fichier transmis par le fournisseur et importé manuellement par l'utilisateur.",
-        sync_frequency: "manual",
-        status: "not_connected",
-        config: { kind: CATALOG_IMPORT_KIND } as unknown as NonNullable<Json>,
-      })
-      .select("id")
-      .single();
-    if (error || !data) throw fromPostgrestError(error ?? { message: "Source non créée" });
-    sourceId = data.id;
-  } else {
-    await ctx.supabase.from("supplier_sources").update({ default_currency: input.defaults.currency, default_tax_type: input.defaults.taxType }).eq("id", sourceId).eq("organization_id", orgId);
-  }
-
-  // 3. Flux sans URL (mapping mis à jour à chaque import)
-  const { data: feeds, error: feedErr } = await ctx.supabase.from("supplier_feeds").select("id").eq("organization_id", orgId).eq("source_id", sourceId).is("url", null).limit(1);
-  if (feedErr) throw fromPostgrestError(feedErr);
-  let feedId = feeds?.[0]?.id ?? null;
-  const feedPatch = { format: loaded.feedFormat, field_mapping: input.mapping as unknown as NonNullable<Json>, options: loaded.options as unknown as NonNullable<Json>, sync_frequency: "manual" as const };
-  if (!feedId) {
-    const { data, error } = await ctx.supabase
-      .from("supplier_feeds")
-      .insert({ organization_id: orgId, supplier_id: supplierId, source_id: sourceId, type: "catalog", url: null, status: "not_connected", ...feedPatch })
-      .select("id")
-      .single();
-    if (error || !data) throw fromPostgrestError(error ?? { message: "Flux non créé" });
-    feedId = data.id;
-  } else {
-    const { error } = await ctx.supabase.from("supplier_feeds").update(feedPatch).eq("id", feedId).eq("organization_id", orgId);
-    if (error) throw fromPostgrestError(error);
-  }
+  // 1 à 3. Fournisseur, source et flux (transaction unique)
+  const { supplierId, sourceId, feedId } = await prepareCatalogImport(ctx, input, loaded);
 
   // 4. Fichier identique déjà importé avec succès pour ce fournisseur : aucun réimport sans confirmation.
   const admin = createAdminSupabaseClient();
@@ -383,19 +346,44 @@ export async function importCatalogFile(ctx: OrgContext, input: z.infer<typeof c
     }
   }
 
-  // 5. Journal de l'import, puis ingestion par le pipeline commun (journal sync_runs)
+  // 5. Journal de l'import, puis ingestion par lots reprenables (journal sync_runs). Le mapping est
+  //    mémorisé à la clôture du job s'il réussit (y compris quand la fin est traitée par une reprise).
   const jobId = await createImportJob(admin, ctx, { supplierId, sourceId, feedId, loaded, input, status: "running", message: null });
+  const columns = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1).columns;
   let result: IngestResult;
   try {
-    result = await ingestFeed(feedId, { trigger: "manual", createdBy: ctx.user.id, content: loaded.content, force: input.force === true, mode: input.mode, importJobId: jobId, admin });
+    result = await ingestFeed(feedId, {
+      trigger: "manual",
+      createdBy: ctx.user.id,
+      content: loaded.content,
+      force: input.force === true,
+      mode: input.mode,
+      importJobId: jobId,
+      admin,
+      origin: "file",
+      budgetMs: budget.budgetMs ?? 90_000,
+      cpuBudgetMs: budget.cpuBudgetMs,
+      remember: { headerSignature: headerSignature(columns), columns: columns.slice(0, 200), mapping: input.mapping as unknown as Json, defaults: input.defaults as unknown as Json, updatedBy: ctx.user.id },
+    });
   } catch (e) {
-    await admin.from("sourcing_import_jobs").update({ status: "failed", message: (e instanceof Error ? e.message : String(e)).slice(0, 2000), finished_at: new Date().toISOString() }).eq("id", jobId);
+    await admin.from("sourcing_import_jobs").update({ status: "failed", message: (e instanceof Error ? e.message : String(e)).slice(0, 2000), finished_at: new Date().toISOString() }).eq("id", jobId).eq("status", "running");
     throw e;
   }
-  await finishImportJob(admin, orgId, jobId, result);
-  if (result.status !== "failed" && !result.quarantined) await rememberMapping(admin, ctx, supplierId, loaded, input);
+  // Import suspendu (qualité) ou en échec avant son découpage : le job est clos ici. Sinon le
+  // moteur de lots tient le job à jour (progression, compteurs, incidents, clôture).
+  if (result.quarantined || (result.status === "failed" && !result.jobId)) await finishImportJob(admin, orgId, jobId, result);
   const { feedId: _ignored, issues: _issues, ...rest } = result;
   return { supplierId, sourceId, feedId, importJobId: jobId, alreadyImported: null, result: rest };
+}
+
+/** Reprise d'un import en cours par l'utilisateur (rédacteur) : traite les lots suivants dans le budget. */
+export async function resumeImportJob(ctx: OrgContext, jobId: string, budget: ImportRunBudget = {}, admin: AdminSupabaseClient = createAdminSupabaseClient()): Promise<ImportJobDTO> {
+  // appartenance vérifiée sous la session de l'utilisateur (RLS)
+  const { data, error } = await ctx.supabase.from("sourcing_import_jobs").select("id, status").eq("organization_id", ctx.organization.id).eq("id", jobId).maybeSingle();
+  if (error) throw fromPostgrestError(error);
+  if (!data) throw new AppError("NOT_FOUND", "Import introuvable dans cette organisation.");
+  if (data.status === "running") await processImportJob(jobId, { admin, budgetMs: budget.budgetMs ?? 90_000, cpuBudgetMs: budget.cpuBudgetMs });
+  return getImportJob(ctx, jobId);
 }
 
 async function createImportJob(
@@ -456,18 +444,8 @@ async function finishImportJob(admin: AdminSupabaseClient, organizationId: strin
   for (let k = 0; k < issues.length; k += 200) await admin.from("sourcing_import_issues").insert(issues.slice(k, k + 200));
 }
 
-/** Mapping mémorisé pour ce fournisseur et ce modèle de fichier (proposé au prochain import). */
-async function rememberMapping(admin: AdminSupabaseClient, ctx: OrgContext, supplierId: string, loaded: LoadedCatalog, input: z.infer<typeof catalogImportSchema>): Promise<void> {
-  const columns = previewFeed(loaded.content, loaded.feedFormat, {}, loaded.options, {}, 1).columns;
-  const signature = headerSignature(columns);
-  const { data: existing } = await admin.from("sourcing_mapping_profiles").select("id, use_count").eq("organization_id", ctx.organization.id).eq("supplier_id", supplierId).eq("header_signature", signature).maybeSingle();
-  const patch = { mapping: input.mapping as unknown as Json, defaults: input.defaults as unknown as Json, columns: columns.slice(0, 200), updated_by: ctx.user.id };
-  if (existing) await admin.from("sourcing_mapping_profiles").update({ ...patch, use_count: existing.use_count + 1 }).eq("id", existing.id);
-  else await admin.from("sourcing_mapping_profiles").insert({ organization_id: ctx.organization.id, supplier_id: supplierId, header_signature: signature, ...patch });
-}
-
 const JOB_COLUMNS =
-  "id, supplier_id, source_id, origin, file_name, file_size, format, mode, status, rows_read, rows_valid, offers_created, offers_updated, offers_unchanged, duplicates, rows_invalid, offers_rejected, products_unrecognized, offers_expired, truncated, message, created_by, started_at, finished_at, supplier:suppliers(name)";
+  "id, supplier_id, source_id, origin, file_name, file_size, format, mode, status, rows_read, rows_valid, offers_created, offers_updated, offers_unchanged, duplicates, rows_invalid, offers_rejected, products_unrecognized, offers_expired, truncated, message, created_by, started_at, finished_at, rows_total, rows_processed, chunks_total, chunks_done, lease_expires_at, supplier:suppliers(name)";
 
 type JobRow = {
   id: string;
@@ -494,6 +472,11 @@ type JobRow = {
   created_by: string | null;
   started_at: string;
   finished_at: string | null;
+  rows_total: number | null;
+  rows_processed: number;
+  chunks_total: number;
+  chunks_done: number;
+  lease_expires_at: string | null;
   supplier: { name: string } | null;
 };
 
@@ -515,6 +498,8 @@ function toJobDTO(r: JobRow): ImportJobDTO {
     createdBy: r.created_by,
     startedAt: r.started_at,
     finishedAt: r.finished_at,
+    progress: r.chunks_total > 0 ? { rowsProcessed: r.rows_processed, rowsTotal: r.rows_total ?? 0, chunksDone: r.chunks_done, chunksTotal: r.chunks_total } : null,
+    resumable: r.status === "running" && r.chunks_total > 0 && (!r.lease_expires_at || new Date(r.lease_expires_at).getTime() <= Date.now()),
   };
 }
 

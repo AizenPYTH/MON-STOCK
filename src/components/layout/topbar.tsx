@@ -36,21 +36,21 @@ function useDismiss(open: boolean, close: () => void) {
 
 const FLOAT = "absolute right-0 top-[46px] z-[60] rounded-[14px] border border-border bg-surface shadow-[0_6px_14px_rgba(16,28,44,.10),0_18px_40px_rgba(10,20,32,.18)]";
 
-function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number }) {
+function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number | null }) {
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`Alertes : ${total} à traiter`} className="relative flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-night-raised text-on-night hover:bg-night-hover">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={total === null ? "Alertes : nombre inconnu" : `Alertes : ${total} à traiter`} className="relative flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-night-raised text-on-night hover:bg-night-hover">
         <Bell aria-hidden="true" className="h-[18px] w-[18px]" />
-        {total > 0 ? <span aria-hidden="true" className="absolute right-[9px] top-2 h-2 w-2 rounded-full bg-amber shadow-[0_0_0_2px_var(--night-raised)]" /> : null}
+        {total !== null && total > 0 ? <span aria-hidden="true" className="absolute right-[9px] top-2 h-2 w-2 rounded-full bg-amber shadow-[0_0_0_2px_var(--night-raised)]" /> : null}
       </button>
       {open ? (
         <div role="dialog" aria-label="Alertes" className={cn(FLOAT, "w-[400px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl")}>
           <div className="flex items-center justify-between px-4 pb-2.5 pt-3.5">
             <span className="flex items-center gap-2">
               <span className="ms-mono text-[11px] leading-[14px] text-muted">Alertes</span>
-              <span className="ms-code text-[11px]">{total}</span>
+              <span className="ms-code text-[11px]">{total ?? "—"}</span>
             </span>
             <span className="ms-code text-[11px] text-ink-3">par gravité</span>
           </div>
@@ -116,7 +116,7 @@ function AddMenu({ readOnly, open, setOpen }: { readOnly: boolean; open: boolean
 }
 
 /** Barre du haut nuit : recherche ⌘K, état de synchro eBay, Conseiller, Alertes, + Ajouter. */
-export function Topbar({ onToggleAdvisor, advisorOpen = false, onOpenSearch, onOpenMenu, addOpen, setAddOpen, readOnly, lastEbaySync, alerts, alertTotal, menuButton }: { onToggleAdvisor?: () => void; advisorOpen?: boolean; onOpenSearch: () => void; onOpenMenu: () => void; addOpen: boolean; setAddOpen: (v: boolean) => void; readOnly: boolean; lastEbaySync: string | null; alerts: ShellAlert[]; alertTotal: number; menuButton?: ReactNode }) {
+export function Topbar({ onToggleAdvisor, advisorOpen = false, onOpenSearch, onOpenMenu, addOpen, setAddOpen, readOnly, lastEbaySync, alerts, alertTotal, menuButton }: { onToggleAdvisor?: () => void; advisorOpen?: boolean; onOpenSearch: () => void; onOpenMenu: () => void; addOpen: boolean; setAddOpen: (v: boolean) => void; readOnly: boolean; lastEbaySync: string | null; alerts: ShellAlert[]; alertTotal: number | null; menuButton?: ReactNode }) {
   const router = useRouter();
   const sync = lastEbaySync ? formatRelativeShort(lastEbaySync) : null;
   return (

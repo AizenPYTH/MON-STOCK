@@ -320,7 +320,7 @@ export function analyzeDeal(offer: DealOfferInput, comparables: DealComparable[]
   if (offer.originalCurrency && offer.originalCurrency.toUpperCase() !== offer.orgCurrency.toUpperCase()) uncertainties.push(`Prix converti depuis ${offer.originalCurrency.toUpperCase()} (taux BCE) : frais de change possibles.`);
   const { freshness, ageDays } = freshnessOf(offer.lastSeenAt, now);
   if (freshness === "stale") uncertainties.push(`Prix relevé il y a ${ageDays} jours : à revérifier.`);
-  if (offer.marketplace) uncertainties.push("Annonce de place de marché (vendeur particulier ou professionnel) : garantie et facture à vérifier.");
+  if (offer.marketplace) uncertainties.push("Annonce publiée sur une place de marché (vendeur particulier ou professionnel) : prix demandé, quantité, garantie et facture à vérifier.");
 
   if (offer.price === null || offer.price <= 0) return { ...base, summary: "Prix fournisseur absent." };
   if (!sig.identified) {
@@ -338,6 +338,8 @@ export function analyzeDeal(offer: DealOfferInput, comparables: DealComparable[]
     marketPrice = quantile(marketPrices, 0.5);
     marketBasis = "marketplace";
     marketCount = marketPrices.length;
+    // I-19 : des annonces publiées ne sont pas des ventes observées
+    uncertainties.push(`Prix de marché = médiane de ${marketPrices.length} annonces publiées (prix DEMANDÉS par les vendeurs, pas des ventes constatées) : le prix de revente réel peut être plus bas.`);
   } else if (supplierPrices.length >= MIN_SUPPLIER_COMPARABLES) {
     marketPrice = quantile(supplierPrices, 0.5);
     marketBasis = "suppliers";
@@ -357,6 +359,7 @@ export function analyzeDeal(offer: DealOfferInput, comparables: DealComparable[]
   } else if (marketPrices.length >= MIN_MARKETPLACE_COMPARABLES) {
     resalePrice = quantile(marketPrices, 0.25);
     resaleBasis = "marketplace_low";
+    uncertainties.push("Prix de revente estimé sur le bas des annonces publiées (prix demandés), faute de vente constatée de votre côté.");
   }
 
   const country = offer.supplierCountry?.toUpperCase() ?? null;

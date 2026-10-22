@@ -5,10 +5,24 @@ export const dynamic = "force-dynamic";
 import { requireOrgContext } from "@/features/auth/dal";
 import { AppShell } from "@/components/layout/app-shell";
 import { getShellData } from "@/features/shell/queries";
+import { publicEnvIssues } from "@/lib/env";
+import { ConfigMissing } from "@/components/layout/config-missing";
 
 const ROLE_LABEL: Record<string, string> = { owner: "Propriétaire", admin: "Administrateur", member: "Membre", viewer: "Lecture seule" };
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
+  // Site déployé sans sa configuration publique : diagnostic explicite, rendu côté serveur (W-31),
+  // au lieu d'une erreur masquée par Next en production.
+  const missing = publicEnvIssues();
+  if (missing.length > 0) {
+    return (
+      <main id="contenu" className="flex min-h-full flex-1 justify-center bg-background px-4 py-16">
+        <div className="w-full max-w-[480px]">
+          <ConfigMissing names={missing} />
+        </div>
+      </main>
+    );
+  }
   const ctx = await requireOrgContext();
   const shell = await getShellData(ctx);
   return (

@@ -7,7 +7,7 @@ import type { Client } from "pg";
 import { asService, asSuperuser, asUser, createOrgAs, createUser } from "./helpers";
 
 /** Tables accessibles au seul service_role (aucune policy, aucun privilège client). */
-export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states", "supplier_feed_secrets"] as const;
+export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states", "supplier_feed_secrets", "advisor_retention_policy"] as const;
 
 /** Tables globales (sans organisation), lisibles par tout utilisateur authentifié. */
 export const GLOBAL_READ_TABLES = ["fx_rates"] as const;
@@ -105,6 +105,7 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
   );
   await one("inventory", "update public.inventory set quantity_on_hand = 5 where sku_id = $1 returning sku_id as id", [sku]);
   await one("inventory_movements", "insert into public.inventory_movements (organization_id, sku_id, type, quantity, quantity_after) values ($1, $2, 'initial', 5, 5) returning id", [orgId, sku]);
+  await one("inventory_reservation_events", "insert into public.inventory_reservation_events (organization_id, sku_id, delta, reserved_before, reserved_after, created_by) values ($1, $2, 1, 0, 1, $3) returning id", [orgId, sku, ownerId]);
   await one("price_history", "select id from public.price_history where sku_id = $1 limit 1", [sku]);
   const channel = await one("sales_channels", "insert into public.sales_channels (organization_id, provider, name) values ($1, 'ebay', $2) returning id", [orgId, `eBay ${tag}`]);
   const connection = await one(
@@ -142,6 +143,7 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
     "insert into public.supplier_sources (organization_id, supplier_id, name, source_type, status) values ($1, $2, 'Saisie', 'MANUAL', 'active') returning id",
     [orgId, supplier],
   );
+  await one("supplier_source_attestations", "insert into public.supplier_source_attestations (organization_id, source_id, automated_access_confirmed, access_conditions, attested_by, origin) values ($1, $2, true, 'Données saisies par l''utilisateur.', $3, 'rpc') returning id", [orgId, source, ownerId]);
   const feed = await one("supplier_feeds", "insert into public.supplier_feeds (organization_id, supplier_id, source_id, format) values ($1, $2, $3, 'csv') returning id", [orgId, supplier, source]);
   const sconn = await one(
     "supplier_connections",

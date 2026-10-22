@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireOrgContextForAction, type OrgContext } from "@/features/auth/dal";
 import { fail, ok, type ActionResult } from "@/lib/result";
-import { fromPostgrestError, toUserMessage } from "@/lib/errors";
+import { AppError, fromPostgrestError, toUserMessage } from "@/lib/errors";
+import { webUploadTooLargeMessage } from "@/lib/upload-limits";
 import { createLogger } from "@/lib/logger";
 import { serverEnv } from "@/lib/env";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -35,7 +36,7 @@ function supplierPath(id: string, tab?: string): string {
 
 async function assertSupplier(ctx: OrgContext, supplierId: string): Promise<{ id: string; name: string; currency: string }> {
   const { data } = await ctx.supabase.from("suppliers").select("id, name, currency").eq("organization_id", ctx.organization.id).eq("id", supplierId).maybeSingle();
-  if (!data) throw new Error("Fournisseur introuvable.");
+  if (!data) throw new AppError("NOT_FOUND", "Fournisseur introuvable.");
   return data;
 }
 
@@ -300,7 +301,8 @@ async function readUploadedFile(formData: FormData): Promise<string | null> {
   const file = formData.get("file");
   if (!file || typeof file === "string") return null;
   if (file.size === 0) return null;
-  if (file.size > 20 * 1024 * 1024) throw new Error("Fichier trop volumineux (maximum 20 Mo).");
+  const tooLarge = webUploadTooLargeMessage(file.size);
+  if (tooLarge) throw new AppError("VALIDATION", tooLarge);
   return await file.text();
 }
 
@@ -442,7 +444,7 @@ export async function connectSupplierAccountAction(_prev: ActionResult<{ connect
 
 async function assertConnection(ctx: OrgContext, connectionId: string): Promise<{ id: string; supplier_id: string; connector_key: string }> {
   const { data } = await ctx.supabase.from("supplier_connections").select("id, supplier_id, connector_key").eq("organization_id", ctx.organization.id).eq("id", connectionId).maybeSingle();
-  if (!data) throw new Error("Connexion introuvable.");
+  if (!data) throw new AppError("NOT_FOUND", "Connexion introuvable.");
   return data;
 }
 

@@ -1,14 +1,14 @@
 "use client";
 import type { MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
-import { Loader2 } from "lucide-react";
 import { Button, type ButtonProps } from "@/components/ui/button";
 
 /**
- * Bouton de soumission d'une Server Action : désactivé + indicateur pendant l'envoi.
- * `confirmMessage` demande une confirmation explicite (actions destructives) avant l'envoi.
+ * Bouton de soumission d'une Server Action : désactivé + `aria-busy` + indicateur pendant l'envoi
+ * (jamais de succès affiché avant la réponse). `confirmMessage` demande une confirmation explicite
+ * (actions destructives) avant l'envoi.
  */
-export function SubmitButton({ children, pendingText, confirmMessage, onClick, ...props }: ButtonProps & { pendingText?: string; confirmMessage?: string }) {
+export function SubmitButton({ children, pendingText, confirmMessage, onClick, loading, ...props }: ButtonProps & { pendingText?: string; confirmMessage?: string }) {
   const { pending } = useFormStatus();
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (confirmMessage && !window.confirm(confirmMessage)) {
@@ -18,15 +18,8 @@ export function SubmitButton({ children, pendingText, confirmMessage, onClick, .
     onClick?.(e);
   };
   return (
-    <Button type="submit" {...props} onClick={handleClick} disabled={pending || props.disabled} aria-busy={pending || undefined}>
-      {pending ? (
-        <>
-          <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
-          {pendingText ?? children}
-        </>
-      ) : (
-        children
-      )}
+    <Button type="submit" {...props} onClick={handleClick} loading={pending || loading} loadingText={pendingText}>
+      {children}
     </Button>
   );
 }

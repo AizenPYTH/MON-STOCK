@@ -10,7 +10,7 @@ export default function NotFound() {
   return (
     <div className="flex min-h-full flex-1 flex-col bg-background">
       <header className="px-6 py-5">
-        <Link href="/" aria-label="MON STOCK — accueil">
+        <Link href="/" prefetch={false} aria-label="MON STOCK — accueil">
           <Wordmark tone="light" />
         </Link>
       </header>

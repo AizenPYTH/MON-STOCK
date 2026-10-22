@@ -54,7 +54,8 @@ export interface ShellProps {
   counts: SidebarCounts;
   lastEbaySync: string | null;
   alerts: ShellAlert[];
-  alertTotal: number;
+  /** null : comptage indisponible (« — ») */
+  alertTotal: number | null;
 }
 
 /** La saisie en cours (champ, zone de texte, liste) ne déclenche aucun raccourci à une touche. */

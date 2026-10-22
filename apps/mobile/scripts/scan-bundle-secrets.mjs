@@ -35,10 +35,6 @@ const FORBIDDEN_LITERALS = [
   "server_runtime_secrets", // RPC réservée à service_role
   "createAdminSupabaseClient",
   "This module cannot be imported from a Client Component module", // server-only
-  "-----BEGIN PRIVATE KEY-----",
-  "-----BEGIN EC PRIVATE KEY-----",
-  "-----BEGIN RSA PRIVATE KEY-----",
-  "-----BEGIN OPENSSH PRIVATE KEY-----",
 ];
 
 /** Secrets serveur dont le NOM peut apparaître dans un texte, mais jamais être lu dans l'environnement. */
@@ -56,6 +52,8 @@ const FORBIDDEN_REGEX = [
   { name: "jeton d'accès GitHub", re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\b/ },
   { name: "clé d'accès AWS", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/ },
   { name: "jeton utilisateur eBay (v^1.1#)", re: /v\^1\.1#i\^1#/ },
+  // En-tête de clé privée PEM (écrit en motif : un littéral complet serait signalé par gitleaks).
+  { name: "clé privée PEM", re: /-{5}BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-{5}/ },
   { name: "accès à un secret serveur par variable d'environnement", re: SERVER_ENV_ACCESS },
 ];
 const JWT = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;

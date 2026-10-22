@@ -1,5 +1,7 @@
 import "server-only";
 import OpenAI from "openai";
+import { maskPersonalData } from "@/integrations/ebay/insights-common";
+import { scrubSecrets } from "@/integrations/core/sanitize";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 
@@ -67,15 +69,48 @@ export interface LlmRequest {
 
 export type LlmFinish = "stop" | "tool_calls" | "length" | "refusal";
 
+/** Jetons consommés par un appel (renvoyés par le fournisseur en fin de flux). */
+export interface LlmUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface LlmResult {
   text: string;
   toolCalls: LlmToolCall[];
   finish: LlmFinish;
   model: string;
+  usage?: LlmUsage | null;
+}
+
+export interface LlmCallOptions {
+  /** Échéance globale (annulation propagée à l'appel HTTP et à la lecture du flux). */
+  signal?: AbortSignal;
+  /** Délai de CET appel en ms (= min(délai par appel, temps restant) côté appelant). */
+  timeoutMs?: number;
+  /** Nouvelles tentatives autorisées par le SDK pour CET appel (0 si le budget restant ne le permet pas). */
+  maxRetries?: number;
+  onText?: (delta: string) => void;
 }
 
 export interface LlmClient {
-  complete(req: LlmRequest, opts?: { signal?: AbortSignal; onText?: (delta: string) => void }): Promise<LlmResult>;
+  complete(req: LlmRequest, opts?: LlmCallOptions): Promise<LlmResult>;
+}
+
+/** Délai maximal d'un appel au modèle (limite d'exécution de l'Edge Function ≈ 150 s). */
+export const LLM_CALL_TIMEOUT_MS = 55_000;
+/** En dessous de ce temps restant, aucun nouvel appel n'est lancé (il ne pourrait pas aboutir). */
+export const LLM_MIN_CALL_MS = 4_000;
+
+/**
+ * Options d'un appel dans un budget : délai = min(55 s, temps restant), une nouvelle tentative
+ * seulement si le temps restant couvre DEUX délais complets ; null si le budget est épuisé.
+ */
+export function budgetedCallOptions(deadlineAt: number, now: number = Date.now(), perCallMs: number = LLM_CALL_TIMEOUT_MS): { timeoutMs: number; maxRetries: number } | null {
+  const remaining = deadlineAt - now;
+  if (remaining < LLM_MIN_CALL_MS) return null;
+  const timeoutMs = Math.min(perCallMs, remaining);
+  return { timeoutMs, maxRetries: remaining >= 2 * timeoutMs + 1_000 ? 1 : 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +149,7 @@ function parseArgs(raw: string): unknown {
 
 /** Sous-ensemble du SDK utilisé (le client OpenAI réel le satisfait ; simulable en test). */
 export interface OpenAIChatLike {
-  chat: { completions: { create(body: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> } };
+  chat: { completions: { create(body: Record<string, unknown>, options?: { signal?: AbortSignal; timeout?: number; maxRetries?: number }): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> } };
 }
 
 /** Assemble une réponse diffusée (texte, appels d'outils par index, motif de fin, refus). */
@@ -123,9 +158,11 @@ export async function collectStream(stream: AsyncIterable<OpenAI.Chat.Completion
   let refusal = "";
   let model = fallbackModel;
   let finish: string | null = null;
+  let usage: LlmUsage | null = null;
   const calls = new Map<number, { id: string; name: string; args: string }>();
   for await (const chunk of stream) {
     if (chunk.model) model = chunk.model;
+    if (chunk.usage) usage = { inputTokens: chunk.usage.prompt_tokens ?? 0, outputTokens: chunk.usage.completion_tokens ?? 0 };
     for (const choice of chunk.choices ?? []) {
       const d = choice.delta;
       if (d?.content) {
@@ -145,7 +182,7 @@ export async function collectStream(stream: AsyncIterable<OpenAI.Chat.Completion
   }
   const toolCalls = [...calls.entries()].sort((a, b) => a[0] - b[0]).map(([i, c]) => ({ id: c.id || `call_${i}`, name: c.name, input: parseArgs(c.args) }));
   const mapped: LlmFinish = refusal || finish === "content_filter" ? "refusal" : finish === "length" ? "length" : toolCalls.length > 0 ? "tool_calls" : "stop";
-  return { text: refusal && !text ? "" : text, toolCalls: mapped === "refusal" ? [] : toolCalls, finish: mapped, model };
+  return { text: refusal && !text ? "" : text, toolCalls: mapped === "refusal" ? [] : toolCalls, finish: mapped, model, usage };
 }
 
 /**
@@ -155,13 +192,22 @@ export async function collectStream(stream: AsyncIterable<OpenAI.Chat.Completion
 function rejectedParam(e: unknown): string | null {
   if (!(e instanceof OpenAI.BadRequestError)) return null;
   const param = typeof e.param === "string" ? e.param : null;
-  for (const p of ["reasoning_effort", "parallel_tool_calls", "prompt_cache_key", "store"]) if (param === p || (e.message ?? "").includes(p)) return p;
+  for (const p of ["reasoning_effort", "parallel_tool_calls", "prompt_cache_key", "stream_options"]) if (param === p || (e.message ?? "").includes(p)) return p;
   return null;
 }
 
-/** Journal technique sans secret : statut, code, paramètre et message d'OpenAI (tronqué). */
+/**
+ * Journal technique sans secret ni donnée personnelle : statut, code, paramètre et message d'OpenAI
+ * (secrets et coordonnées masqués, tronqué). Jamais le contenu de la requête.
+ */
 export function logApiError(e: unknown, model: string, withTools: boolean) {
-  if (e instanceof OpenAI.APIError) log.warn("requête OpenAI refusée", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: (e.message ?? "").slice(0, 300) });
+  if (e instanceof OpenAI.APIError) log.warn("requête OpenAI refusée", { status: e.status ?? null, code: e.code ?? null, param: e.param ?? null, type: e.type ?? null, model, withTools, message: safeLogText(e.message ?? "", 200) });
+}
+
+/** Texte destiné aux journaux : secrets et coordonnées masqués, tronqué. */
+export function safeLogText(s: string, max = 200): string {
+  // clés d'API OpenAI (« sk-… ») en plus des secrets reconnus par scrubSecrets
+  return (maskPersonalData(scrubSecrets(s).replace(/\bsk-[A-Za-z0-9_-]{12,}/g, "[REDACTED_KEY]")) ?? "").slice(0, max);
 }
 
 export function openAILlm(sdk: OpenAIChatLike, model: string): LlmClient {
@@ -176,23 +222,32 @@ export function openAILlm(sdk: OpenAIChatLike, model: string): LlmClient {
         // Chat Completions : on laisse la valeur par défaut du modèle.
         ...(withTools ? {} : { reasoning_effort: req.effort ?? "low" }),
         stream: true,
+        // jetons consommés renvoyés en fin de flux (comptés par organisation)
+        stream_options: { include_usage: true },
         store: false,
         ...(req.cacheKey ? { prompt_cache_key: req.cacheKey } : {}),
         ...(withTools ? { tools: toOpenAITools(req.tools!), parallel_tool_calls: true } : {}),
         ...(req.json ? { response_format: { type: "json_schema", json_schema: { name: req.json.name, strict: true, schema: req.json.schema } } } : {}),
       };
+      const started = Date.now();
+      const requestOptions = () => ({
+        signal: opts.signal,
+        ...(opts.timeoutMs !== undefined ? { timeout: Math.max(1, opts.timeoutMs - (Date.now() - started)) } : {}),
+        ...(opts.maxRetries !== undefined ? { maxRetries: opts.maxRetries } : {}),
+      });
       let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
       try {
-        stream = await sdk.chat.completions.create(body, { signal: opts.signal });
+        stream = await sdk.chat.completions.create(body, requestOptions());
       } catch (e) {
         logApiError(e, model, withTools);
         const p = rejectedParam(e);
         if (!p || !(p in body)) throw e;
-        // Un seul nouvel essai, sans le paramètre facultatif refusé.
+        // Un seul nouvel essai, sans le paramètre facultatif refusé — jamais au-delà du budget.
+        if (opts.signal?.aborted || (opts.timeoutMs !== undefined && Date.now() - started >= opts.timeoutMs - LLM_MIN_CALL_MS)) throw e;
         const { [p]: _dropped, ...retry } = body;
         void _dropped;
         try {
-          stream = await sdk.chat.completions.create(retry, { signal: opts.signal });
+          stream = await sdk.chat.completions.create(retry, requestOptions());
         } catch (e2) {
           logApiError(e2, model, withTools);
           throw e2;
@@ -210,7 +265,7 @@ let client: LlmClient | null = null;
 export function openAISdk(): OpenAI {
   if (!aiConfigured()) throw new AppError("NOT_CONFIGURED", AI_NOT_CONFIGURED);
   // Délais compatibles avec la limite d'exécution de l'Edge Function (≈ 150 s).
-  sdk ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: 55_000 });
+  sdk ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: LLM_CALL_TIMEOUT_MS });
   return sdk;
 }
 

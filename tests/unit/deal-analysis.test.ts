@@ -200,7 +200,8 @@ describe("analyse d'une offre", () => {
 
   it("frais de port fournisseur et douane hors UE entrent dans le coût total", () => {
     const d = analyzeDeal(offer({ shippingCost: 20, moq: 2, supplierCountry: "CN" }), market, { ...FULL, importDutyPercent: 10 }, null, NOW);
-    expect(d.totalCost).toBe(340); // 300 + 20/2 + 30
+    // S-20 : droits sur la valeur en douane CIF (marchandise + transport) : 300 + 20/2 + 10 % × 310
+    expect(d.totalCost).toBe(341);
   });
 });
 

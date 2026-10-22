@@ -1,10 +1,16 @@
 import type { NextConfig } from "next";
+import { publicSupabaseUrl } from "./src/lib/site";
+import { SERVER_ACTION_BODY_LIMIT_BYTES } from "./src/lib/upload-limits";
 
 const isDev = process.env.NODE_ENV === "development";
 
-/** Origine Supabase (REST + Realtime) autorisée côté navigateur ; repli sur *.supabase.co. */
+/**
+ * Origine Supabase (REST + Realtime) autorisée côté navigateur ; repli sur *.supabase.co. Valeur
+ * normalisée comme dans les pages (W-08) : une URL collée avec guillemets ou sans schéma donne la
+ * même origine partout.
+ */
 function supabaseOrigins(): string[] {
-  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const raw = publicSupabaseUrl();
   try {
     if (raw) {
       const u = new URL(raw);
@@ -71,6 +77,11 @@ const nextConfig: NextConfig = {
   },
   // Les secrets ne sont jamais exposés : seules les variables NEXT_PUBLIC_* le sont.
   serverExternalPackages: ["pg"],
+  experimental: {
+    // W-09 : Server Actions recevant un fichier de flux (1 Mo par défaut chez Next) alignées sur la
+    // limite pratique d'un envoi au site hébergé (~4,5 Mo chez Vercel), annoncée dans l'interface.
+    serverActions: { bodySizeLimit: SERVER_ACTION_BODY_LIMIT_BYTES },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

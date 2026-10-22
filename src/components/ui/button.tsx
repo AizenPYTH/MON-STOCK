@@ -1,45 +1,81 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { cn, safeExternalUrl } from "@/lib/utils";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "link" | "dark" | "night";
-type Size = "sm" | "md" | "lg" | "xl";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "link" | "dark" | "night";
+export type ButtonSize = "sm" | "md" | "lg" | "xl";
+type Variant = ButtonVariant;
+type Size = ButtonSize;
 
+/**
+ * Socle commun : focus par contour (s'adapte à tout fond), pression = 1 px vers le bas,
+ * désactivé = 50 %, occupé (`aria-busy`) = curseur d'attente. Le rayon et la graisse sont portés
+ * par la taille et la variante (aucune classe en conflit).
+ */
 const base =
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
+  "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap transition-[background-color,border-color,color,filter,transform] duration-150 ease-standard active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 aria-busy:cursor-progress [&_svg]:shrink-0";
 
 const variants: Record<Variant, string> = {
-  // v5 : action principale menthe (texte bleu nuit), secondaire blanche à filet, sans ombre.
-  primary: "bg-mint text-night font-extrabold hover:bg-mint-pressed",
-  secondary: "bg-surface text-foreground border border-border hover:bg-line-soft",
-  ghost: "text-muted-strong hover:bg-line-soft hover:text-foreground",
-  danger: "bg-danger text-white hover:bg-[#962f2f]",
-  link: "text-foreground underline-offset-2 hover:underline px-0 h-auto",
-  // bouton sombre sur papier (ex. « Chercher une offre »)
-  dark: "bg-night text-on-night hover:bg-night-raised",
-  // bouton secondaire posé sur la scène nuit
-  night: "bg-night-raised text-on-night hover:bg-night-hover",
+  // Action principale : menthe, texte bleu nuit (une seule par zone).
+  primary: "bg-mint font-extrabold text-night hover:bg-mint-pressed",
+  // Action courante : surface blanche à filet.
+  secondary: "border border-border-strong bg-surface font-bold text-foreground hover:border-border-control/50 hover:bg-surface-2",
+  // Action discrète (barres d'outils, lignes de tableau).
+  ghost: "font-bold text-muted-strong hover:bg-line-soft hover:text-foreground",
+  // Action destructive, toujours confirmée.
+  danger: "bg-danger-strong font-bold text-on-danger-strong hover:brightness-[.92]",
+  // Lien d'action dans le texte.
+  link: "h-auto rounded-sm px-0 font-bold text-interactive underline-offset-4 hover:text-interactive-hover hover:underline",
+  // Bouton plein contrasté sur papier (ex. « Chercher une offre ») : bleu nuit en clair, clair en sombre.
+  dark: "bg-inverse font-bold text-on-inverse hover:bg-inverse-hover",
+  // Bouton secondaire posé sur la scène nuit.
+  night: "bg-night-raised font-bold text-on-night hover:bg-night-hover",
 };
 
+/** Hauteurs : sm 32 (40 au doigt), md 40, lg 48, xl 52 (action principale des formulaires). */
 const sizes: Record<Size, string> = {
-  sm: "h-8 rounded-[10px] px-3 text-[13px]",
-  md: "h-10 px-4 text-sm",
-  lg: "h-12 px-5 text-[15px]",
-  // action principale des formulaires v5 (52 px)
-  xl: "h-[52px] px-5 text-[15px]",
+  sm: "h-8 rounded-[10px] px-3 text-[13px] pointer-coarse:h-10",
+  md: "h-10 rounded-xl px-4 text-sm",
+  lg: "h-12 rounded-xl px-5 text-[15px]",
+  xl: "h-[52px] rounded-xl px-5 text-[15px]",
 };
 
-export function buttonClasses(variant: Variant = "primary", size: Size = "md", className?: string): string {
-  return cn(base, variants[variant], variant === "link" ? "" : sizes[size], className);
+const iconOnlySizes: Record<Size, string> = {
+  sm: "w-8 px-0 pointer-coarse:w-10",
+  md: "w-10 px-0",
+  lg: "w-12 px-0",
+  xl: "w-[52px] px-0",
+};
+
+export function buttonClasses(variant: Variant = "primary", size: Size = "md", className?: string, options?: { iconOnly?: boolean }): string {
+  return cn(base, variants[variant], variant === "link" ? "" : sizes[size], variant !== "link" && options?.iconOnly && iconOnlySizes[size], className);
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
+  /** Action en cours : bouton désactivé, `aria-busy`, indicateur tournant. Ne jamais afficher de succès avant la réponse. */
+  loading?: boolean;
+  /** Texte affiché pendant `loading` (sinon le libellé reste). */
+  loadingText?: ReactNode;
+  /** Bouton carré ne contenant qu'une icône : fournir `aria-label`. */
+  iconOnly?: boolean;
 }
 
-export function Button({ variant = "primary", size = "md", className, type = "button", ...props }: ButtonProps) {
-  return <button type={type} className={buttonClasses(variant, size, className)} {...props} />;
+export function Button({ variant = "primary", size = "md", className, type = "button", loading = false, loadingText, iconOnly = false, disabled, children, "aria-busy": ariaBusy, ...props }: ButtonProps) {
+  return (
+    <button type={type} {...props} className={buttonClasses(variant, size, className, { iconOnly })} disabled={disabled || loading} aria-busy={loading || ariaBusy || undefined}>
+      {loading ? (
+        <>
+          <Loader2 aria-hidden="true" className={cn("animate-spin", size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4")} />
+          {iconOnly ? null : (loadingText ?? children)}
+        </>
+      ) : (
+        children
+      )}
+    </button>
+  );
 }
 
 /** Chemin interne relatif à l'application (`/stock`, `?page=2`, `#ancre`) — jamais `//hote`. */
@@ -53,6 +89,7 @@ export function ButtonLink({
   size = "md",
   className,
   children,
+  iconOnly = false,
   ...rest
 }: {
   href: string;
@@ -64,11 +101,13 @@ export function ButtonLink({
   rel?: string;
   "aria-label"?: string;
   title?: string;
+  iconOnly?: boolean;
 }) {
+  const classes = buttonClasses(variant, size, className, { iconOnly });
   if (isInternalHref(href)) {
     // typedRoutes : les routes dynamiques construites sont validées à l'exécution.
     return (
-      <Link href={href as never} className={buttonClasses(variant, size, className)} {...rest}>
+      <Link href={href as never} className={classes} {...rest}>
         {children}
       </Link>
     );
@@ -78,7 +117,7 @@ export function ButtonLink({
   const external = safeExternalUrl(href);
   if (!external) {
     return (
-      <span aria-disabled="true" title="Lien indisponible (URL non sûre ou invalide)" className={buttonClasses(variant, size, cn(className, "pointer-events-none opacity-50"))}>
+      <span aria-disabled="true" title="Lien indisponible (URL non sûre ou invalide)" className={buttonClasses(variant, size, cn(className, "pointer-events-none opacity-50"), { iconOnly })}>
         {children}
       </span>
     );
@@ -86,7 +125,7 @@ export function ButtonLink({
   return (
     <a
       href={external}
-      className={buttonClasses(variant, size, className)}
+      className={classes}
       target={rest.target ?? "_blank"}
       rel={rest.rel ?? "noopener noreferrer"}
       aria-label={rest["aria-label"]}

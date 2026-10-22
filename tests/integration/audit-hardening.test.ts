@@ -78,18 +78,18 @@ d("Durcissement de l'audit (10/10/2026)", () => {
     });
   });
 
-  it("journal d'usage IA : chacun n'insère que pour soi, dans ses organisations, sans antidater", async () => {
+  it("journal d'usage IA : aucune insertion par un client (réservé au serveur depuis 20261023000500, S-09)", async () => {
     await withRollback(async (c) => {
       const a = await createUser(c, "ai-a@example.test");
       const b = await createUser(c, "ai-b@example.test");
       const orgA = await createOrgAs(c, a, "A", "ai-a");
       await createOrgAs(c, b, "B", "ai-b");
       await asUser(c, a);
-      await c.query("insert into public.ai_usage_events (organization_id, kind) values ($1, 'assistant')", [orgA]);
-      await expectQueryError(c, "insert into public.ai_usage_events (organization_id, user_id, kind) values ($1, $2, 'assistant')", [orgA, b], /row-level security/);
-      await expectQueryError(c, "insert into public.ai_usage_events (organization_id, kind, created_at) values ($1, 'assistant', now() - interval '2 hours')", [orgA], /row-level security/);
+      await expectQueryError(c, "insert into public.ai_usage_events (organization_id, kind) values ($1, 'assistant')", [orgA], /permission denied|row-level security/);
+      await expectQueryError(c, "insert into public.ai_usage_events (organization_id, user_id, kind) values ($1, $2, 'assistant')", [orgA, b], /permission denied|row-level security/);
+      await expectQueryError(c, "insert into public.ai_usage_events (organization_id, kind, created_at) values ($1, 'assistant', now() - interval '2 hours')", [orgA], /permission denied|row-level security/);
       await asUser(c, b);
-      await expectQueryError(c, "insert into public.ai_usage_events (organization_id, kind) values ($1, 'assistant')", [orgA], /row-level security/);
+      await expectQueryError(c, "insert into public.ai_usage_events (organization_id, kind) values ($1, 'assistant')", [orgA], /permission denied|row-level security/);
       const { rows } = await c.query("select count(*)::int as n from public.ai_usage_events");
       expect(rows[0].n).toBe(0);
     });

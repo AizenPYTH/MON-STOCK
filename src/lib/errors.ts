@@ -98,10 +98,35 @@ function isPostgrestLike(e: unknown): e is { code?: string; message: string; det
   return o.name === "PostgrestError" || (!(e instanceof Error) && typeof o.code === "string");
 }
 
+/**
+ * Erreurs dont le message est rédigé POUR l'utilisateur (français, sans détail technique ni secret) :
+ * réponses de l'Edge déjà formulées, refus d'envoi de catalogue, erreurs de connecteurs (messages
+ * documentés « sans secret »), échéance interne. Reconnues par leur nom pour ne pas importer ici
+ * les modules qui les définissent.
+ */
+const USER_FACING_ERROR_NAMES: ReadonlySet<string> = new Set(["EdgeApiError", "CatalogRequestError", "ConnectorError", "DeadlineExceededError"]);
+
+const unexpectedLog = createLogger("unexpected-error");
+
+/** Message générique + référence courte, l'erreur d'origine étant journalisée (secrets masqués). */
+export function unexpectedErrorMessage(e: unknown): string {
+  const ref = newErrorReference();
+  const name = e instanceof Error ? e.name : typeof e;
+  const message = e instanceof Error ? e.message : String(e);
+  unexpectedLog.error("unexpected error shown as generic message", { ref, name, message: scrubSecrets(message).slice(0, 500) });
+  return `Une erreur inattendue s'est produite. Réessayez ou contactez le support (réf. ${ref}).`;
+}
+
+/**
+ * Message affichable pour une erreur quelconque (W-19) : seules les AppError (et les erreurs rédigées
+ * pour l'utilisateur ci-dessus) montrent leur message ; une erreur PostgREST est traduite ; toute
+ * autre erreur (réseau `fetch failed`, TypeError, bibliothèque…) donne un message générique avec une
+ * référence journalisée — jamais de message technique ou en anglais à l'écran.
+ */
 export function toUserMessage(e: unknown): string {
   if (isAppError(e)) return e.message;
   // Jamais le message SQL brut à l'écran : traduit (ou message générique + référence).
   if (isPostgrestLike(e)) return fromPostgrestError(e).message;
-  if (e instanceof Error) return e.message;
-  return "Une erreur inattendue s'est produite.";
+  if (e instanceof Error && USER_FACING_ERROR_NAMES.has(e.name) && e.message) return e.message;
+  return unexpectedErrorMessage(e);
 }

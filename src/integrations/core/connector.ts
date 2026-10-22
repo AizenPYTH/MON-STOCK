@@ -90,6 +90,6 @@ export interface MarketplaceConnector {
   getOrders(auth: ConnectorAuth, params: GetOrdersParams): AsyncIterable<OrdersPage>;
   getListings(auth: ConnectorAuth, params?: GetListingsParams): AsyncIterable<ListingsPage>;
   getInventory(auth: ConnectorAuth): AsyncIterable<InventoryLevel[]>;
-  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number): Promise<UpdateInventoryResult>;
+  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number, options?: { deadline?: number | null }): Promise<UpdateInventoryResult>;
   revoke(auth: ConnectorAuth): Promise<RevokeResult>;
 }

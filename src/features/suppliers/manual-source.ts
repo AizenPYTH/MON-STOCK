@@ -1,6 +1,7 @@
 import "server-only";
 import type { OrgContext } from "@/features/auth/dal";
 import type { SupplierSource } from "@/db/types";
+import { fromPostgrestError } from "@/lib/errors";
 
 /**
  * Source MANUAL d'un fournisseur, créée à la première saisie d'offre. Module serveur ordinaire
@@ -14,6 +15,7 @@ export async function ensureManualSource(ctx: OrgContext, supplierId: string, su
     .insert({ organization_id: ctx.organization.id, supplier_id: supplierId, name: `Saisie manuelle — ${supplierName}`, source_type: "MANUAL", automated_access_confirmed: true, access_conditions: "Données saisies par l'utilisateur.", status: "active", sync_frequency: "manual" })
     .select("*")
     .single();
-  if (error || !data) throw new Error(`Source manuelle non créée : ${error?.message ?? "inconnu"}`);
+  // Jamais le message SQL brut à l'écran (W-19) : traduit ou générique avec référence journalisée.
+  if (error || !data) throw fromPostgrestError(error ?? { message: "Source manuelle non créée" });
   return data;
 }

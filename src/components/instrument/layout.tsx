@@ -12,7 +12,7 @@ export function Scene({ children, className }: { children: ReactNode; className?
 }
 
 export function Paper({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("relative -mt-6 flex-1 rounded-t-3xl bg-background px-4 pb-16 pt-5 sm:px-8 lg:pl-8 lg:pr-10 lg:pt-7", className)}>{children}</div>;
+  return <div className={cn("relative -mt-6 flex-1 rounded-t-3xl bg-background shadow-[inset_0_1px_0_var(--paper-edge)] px-4 pb-16 pt-5 sm:px-8 lg:pl-8 lg:pr-10 lg:pt-7", className)}>{children}</div>;
 }
 
 /** En-tête de scène : sur-titre mono, titre 28/34, description, actions à droite. */
@@ -21,7 +21,7 @@ export function SceneHeader({ eyebrow, title, description, actions, back }: { ey
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
         {back ? (
-          <Link href={back.href as never} className="mb-2 inline-flex items-center gap-1 rounded-lg text-[13px] font-semibold text-on-night-muted hover:text-on-night">
+          <Link href={back.href as never} className="mb-2 inline-flex min-h-8 items-center gap-1 rounded-lg pr-1.5 text-[13px] font-semibold text-on-night-muted transition-colors hover:text-on-night pointer-coarse:min-h-10">
             <ChevronLeft aria-hidden="true" className="h-4 w-4" />
             {back.label}
           </Link>
@@ -47,8 +47,8 @@ export function StageStats({ stats, className, size = "md" }: { stats: StageStat
           <>
             <dt className="ms-mono truncate text-[10px] leading-[13px] text-on-night-subtle">{s.label}</dt>
             <dd className={cn("mt-1.5 flex min-w-0 items-baseline gap-1.5 font-bold tnum", size === "md" ? "text-[20px] leading-[26px]" : "text-[17px] leading-[22px]", tone)}>
-              <span className="truncate">{s.value ?? "—"}</span>
-              {s.note ? <span className={cn("truncate text-[13px] font-semibold", s.noteTone === "muted" ? "text-on-night-muted" : "text-amber")}>{s.note}</span> : null}
+              <span className="shrink-0">{s.value ?? "—"}</span>
+              {s.note ? <span className={cn("min-w-0 truncate text-[13px] font-semibold", s.noteTone === "muted" ? "text-on-night-muted" : "text-amber")}>{s.note}</span> : null}
             </dd>
           </>
         );
@@ -68,7 +68,7 @@ export function StageStats({ stats, className, size = "md" }: { stats: StageStat
   );
 }
 
-/** Carte blanche à filet, rayon 16, sans ombre (charte v5). */
+/** Carte blanche à filet, rayon 16, sans ombre (charte v5) ; même apparence que `Card` (components/ui/card). */
 export function Panel({ children, className, id, as: Tag = "div" }: { children: ReactNode; className?: string; id?: string; as?: "div" | "section" | "article" | "li" }) {
   return (
     <Tag id={id} className={cn("scroll-mt-20 rounded-2xl border border-border bg-surface", className)}>

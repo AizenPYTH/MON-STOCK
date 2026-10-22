@@ -26,7 +26,10 @@ export interface MemoryDb {
   uniques: Record<string, string[][]>;
 }
 
-export function memoryDb(seed: Record<string, Row[]> = {}, uniques: Record<string, string[][]> = {}): MemoryDb {
+/** Fonction RPC simulée : reçoit les arguments et la base, renvoie { data, error }. */
+export type RpcHandler = (args: Record<string, unknown>, db: MemoryDb) => { data: unknown; error: unknown } | Promise<{ data: unknown; error: unknown }>;
+
+export function memoryDb(seed: Record<string, Row[]> = {}, uniques: Record<string, string[][]> = {}, rpcHandlers: Record<string, RpcHandler> = {}): MemoryDb {
   const tables: Record<string, Row[]> = {};
   for (const [k, v] of Object.entries(seed)) tables[k] = v.map((r) => ({ ...r }));
   const db: MemoryDb = { tables, uniques, client: null as never };
@@ -251,6 +254,6 @@ export function memoryDb(seed: Record<string, Row[]> = {}, uniques: Record<strin
     return api;
   }
 
-  db.client = { from: (t: string) => builder(t), rpc: async () => ({ data: null, error: null }) } as never;
+  db.client = { from: (t: string) => builder(t), rpc: async (name: string, args: Record<string, unknown> = {}) => (rpcHandlers[name] ? rpcHandlers[name]!(args, db) : { data: null, error: null }) } as never;
   return db;
 }

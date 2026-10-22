@@ -16,8 +16,14 @@ export { readCostSettings, radarSettingsSchema };
  * explicite de l'utilisateur.
  */
 
+/** Adaptateurs dont les offres sont des ANNONCES de vendeurs tiers (prix demandé, pas une vente). */
+const MARKETPLACE_ADAPTERS = new Set(["ebay-browse"]);
+
 export function priceOriginOf(sourceType: string, sourceConfig: Json | null): PriceOrigin {
-  const kind = (sourceConfig as { kind?: string } | null)?.kind;
+  const config = sourceConfig as { kind?: string; adapter?: string; library_key?: string } | null;
+  const kind = config?.kind;
+  // eBay Browse : annonces publiées (prix demandés), jamais « vérifié en direct » (I-19)
+  if ((config?.adapter && MARKETPLACE_ADAPTERS.has(config.adapter)) || config?.library_key === "ebay-fr") return "marketplace_listing";
   if (sourceType === "API") return "verified_live";
   if (sourceType === "PUBLIC_WEB") return "observed_public";
   if (sourceType === "MANUAL") return "manual_entry";

@@ -113,8 +113,8 @@ export class EbayConnector implements MarketplaceConnector {
    * ReviseInventoryStatus. Limitation connue : les annonces créées via l'Inventory API (offres)
    * refusent les révisions Trading ; eBay renvoie alors une erreur explicite qui est remontée telle quelle.
    */
-  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number): Promise<UpdateInventoryResult> {
-    return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity);
+  updateListingInventory(auth: ConnectorAuth, ref: ListingRef, quantity: number, options: { deadline?: number | null } = {}): Promise<UpdateInventoryResult> {
+    return reviseInventoryStatus(this.requireConfig(), auth, ref, quantity, options);
   }
 
   /**

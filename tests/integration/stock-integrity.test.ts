@@ -11,8 +11,10 @@ d("Stock : calculs et garde-fous (apply_inventory_movement v2)", () => {
       const u = await createUser(c, "stk-math@example.test");
       const org = await createOrgAs(c, u, "Org", "stk-math");
       const sku = await createSkuAs(c, u, org, "MATH-1", { initial: 3 });
-      await asUser(c, u);
+      // adjust_reserved_quantity est réservée au serveur depuis 20261023000300 (Q-17 / D-17).
+      await asService(c);
       await c.query("select public.adjust_reserved_quantity($1, $2, 2)", [org, sku]);
+      await asUser(c, u);
       let r = await c.query("select quantity_on_hand, quantity_reserved, quantity_available from public.inventory where sku_id = $1", [sku]);
       expect(r.rows[0]).toEqual({ quantity_on_hand: 3, quantity_reserved: 2, quantity_available: 1 });
       // Vente réelle au-delà du stock : acceptée (la marketplace a déjà vendu), le stock devient négatif.

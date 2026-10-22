@@ -7,10 +7,12 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
   useEffect(() => {
     console.error("[UI] erreur de page", error.digest ?? "", error.message);
   }, [error]);
-  const isEnv = error.message.includes("Configuration");
   // En production, les erreurs serveur sont masquées par Next (message générique en anglais + digest) :
-  // on affiche alors un message français et la référence à communiquer au support.
+  // on affiche alors un message français et la référence à communiquer au support. Le diagnostic de
+  // configuration ne peut donc PAS reposer sur le message ici (W-31) : il est rendu côté serveur par
+  // le layout (app) ; cette indication ne sert qu'en développement.
   const masked = process.env.NODE_ENV === "production" && Boolean(error.digest);
+  const isEnv = !masked && error.message.includes("Configuration");
   const message = masked ? "Une erreur inattendue s'est produite côté serveur. Réessayez dans un instant." : error.message || "Une erreur inattendue s'est produite.";
   return (
     <div role="alert" className="mx-auto max-w-lg rounded-xl border border-red-200 bg-danger-soft p-6">

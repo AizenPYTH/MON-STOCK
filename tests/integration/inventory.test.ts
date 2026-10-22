@@ -47,7 +47,8 @@ d("Calcul de stock (apply_inventory_movement)", () => {
       const u = await createUser(c, "stock3@example.test");
       const org = await createOrgAs(c, u, "Org", "org-stock3");
       const sku = await createSkuAs(c, u, org, "SKU-RES", { initial: 10 });
-      await asUser(c, u);
+      // adjust_reserved_quantity est réservée au serveur depuis 20261023000300 (Q-17 / D-17).
+      await asService(c);
       await c.query("select public.adjust_reserved_quantity($1, $2, 4)", [org, sku]);
       let r = await c.query("select quantity_available, quantity_reserved from public.inventory where sku_id = $1", [sku]);
       expect(r.rows[0]).toMatchObject({ quantity_available: 6, quantity_reserved: 4 });

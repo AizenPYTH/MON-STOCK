@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import OpenAI from "openai";
-import { aiError, collectStream, openAILlm, toOpenAIMessages, toOpenAITools, type OpenAIChatLike } from "@/services/ai/llm";
+import { aiError, budgetedCallOptions, collectStream, LLM_CALL_TIMEOUT_MS, logApiError, openAILlm, toOpenAIMessages, toOpenAITools, type OpenAIChatLike } from "@/services/ai/llm";
 
 /**
  * Adaptateur OpenAI (Chat Completions, flux). Le SDK est simulé : on vérifie la requête envoyée
@@ -33,7 +33,14 @@ describe("assemblage du flux", () => {
     const seen: string[] = [];
     const r = await collectStream(stream([chunk({ content: "Bon" }), chunk({ content: "jour" }), chunk({}, "stop")]), (d) => seen.push(d));
     expect(seen).toEqual(["Bon", "jour"]);
-    expect(r).toEqual({ text: "Bonjour", toolCalls: [], finish: "stop", model: "gpt-5.4-mini-2026-03-17" });
+    expect(r).toEqual({ text: "Bonjour", toolCalls: [], finish: "stop", model: "gpt-5.4-mini-2026-03-17", usage: null });
+  });
+
+  it("jetons consommés lus dans le dernier fragment (stream_options.include_usage)", async () => {
+    const last = { ...chunk({}), choices: [], usage: { prompt_tokens: 1234, completion_tokens: 56, total_tokens: 1290 } } as unknown as Chunk;
+    const r = await collectStream(stream([chunk({ content: "ok" }), chunk({}, "stop"), last]));
+    expect(r.usage).toEqual({ inputTokens: 1234, outputTokens: 56 });
+    expect(r.text).toBe("ok");
   });
 
   it("appels d'outils fragmentés (plusieurs en parallèle) recomposés ; JSON illisible → entrée absente", async () => {
@@ -75,11 +82,20 @@ describe("requête envoyée à OpenAI", () => {
     );
     expect(r.text).toBe("ok");
     const [body, opts] = create.mock.calls[0]! as unknown as [Record<string, unknown>, { signal: AbortSignal }];
-    expect(body).toMatchObject({ model: "gpt-5.4-mini", max_completion_tokens: 2500, stream: true, store: false, prompt_cache_key: "mon-stock-advisor", parallel_tool_calls: true });
+    expect(body).toMatchObject({ model: "gpt-5.4-mini", max_completion_tokens: 2500, stream: true, store: false, stream_options: { include_usage: true }, prompt_cache_key: "mon-stock-advisor", parallel_tool_calls: true });
     expect(body).not.toHaveProperty("reasoning_effort");
     expect(body.tools).toHaveLength(1);
     expect(body).not.toHaveProperty("response_format");
     expect(opts.signal).toBe(signal);
+  });
+
+  it("délai de CET appel et nouvelles tentatives transmis au SDK (échéance du tour)", async () => {
+    const { sdk, create } = fakeSdk([chunk({ content: "ok" }), chunk({}, "stop")]);
+    await openAILlm(sdk, "m").complete({ system: "S", messages: [{ role: "user", content: "Q" }], maxTokens: 10 }, { timeoutMs: 12_000, maxRetries: 0 });
+    const opts = (create.mock.calls[0] as unknown as [unknown, { timeout: number; maxRetries: number }])[1];
+    expect(opts.maxRetries).toBe(0);
+    expect(opts.timeout).toBeGreaterThan(11_000);
+    expect(opts.timeout).toBeLessThanOrEqual(12_000);
   });
 
   it("sortie structurée : schéma JSON strict, sans outils", async () => {
@@ -107,6 +123,22 @@ describe("paramètre refusé par OpenAI (400)", () => {
     expect(create.mock.calls[1]![0]).not.toHaveProperty("prompt_cache_key");
     expect(create.mock.calls[1]![0]).toHaveProperty("tools");
   });
+  it("store:false n'est JAMAIS retiré, même si l'API le refuse (aucune conservation côté OpenAI)", async () => {
+    const create = vi.fn().mockRejectedValue(new OpenAI.BadRequestError(400, { message: "Unsupported parameter: 'store'", param: "store" }, "Unsupported parameter: 'store'", h));
+    const sdk = { chat: { completions: { create } } } as unknown as OpenAIChatLike;
+    await expect(openAILlm(sdk, "m").complete({ system: "S", messages: [{ role: "user", content: "Q" }], maxTokens: 100 })).rejects.toBeInstanceOf(OpenAI.BadRequestError);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+  it("pas de nouvel essai sans le paramètre refusé si l'échéance est atteinte", async () => {
+    const ac = new AbortController();
+    const create = vi.fn().mockImplementation(async () => {
+      ac.abort();
+      throw new OpenAI.BadRequestError(400, { message: "Unsupported parameter: 'prompt_cache_key'", param: "prompt_cache_key" }, "x", h);
+    });
+    const sdk = { chat: { completions: { create } } } as unknown as OpenAIChatLike;
+    await expect(openAILlm(sdk, "m").complete({ system: "S", messages: [{ role: "user", content: "Q" }], maxTokens: 100, cacheKey: "k" }, { signal: ac.signal })).rejects.toBeInstanceOf(OpenAI.BadRequestError);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
   it("autre refus (requête invalide) : pas de nouvel essai, erreur transmise", async () => {
     const create = vi.fn().mockRejectedValue(new OpenAI.BadRequestError(400, { message: "Invalid messages" }, "Invalid messages", h));
     const sdk = { chat: { completions: { create } } } as unknown as OpenAIChatLike;
@@ -129,5 +161,26 @@ describe("erreurs OpenAI → messages utilisateur (aucun détail technique)", ()
     expect(err.code).toBe(code);
     expect(err.message).toMatch(msg);
     expect(err.message).not.toMatch(/bad key|quota/);
+  });
+});
+
+describe("budget de temps d'un appel (S-11, I-14)", () => {
+  it("délai = min(55 s, temps restant) ; nouvel essai seulement si le budget couvre deux délais ; rien sous 4 s", () => {
+    const now = 1_000_000;
+    expect(budgetedCallOptions(now + 100_000, now)).toEqual({ timeoutMs: LLM_CALL_TIMEOUT_MS, maxRetries: 0 });
+    expect(budgetedCallOptions(now + 120_000, now)).toEqual({ timeoutMs: LLM_CALL_TIMEOUT_MS, maxRetries: 1 });
+    expect(budgetedCallOptions(now + 20_000, now)).toEqual({ timeoutMs: 20_000, maxRetries: 0 });
+    expect(budgetedCallOptions(now + 3_000, now)).toBeNull();
+    expect(budgetedCallOptions(now - 1, now)).toBeNull();
+  });
+});
+
+describe("journaux sans donnée personnelle ni secret", () => {
+  it("message d'erreur OpenAI : clé, e-mail et téléphone masqués", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    logApiError(new OpenAI.BadRequestError(400, { message: "x" }, "Bad input jean.dupont@example.com 06 12 34 56 78 sk-proj-abcdefghijklmnopqrstuvwxyz123456", new Headers()), "m", true);
+    const logged = warn.mock.calls.flat().join(" ");
+    warn.mockRestore();
+    expect(logged).not.toMatch(/jean\.dupont@example\.com|06 12 34 56 78|sk-proj-abcdefghijklmnopqrstuvwxyz123456/);
   });
 });

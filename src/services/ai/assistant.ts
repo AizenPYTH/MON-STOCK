@@ -3,8 +3,11 @@ import { z } from "zod";
 import type { AssistantReplyDTO } from "@/features/mobile-api/contract";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
-import { aiError, llmClient, type LlmClient, type LlmMessage } from "./llm";
+import { aiError, budgetedCallOptions, llmClient, type LlmClient, type LlmMessage } from "./llm";
 import { ASSISTANT_TOOL_DEFINITIONS, ASSISTANT_TOOLS, runAssistantTool, type ToolContext } from "./assistant-tools";
+import { BudgetExceededError, turnBudget, withinBudget } from "./deadline";
+import { buyerPseudonymizer, ephemeralPseudonymKey } from "./privacy";
+import type { AiMeter } from "./quota";
 
 const log = createLogger("AI_ASSISTANT");
 
@@ -16,6 +19,8 @@ const log = createLogger("AI_ASSISTANT");
  * Le modèle choisit les outils de lecture (ventes, commandes, stock, annonces, compte eBay), qui
  * interrogent les VRAIES données de l'organisation sous la session de l'utilisateur (RLS).
  * Il répond uniquement à partir de ces résultats ; sans donnée, il le dit.
+ * Échéance globale propagée à chaque appel (délai = min(55 s, temps restant)), chaque appel au
+ * modèle réservé dans le quota, acheteurs désignés par un alias (voir advisor.ts, privacy.ts).
  */
 
 export const assistantRequestSchema = z.object({
@@ -56,19 +61,26 @@ export function assistantSystemPrompt(org: { name: string; currency: string }, t
   ].join("\n");
 }
 
-export async function askAssistant(ctx: ToolContext & { organizationName: string }, request: AssistantRequest, deps: { client?: LlmClient } = {}): Promise<AssistantReplyDTO> {
+export async function askAssistant(ctx: ToolContext & { organizationName: string }, request: AssistantRequest, deps: { client?: LlmClient; meter?: AiMeter; deadlineMs?: number; signal?: AbortSignal } = {}): Promise<AssistantReplyDTO> {
   const client = deps.client ?? llmClient();
+  const meter = deps.meter;
   const today = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeZone: "Europe/Paris" }).format(ctx.now ?? new Date());
   const system = assistantSystemPrompt({ name: ctx.organizationName, currency: ctx.currency }, today);
   const messages: LlmMessage[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
   const used: { tool: string; label: string }[] = [];
   let model = "";
 
-  const started = Date.now();
+  const budget = turnBudget(deps.deadlineMs ?? ASSISTANT_DEADLINE_MS, deps.signal);
+  const tooLong = () => new AppError("EXTERNAL_API", "La réponse prend trop de temps : posez une question plus précise.");
+  // Alias des acheteurs stables le temps de la requête ; échéance propagée aux lectures.
+  const toolCtx: ToolContext = { ...ctx, pseudonyms: ctx.pseudonyms ?? buyerPseudonymizer(ephemeralPseudonymKey()), signal: budget.signal };
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
-      if (Date.now() - started > ASSISTANT_DEADLINE_MS) throw new AppError("EXTERNAL_API", "La réponse prend trop de temps : posez une question plus précise.");
-      const response = await client.complete({ system, tools: ASSISTANT_TOOL_DEFINITIONS, messages, maxTokens: 8000, effort: "medium", cacheKey: "mon-stock-assistant" });
+      const call = budgetedCallOptions(budget.deadlineAt);
+      if (!call || budget.signal.aborted) throw tooLong();
+      const eventId = meter ? await meter.beforeModelCall() : null;
+      const response = await client.complete({ system, tools: ASSISTANT_TOOL_DEFINITIONS, messages, maxTokens: 8000, effort: "medium", cacheKey: "mon-stock-assistant" }, { signal: budget.signal, timeoutMs: call.timeoutMs, maxRetries: call.maxRetries });
+      if (meter) await meter.afterModelCall(eventId, response.usage ?? null);
       model = response.model;
       if (response.finish === "refusal") return { answer: "Je ne peux pas répondre à cette demande. Reformulez votre question sur vos ventes, votre stock ou votre compte eBay.", sources: used, model };
 
@@ -82,16 +94,23 @@ export async function askAssistant(ctx: ToolContext & { organizationName: string
       messages.push({ role: "assistant", content: response.text, toolCalls: calls });
       const results = await Promise.all(
         calls.map(async (call) => {
-          const r = await runAssistantTool(ctx, call.name, call.input);
+          const r = await withinBudget(runAssistantTool(toolCtx, call.name, call.input), budget.signal).catch((e: unknown) => {
+            if (e instanceof BudgetExceededError) return { content: "Lecture interrompue : délai de réponse dépassé.", isError: true };
+            throw e;
+          });
           if (!used.some((u) => u.tool === call.name)) used.push({ tool: call.name, label: ASSISTANT_TOOLS[call.name]?.label ?? call.name });
-          if (r.isError) log.warn("outil en erreur", { tool: call.name, error: r.content.slice(0, 200) });
+          // Journal : nom de l'outil seulement (le contenu peut citer des données personnelles).
+          if (r.isError) log.warn("outil en erreur", { tool: call.name });
           return { role: "tool" as const, toolCallId: call.id, content: r.isError ? `ERREUR : ${r.content}` : r.content };
         }),
       );
       messages.push(...results);
     }
   } catch (e) {
+    if (budget.signal.aborted && !(e instanceof AppError)) throw tooLong();
     throw aiError(e);
+  } finally {
+    budget.dispose();
   }
   throw new AppError("EXTERNAL_API", "La question demande trop d'étapes : posez-la de façon plus précise.");
 }

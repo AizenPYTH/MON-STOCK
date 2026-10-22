@@ -68,7 +68,8 @@ export function untrusted(text: string | null | undefined): string | null {
 // ---------------------------------------------------------------------------
 
 const redactedRows = new WeakMap<AdvisorCardRowDTO, AdvisorCardRowDTO>();
-const redactedCards = new WeakMap<AdvisorCardDTO, { text: string | null; warning: string }>();
+type StoredCardOverride = { title?: string; text: string | null; warning: string };
+const redactedCards = new WeakMap<AdvisorCardDTO, StoredCardOverride>();
 
 /** Ligne affichée telle quelle à l'écran, remplacée par `stored` dans l'historique enregistré. */
 export function personalRow(shown: AdvisorCardRowDTO, stored: AdvisorCardRowDTO): AdvisorCardRowDTO {
@@ -76,9 +77,9 @@ export function personalRow(shown: AdvisorCardRowDTO, stored: AdvisorCardRowDTO)
   return shown;
 }
 
-/** Carte dont le texte (ex. message d'un acheteur) n'est pas conservé dans l'historique. */
-export function personalCardText(c: AdvisorCardDTO, storedText: string | null = null, warning = "Contenu non conservé dans l'historique (données personnelles)."): AdvisorCardDTO {
-  redactedCards.set(c, { text: storedText, warning });
+/** Carte dont le texte (ex. message d'un acheteur) et éventuellement le titre ne sont pas conservés dans l'historique. */
+export function personalCardText(c: AdvisorCardDTO, stored: { title?: string; text?: string | null } = {}, warning = "Contenu non conservé dans l'historique (données personnelles)."): AdvisorCardDTO {
+  redactedCards.set(c, { title: stored.title, text: stored.text ?? null, warning });
   return c;
 }
 
@@ -88,7 +89,7 @@ export function cardsForStorage(cards: AdvisorCardDTO[]): AdvisorCardDTO[] {
     const rows = c.rows.map((r) => redactedRows.get(r) ?? r);
     const textRule = redactedCards.get(c);
     if (!textRule) return rows.some((r, i) => r !== c.rows[i]) ? { ...c, rows } : c;
-    return { ...c, rows, text: textRule.text, warnings: [...c.warnings, textRule.warning].slice(0, 6) };
+    return { ...c, rows, title: textRule.title ?? c.title, text: textRule.text, warnings: [...c.warnings, textRule.warning].slice(0, 6) };
   });
 }
 
@@ -105,11 +106,11 @@ function norm(s: string): string {
     .trim();
 }
 
-export const EXPLICIT_REQUEST_MIN_CHARS = 8;
+export const EXPLICIT_REQUEST_MIN_CHARS = 10;
 
 /**
  * Vrai si `quote` est une citation exacte (casse, ponctuation et espaces ignorés) d'au moins
- * 8 caractères de la question posée par l'utilisateur DANS CE TOUR. Le modèle ne peut pas
+ * 10 lettres ou chiffres de la question posée par l'utilisateur DANS CE TOUR. Le modèle ne peut pas
  * l'inventer (contenus tiers, historique) : seule la question de l'utilisateur fait foi.
  */
 export function quotesUserRequest(question: string | null | undefined, quote: string | null | undefined): boolean {

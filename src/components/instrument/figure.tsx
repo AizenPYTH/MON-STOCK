@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { splitFigure } from "@/components/instrument/pure";
+import { Kbd as UiKbd } from "@/components/ui/kbd";
 
 const SIZES = {
   xl: { num: "text-[68px] leading-[72px] tracking-[-2.8px]", unit: "text-[30px] leading-[32px] ml-2" },
@@ -52,19 +53,19 @@ export function MonoLabel({ children, onNight = false, className }: { children: 
   return <span className={cn("ms-mono text-[10px] leading-[13px]", onNight ? "text-on-night-subtle" : "text-ink-3", className)}>{children}</span>;
 }
 
-/** Touche de raccourci (« ⌘ K », « N »). */
+/** Touche de raccourci (« ⌘ K », « N ») ; sur la scène nuit par défaut (voir aussi `Kbd` de components/ui/kbd). */
 export function Kbd({ children, onNight = true, className }: { children: ReactNode; onNight?: boolean; className?: string }) {
   return (
-    <kbd className={cn("ms-code whitespace-nowrap rounded-[5px] border px-1.5 text-[10.5px] leading-[18px]", onNight ? "border-night-stroke text-on-night-muted" : "border-border-strong text-muted", className)}>
+    <UiKbd onNight={onNight} className={className}>
       {children}
-    </kbd>
+    </UiKbd>
   );
 }
 
 /** Badge « DÉMO » (organisation de démonstration). */
 export function DemoBadge({ onNight = true }: { onNight?: boolean }) {
   return (
-    <span className={cn("ms-code shrink-0 rounded px-[5px] py-px text-[9.5px] font-semibold leading-[13px] tracking-[0.08em]", onNight ? "bg-[rgba(229,163,77,.14)] text-amber" : "bg-warning-soft text-warning")}>DÉMO</span>
+    <span className={cn("ms-code shrink-0 rounded px-[5px] py-px text-[9.5px] font-semibold leading-[13px] tracking-[0.08em]", onNight ? "bg-amber/14 text-amber" : "bg-warning-soft text-warning-ink")}>DÉMO</span>
   );
 }
 

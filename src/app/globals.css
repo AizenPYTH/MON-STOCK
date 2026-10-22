@@ -1,45 +1,287 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   MON STOCK — jetons web alignés sur la charte v5 « Instrument » (apps/mobile/src/theme/tokens.ts) :
-   bleu nuit (scène, navigation), papier clair, cartes blanches à filet, couleur réservée aux signaux.
-   Menthe jamais en texte sur blanc ; ambre et rouge en texte → variantes « ink ».
-   Le handoff web de Claude Design affinera ces valeurs (docs/design/web-claude-design-prompt.md).
+   MON STOCK — système « Instrument » web (docs/design/DESIGN-SYSTEM.md fait foi).
+   ADN partagé avec l'app iPhone (apps/mobile/src/theme/tokens.ts) : bleu nuit pour la scène et la
+   navigation, papier clair, cartes blanches à filet fin, couleur réservée aux signaux
+   (menthe = bon, ambre = action requise, rouge = rupture / perte).
+
+   Thèmes : clair par défaut ; sombre si le système le demande (prefers-color-scheme) SAUF si
+   <html data-theme="light"> ; sombre forcé par data-theme="dark" (sur <html> ou sur n'importe quel
+   conteneur, ce qui permet de prévisualiser un thème dans une zone de page).
+   Les deux blocs « sombre » ci-dessous DOIVENT rester identiques (vérifié par
+   tests/unit/design-tokens.test.ts, qui mesure aussi les contrastes WCAG).
+
+   Règle : aucune couleur littérale dans les composants ; tout passe par ces jetons.
 --------------------------------------------------------------------------- */
-:root {
+
+/* @tokens:light:start */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Fonds et surfaces */
   --background: #f2f4f7; /* papier */
-  --surface: #ffffff;
-  --surface-muted: #eef1f5;
-  --border: #e6eaf0;
-  --border-strong: #d5dbe4;
-  --foreground: #17212f;
-  --muted: #5b6676; /* ≥ 4.5:1 sur surface et papier (WCAG AA) */
-  --muted-strong: #3e4a5b;
-  --accent: #101c2c; /* bleu nuit : liens, sélection */
+  --surface: #ffffff; /* surface 1 : cartes, tableaux, champs */
+  --surface-2: #f7f8fa; /* surface 2 : zone en retrait dans une carte, ligne survolée */
+  --surface-3: #eef1f5; /* surface 3 : pastilles neutres, survol de bouton discret */
+  --surface-muted: #eef1f5; /* historique (= surface 3) */
+  --line-soft: #eef1f5; /* filet intérieur, fond neutre doux */
+  --selection: #e8ebf0; /* ligne / élément sélectionné */
+  --track: #e4e8ee; /* rail de contrôle segmenté, jauges */
+  --skeleton: #e6eaf0;
+  --overlay: rgba(10, 20, 32, 0.45);
+
+  /* Bordures */
+  --border: #e6eaf0; /* filet fin des cartes */
+  --border-strong: #d5dbe4; /* séparation marquée */
+  --border-control: #818b9b; /* contour des champs : ≥ 3:1 sur surface et papier (WCAG 1.4.11) */
+
+  /* Texte */
+  --foreground: #17212f; /* primaire */
+  --muted-strong: #3e4a5b; /* secondaire appuyé */
+  --muted: #566272; /* secondaire */
+  --ink-3: #5f6b7c; /* tertiaire : étiquettes mono, métadonnées (≥ 4,5:1 partout) */
+  --ink-4: #9aa6b6; /* désactivé, chevrons décoratifs (non porteur d'information) */
+
+  /* Interaction */
+  --accent: #101c2c; /* historique : marque de sélection (bleu nuit) */
   --accent-soft: #e8ebf0;
-  --success: #1e7f57; /* marge positive en texte sur fond clair */
-  --success-soft: #e3f8ee;
-  --warning: #8a5a12; /* « demande une action » en texte */
+  --interactive: #2a5ab0; /* liens dans le texte */
+  --interactive-hover: #1f4689;
+  --interactive-soft: #eaf0fb;
+  --ring: #3567c4; /* anneau de focus ≥ 3:1 */
+  --inverse: #101c2c; /* élément plein sur papier (puce sélectionnée, bouton sombre) */
+  --inverse-hover: #22324a;
+  --on-inverse: #f7f8fa;
+
+  /* États : <ton> = texte (ink), -soft = fond, -line = bordure, -strong / -on-strong = aplat plein */
+  --success: #1a7550;
+  --success-ink: #1a7550;
+  --success-soft: #e3f6ec;
+  --success-line: #bfe3cf;
+  --success-strong: #1e7f57;
+  --on-success-strong: #ffffff;
+  --warning: #85560f;
+  --warning-ink: #85560f;
   --warning-soft: #fbf1e2;
-  --danger: #b03a3a; /* rupture, perte, erreur en texte */
+  --warning-line: #efd8b0;
+  --warning-strong: #e5a34d;
+  --on-warning-strong: #101c2c;
+  --danger: #ac3838;
+  --danger-ink: #ac3838;
   --danger-soft: #fbe9e9;
+  --danger-line: #f0cdcd;
+  --danger-strong: #b03a3a;
+  --on-danger-strong: #ffffff;
   --info: #24518f;
+  --info-ink: #24518f;
   --info-soft: #eaf0fb;
-  --ring: #3567c4; /* indicateur de focus ≥ 3:1 */
-  /* Charte v5 */
-  --night: #101c2c;
-  --night-deep: #0a1420;
-  --night-raised: #22324a;
-  --on-night: #f7f8fa;
-  --on-night-muted: #9aa6b6;
-  --night-line: rgba(247, 248, 250, 0.1);
+  --info-line: #cddbf2;
+  --info-strong: #2f5fb8;
+  --on-info-strong: #ffffff;
+
+  /* Signaux (aplats, points, barres : jamais du texte sur papier) */
   --mint: #8be8be;
   --mint-pressed: #72d9a9;
   --amber: #e5a34d;
   --red: #dc5a5a;
+
+  /* Scène nuit et navigation */
+  --night: #101c2c;
+  --night-deep: #0a1420;
+  --night-raised: #22324a;
+  --night-hover: #2a3c57;
+  --on-night: #f7f8fa;
+  --on-night-muted: #9aa6b6;
+  --on-night-subtle: #8693a8;
+  --night-line: rgba(247, 248, 250, 0.1);
+  --night-stroke: rgba(247, 248, 250, 0.14);
+  --danger-on-night: #f2a3a3;
+  --paper-edge: transparent; /* filet haut du papier posé sur la scène (visible en sombre) */
+
+  /* Élévations (ce qui flotte seulement ; les cartes posées n'ont pas d'ombre) */
+  --elevation-1: 0 1px 2px rgba(16, 28, 44, 0.06), 0 2px 6px rgba(16, 28, 44, 0.06);
+  --elevation-2: 0 6px 14px rgba(16, 28, 44, 0.1), 0 18px 40px rgba(10, 20, 32, 0.16);
+  --elevation-3: 0 12px 32px rgba(10, 20, 32, 0.22), 0 32px 80px rgba(10, 20, 32, 0.24);
+}
+/* @tokens:light:end */
+
+@media (prefers-color-scheme: dark) {
+  /* @tokens:dark-media:start */
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: #0f1823;
+    --surface: #151f2c;
+    --surface-2: #19242f;
+    --surface-3: #1f2b3a;
+    --surface-muted: #1f2b3a;
+    --line-soft: #1f2b3a;
+    --selection: #22324a;
+    --track: #263446;
+    --skeleton: #222e3e;
+    --overlay: rgba(3, 7, 12, 0.66);
+    --border: #253244;
+    --border-strong: #324257;
+    --border-control: #66758b;
+    --foreground: #e9eef4;
+    --muted-strong: #c7d0db;
+    --muted: #a6b1bf;
+    --ink-3: #95a1b2;
+    --ink-4: #5e6b7d;
+    --accent: #e9eef4;
+    --accent-soft: #22324a;
+    --interactive: #8fb2f3;
+    --interactive-hover: #b3cbf7;
+    --interactive-soft: #18294a;
+    --ring: #78a2f2;
+    --inverse: #e9eef4;
+    --inverse-hover: #ffffff;
+    --on-inverse: #0f1823;
+    --success: #79dcae;
+    --success-ink: #79dcae;
+    --success-soft: #112a20;
+    --success-line: #1f4d39;
+    --success-strong: #8be8be;
+    --on-success-strong: #0a111b;
+    --warning: #f0b868;
+    --warning-ink: #f0b868;
+    --warning-soft: #2b2011;
+    --warning-line: #4f3a1b;
+    --warning-strong: #e5a34d;
+    --on-warning-strong: #0a111b;
+    --danger: #f4a5a5;
+    --danger-ink: #f4a5a5;
+    --danger-soft: #2f1719;
+    --danger-line: #5a2a2e;
+    --danger-strong: #c24444;
+    --on-danger-strong: #ffffff;
+    --info: #a1c0f4;
+    --info-ink: #a1c0f4;
+    --info-soft: #14233d;
+    --info-line: #27416b;
+    --info-strong: #3a6ad0;
+    --on-info-strong: #ffffff;
+    --mint: #8be8be;
+    --mint-pressed: #72d9a9;
+    --amber: #e5a34d;
+    --red: #e06666;
+    --night: #0a111b;
+    --night-deep: #060b12;
+    --night-raised: #1b2738;
+    --night-hover: #24334a;
+    --on-night: #f7f8fa;
+    --on-night-muted: #9aa6b6;
+    --on-night-subtle: #8693a8;
+    --night-line: rgba(247, 248, 250, 0.08);
+    --night-stroke: rgba(247, 248, 250, 0.13);
+    --danger-on-night: #f2a3a3;
+    --paper-edge: rgba(247, 248, 250, 0.07);
+    --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
+    --elevation-2: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    --elevation-3: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  /* @tokens:dark-media:end */
+}
+
+/* @tokens:dark-attr:start */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0f1823;
+  --surface: #151f2c;
+  --surface-2: #19242f;
+  --surface-3: #1f2b3a;
+  --surface-muted: #1f2b3a;
+  --line-soft: #1f2b3a;
+  --selection: #22324a;
+  --track: #263446;
+  --skeleton: #222e3e;
+  --overlay: rgba(3, 7, 12, 0.66);
+  --border: #253244;
+  --border-strong: #324257;
+  --border-control: #66758b;
+  --foreground: #e9eef4;
+  --muted-strong: #c7d0db;
+  --muted: #a6b1bf;
+  --ink-3: #95a1b2;
+  --ink-4: #5e6b7d;
+  --accent: #e9eef4;
+  --accent-soft: #22324a;
+  --interactive: #8fb2f3;
+  --interactive-hover: #b3cbf7;
+  --interactive-soft: #18294a;
+  --ring: #78a2f2;
+  --inverse: #e9eef4;
+  --inverse-hover: #ffffff;
+  --on-inverse: #0f1823;
+  --success: #79dcae;
+  --success-ink: #79dcae;
+  --success-soft: #112a20;
+  --success-line: #1f4d39;
+  --success-strong: #8be8be;
+  --on-success-strong: #0a111b;
+  --warning: #f0b868;
+  --warning-ink: #f0b868;
+  --warning-soft: #2b2011;
+  --warning-line: #4f3a1b;
+  --warning-strong: #e5a34d;
+  --on-warning-strong: #0a111b;
+  --danger: #f4a5a5;
+  --danger-ink: #f4a5a5;
+  --danger-soft: #2f1719;
+  --danger-line: #5a2a2e;
+  --danger-strong: #c24444;
+  --on-danger-strong: #ffffff;
+  --info: #a1c0f4;
+  --info-ink: #a1c0f4;
+  --info-soft: #14233d;
+  --info-line: #27416b;
+  --info-strong: #3a6ad0;
+  --on-info-strong: #ffffff;
+  --mint: #8be8be;
+  --mint-pressed: #72d9a9;
+  --amber: #e5a34d;
+  --red: #e06666;
+  --night: #0a111b;
+  --night-deep: #060b12;
+  --night-raised: #1b2738;
+  --night-hover: #24334a;
+  --on-night: #f7f8fa;
+  --on-night-muted: #9aa6b6;
+  --on-night-subtle: #8693a8;
+  --night-line: rgba(247, 248, 250, 0.08);
+  --night-stroke: rgba(247, 248, 250, 0.13);
+  --danger-on-night: #f2a3a3;
+  --paper-edge: rgba(247, 248, 250, 0.07);
+  --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --elevation-2: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --elevation-3: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+/* @tokens:dark-attr:end */
+
+/* Jetons indépendants du thème : mouvement, espacement de page. */
+:root {
+  --ease-instrument: cubic-bezier(0.22, 1, 0.36, 1); /* entrée : décélération franche */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1); /* panneaux, feuilles */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* changements d'état (survol, couleur) */
+  --duration-press: 90ms;
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 320ms;
+  --duration-sheet: 360ms;
+  --duration-progress: 420ms;
+  --page-gutter: 16px;
+  --section-gap: 24px;
+}
+@media (min-width: 640px) {
+  :root {
+    --page-gutter: 32px;
+    --section-gap: 32px;
+  }
 }
 
 @theme inline {
+  /* Couleurs : noms historiques (ne pas renommer, ~70 pages) */
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
@@ -68,12 +310,108 @@
   --color-mint-pressed: var(--mint-pressed);
   --color-amber: var(--amber);
   --color-red: var(--red);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-on-night-subtle: var(--on-night-subtle);
+  --color-night-stroke: var(--night-stroke);
+  --color-night-line: var(--night-line);
+  --color-night-hover: var(--night-hover);
+  --color-selection: var(--selection);
+  --color-track: var(--track);
+  --color-line-soft: var(--line-soft);
+  --color-danger-line: var(--danger-line);
+  --color-danger-on-night: var(--danger-on-night);
+  --color-overlay: var(--overlay);
+
+  /* Couleurs : noms sémantiques ajoutés */
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-skeleton: var(--skeleton);
+  --color-border-control: var(--border-control);
+  --color-fg: var(--foreground);
+  --color-fg-muted: var(--muted);
+  --color-fg-subtle: var(--ink-3);
+  --color-fg-disabled: var(--ink-4);
+  --color-interactive: var(--interactive);
+  --color-interactive-hover: var(--interactive-hover);
+  --color-interactive-soft: var(--interactive-soft);
+  --color-inverse: var(--inverse);
+  --color-inverse-hover: var(--inverse-hover);
+  --color-on-inverse: var(--on-inverse);
+  --color-success-ink: var(--success-ink);
+  --color-success-line: var(--success-line);
+  --color-success-strong: var(--success-strong);
+  --color-on-success-strong: var(--on-success-strong);
+  --color-warning-ink: var(--warning-ink);
+  --color-warning-line: var(--warning-line);
+  --color-warning-strong: var(--warning-strong);
+  --color-on-warning-strong: var(--on-warning-strong);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-strong: var(--danger-strong);
+  --color-on-danger-strong: var(--on-danger-strong);
+  --color-info-ink: var(--info-ink);
+  --color-info-line: var(--info-line);
+  --color-info-strong: var(--info-strong);
+  --color-on-info-strong: var(--on-info-strong);
+
+  /* Élévations : shadow-raised / shadow-floating / shadow-modal */
+  --shadow-raised: var(--elevation-1);
+  --shadow-floating: var(--elevation-2);
+  --shadow-modal: var(--elevation-3);
+
+  /* Espacement de page : px-gutter, gap-section, space-y-section */
+  --spacing-gutter: var(--page-gutter);
+  --spacing-section: var(--section-gap);
+
   --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
+@theme {
+  /* Rayons (échelle de l'app iPhone) : badge 6 · contrôle compact 10 · champ / bouton 12 · carte 16 · feuille 24.
+     Les rayons Tailwind par défaut (rounded-md = 6, rounded-xl = 12, rounded-2xl = 16, rounded-3xl = 24) restent valides. */
+  --radius-badge: 6px;
+  --radius-control: 10px;
+  --radius-field: 12px;
+  --radius-card: 16px;
+  --radius-sheet: 24px;
+
+  /* Courbes : ease-instrument / ease-sheet / ease-standard */
+  --ease-instrument: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Échelle typographique : text-display / text-h1 / text-h2 / text-h3 / text-body / text-small / text-caption / text-mono-label */
+  --text-display: 2.5rem;
+  --text-display--line-height: 2.875rem;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 800;
+  --text-h1: 1.75rem;
+  --text-h1--line-height: 2.125rem;
+  --text-h1--letter-spacing: -0.022em;
+  --text-h1--font-weight: 800;
+  --text-h2: 1.25rem;
+  --text-h2--line-height: 1.625rem;
+  --text-h2--letter-spacing: -0.015em;
+  --text-h2--font-weight: 800;
+  --text-h3: 0.9375rem;
+  --text-h3--line-height: 1.25rem;
+  --text-h3--letter-spacing: -0.005em;
+  --text-h3--font-weight: 700;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-small: 0.8125rem;
+  --text-small--line-height: 1.125rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-mono-label: 0.65625rem;
+  --text-mono-label--line-height: 0.875rem;
+  --text-mono-label--letter-spacing: 0.06em;
+}
+
 html {
   height: 100%;
+  background: var(--background);
 }
 
 /* min-height (et non height) : le fond nuit de la coquille suit toute la hauteur du contenu. */
@@ -89,6 +427,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Conteneur de thème local (aperçus) : fond et texte suivent les jetons du conteneur. */
+[data-theme] {
+  color: var(--foreground);
+}
+
+::selection {
+  background: var(--interactive-soft);
+  color: var(--foreground);
+}
+
 /* Tableaux denses et lisibles */
 .table-wrap {
   overflow-x: auto;
@@ -102,7 +450,7 @@ body {
 }
 
 dialog::backdrop {
-  background: rgba(10, 20, 32, 0.45);
+  background: var(--overlay);
 }
 
 /* Modale ouverte (dialog natif ou tiroir mobile) : la page derrière ne défile plus. */
@@ -135,41 +483,9 @@ html[data-scroll-locked] {
 }
 
 /* ---------------------------------------------------------------------------
-   v5 « Instrument » web (docs/design/web-handoff) : mouvement, scène / papier.
-   Uniquement transform et opacity ; courbe « instrument » ; tout immédiat si l'utilisateur
+   Mouvement « Instrument » : uniquement transform et opacity ; tout immédiat si l'utilisateur
    demande de réduire les animations (règle @media plus haut).
 --------------------------------------------------------------------------- */
-:root {
-  --ease-instrument: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
-  --ink-3: #778292;
-  --ink-4: #9aa6b6;
-  --on-night-subtle: #7d8aa0;
-  --night-stroke: rgba(247, 248, 250, 0.14);
-  --night-hover: #2a3c57;
-  --selection: #e8ebf0;
-  --track: #e4e8ee;
-  --line-soft: #eef1f5;
-  --danger-line: #f3d2d2;
-  --danger-on-night: #f2a3a3;
-  --overlay: rgba(10, 20, 32, 0.45);
-}
-
-@theme inline {
-  --color-ink-3: var(--ink-3);
-  --color-ink-4: var(--ink-4);
-  --color-on-night-subtle: var(--on-night-subtle);
-  --color-night-stroke: var(--night-stroke);
-  --color-night-line: var(--night-line);
-  --color-night-hover: var(--night-hover);
-  --color-selection: var(--selection);
-  --color-track: var(--track);
-  --color-line-soft: var(--line-soft);
-  --color-danger-line: var(--danger-line);
-  --color-danger-on-night: var(--danger-on-night);
-  --color-overlay: var(--overlay);
-}
-
 @keyframes ms-grow-y {
   from { transform: scaleY(0); }
   to { transform: scaleY(1); }
@@ -186,15 +502,25 @@ html[data-scroll-locked] {
   from { opacity: 0; transform: translateX(32px); }
   to { opacity: 1; transform: none; }
 }
+@keyframes ms-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes ms-pulse {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 1; }
 }
-.ms-grow-y { transform-origin: bottom; animation: ms-grow-y 420ms var(--ease-instrument) both; }
-.ms-grow-x { transform-origin: left; animation: ms-grow-x 420ms var(--ease-instrument) both; }
-.ms-fade { animation: ms-fade 240ms var(--ease-instrument) both; }
-.ms-slide { animation: ms-slide 320ms var(--ease-sheet) both; }
+@keyframes ms-shimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.ms-grow-y { transform-origin: bottom; animation: ms-grow-y var(--duration-progress) var(--ease-instrument) both; }
+.ms-grow-x { transform-origin: left; animation: ms-grow-x var(--duration-progress) var(--ease-instrument) both; }
+.ms-fade { animation: ms-fade var(--duration-base) var(--ease-instrument) both; }
+.ms-slide { animation: ms-slide var(--duration-slow) var(--ease-sheet) both; }
+.ms-pop { animation: ms-pop var(--duration-base) var(--ease-instrument) both; }
 .ms-pulse { animation: ms-pulse 1.4s ease-in-out infinite; }
+.ms-skeleton { animation: ms-shimmer 1.6s ease-in-out infinite; }
 
 /* Mono v5 : titres de section, étiquettes de relevés, codes. */
 .ms-mono { font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -207,8 +533,67 @@ html[data-scroll-locked] {
 .ms-content:not(:has(> .ms-scene)) {
   background: var(--background);
   border-radius: 24px 24px 0 0;
+  box-shadow: inset 0 1px 0 var(--paper-edge);
   padding: 28px 40px 64px 32px;
 }
 @media (max-width: 1023px) {
   .ms-content:not(:has(> .ms-scene)) { padding: 20px 16px 48px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Tableau empilé (<Table stackOnMobile>) : sous 640 px, chaque ligne devient une carte ;
+   chaque cellule affiche son intitulé (prop `label` de <TD>, rendue en data-label).
+--------------------------------------------------------------------------- */
+@media (max-width: 639px) {
+  .ms-table-stack { min-width: 0 !important; }
+  .ms-table-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .ms-table-stack,
+  .ms-table-stack tbody,
+  .ms-table-stack tr,
+  .ms-table-stack td {
+    display: block;
+    width: 100%;
+  }
+  .ms-table-stack tbody tr {
+    padding: 10px 14px;
+  }
+  .ms-table-stack tbody tr + tr {
+    border-top: 1px solid var(--line-soft);
+  }
+  .ms-table-stack td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 5px 0 !important;
+    text-align: right;
+  }
+  .ms-table-stack td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 10.5px;
+    line-height: 14px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: left;
+  }
+  .ms-table-stack td[data-primary] {
+    display: block;
+    padding-bottom: 8px !important;
+    text-align: left;
+    font-weight: 700;
+  }
+  .ms-table-stack td[data-primary]::before {
+    content: none;
+  }
 }

@@ -97,12 +97,9 @@ d("Rôle viewer : lecture seule partout", () => {
       }
       expect(changed).toEqual([]);
       await as(c, viewer);
-      for (const sql of [
-        "select public.apply_inventory_movement($1, $2, 'receipt', 1)",
-        "select public.adjust_reserved_quantity($1, $2, 1)",
-      ]) {
-        await expectQueryError(c, sql, [org.orgId, org.ids["skus"]], "FORBIDDEN");
-      }
+      await expectQueryError(c, "select public.apply_inventory_movement($1, $2, 'receipt', 1)", [org.orgId, org.ids["skus"]], "FORBIDDEN");
+      // adjust_reserved_quantity : EXECUTE retiré à authenticated (20261023000300, Q-17 / D-17).
+      await expectQueryError(c, "select public.adjust_reserved_quantity($1, $2, 1)", [org.orgId, org.ids["skus"]], /FORBIDDEN|permission denied for function adjust_reserved_quantity/);
       await expectQueryError(c, "select public.map_listing_to_sku($1, $2)", [org.ids["channel_listings"], org.ids["skus"]], "FORBIDDEN");
       await expectQueryError(c, "select public.apply_pending_sales_for_sku($1)", [org.ids["skus"]], "FORBIDDEN");
       await expectQueryError(c, "select public.create_sku($1, '{}'::jsonb, '{\"code\":\"V\"}'::jsonb, null, '{\"name\":\"V\"}'::jsonb, 0)", [org.orgId], "FORBIDDEN");

@@ -131,7 +131,7 @@ describe("bibliothèque de sources : vérification réelle avant toute activatio
     expect(blocked.length).toBeGreaterThan(0);
     const from = vi.fn();
     for (const s of blocked) {
-      await expect(activateLibrarySourceFor({ from } as never, "org-1", s.key, "attestation")).rejects.toThrow(s.blocked);
+      await expect(activateLibrarySourceFor({ from } as never, "org-1", s.key, { userId: "u-1", userLabel: "u@example.test", channel: "web" })).rejects.toThrow(s.blocked);
     }
     expect(from).not.toHaveBeenCalled();
   });

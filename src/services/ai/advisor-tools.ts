@@ -11,7 +11,8 @@ import { getOperationalCounts } from "@/features/analytics/dashboard";
 import { compareManualCards, parseParcel, rateCardFromRow } from "@/domain/tools/shipping";
 import { parseDecimal, toPlainDecimal } from "@/domain/tools/decimal";
 import { quoteShipping } from "@/services/shipping/quotes";
-import { ASSISTANT_TOOLS, runAssistantTool, type ToolContext } from "./assistant-tools";
+import { ASSISTANT_TOOLS, pseudonymsOf, runAssistantTool, type ToolContext } from "./assistant-tools";
+import { BudgetExceededError, withinBudget } from "./deadline";
 import { prepareAdvisorAction } from "./advisor-actions";
 import { EBAY_ADVISOR_TOOLS } from "./advisor-ebay";
 import { ADVISOR_PERIODS, change, computeProfitability, money, percent, periodRange, productProfits, toCents, type MetricLine, type MetricOrder } from "./advisor-metrics";
@@ -27,6 +28,10 @@ import { ADVISOR_PERIODS, change, computeProfitability, money, percent, periodRa
  *                   l'utilisateur, avec revérification des droits côté serveur.
  * Le modèle n'a ni accès SQL libre ni accès aux secrets : chaque outil a un schéma fermé, validé.
  * Les cartes affichées à l'écran sont construites ICI à partir des données (pas par le modèle).
+ *
+ * Outils SENSIBLES (`sensitive`) : finances, messagerie et données d'acheteurs lues en direct chez
+ * eBay. Réservés aux rôles rédacteur et administrateur : pour le rôle lecture seule, refus clair
+ * AVANT toute lecture (audit S-22, I-27).
  */
 
 export type AdvisorToolCategory = "read" | "prepare";
@@ -34,7 +39,7 @@ export type AdvisorToolCategory = "read" | "prepare";
 export interface AdvisorToolContext extends ToolContext {
   org: OrgContext;
   conversationId: string;
-  /** Question posée par l'utilisateur dans ce tour (garde-fou des outils sensibles, ex. corps d'un message eBay). */
+  /** Question posée par l'utilisateur dans ce tour : seule source d'une demande explicite (ex. lire un message eBay). */
   question?: string;
 }
 
@@ -47,8 +52,13 @@ export interface AdvisorToolSpec {
   label: string;
   category: AdvisorToolCategory;
   definition: LlmTool;
+  /** finances, messages, données d'acheteurs en direct : rôles rédacteur et administrateur seulement */
+  sensitive?: boolean;
   run: (ctx: AdvisorToolContext, input: unknown) => Promise<AdvisorToolOutput>;
 }
+
+export const SENSITIVE_TOOL_REFUSAL =
+  "Donnée réservée aux rôles rédacteur et administrateur (finances, messages et données des acheteurs eBay) : votre rôle « lecture seule » ne permet pas de la consulter. Demandez à un administrateur.";
 
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object" as const, additionalProperties: false, properties, ...(required.length ? { required } : {}) });
 const periodProp = { type: "string", enum: [...ADVISOR_PERIODS], description: "Période (calendrier de Paris). « this_week » = depuis lundi, « this_month » = depuis le 1er. Défaut : 30d." };
@@ -250,7 +260,12 @@ async function orderLookup(ctx: AdvisorToolContext, raw: unknown): Promise<Advis
   const { data: parcels } = await ctx.supabase.from("tracked_parcels").select("tracking_number, carrier_code, status, estimated_delivery, delivered_at, last_checked_at").eq("organization_id", ctx.organizationId).eq("order_id", order.id).limit(5);
   const c = order.currency;
   const fmt = (v: number | null) => (v === null ? "—" : money(toCents(v) ?? 0, c));
-  const result = { found: true, order: { ...order, id: undefined }, parcels: parcels ?? [], note: "Données synchronisées dans MON STOCK (seul le pseudo de l'acheteur est stocké). Pour le détail en direct chez eBay (frais, remboursements, suivis, livraison prévue), utilisez ebay_order_details." };
+  const result = {
+    found: true,
+    order: { ...order, id: undefined, buyer_username: undefined, buyer: pseudonymsOf(ctx).alias(order.buyer_username) },
+    parcels: parcels ?? [],
+    note: "Données synchronisées dans MON STOCK. buyer = alias stable de l'acheteur (« Acheteur XXXX ») : son identité n'est pas transmise. Pour le détail en direct chez eBay (frais, remboursements, suivis, livraison prévue), utilisez ebay_order_details.",
+  };
   const rows = [
     row("Statut", order.status, [order.payment_status, order.fulfillment_status].filter(Boolean).join(" · ") || null),
     row("Total", fmt(order.total), `dont port ${fmt(order.shipping_total)}${order.tax_total !== null ? ` — taxes ${fmt(order.tax_total)}` : ""} — frais canal ${fmt(order.fee_total)}`),
@@ -578,12 +593,16 @@ const MAX_RESULT_CHARS = 20_000;
 export async function runAdvisorTool(ctx: AdvisorToolContext, name: string, input: unknown): Promise<{ content: string; isError: boolean; cards: AdvisorCardDTO[] }> {
   const tool = ADVISOR_TOOLS[name];
   if (!tool) return { content: `Outil inconnu : ${name}`, isError: true, cards: [] };
+  // Droits vérifiés AVANT toute lecture (base ou eBay).
+  if (tool.sensitive && ctx.org.role === "viewer") return { content: JSON.stringify({ available: false, forbidden: true, reason: SENSITIVE_TOOL_REFUSAL }), isError: false, cards: [] };
   try {
-    const out = await tool.run(ctx, input ?? {});
+    const work = tool.run(ctx, input ?? {});
+    const out = await (ctx.signal ? withinBudget(work, ctx.signal) : work);
     const json = JSON.stringify(out.result);
     return { content: json.length > MAX_RESULT_CHARS ? `${json.slice(0, MAX_RESULT_CHARS)}…[résultat tronqué]` : json, isError: false, cards: out.cards };
   } catch (e) {
     if (e instanceof z.ZodError) return { content: `Paramètres invalides : ${e.issues[0]?.message ?? "inconnus"}`, isError: true, cards: [] };
+    if (e instanceof BudgetExceededError) return { content: "Lecture interrompue : délai de réponse dépassé. Ne complète pas cette donnée.", isError: true, cards: [] };
     return { content: `Lecture des données impossible : ${e instanceof Error ? e.message.slice(0, 200) : "erreur"}`, isError: true, cards: [] };
   }
 }

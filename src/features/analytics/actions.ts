@@ -76,6 +76,8 @@ async function setAlertStatus(formData: FormData, status: "acknowledged" | "reso
     if (error) return fail(toUserMessage(fromPostgrestError(error)));
     if (!data || data.length === 0) return fail("Cette alerte est déjà résolue.");
     revalidateIntelligence();
+    // W-26 : le compteur d'alertes de la coquille (layout non re-rendu entre navigations) suit.
+    revalidatePath("/", "layout");
     return ok({ message: status === "resolved" ? "Alerte traitée." : "Alerte prise en compte." });
   } catch (e) {
     return fail(toUserMessage(e));

@@ -152,3 +152,109 @@ export async function applyConfirmedMatch(client: DbClient, organizationId: stri
     await client.from("sourcing_products").update({ sku_id: link.skuId }).eq("id", link.sourcingProductId).eq("organization_id", organizationId).is("sku_id", null);
   }
 }
+
+const BATCH_IN = 100;
+
+function uniq(values: (string | null | undefined)[]): string[] {
+  return [...new Set(values.filter((v): v is string => typeof v === "string" && v.trim().length > 0))];
+}
+
+/**
+ * Suggestions de rapprochement pour un LOT d'offres (imports en masse) : candidats chargés une fois
+ * pour tout le lot (identifiants exacts EAN / code-barres / référence fabricant / référence
+ * fournisseur, puis marque), calcul en mémoire, suggestions insérées en une requête. Mêmes règles
+ * que `suggestMatchesForOffer` : seules les correspondances par identifiant exact sont confirmées
+ * automatiquement. Limite assumée : pas de recherche plein texte quand aucun candidat n'est trouvé
+ * (trop coûteuse en masse) — les suggestions manuelles restent possibles.
+ */
+export async function suggestMatchesForOffers(client: DbClient, organizationId: string, offers: OfferForMatching[], options: { autoConfirmExact?: boolean; createdBy?: string | null } = {}): Promise<{ confirmed: Map<string, string>; suggestions: number; queries: number }> {
+  let queries = 0;
+  const confirmed = new Map<string, string>();
+  if (offers.length === 0) return { confirmed, suggestions: 0, queries };
+  const prepared = offers.map((o) => ({ o, n: normalizeProduct(o.title_original, { ean: o.ean, mpn: o.mpn, brand: o.brand }) }));
+  const byId = new Map<string, MatchCandidate>();
+  const add = (rows: SkuRow[] | null) => {
+    for (const r of rows ?? []) {
+      const c = toCandidate(r);
+      if (c && !byId.has(c.skuId)) byId.set(c.skuId, c);
+    }
+  };
+  const base = () => client.from("skus").select(SELECT).eq("organization_id", organizationId).eq("is_active", true);
+  const eans = uniq(prepared.map((p) => p.n.ean));
+  const mpns = uniq(prepared.flatMap((p) => (p.n.mpn ? [p.n.mpn, p.n.mpn.toUpperCase(), p.n.mpn.toLowerCase()] : [])));
+  const codes = uniq(prepared.flatMap((p) => (p.o.external_product_id ? [p.o.external_product_id, p.o.external_product_id.toUpperCase()] : [])));
+  for (let i = 0; i < eans.length; i += BATCH_IN) {
+    const part = eans.slice(i, i + BATCH_IN);
+    queries += 2;
+    const [{ data: byEan }, { data: byBarcode }] = await Promise.all([base().in("variant.ean", part).limit(500), base().in("barcode", part).limit(500)]);
+    add(byEan as SkuRow[] | null);
+    add(byBarcode as SkuRow[] | null);
+  }
+  for (let i = 0; i < mpns.length; i += BATCH_IN) {
+    queries++;
+    const { data } = await base().in("variant.mpn", mpns.slice(i, i + BATCH_IN)).limit(500);
+    add(data as SkuRow[] | null);
+  }
+  for (let i = 0; i < codes.length; i += BATCH_IN) {
+    queries++;
+    const { data } = await base().in("code", codes.slice(i, i + BATCH_IN)).limit(500);
+    add(data as SkuRow[] | null);
+  }
+  const brands = uniq(prepared.map((p) => p.n.brandDisplay ?? p.n.brand));
+  for (const b of brands.slice(0, 20)) {
+    queries++;
+    const { data } = await base().ilike("product.brand", escapeLike(b)).limit(MATCH_CANDIDATE_LIMIT);
+    add(data as SkuRow[] | null);
+  }
+  const candidates = [...byId.values()];
+  if (candidates.length === 0) return { confirmed, suggestions: 0, queries };
+
+  queries++;
+  const { data: existing } = await client.from("product_matches").select("offer_id, sku_id, status, id").eq("organization_id", organizationId).in("offer_id", offers.map((o) => o.id).slice(0, 1000));
+  const prior = new Map((existing ?? []).map((m) => [`${m.offer_id}|${m.sku_id}`, m]));
+  const inserts: Database["public"]["Tables"]["product_matches"]["Insert"][] = [];
+  const toConfirm: { offerId: string; skuId: string; productId: string | null; priorId: string | null; confidence: number; method: string; reasons: string[] }[] = [];
+  const nowIso = new Date().toISOString();
+  for (const { o, n } of prepared) {
+    const brandKey = (n.brandDisplay ?? n.brand ?? "").toLowerCase();
+    const own = candidates.filter((c) => (n.ean && (c.ean === n.ean || c.barcode === n.ean)) || (n.mpn && c.mpn?.toUpperCase() === n.mpn.toUpperCase()) || (o.external_product_id && c.code.toUpperCase() === o.external_product_id.toUpperCase()) || (brandKey && (c.brand ?? "").toLowerCase() === brandKey));
+    if (own.length === 0) continue;
+    const top = matchOfferToSkus({ title: o.title_original, normalized: n, ean: o.ean, mpn: o.mpn, supplierSku: o.external_product_id }, own).slice(0, 3);
+    let confirmedSku: string | null = null;
+    for (const m of top) {
+      const p = prior.get(`${o.id}|${m.skuId}`);
+      const autoConfirm = Boolean(options.autoConfirmExact) && m.autoConfirmable && !o.sku_id && !confirmedSku;
+      if (p) {
+        if (p.status === "rejected") continue;
+        if (autoConfirm && p.status === "suggested") {
+          confirmedSku = m.skuId;
+          toConfirm.push({ offerId: o.id, skuId: m.skuId, productId: o.normalized_product_id, priorId: p.id, confidence: m.confidence, method: m.method, reasons: m.reasons });
+        }
+        continue;
+      }
+      if (autoConfirm) {
+        confirmedSku = m.skuId;
+        toConfirm.push({ offerId: o.id, skuId: m.skuId, productId: o.normalized_product_id, priorId: null, confidence: m.confidence, method: m.method, reasons: m.reasons });
+      }
+      inserts.push({ organization_id: organizationId, offer_id: o.id, sourcing_product_id: o.normalized_product_id, sku_id: m.skuId, confidence: m.confidence, method: m.method, reasons: m.reasons, status: autoConfirm ? "confirmed" : "suggested", created_by: options.createdBy ?? null, decided_at: autoConfirm ? nowIso : null });
+    }
+  }
+  if (inserts.length > 0) {
+    queries++;
+    const { error } = await client.from("product_matches").insert(inserts);
+    if (error) {
+      log.warn("bulk product matches not recorded", { count: inserts.length, error: error.message });
+      return { confirmed, suggestions: 0, queries };
+    }
+  }
+  for (const c of toConfirm) {
+    if (c.priorId) {
+      queries++;
+      await client.from("product_matches").update({ status: "confirmed", decided_at: nowIso, confidence: c.confidence, method: c.method as MatchResult["method"], reasons: c.reasons }).eq("id", c.priorId);
+    }
+    queries += 2;
+    await applyConfirmedMatch(client, organizationId, { offerId: c.offerId, skuId: c.skuId, sourcingProductId: c.productId });
+    confirmed.set(c.offerId, c.skuId);
+  }
+  return { confirmed, suggestions: inserts.length, queries };
+}

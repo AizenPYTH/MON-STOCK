@@ -37,18 +37,26 @@ export async function validateDiscoveredSourceAction(_prev: ActionResult<{ messa
     const check = activationCheck(info, listSourceAdapters().map((a) => ({ key: a.key, access: a.access, label: a.label })), source.robots_allowed);
     if (!check.ok) return fail(check.reason);
     const now = new Date();
+    // Configuration et statut d'abord ; l'attestation ensuite, par la RPC dédiée (D-09 : les
+    // colonnes d'attestation ne sont plus modifiables directement, auteur et date posés en base).
+    // Si l'attestation échoue, la source reste non attestée (donc jamais interrogée) et l'action
+    // peut être relancée.
     const { error } = await ctx.supabase
       .from("supplier_sources")
       .update({
         config: activatedConfig(source.config, check.adapterKey, { userId: ctx.user.id, at: now }) as unknown as NonNullable<Json>,
-        automated_access_confirmed: true,
         status: "active",
-        access_conditions: `Accès automatisé attesté par l'utilisateur le ${now.toLocaleDateString("fr-FR")} (source découverte via ${info.discoveredVia ?? "recherche web"}, robots.txt : ${info.robotsStatus}).`,
         last_error: null,
       })
       .eq("organization_id", ctx.organization.id)
       .eq("id", source.id);
     if (error) return fail(toUserMessage(fromPostgrestError(error)));
+    const { error: attestError } = await ctx.supabase.rpc("attest_supplier_source_access", {
+      p_source_id: source.id,
+      p_access_conditions: `Accès automatisé attesté par l'utilisateur le ${now.toLocaleDateString("fr-FR")} (source découverte via ${info.discoveredVia ?? "recherche web"}, robots.txt : ${info.robotsStatus}).`,
+      p_automated_access_confirmed: true,
+    });
+    if (attestError) return fail(toUserMessage(fromPostgrestError(attestError)));
     log.info("discovered source validated", { orgId: ctx.organization.id, sourceId: source.id, adapter: check.adapterKey });
     revalidate(source.supplier_id);
     return ok({ message: `Source validée et activée (adaptateur ${check.adapterKey}). Elle sera interrogée lors des prochaines recherches, robots.txt revérifié à chaque fois.` });

@@ -89,7 +89,9 @@ describe("calcul économique", () => {
     const e = evaluateRadarOffer(offer({ supplierCountry: "US" }), sku(), settings, NOW);
     expect(e.missing).toContain("droits de douane (fournisseur hors UE : US)");
     const withDuty = evaluateRadarOffer(offer({ supplierCountry: "US" }), sku(), { ...settings, importDutyPercent: 5 }, NOW);
-    expect(withDuty.landedCost).toBe(325); // 300 + 10 + 15
+    // S-20 : valeur en douane CIF = 300 + 10 (transport) ; droits 5 % × 310 = 15,50 ; TVA à l'import récupérable (signalée, non ajoutée)
+    expect(withDuty.landedCost).toBe(325.5);
+    expect(withDuty.cautions.join(" ")).toMatch(/TVA à l'import avancée/);
   });
 
   it("sans prix de vente ni prix fournisseur, ou devises différentes : données insuffisantes", () => {

@@ -163,8 +163,37 @@ export interface RobotsCheck {
   details: string;
 }
 
-export async function checkRobotsForUrls(baseUrl: string, urls: string[], userAgent: string, fetchImpl: typeof fetch = fetch, resolver?: HostResolver): Promise<RobotsCheck> {
-  const fetched = await fetchRobots(baseUrl, userAgent, fetchImpl, 10_000, resolver);
+/**
+ * Cache de robots.txt par origine (« https://hote ») : les RÈGLES analysées sont mémorisées, la
+ * décision reste calculée pour chaque User-Agent et chaque URL (I-16 : robots.txt n'est plus relu
+ * à chaque recherche).
+ */
+export interface RobotsCache {
+  get(origin: string): Promise<RobotsFetchResult | null>;
+  set(origin: string, result: RobotsFetchResult): Promise<void>;
+}
+
+export function robotsOrigin(baseUrl: string): string | null {
+  try {
+    return new URL(baseUrl).origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export async function checkRobotsForUrls(baseUrl: string, urls: string[], userAgent: string, fetchImpl: typeof fetch = fetch, resolver?: HostResolver, cache?: RobotsCache): Promise<RobotsCheck> {
+  const origin = robotsOrigin(baseUrl);
+  let fetched: RobotsFetchResult | null = null;
+  if (cache && origin) fetched = await cache.get(origin).catch(() => null);
+  if (!fetched) {
+    fetched = await fetchRobots(baseUrl, userAgent, fetchImpl, 10_000, resolver);
+    if (cache && origin) await cache.set(origin, fetched).catch(() => undefined);
+  }
+  return evaluateRobotsForUrls(fetched, urls, userAgent);
+}
+
+/** Décision robots.txt pour des URLs à partir d'un robots.txt déjà lu (pur). */
+export function evaluateRobotsForUrls(fetched: RobotsFetchResult, urls: string[], userAgent: string): RobotsCheck {
   if (fetched.status === "error") {
     // Impossible de vérifier : on refuse par prudence (jamais de crawl à l'aveugle).
     return { allowed: false, robotsStatus: "error", crawlDelay: null, disallowedUrls: urls, details: fetched.error ?? "robots.txt inaccessible." };

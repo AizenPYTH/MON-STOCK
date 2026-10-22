@@ -732,6 +732,10 @@ export interface CatalogImportDTO {
     totalRows?: number;
     truncated?: boolean;
     mode?: "partial" | "snapshot";
+    /** import traité par lots et pas encore terminé : la suite est reprise automatiquement (POST /sourcing/imports/resume pour accélérer) */
+    pending?: boolean;
+    jobId?: string | null;
+    progress?: ImportProgressDTO;
   };
 }
 
@@ -762,6 +766,14 @@ export interface SourceOverviewDTO {
 
 export type ImportJobStatus = "running" | "completed" | "partial" | "failed" | "quarantined" | "skipped_duplicate";
 
+/** Avancement d'un import traité par lots. */
+export interface ImportProgressDTO {
+  rowsProcessed: number;
+  rowsTotal: number;
+  chunksDone: number;
+  chunksTotal: number;
+}
+
 export interface ImportJobDTO {
   id: string;
   supplierId: string | null;
@@ -779,6 +791,10 @@ export interface ImportJobDTO {
   createdBy: string | null;
   startedAt: string;
   finishedAt: string | null;
+  /** avancement (imports par lots) ; null pour un import d'une version précédente */
+  progress?: ImportProgressDTO | null;
+  /** import en cours dont personne ne traite les lots en ce moment : « reprendre » possible */
+  resumable?: boolean;
 }
 
 export interface ImportJobDetailDTO extends ImportJobDTO {

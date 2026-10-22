@@ -51,10 +51,11 @@ export const EMPTY_COST_SETTINGS: RadarCostSettings = {
 };
 
 /** Origine du prix fournisseur (la plus précise connue). */
-export type PriceOrigin = "verified_live" | "observed_public" | "catalog_import" | "supplier_communicated" | "manual_entry" | "unknown";
+export type PriceOrigin = "verified_live" | "marketplace_listing" | "observed_public" | "catalog_import" | "supplier_communicated" | "manual_entry" | "unknown";
 
 export const PRICE_ORIGIN_LABEL: Record<PriceOrigin, string> = {
   verified_live: "Prix vérifié à la dernière interrogation",
+  marketplace_listing: "Annonce publiée sur une place de marché : prix demandé par un vendeur tiers, pas une vente constatée",
   observed_public: "Prix observé sur le site du fournisseur",
   catalog_import: "Prix importé d'un catalogue fournisseur",
   supplier_communicated: "Prix communiqué par le fournisseur",

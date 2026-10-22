@@ -14,13 +14,45 @@ import { isAppError } from "@/lib/errors";
  */
 
 export const ADVISOR_RELAY_TIMEOUT_MS = 145_000;
-const BODY_LIMIT_BYTES = 16_000;
+/** Taille maximale (octets) du corps JSON d'une question au conseiller. */
+export const BODY_LIMIT_BYTES = 16_000;
 
 export interface AdvisorRelayDeps {
   getContext: () => Promise<OrgContext>;
   allowedOrigins: string[];
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+}
+
+/**
+ * Lecture BORNÉE du corps (W-27) : refus dès l'annonce (Content-Length) ou dès que le flux dépasse
+ * `maxBytes` octets (et non caractères UTF-16), sans jamais charger plus en mémoire.
+ * null si trop gros.
+ */
+export async function readBodyBounded(request: Request, maxBytes: number): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    bytes.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder("utf-8").decode(bytes);
 }
 
 export function jsonError(status: number, code: string, message: string): Response {
@@ -40,8 +72,8 @@ export async function relayAdvisorChat(request: Request, deps: AdvisorRelayDeps)
 
   let raw: unknown;
   try {
-    const text = await request.text();
-    if (text.length > BODY_LIMIT_BYTES) return jsonError(413, "VALIDATION", "Message trop long.");
+    const text = await readBodyBounded(request, BODY_LIMIT_BYTES);
+    if (text === null) return jsonError(413, "VALIDATION", "Message trop long.");
     raw = JSON.parse(text);
   } catch {
     return jsonError(400, "VALIDATION", "Requête invalide.");
@@ -133,7 +165,8 @@ export async function relayAdvisorSpeech(request: Request, deps: Omit<AdvisorRel
   }
   const type = upstream.headers.get("content-type") ?? "";
   if (upstream.ok && type.startsWith("audio/") && upstream.body) {
-    return new Response(upstream.body, { status: 200, headers: { "Content-Type": type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+    // W-27 : jamais conservé dans le cache du navigateur (poste partagé, après déconnexion).
+    return new Response(upstream.body, { status: 200, headers: { "Content-Type": type, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
   }
   try {
     const json = (await upstream.json()) as { ok?: boolean; error?: { code?: string; message?: string } } | null;

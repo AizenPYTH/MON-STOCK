@@ -8,7 +8,9 @@ import type { AdvisorStreamEvent } from "@/features/mobile-api/contract";
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient: () => ({}) }));
 
 const { computeProfitability, productProfits, periodRange, parisMidnight, change, percent, money } = await import("@/services/ai/advisor-metrics");
-const { runAdvisorTurn, historyForModel, advisorSystemVolatile, splitShowCard, ADVISOR_SYSTEM_STABLE, ADVISOR_LIMITS, ADVISOR_MODEL_TOOLS } = await import("@/services/ai/advisor");
+const { runAdvisorTurn, historyForModel, advisorSystemVolatile, splitShowCard, supabaseAdvisorStore, ADVISOR_SYSTEM_STABLE, ADVISOR_LIMITS, ADVISOR_MODEL_TOOLS } = await import("@/services/ai/advisor");
+const { personalRow } = await import("@/services/ai/privacy");
+const { AppError } = await import("@/lib/errors");
 const { ADVISOR_TOOLS, ADVISOR_TOOL_DEFINITIONS, runAdvisorTool } = await import("@/services/ai/advisor-tools");
 const { decideAdvisorAction, ACTION_TTL_MS } = await import("@/services/ai/advisor-actions");
 const { fakeSupabase } = await import("./helpers/fake-supabase");
@@ -144,6 +146,11 @@ function memoryStore(history: { role: "user" | "assistant" | "notice"; content: 
   };
 }
 
+/** Quota par appel au modèle simulé (la vraie réservation est testée dans ai-quota et en intégration). */
+function noMeter() {
+  return { beforeModelCall: vi.fn(async () => "evt"), afterModelCall: vi.fn(async () => undefined) };
+}
+
 const text = (t: string, finish: Msg["finish"] = "stop"): Msg => ({ model: "gpt-5.4-mini", finish, text: t, toolCalls: [] });
 const toolUse = (name: string, input: unknown, id = "call_1"): Msg => ({ model: "gpt-5.4-mini", finish: "tool_calls", text: "", toolCalls: [{ id, name, input }] });
 
@@ -152,7 +159,7 @@ describe("conversation textuelle et vocale", () => {
     const { client, calls } = fakeModel([text("Bonjour ! Posez-moi une question sur vos ventes.")]);
     const { store, saved } = memoryStore();
     const events: AdvisorStreamEvent[] = [];
-    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Salut" }, (e) => events.push(e), { client, store, now: NOW, runTool: vi.fn() });
+    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Salut" }, (e) => events.push(e), { meter: noMeter(), client, store, now: NOW, runTool: vi.fn() });
     expect(events[0]).toEqual({ type: "conversation", conversationId: "conv-1" });
     const deltas = events.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta);
     expect(deltas.length).toBeGreaterThan(1);
@@ -179,7 +186,7 @@ describe("conversation textuelle et vocale", () => {
     const card = { kind: "kpis", title: "Bilan des ventes", subtitle: null, rows: [], warnings: [], action: null, text: null };
     const runTool = vi.fn(async () => ({ content: JSON.stringify({ revenue: "830,00 €" }), isError: false, cards: [card] }));
     const events: AdvisorStreamEvent[] = [];
-    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Quel est mon CA cette semaine ?" }, (e) => events.push(e), { client, store, now: NOW, runTool: runTool as never });
+    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Quel est mon CA cette semaine ?" }, (e) => events.push(e), { meter: noMeter(), client, store, now: NOW, runTool: runTool as never });
     expect(runTool).toHaveBeenCalledWith(expect.objectContaining({ organizationId: ORG, conversationId: "conv-1" }), "business_report", { period: "this_week" });
     expect(events).toContainEqual({ type: "status", label: "Bilan de l'activité" });
     expect(events).toContainEqual({ type: "card", card });
@@ -201,7 +208,7 @@ describe("conversation textuelle et vocale", () => {
     const { client, calls } = fakeModel([callsIn, text("Ton compte eBay est en bon état.")]);
     const mk = (title: string, kind = "kpis") => ({ kind, title, subtitle: null, rows: [], warnings: [], action: null, text: null });
     const runTool = vi.fn(async (_c: unknown, name: string) => ({ content: "{}", isError: false, cards: [mk(name === "ebay_account_overview" ? "Compte eBay" : name === "business_report" ? "Bilan des ventes" : "Action", name.startsWith("prepare") ? "action" : "kpis")] }));
-    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Que penses-tu de mon compte eBay ?" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: runTool as never });
+    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Que penses-tu de mon compte eBay ?" }, () => undefined, { meter: noMeter(), client, store: memoryStore().store, now: NOW, runTool: runTool as never });
     expect(reply.cards.map((c) => c.title)).toEqual(["Compte eBay", "Action"]);
     expect(runTool).toHaveBeenCalledWith(expect.anything(), "business_report", { period: "30d" });
     expect(runTool).toHaveBeenCalledWith(expect.anything(), "prepare_stock_adjustment", { sku: "IP13", change: 2 });
@@ -216,7 +223,7 @@ describe("conversation textuelle et vocale", () => {
     const many = { model: "m", finish: "tool_calls" as const, text: "", toolCalls: Array.from({ length: 5 }, (_, i) => ({ id: `t${i}`, name: "business_report", input: {} })) };
     const { client } = fakeModel([many, text("ok")]);
     const runTool = vi.fn(async () => ({ content: "{}", isError: false, cards: [{ kind: "kpis", title: "x", subtitle: null, rows: [], warnings: [], action: null, text: null }] }));
-    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "bilan" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: runTool as never });
+    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "bilan" }, () => undefined, { meter: noMeter(), client, store: memoryStore().store, now: NOW, runTool: runTool as never });
     expect(reply.cards).toHaveLength(ADVISOR_LIMITS.maxReadCards);
     expect(splitShowCard({ a: 1 })).toEqual({ show: true, input: { a: 1 } });
     expect(splitShowCard(null)).toEqual({ show: true, input: null });
@@ -230,20 +237,20 @@ describe("conversation textuelle et vocale", () => {
   it("erreur d'outil transmise comme telle (préfixe ERREUR), jamais complétée", async () => {
     const { client, calls } = fakeModel([toolUse("order_lookup", { orderNumber: "X" }), text("Je n'ai pas pu lire la commande.")]);
     const runTool = vi.fn(async () => ({ content: "Lecture des données impossible : timeout", isError: true, cards: [] }));
-    await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "commande X ?" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: runTool as never });
+    await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "commande X ?" }, () => undefined, { meter: noMeter(), client, store: memoryStore().store, now: NOW, runTool: runTool as never });
     expect((calls[1] as { messages: { content: string }[] }).messages.at(-1)!.content).toBe("ERREUR : Lecture des données impossible : timeout");
   });
 
   it("refus du modèle : message clair", async () => {
     const { client } = fakeModel([{ model: "m", finish: "refusal", text: "", toolCalls: [] }]);
-    const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "?" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: vi.fn() });
+    const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "?" }, () => undefined, { meter: noMeter(), client, store: memoryStore().store, now: NOW, runTool: vi.fn() });
     expect(r.answer).toMatch(/ne peux pas répondre/);
   });
 
   it("erreur réseau / API : erreur utilisateur, réponse partielle enregistrée comme interrompue", async () => {
     const { client } = fakeModel([new Error("ECONNRESET")]);
     const { store, saved } = memoryStore();
-    await expect(runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "bilan" }, () => undefined, { client, store, now: NOW, runTool: vi.fn() })).rejects.toThrow(/erreur inattendue|indisponible|injoignable/);
+    await expect(runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "bilan" }, () => undefined, { meter: noMeter(), client, store, now: NOW, runTool: vi.fn() })).rejects.toThrow(/erreur inattendue|indisponible|injoignable/);
     expect(saved.at(-1)).toMatchObject({ role: "assistant", interrupted: true });
   });
 
@@ -251,6 +258,7 @@ describe("conversation textuelle et vocale", () => {
     const loops = Array.from({ length: ADVISOR_LIMITS.maxSteps }, (_, i) => toolUse("today_briefing", {}, `call_${i}`));
     const { client } = fakeModel(loops);
     const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "tout" }, () => undefined, {
+      meter: noMeter(),
       client,
       store: memoryStore().store,
       now: NOW,
@@ -420,24 +428,46 @@ describe("confirmation des actions", () => {
     admin = fakeSupabase({ advisor_actions: { data: { ...pendingRow, status: "executed", result: { message: "ok" } } } });
   });
 
-  it("confirmer : réserve, revalide le stock, exécute via la base, enregistre et note dans la conversation", async () => {
-    const user = fakeSupabase({ advisor_actions: { data: pendingRow }, v_stock_overview: { data: { quantity_available: 3 } }, "rpc:apply_inventory_movement": { data: { quantity_after: 5 } }, skus: { data: { code: "IP13" } } });
+  it("confirmer : réserve (claimed_at), puis contrôle + mouvement + statut dans UNE RPC atomique ; note écrite par le serveur", async () => {
+    const user = fakeSupabase({ advisor_actions: { data: pendingRow }, advisor_conversations: { data: { id: "conv-1" } }, "rpc:advisor_execute_action": { data: { kind: "adjust_stock", code: "IP13", quantityAfter: 5 } } });
     const r = await decideAdvisorAction(orgCtx(user.client), ACTION, "confirm", { admin: admin.client, now: NOW });
     expect(r.message).toBe("Stock de IP13 mis à jour : 5 disponible(s).");
-    const rpc = user.queries.find((q) => q.target === "rpc:apply_inventory_movement")!;
-    expect(rpc.calls[0]!.args[0]).toMatchObject({ p_organization_id: ORG, p_sku_id: SKU, p_type: "receipt", p_quantity: 2 });
+    const rpcs = user.queries.filter((q) => q.target.startsWith("rpc:"));
+    expect(rpcs.map((q) => q.target)).toEqual(["rpc:advisor_execute_action"]);
+    expect(rpcs[0]!.calls[0]!.args[0]).toEqual({ p_action_id: ACTION });
+    // plus de lecture du stock puis mouvement séparés (S-19)
+    expect(user.queries.some((q) => q.target === "v_stock_overview")).toBe(false);
     const claim = admin.queries.find((q) => q.calls.some((c) => c.method === "update" && (c.args[0] as { status?: string }).status === "executing"))!;
     expect(claim.calls).toContainEqual({ method: "eq", args: ["status", "pending"] });
-    expect(user.queries.some((q) => q.target === "advisor_messages")).toBe(true);
+    expect((claim.calls.find((c) => c.method === "update")!.args[0] as { claimed_at?: string }).claimed_at).toBe(NOW.toISOString());
+    // note de l'application : insérée par le serveur (S-10), après vérification de la propriété de la conversation
+    expect(user.queries.some((q) => q.target === "advisor_messages")).toBe(false);
+    expect(user.queries.find((q) => q.target === "advisor_conversations")!.calls).toContainEqual({ method: "eq", args: ["user_id", USER] });
+    const note = admin.queries.find((q) => q.target === "advisor_messages")!.calls.find((c) => c.method === "insert")!.args[0];
+    expect(note).toMatchObject({ role: "notice", conversation_id: "conv-1", user_id: USER, organization_id: ORG });
   });
 
-  it("stock modifié depuis la préparation : rien n'est exécuté, action en échec", async () => {
-    const user = fakeSupabase({ advisor_actions: { data: pendingRow }, v_stock_overview: { data: { quantity_available: 1 } } });
+  it("stock modifié depuis la préparation : la RPC refuse (transaction annulée), action en échec, message clair", async () => {
+    const user = fakeSupabase({ advisor_actions: { data: pendingRow }, "rpc:advisor_execute_action": { error: { code: "P0001", message: "ADVISOR_STOCK_CHANGED", details: "1" } } });
     const failed = fakeSupabase({ advisor_actions: { data: { ...pendingRow, status: "failed", error: "Le stock a changé" } } });
     const r = await decideAdvisorAction(orgCtx(user.client), ACTION, "confirm", { admin: failed.client, now: NOW });
-    expect(r.message).toMatch(/a changé depuis la préparation/);
-    expect(user.queries.some((q) => q.target.startsWith("rpc:"))).toBe(false);
+    expect(r.message).toBe("Le stock de IP13 a changé depuis la préparation (3 → 1) : rien n'a été modifié. Redemandez l'ajustement.");
+    expect(user.queries.some((q) => q.target === "rpc:apply_inventory_movement")).toBe(false);
+    const fail = failed.queries.find((q) => q.calls.some((c) => c.method === "update" && (c.args[0] as { status?: string }).status === "failed"))!;
+    expect(fail.calls).toContainEqual({ method: "eq", args: ["status", "executing"] });
     expect(r.action.status).toBe("failed");
+  });
+
+  it("action restée « executing » (instance arrêtée) : reprise, rien n'a été modifié", async () => {
+    const user = fakeSupabase({ advisor_actions: { data: { ...pendingRow, status: "executing" } } });
+    const recovered = fakeSupabase({ "rpc:advisor_recover_stuck_actions": { data: 1 }, advisor_actions: { data: { ...pendingRow, status: "failed", error: "Exécution interrompue (serveur) : rien n'a été modifié. Redemandez l'action au conseiller." } } });
+    const r = await decideAdvisorAction(orgCtx(user.client), ACTION, "confirm", { admin: recovered.client, now: NOW });
+    expect(r.action.status).toBe("failed");
+    expect(r.message).toMatch(/rien n'a été modifié/);
+    expect(recovered.queries[0]!.calls[0]!.args[0]).toEqual({ p_older_than: "2 minutes", p_action_id: ACTION });
+    expect(user.queries.some((q) => q.target.startsWith("rpc:"))).toBe(false);
+    const running = fakeSupabase({ "rpc:advisor_recover_stuck_actions": { data: 0 } });
+    expect((await decideAdvisorAction(orgCtx(user.client), ACTION, "confirm", { admin: running.client, now: NOW })).message).toMatch(/déjà en cours d'exécution/);
   });
 
   it("action d'un autre utilisateur : introuvable, aucune exécution", async () => {
@@ -481,5 +511,127 @@ describe("confirmation des actions", () => {
     const r = await decideAdvisorAction(orgCtx(user.client), ACTION, "cancel", { admin: cancelled.client, now: NOW });
     expect(r.action.status).toBe("cancelled");
     expect(user.queries.some((q) => q.target.startsWith("rpc:"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Quotas par appel, échéance globale, minimisation (S-09, S-11, I-14, D-11, I-08)
+// ---------------------------------------------------------------------------
+
+describe("quota par appel au modèle (fail-closed)", () => {
+  it("chaque appel au modèle est réservé avant et ses jetons enregistrés après", async () => {
+    const { client } = fakeModel([{ ...toolUse("today_briefing", {}), usage: { inputTokens: 900, outputTokens: 20 } } as Msg, text("ok")]);
+    const meter = noMeter();
+    await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "priorités ?" }, () => undefined, { meter, client, store: memoryStore().store, now: NOW, runTool: (async () => ({ content: "{}", isError: false, cards: [] })) as never });
+    expect(meter.beforeModelCall).toHaveBeenCalledTimes(2);
+    expect(meter.afterModelCall).toHaveBeenNthCalledWith(1, "evt", { inputTokens: 900, outputTokens: 20 });
+  });
+
+  it("quota refusé au milieu d'un tour : arrêt propre, réponse partielle enregistrée, aucun appel non compté", async () => {
+    const { client, calls } = fakeModel([toolUse("today_briefing", {}), text("jamais envoyé")]);
+    const meter = noMeter();
+    meter.beforeModelCall.mockResolvedValueOnce("evt-1").mockRejectedValueOnce(new AppError("RATE_LIMITED", "Budget IA quotidien de l'organisation atteint. Réessayez demain."));
+    const { store, saved } = memoryStore();
+    const events: AdvisorStreamEvent[] = [];
+    const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "priorités ?" }, (e) => events.push(e), { meter, client, store, now: NOW, runTool: (async () => ({ content: "{}", isError: false, cards: [] })) as never });
+    expect(calls).toHaveLength(1);
+    expect(r.interrupted).toBe(true);
+    expect(r.answer).toMatch(/Budget IA quotidien/);
+    expect(saved.at(-1)).toMatchObject({ role: "assistant", interrupted: true });
+    expect(events.at(-1)).toMatchObject({ type: "done" });
+  });
+
+  it("quota invérifiable dès le premier appel : AUCUN appel au modèle", async () => {
+    const { client, calls } = fakeModel([text("x")]);
+    const meter = noMeter();
+    meter.beforeModelCall.mockRejectedValue(new AppError("INTERNAL", "Contrôle du quota IA momentanément indisponible : réessayez dans un instant.", { status: 503 }));
+    const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "CA ?" }, () => undefined, { meter, client, store: memoryStore().store, now: NOW, runTool: vi.fn() });
+    expect(calls).toHaveLength(0);
+    expect(r.answer).toMatch(/quota IA/);
+  });
+
+  it("sans compteur injecté : le compteur réel est utilisé (client admin indisponible ⇒ refus, aucun appel)", async () => {
+    const { client, calls } = fakeModel([text("x")]);
+    const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "CA ?" }, () => undefined, { client, store: memoryStore().store, now: NOW, runTool: vi.fn() });
+    expect(calls).toHaveLength(0);
+    expect(r.interrupted).toBe(true);
+  });
+});
+
+describe("échéance globale du tour", () => {
+  it("chaque appel reçoit le signal global et un délai ≤ temps restant", async () => {
+    const seen: { signal?: AbortSignal; timeoutMs?: number; maxRetries?: number }[] = [];
+    const client = { complete: vi.fn(async (_r: unknown, o: { signal?: AbortSignal; timeoutMs?: number; maxRetries?: number }) => (seen.push(o), text("ok"))) };
+    await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "CA ?" }, () => undefined, { meter: noMeter(), client, store: memoryStore().store, now: NOW, runTool: vi.fn(), deadlineMs: 30_000 });
+    expect(seen[0]!.signal).toBeInstanceOf(AbortSignal);
+    expect(seen[0]!.timeoutMs).toBeLessThanOrEqual(30_000);
+    expect(seen[0]!.timeoutMs).toBeGreaterThan(25_000);
+    expect(seen[0]!.maxRetries).toBe(0);
+  });
+
+  it("échéance atteinte pendant un appel : coupure immédiate, texte partiel enregistré proprement", async () => {
+    const client = {
+      complete: (_r: unknown, o: { signal?: AbortSignal; onText?: (d: string) => void }) =>
+        new Promise<never>((_resolve, reject) => {
+          o.onText?.("Votre CA est de 830 €");
+          o.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    };
+    const { store, saved } = memoryStore();
+    const events: AdvisorStreamEvent[] = [];
+    const t0 = Date.now();
+    const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "CA ?" }, (e) => events.push(e), { meter: noMeter(), client, store, now: NOW, runTool: vi.fn(), deadlineMs: 5_000 + 60 });
+    expect(Date.now() - t0).toBeLessThan(6_000);
+    expect(r.interrupted).toBe(true);
+    expect(r.answer).toMatch(/^Votre CA est de 830 €\n\n\(réponse interrompue : délai de réponse atteint\)$/);
+    expect(saved.at(-1)).toMatchObject({ role: "assistant", interrupted: true });
+    expect(events.at(-1)).toMatchObject({ type: "done" });
+  }, 10_000);
+
+  it("budget insuffisant pour un nouvel appel : pas d'appel, réponse « interrompue »", async () => {
+    const { client, calls } = fakeModel([text("x")]);
+    const r = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "CA ?" }, () => undefined, { meter: noMeter(), client, store: memoryStore().store, now: NOW, runTool: vi.fn(), deadlineMs: 1_000 });
+    expect(calls).toHaveLength(0);
+    expect(r.interrupted).toBe(true);
+  });
+});
+
+describe("minimisation et conservation", () => {
+  it("outils : alias stables par conversation et échéance transmis ; carte affichée complète, carte ENREGISTRÉE expurgée", async () => {
+    const { client } = fakeModel([toolUse("ebay_order_details", { order: "12-345" }), text("Commande de l'Acheteur K7QM : expédiée.")]);
+    const { store, saved } = memoryStore();
+    const shownRow = personalRow({ label: "Acheteur", value: "Acheteur K7QM — jean_dupont", detail: "Lyon 69003", tone: "neutral" }, { label: "Acheteur", value: "Acheteur K7QM", detail: "FR", tone: "neutral" });
+    const cardShown = { kind: "list", title: "Commande eBay 12-345", subtitle: null, rows: [shownRow], warnings: [], action: null, text: null };
+    const runTool = vi.fn(async (ctx: { pseudonyms?: { alias(u: string): string | null }; signal?: AbortSignal }) => {
+      expect(ctx.signal).toBeInstanceOf(AbortSignal);
+      expect(ctx.pseudonyms?.alias("jean_dupont")).toMatch(/^Acheteur /);
+      return { content: "{}", isError: false, cards: [cardShown] };
+    });
+    const reply = await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Où en est la commande 12-345 ?" }, () => undefined, { meter: noMeter(), client, store, now: NOW, runTool: runTool as never });
+    expect(JSON.stringify(reply.cards)).toMatch(/jean_dupont/);
+    expect(JSON.stringify(saved.at(-1)!.cards)).not.toMatch(/jean_dupont|Lyon|69003/);
+    expect(JSON.stringify(saved.at(-1)!.cards)).toMatch(/Acheteur K7QM/);
+  });
+
+  it("invite : alias des acheteurs, contenus de tiers non fiables, outils réservés ; rôle lecture seule prévenu", () => {
+    expect(ADVISOR_SYSTEM_STABLE).toMatch(/alias stable/);
+    expect(ADVISOR_SYSTEM_STABLE).toMatch(/CONTENU_TIERS_NON_FIABLE/);
+    expect(ADVISOR_SYSTEM_STABLE).toMatch(/rédacteur et administrateur/);
+    expect(advisorSystemVolatile({ name: "B", currency: "EUR", role: "viewer" }, "mardi", false)).toMatch(/finances, messages et données des acheteurs eBay ne lui sont pas accessibles/);
+  });
+
+  it("enregistrement : question sous la session de l'utilisateur, réponse par le serveur (S-10), conversation vérifiée", async () => {
+    const user = fakeSupabase({ advisor_conversations: { data: { id: "conv-1" } }, advisor_messages: { data: { id: "m-user" } } });
+    const admin = fakeSupabase({ advisor_messages: { data: { id: "m-assistant" } } });
+    const store = supabaseAdvisorStore(orgCtx(user.client), admin.client);
+    await expect(store.addMessage("conv-1", { role: "assistant", content: "x" })).rejects.toThrow(/introuvable/);
+    expect(await store.openConversation("conv-1", "q")).toBe("conv-1");
+    expect(await store.addMessage("conv-1", { role: "user", content: "CA ?", cards: [{ kind: "kpis" } as never] })).toBe("m-user");
+    expect(await store.addMessage("conv-1", { role: "assistant", content: "830 €", cards: [] })).toBe("m-assistant");
+    const userInsert = user.queries.find((q) => q.target === "advisor_messages")!.calls.find((c) => c.method === "insert")!.args[0];
+    expect(userInsert).toMatchObject({ role: "user", cards: [], user_id: USER, organization_id: ORG });
+    const adminInsert = admin.queries.find((q) => q.target === "advisor_messages")!.calls.find((c) => c.method === "insert")!.args[0];
+    expect(adminInsert).toMatchObject({ role: "assistant", conversation_id: "conv-1", user_id: USER, organization_id: ORG });
+    expect(user.queries.filter((q) => q.target === "advisor_messages")).toHaveLength(1);
   });
 });

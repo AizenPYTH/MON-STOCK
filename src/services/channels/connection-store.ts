@@ -36,7 +36,11 @@ export async function loadConnectionForOrg(connectionId: string, organizationId:
   return data ?? null;
 }
 
-/** Connexions actives dont la synchronisation automatique est due (cron). */
+/**
+ * Connexions actives dont la synchronisation automatique est due (cron), les moins récemment TENTÉES
+ * d'abord : une connexion qui reprend un long import (runs interrompus par l'échéance, last_sync_at
+ * inchangé tant que la passe n'est pas finie) n'empêche pas les autres d'être servies.
+ */
 export async function listDueConnections(now: Date = new Date()): Promise<ChannelConnection[]> {
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin
@@ -47,11 +51,28 @@ export async function listDueConnections(now: Date = new Date()): Promise<Channe
     .order("last_sync_at", { ascending: true, nullsFirst: true })
     .limit(200);
   if (error) throw fromPostgrestError(error);
-  return (data ?? []).filter((c) => {
-    if (!c.last_sync_at) return true;
-    const due = new Date(c.last_sync_at).getTime() + c.sync_interval_minutes * 60_000;
-    return due <= now.getTime();
-  });
+  const attemptedAt = (c: ChannelConnection) => {
+    const v = c.last_sync_attempt_at ?? c.last_sync_at;
+    return v ? new Date(v).getTime() : Number.NEGATIVE_INFINITY;
+  };
+  return (data ?? [])
+    .filter((c) => {
+      if (!c.last_sync_at) return true;
+      const due = new Date(c.last_sync_at).getTime() + c.sync_interval_minutes * 60_000;
+      return due <= now.getTime();
+    })
+    .sort((a, b) => attemptedAt(a) - attemptedAt(b));
+}
+
+/** Message affiché quand le compte marketplace est déjà relié ailleurs (D-04 / I-07). Aucune information sur l'autre organisation. */
+export function accountAlreadyLinkedMessage(label: string, environment: string): string {
+  return `Ce compte ${label}${environment === "sandbox" ? " (sandbox)" : ""} est déjà relié à une autre organisation MON STOCK. Un même compte ne peut alimenter qu'une seule organisation (sinon ses ventes seraient importées et déduites deux fois). Déconnectez-le d'abord dans l'autre organisation, puis relancez la connexion.`;
+}
+
+export const ACCOUNT_LINKED_ELSEWHERE = "ACCOUNT_LINKED_ELSEWHERE";
+
+function accountLinkedElsewhere(label: string, environment: string): AppError {
+  return new AppError("CONFLICT", accountAlreadyLinkedMessage(label, environment), { details: { reason: ACCOUNT_LINKED_ELSEWHERE } });
 }
 
 export async function findConnectionsByExternalAccount(provider: ChannelProvider, account: { userId?: string | null; username?: string | null }): Promise<ChannelConnection[]> {
@@ -122,6 +143,24 @@ export async function upsertOAuthConnection(input: UpsertConnectionInput): Promi
     .order("created_at", { ascending: true });
   if (listError) throw fromPostgrestError(listError);
 
+  // D-04 / I-07 : un compte marketplace n'alimente qu'UNE organisation (par environnement). Contrôle
+  // explicite avant toute écriture ; l'index unique channel_connections_one_active_account_uidx
+  // départage les callbacks concurrents (traduit plus bas en la même erreur métier).
+  const { data: elsewhere, error: elsewhereError } = await admin
+    .from("channel_connections")
+    .select("id, organization_id")
+    .eq("provider", input.provider)
+    .eq("environment", input.environment)
+    .eq("external_account_id", input.account.externalAccountId)
+    .neq("status", "disconnected")
+    .neq("organization_id", input.organizationId)
+    .limit(1);
+  if (elsewhereError) throw fromPostgrestError(elsewhereError);
+  if ((elsewhere ?? []).length > 0) {
+    log.warn("connexion refusée : compte déjà relié à une autre organisation", { provider: input.provider, orgId: input.organizationId, environment: input.environment });
+    throw accountLinkedElsewhere(label, input.environment);
+  }
+
   // Réutilisation uniquement pour le MÊME compte externe (ou une connexion jamais finalisée) :
   // un autre compte eBay obtient sa propre connexion et son propre canal, sans hériter des annonces/commandes.
   const existing =
@@ -142,11 +181,25 @@ export async function upsertOAuthConnection(input: UpsertConnectionInput): Promi
     refresh_token_expires_at: input.tokens.refreshTokenExpiresAt?.toISOString() ?? null,
   };
 
+  // Violation de l'index unique (callback concurrent pour le même compte) : erreur métier explicite.
+  const uniqueViolation = (error: { code?: string; message: string }): never => {
+    if (error.code === "23505" && /channel_connections_one_active_account_uidx/.test(error.message)) throw accountLinkedElsewhere(label, input.environment);
+    throw fromPostgrestError(error);
+  };
+
   let connection: ChannelConnection;
   let isNew = false;
   if (existing) {
-    const { data, error } = await admin.from("channel_connections").update(patch).eq("id", existing.id).select("*").single();
-    if (error) throw fromPostgrestError(error);
+    // I-02 : la date limite de déduction des ventes est celle de la PREMIÈRE connexion (conservée
+    // lors d'une reconnexion : les ventes faites pendant une expiration restent déduites).
+    const { data, error } = await admin
+      .from("channel_connections")
+      .update({ ...patch, ...(existing.sales_stock_cutoff_at ? {} : { sales_stock_cutoff_at: nowIso }) })
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+    if (error) uniqueViolation(error);
+    if (!data) throw new AppError("INTERNAL", "Connexion non enregistrée.");
     connection = data;
     await admin.from("sales_channels").update({ name: `${label} · ${input.account.username}`, is_active: true }).eq("id", existing.sales_channel_id);
   } else {
@@ -159,10 +212,15 @@ export async function upsertOAuthConnection(input: UpsertConnectionInput): Promi
     if (channelError) throw fromPostgrestError(channelError);
     const { data, error } = await admin
       .from("channel_connections")
-      .insert({ organization_id: input.organizationId, sales_channel_id: channel.id, provider: input.provider, ...patch })
+      .insert({ organization_id: input.organizationId, sales_channel_id: channel.id, provider: input.provider, ...patch, sales_stock_cutoff_at: nowIso })
       .select("*")
       .single();
-    if (error) throw fromPostgrestError(error);
+    if (error) {
+      // Pas de canal orphelin si la connexion est refusée (compte relié entre-temps ailleurs).
+      await admin.from("sales_channels").delete().eq("id", channel.id);
+      uniqueViolation(error);
+    }
+    if (!data) throw new AppError("INTERNAL", "Connexion non enregistrée.");
     connection = data;
     isNew = true;
   }

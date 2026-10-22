@@ -29,7 +29,7 @@ export function SidePanel({ closeHref, label, width = 540, children, header, foo
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
-        className={cn("ms-slide absolute inset-y-0 right-0 flex w-full flex-col overflow-hidden bg-background shadow-[-12px_0_40px_rgba(10,20,32,.25)] focus:outline-none")}
+        className={cn("ms-slide absolute inset-y-0 right-0 flex w-full flex-col overflow-hidden bg-background shadow-modal focus:outline-none")}
         style={{ maxWidth: width }}
       >
         {header}
@@ -43,7 +43,7 @@ export function SidePanel({ closeHref, label, width = 540, children, header, foo
 /** Bouton « Fermer · Échap » pour l'en-tête nuit d'un panneau. */
 export function PanelClose({ onClose }: { onClose: () => void }) {
   return (
-    <button type="button" onClick={onClose} className="inline-flex h-8 items-center gap-2 rounded-[10px] px-2 text-[13px] font-semibold text-on-night-muted hover:bg-night-raised hover:text-on-night">
+    <button type="button" onClick={onClose} className="inline-flex h-8 items-center gap-2 rounded-[10px] px-2 text-[13px] font-semibold text-on-night-muted transition-colors hover:bg-night-raised hover:text-on-night focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-10">
       <X aria-hidden="true" className="h-4 w-4" /> Fermer <kbd className="ms-code rounded-[5px] border border-night-stroke px-1.5 text-[10.5px]">Échap</kbd>
     </button>
   );

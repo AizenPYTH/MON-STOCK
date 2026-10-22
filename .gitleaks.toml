@@ -1,0 +1,42 @@
+# Configuration gitleaks (CI : .github/workflows/ci.yml, job « secrets »).
+# Règles par défaut de gitleaks + exceptions documentées pour des faux positifs VÉRIFIÉS
+# (audit du 22/10/2026, §6.1.1 : aucun secret réel dans le dépôt ni dans l'historique).
+title = "MON STOCK"
+
+[extend]
+useDefault = true
+
+# Jetons factices des tests et des fixtures (valeurs inventées, jamais de vrai secret).
+# Règle : un test n'utilise JAMAIS de vrai secret ; en cas de doute, construire la valeur par concaténation.
+[[allowlists]]
+description = "Jetons factices des tests et fixtures"
+paths = [
+  '''^tests/(unit|integration|fixtures|e2e|stubs)/''',
+  '''^apps/mobile/tests/''',
+]
+
+# Clé « publishable » Supabase : publique par conception (protégée par la RLS), embarquée dans
+# l'application via apps/mobile/eas.json. Une clé sb_secret_ reste détectée.
+[[allowlists]]
+description = "Clé publishable Supabase (publique)"
+regexTarget = "match"
+regexes = ['''sb_publishable_[A-Za-z0-9_-]{10,}''']
+
+# Règles propres au projet (absentes des règles par défaut ou trop génériques).
+[[rules]]
+id = "supabase-secret-key"
+description = "Clé secrète Supabase (sb_secret_…)"
+regex = '''\bsb_secret_[A-Za-z0-9_-]{20,}'''
+keywords = ["sb_secret_"]
+
+[[rules]]
+id = "openai-api-key-monstock"
+description = "Clé API OpenAI (sk-…T3BlbkFJ… ou sk-proj-/sk-svcacct-/sk-admin-)"
+regex = '''\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}T3BlbkFJ[A-Za-z0-9_-]{20,}|\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}'''
+keywords = ["sk-"]
+
+[[rules]]
+id = "ebay-user-token"
+description = "Jeton utilisateur eBay (v^1.1#i^1#…)"
+regex = '''v\^1\.1#i\^1#[A-Za-z0-9#^/+=_-]{20,}'''
+keywords = ["v^1.1#"]

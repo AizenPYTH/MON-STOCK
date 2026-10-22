@@ -1,14 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import OpenAI from "openai";
 import { speakableText } from "@/domain/ai/speakable";
-import { checkSpeechRate, resetSpeechRate, synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_INSTRUCTIONS, TTS_RATE, TTS_SAMPLE_TEXT, ttsModel, ttsVoice } from "@/services/ai/speech";
+import { audioCacheControl, synthesizeAdvisorMessage, synthesizeVoiceSample, TTS_INSTRUCTIONS, TTS_RATE, TTS_SAMPLE_TEXT, ttsModel, ttsVoice } from "@/services/ai/speech";
 import { fakeSupabase } from "./helpers/fake-supabase";
 
 /**
  * Voix du conseiller (synthèse OpenAI) : seule une réponse du conseiller de l'utilisateur est lue
  * (relue sous sa session), texte nettoyé pour l'oral et borné, voix marin / cedar, consignes de
- * voix naturelle, limite de débit, erreurs journalisées. SDK simulé : AUCUN audio réel n'est
- * généré ni écouté par ces tests.
+ * voix naturelle, lecture décomptée EN BASE (quota « speech », S-10), erreurs journalisées. SDK simulé :
+ * AUCUN audio réel n'est généré ni écouté par ces tests.
  */
 const ORG = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
@@ -23,14 +23,15 @@ function sdk() {
   return { sdk: { audio: { speech: { create } } }, create };
 }
 const bodyOf = (create: ReturnType<typeof vi.fn>) => (create.mock.calls[0] as unknown as [Record<string, unknown>])[0];
-
-beforeEach(() => resetSpeechRate());
+/** Quota en base simulé (fonction SQL ai_reserve_usage). */
+const quota = (data: unknown = { allowed: true, event_id: "evt" }, error: unknown = null) => fakeSupabase({ "rpc:ai_reserve_usage": { data, error } });
+const admin = quota().client;
 
 describe("synthèse d'une réponse du conseiller", () => {
   it("relue sous la session de l'utilisateur, mp3, voix marin par défaut, consignes de voix naturelle", async () => {
     const { c, queries } = ctx({ data: { role: "assistant", content: "– CA : 1 234,50 € (+12 %) → **bon**" } });
     const { sdk: s, create } = sdk();
-    const audio = await synthesizeAdvisorMessage(c, MSG, { sdk: s, env: {} });
+    const audio = await synthesizeAdvisorMessage(c, MSG, { sdk: s, env: {}, admin });
     expect(new Uint8Array(await new Response(audio).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     expect(bodyOf(create)).toEqual({ model: "gpt-4o-mini-tts", voice: "marin", input: "CA : 1 234,50 euros (+12 pour cent) puis bon", instructions: TTS_INSTRUCTIONS, response_format: "mp3" });
     const calls = queries.find((q) => q.target === "advisor_messages")!.calls;
@@ -41,14 +42,14 @@ describe("synthèse d'une réponse du conseiller", () => {
     const stream = new ReadableStream<Uint8Array>({ start: (c) => (c.enqueue(new Uint8Array([9])), c.close()) });
     const arrayBuffer = vi.fn(async () => new ArrayBuffer(0));
     const create = vi.fn(async () => ({ body: stream, arrayBuffer }));
-    const audio = await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: { audio: { speech: { create } } }, env: {} });
+    const audio = await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: { audio: { speech: { create } } }, env: {}, admin });
     expect(audio).toBe(stream);
     expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("voix choisie par l'utilisateur (cedar) ; voix inconnue ignorée", async () => {
     const { sdk: s, create } = sdk();
-    await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: s, env: {}, voice: "Cedar" });
+    await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: s, env: {}, voice: "Cedar", admin });
     expect(bodyOf(create).voice).toBe("cedar");
     expect(ttsVoice("nova", {})).toBe("marin");
     expect(ttsVoice(null, { OPENAI_TTS_VOICE: "cedar" })).toBe("cedar");
@@ -58,31 +59,53 @@ describe("synthèse d'une réponse du conseiller", () => {
 
   it("message de l'utilisateur ou introuvable : rien n'est synthétisé", async () => {
     const { sdk: s, create } = sdk();
-    await expect(synthesizeAdvisorMessage(ctx({ data: { role: "user", content: "texte arbitraire" } }).c, MSG, { sdk: s })).rejects.toThrow(/introuvable/);
-    await expect(synthesizeAdvisorMessage(ctx({ data: null }).c, MSG, { sdk: s })).rejects.toThrow(/introuvable/);
+    await expect(synthesizeAdvisorMessage(ctx({ data: { role: "user", content: "texte arbitraire" } }).c, MSG, { sdk: s, admin })).rejects.toThrow(/introuvable/);
+    await expect(synthesizeAdvisorMessage(ctx({ data: null }).c, MSG, { sdk: s, admin })).rejects.toThrow(/introuvable/);
     expect(create).not.toHaveBeenCalled();
   });
 
   it("texte long borné à la fin d'une phrase (≈ 1 minute)", async () => {
     const { sdk: s, create } = sdk();
-    await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Phrase de test assez longue pour remplir. ".repeat(60) } }).c, MSG, { sdk: s, env: {} });
+    await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Phrase de test assez longue pour remplir. ".repeat(60) } }).c, MSG, { sdk: s, env: {}, admin });
     const input = bodyOf(create).input as string;
     expect(input.length).toBeLessThan(1000);
     expect(input).toMatch(/La suite est affichée à l'écran\.$/);
   });
 
-  it("limite de débit par utilisateur", () => {
-    const t = Date.now();
-    for (let i = 0; i < TTS_RATE.perUserPerHour; i++) checkSpeechRate("u", t + i);
-    expect(() => checkSpeechRate("u", t + 100)).toThrow(/Trop de lectures/);
-    expect(() => checkSpeechRate("autre", t + 100)).not.toThrow();
-    expect(() => checkSpeechRate("u", t + 3_700_000)).not.toThrow();
+  it("chaque lecture est décomptée EN BASE avant l'appel au fournisseur (plus de limite en mémoire d'instance)", async () => {
+    const { sdk: s, create } = sdk();
+    const q = quota();
+    await synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: s, env: {}, admin: q.client });
+    expect(q.queries.map((x) => x.target)).toEqual(["rpc:ai_reserve_usage"]);
+    expect(q.queries[0]!.calls[0]!.args[0]).toMatchObject({ p_kind: "speech", p_user_id: USER, p_organization_id: ORG, p_user_limit: TTS_RATE.perUserPerHour, p_org_limit: TTS_RATE.perOrganizationPerDay });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("limite atteinte ou quota invérifiable : rien n'est synthétisé (fail-closed)", async () => {
+    const { sdk: s, create } = sdk();
+    const c = ctx({ data: { role: "assistant", content: "Bonjour." } }).c;
+    await expect(synthesizeAdvisorMessage(c, MSG, { sdk: s, env: {}, admin: quota({ allowed: false, reason: "user_limit" }).client })).rejects.toThrow(/Trop de lectures vocales/);
+    await expect(synthesizeAdvisorMessage(c, MSG, { sdk: s, env: {}, admin: quota(null, { code: "57P01", message: "terminating" }).client })).rejects.toMatchObject({ status: 503 });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("message introuvable : aucun quota consommé", async () => {
+    const q = quota();
+    await expect(synthesizeAdvisorMessage(ctx({ data: null }).c, MSG, { sdk: sdk().sdk, admin: q.client })).rejects.toThrow(/introuvable/);
+    expect(q.queries).toHaveLength(0);
+  });
+
+  it("cache HTTP privé de l'audio : borné et configurable", () => {
+    expect(audioCacheControl({})).toBe("private, max-age=86400");
+    expect(audioCacheControl({ ADVISOR_AUDIO_MAX_AGE_SECONDS: "3600" })).toBe("private, max-age=3600");
+    expect(audioCacheControl({ ADVISOR_AUDIO_MAX_AGE_SECONDS: "0" })).toBe("private, no-store");
+    expect(audioCacheControl({ ADVISOR_AUDIO_MAX_AGE_SECONDS: "99999999" })).toBe("private, max-age=86400");
   });
 
   it("erreur OpenAI : message utilisateur sans détail, journalisée côté serveur", async () => {
     const create = vi.fn().mockRejectedValue(new OpenAI.AuthenticationError(401, undefined, "Incorrect API key", new Headers()));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: { audio: { speech: { create } } }, env: {} })).rejects.toThrow(/refusée/);
+    await expect(synthesizeAdvisorMessage(ctx({ data: { role: "assistant", content: "Bonjour." } }).c, MSG, { sdk: { audio: { speech: { create } } }, env: {}, admin })).rejects.toThrow(/refusée/);
     expect(warn.mock.calls.flat().join(" ")).toMatch(/OpenAI|synthèse/);
     warn.mockRestore();
   });

@@ -20,6 +20,7 @@ export const OAUTH_ERROR_MESSAGES = {
   rate_limited: "Quota d'appels eBay atteint : réessayez dans quelques minutes.",
   ebay_unavailable: "eBay n'a pas répondu correctement pendant la connexion. Réessayez dans quelques minutes.",
   internal: "La connexion eBay n'a pas pu être enregistrée. Réessayez ; si le problème persiste, contactez le support.",
+  account_in_use: "Ce compte eBay est déjà relié à une autre organisation MON STOCK. Un même compte ne peut alimenter qu'une seule organisation (sinon ses ventes seraient importées et déduites deux fois). Déconnectez-le d'abord dans l'autre organisation, puis relancez la connexion.",
   scope_refused: "eBay a refusé les autorisations demandées (l'application eBay n'a peut-être pas accès à l'analyse complète : finances, trafic, marketing). Reconnectez eBay avec la connexion standard, ou activez ces API dans le portail développeur eBay.",
 } as const;
 
@@ -36,6 +37,9 @@ export function oauthErrorMessage(code: string | null | undefined): string | nul
 /** Code d'erreur pour une exception levée pendant l'échange du code / la lecture du compte. */
 export function oauthErrorCodeFor(e: unknown): OAuthErrorCode {
   const code = typeof e === "object" && e !== null && "code" in e ? String((e as { code: unknown }).code) : "";
+  const reason = typeof e === "object" && e !== null && "details" in e ? (e as { details?: { reason?: unknown } | null }).details?.reason : undefined;
+  // D-04 : compte eBay déjà relié à une autre organisation (voir upsertOAuthConnection).
+  if (code === "CONFLICT" && reason === "ACCOUNT_LINKED_ELSEWHERE") return "account_in_use";
   switch (code) {
     case "AUTH_EXPIRED":
       return "exchange_denied";

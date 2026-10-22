@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "./helpers/memory-db";
+import { prepareCatalogImportRpc } from "./helpers/catalog-import-rpc";
 
 vi.mock("server-only", () => ({}));
 let db: MemoryDb;
@@ -28,7 +29,7 @@ const base = [
 ];
 
 beforeEach(() => {
-  db = memoryDb({ organizations: [{ id: ORG, default_currency: "EUR" }] }, { sourcing_mapping_profiles: [["organization_id", "supplier_id", "header_signature"]] });
+  db = memoryDb({ organizations: [{ id: ORG, default_currency: "EUR" }] }, { sourcing_mapping_profiles: [["organization_id", "supplier_id", "header_signature"]] }, { sourcing_prepare_catalog_import: prepareCatalogImportRpc });
 });
 
 async function run(lines: string[], extra: Record<string, unknown> = {}) {

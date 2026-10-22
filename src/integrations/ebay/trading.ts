@@ -323,11 +323,11 @@ export async function* iterateGetMyeBaySelling(config: EbayConfig, auth: Connect
   }
 }
 
-export async function reviseInventoryStatus(config: EbayConfig, auth: ConnectorAuth, ref: ListingRef, quantity: number): Promise<UpdateInventoryResult> {
+export async function reviseInventoryStatus(config: EbayConfig, auth: ConnectorAuth, ref: ListingRef, quantity: number, options: { deadline?: number | null } = {}): Promise<UpdateInventoryResult> {
   if (!Number.isInteger(quantity) || quantity < 0) {
     throw new ConnectorError("API_ERROR", EBAY_PROVIDER, "La quantité à envoyer à eBay doit être un entier positif ou nul.", { retryable: false });
   }
-  const xml = await tradingCall(config, auth, "ReviseInventoryStatus", buildReviseInventoryStatusRequest(ref, quantity));
+  const xml = await tradingCall(config, auth, "ReviseInventoryStatus", buildReviseInventoryStatusRequest(ref, quantity), { deadline: options.deadline ?? null });
   const { warnings } = parseReviseInventoryStatusResponse(xml);
   return { ok: true, quantity, warnings };
 }

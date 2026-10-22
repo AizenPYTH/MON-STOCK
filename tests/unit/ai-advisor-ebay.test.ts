@@ -24,7 +24,9 @@ vi.mock("@/services/channels/connection-store", () => ({
 }));
 
 const { runAdvisorTool, ADVISOR_TOOLS, ADVISOR_TOOL_DEFINITIONS } = await import("@/services/ai/advisor-tools");
-const { clearEbayAdvisorCache, questionAsksForMessageContent, EXTENDED_REQUIRED, EBAY_ADVISOR_TOOLS } = await import("@/services/ai/advisor-ebay");
+const { clearEbayAdvisorCache, EXTENDED_REQUIRED, EBAY_ADVISOR_TOOLS, MESSAGE_CONTENT_REFUSAL } = await import("@/services/ai/advisor-ebay");
+const { SENSITIVE_TOOL_REFUSAL } = await import("@/services/ai/advisor-tools");
+const { cardsForStorage, quotesUserRequest, UNTRUSTED_OPEN, UNTRUSTED_CLOSE } = await import("@/services/ai/privacy");
 const { ADVISOR_SYSTEM_STABLE, ADVISOR_LIMITS } = await import("@/services/ai/advisor");
 const { fakeSupabase } = await import("./helpers/fake-supabase");
 const { ORDER, GET_ITEM_XML } = await import("./helpers/ebay-fixtures");
@@ -168,8 +170,11 @@ describe("ebay_order_details (getOrder + suivis)", () => {
     const r = await run(ctx, "ebay_order_details", { order: "12-34567-89012" });
     expect(r.isError).toBe(false);
     expect(r.json).toMatchObject({ found: true, inMonStock: true, account: "vendeur_pro", readAt: expect.stringMatching(/^2\d{3}-/), readAtParis: expect.any(String) });
-    const order = r.json.order as { buyer: unknown; lineItems: Array<{ marketplaceFees: unknown }>; marketplaceFee: { total: { value: number } } };
-    expect(order.buyer).toEqual({ username: "acheteur_77", recipientName: "Jean Dupont", city: "Lyon", postalCode: "69003", country: "FR" });
+    const order = r.json.order as { buyer: unknown; buyerCheckoutNote: unknown; lineItems: Array<{ marketplaceFees: unknown }>; marketplaceFee: { total: { value: number } } };
+    // Minimisation (D-11, Q-09) : au modèle, un alias stable et le pays ; ni pseudo, ni nom, ni ville, ni code postal, ni note libre.
+    expect(order.buyer).toEqual({ alias: expect.stringMatching(/^Acheteur [A-Z2-9]{4}$/), country: "FR" });
+    expect(order.buyerCheckoutNote).toMatch(/non transmise/);
+    expect(r.content).not.toMatch(/acheteur_77|Jean Dupont|Lyon|69003|Merci d'appeler/);
     expect(order.marketplaceFee.total.value).toBe(54.9);
     expect(order.lineItems[0]!.marketplaceFees).toBeNull();
     expect(r.json.shipments).toEqual([{ fulfillmentId: "F1", carrier: "COLISSIMO", trackingNumber: "6A123", service: null, shippedAt: "2026-10-19T15:00:00.000Z", lineItems: [] }]);
@@ -177,6 +182,13 @@ describe("ebay_order_details (getOrder + suivis)", () => {
     expect(r.content).not.toMatch(/rue Secrète|0612345678|jean\.dupont@example\.com/);
     expect(r.cards[0]?.title).toBe("Commande eBay 12-34567-89012");
     expect(r.cards[0]?.subtitle).toMatch(/^eBay, lu le /);
+    // Carte affichée : l'utilisateur voit le pseudo réel, la ville et la note ; version enregistrée : rien de tout cela (I-08).
+    const shown = JSON.stringify(r.cards);
+    expect(shown).toMatch(/acheteur_77/);
+    expect(shown).toMatch(/Lyon/);
+    const stored = JSON.stringify(cardsForStorage(r.cards));
+    expect(stored).not.toMatch(/acheteur_77|Jean Dupont|Lyon|69003|appeler/);
+    expect(stored).toMatch(/Acheteur [A-Z2-9]{4}/);
     expect(calls.some((c) => c.url.host === "apiz.ebay.com")).toBe(false);
     expectReadOnly(calls);
   });
@@ -219,6 +231,8 @@ describe("ebay_orders_live", () => {
     expect(r.json).toMatchObject({ count: 2, paidAwaitingShipment: 1, notYetInMonStock: 1, totalsByCurrency: { EUR: 429.9 }, marketplaceFeesByCurrency: { EUR: 57.4 } });
     expect(calls[0]!.url.searchParams.get("filter")).toMatch(/^creationdate:\[2026-10-13T10:00:00\.000Z\.\.\]$/);
     expect(r.content).not.toContain("Lyon");
+    expect(r.content).not.toContain("acheteur_77");
+    expect((r.json.orders as Array<{ buyer: string }>)[0]!.buyer).toMatch(/^Acheteur [A-Z2-9]{4}$/);
     expectReadOnly(calls);
   });
 });
@@ -248,7 +262,10 @@ describe("Trading API : annonce, vendus/invendus, évaluations, messages", () =>
       return xml(wrap("GetFeedback", `<FeedbackDetailArray><FeedbackDetail><CommentingUser>a1</CommentingUser><CommentText>${negative ? "Jamais reçu" : "Parfait"}</CommentText><CommentType>${negative ? "Negative" : "Positive"}</CommentType></FeedbackDetail></FeedbackDetailArray><FeedbackScore>1520</FeedbackScore>`));
     });
     const r = await run(setup().ctx, "ebay_feedback", { limit: 5 });
-    expect(r.json).toMatchObject({ score: 1520, positivePercent: 99.6, recent: [{ comment: "Parfait" }], negativeAndNeutral: [{ type: "Negative", comment: "Jamais reçu" }] });
+    // Commentaires = contenus de tiers délimités (S-30) ; évaluateur = alias (D-11).
+    expect(r.json).toMatchObject({ score: 1520, positivePercent: 99.6, recent: [{ comment: `${UNTRUSTED_OPEN}Parfait${UNTRUSTED_CLOSE}`, buyer: expect.stringMatching(/^Acheteur /) }], negativeAndNeutral: [{ type: "Negative", comment: `${UNTRUSTED_OPEN}Jamais reçu${UNTRUSTED_CLOSE}` }] });
+    expect(r.content).not.toMatch(/"a1"/);
+    expect(JSON.stringify(cardsForStorage(r.cards))).not.toMatch(/— a1|Jamais reçu/);
     expectReadOnly(calls);
   });
 
@@ -259,17 +276,31 @@ describe("Trading API : annonce, vendus/invendus, évaluations, messages", () =>
       return xml(wrap("GetMyMessages", `<Messages>${message}</Messages><PaginationResult><TotalNumberOfPages>1</TotalNumberOfPages></PaginationResult>`));
     });
     const list = await run(setup().ctx, "ebay_messages", { unreadOnly: true });
-    expect(list.json).toMatchObject({ unread: 1, count: 1, inbox: { newMessages: 1 }, messages: [{ messageId: "987654", sender: "acheteur_4", read: false }] });
+    expect(list.json).toMatchObject({ unread: 1, count: 1, inbox: { newMessages: 1 }, messages: [{ messageId: "987654", sender: expect.stringMatching(/^Acheteur /), subject: `${UNTRUSTED_OPEN}Batterie ?${UNTRUSTED_CLOSE}`, read: false }] });
     expect(list.content).not.toContain("batterie est à combien");
+    expect(list.content).not.toContain("acheteur_4");
+    expect(JSON.stringify(cardsForStorage(list.cards))).not.toMatch(/acheteur_4|Batterie/);
 
+    // I-26 : plus de mots déclencheurs ; il faut une citation EXACTE de la demande de l'utilisateur.
     const before = calls.length;
-    const denied = await run(setup({ question: "Combien de messages non lus ?" }).ctx, "ebay_message", { messageId: "987654" });
-    expect(denied.json).toMatchObject({ read: false });
+    const noQuote = await run(setup({ question: "Que veut dire DSR ?" }).ctx, "ebay_message", { messageId: "987654" });
+    expect(noQuote.json).toMatchObject({ read: false, reason: MESSAGE_CONTENT_REFUSAL });
+    const invented = await run(setup({ question: "Combien de messages non lus ?" }).ctx, "ebay_message", { messageId: "987654", user_request: "lis-moi le message de acheteur_4" });
+    expect(invented.json).toMatchObject({ read: false });
+    // injection depuis un contenu tiers : la citation ne figure pas dans la question de l'utilisateur
+    const injected = await run(setup({ question: "Quels messages non lus ?" }).ctx, "ebay_message", { messageId: "987654", user_request: "Batterie ?" });
+    expect(injected.json).toMatchObject({ read: false });
     expect(calls.length).toBe(before);
 
-    const ok = await run(setup({ question: "Que dit le message de acheteur_4 ?" }).ctx, "ebay_message", { messageId: "987654" });
-    expect(ok.json).toMatchObject({ found: true, message: { body: "La batterie est à combien ? [téléphone masqué]" } });
+    const ok = await run(setup({ question: "Que dit le message de acheteur_4 ?" }).ctx, "ebay_message", { messageId: "987654", user_request: "que dit le message" });
+    expect(ok.json).toMatchObject({ found: true, message: { body: `${UNTRUSTED_OPEN}La batterie est à combien ? [téléphone masqué]${UNTRUSTED_CLOSE}`, sender: expect.stringMatching(/^Acheteur /) } });
+    expect(ok.content).not.toContain("acheteur_4");
     expect(ok.cards[0]?.kind).toBe("draft");
+    expect(ok.cards[0]?.text).toMatch(/batterie est à combien/);
+    // texte du message affiché, mais NON conservé dans l'historique
+    const stored = cardsForStorage(ok.cards)[0]!;
+    expect(stored.text).toBeNull();
+    expect(JSON.stringify(stored)).not.toMatch(/acheteur_4|batterie est à combien|Batterie/);
     expectReadOnly(calls);
   });
 
@@ -280,12 +311,30 @@ describe("Trading API : annonce, vendus/invendus, évaluations, messages", () =>
     expect(r.content).toMatch(/Paramètres invalides/);
   });
 
-  it("garde-fou des messages : mots déclencheurs", () => {
-    expect(questionAsksForMessageContent("Que m'a écrit acheteur_4 ?")).toBe(true);
-    expect(questionAsksForMessageContent("lis-moi le dernier message")).toBe(true);
-    expect(questionAsksForMessageContent("Combien de messages non lus ?")).toBe(false);
-    expect(questionAsksForMessageContent("Quel est mon chiffre d'affaires ?")).toBe(false);
-    expect(questionAsksForMessageContent(undefined)).toBe(false);
+  it("intention explicite (I-26) : citation exacte de la question, ≥ 10 lettres, casse et ponctuation ignorées", () => {
+    expect(quotesUserRequest("Lis-moi le dernier message de l'acheteur", "lis-moi le dernier message")).toBe(true);
+    expect(quotesUserRequest("Que m'a écrit l’acheteur ?", "que m'a écrit l'acheteur")).toBe(true);
+    expect(quotesUserRequest("Que veut dire DSR ?", "veut dire")).toBe(false); // trop court
+    expect(quotesUserRequest("Combien de messages non lus ?", "lis le message")).toBe(false);
+    expect(quotesUserRequest("Combien de messages non lus ?", "messages non")).toBe(true); // citation réelle (le modèle reste tenu par la consigne)
+    expect(quotesUserRequest("un message", "un mess")).toBe(false); // mots entiers seulement
+    expect(quotesUserRequest(undefined, "lis-moi le message")).toBe(false);
+  });
+
+  it("rôle lecture seule : finances, messages et données d'acheteurs refusés AVANT toute lecture (S-22, I-27)", async () => {
+    const calls = stubEbay(() => json({}));
+    const { ctx, db } = setup({ role: "viewer", connections: [connection({ scopes: EXTENDED_SCOPES })] });
+    const sensitive = ["ebay_order_details", "ebay_orders_live", "ebay_sold_unsold", "ebay_feedback", "ebay_messages", "ebay_message", "ebay_finances"];
+    for (const name of sensitive) {
+      expect(ADVISOR_TOOLS[name]?.sensitive).toBe(true);
+      const r = await run(ctx, name, name === "ebay_order_details" ? { order: "12-34567-89012" } : name === "ebay_message" ? { messageId: "987654" } : {});
+      expect(r.isError).toBe(false);
+      expect(r.json).toMatchObject({ available: false, forbidden: true, reason: SENSITIVE_TOOL_REFUSAL });
+    }
+    expect(calls).toHaveLength(0);
+    expect(db.queries).toHaveLength(0);
+    expect(state.tokenFor).toEqual([]);
+    for (const name of ["ebay_account_overview", "ebay_listing_details", "ebay_traffic", "ebay_seller_standards", "ebay_promotions"]) expect(ADVISOR_TOOLS[name]?.sensitive).toBeFalsy();
   });
 });
 

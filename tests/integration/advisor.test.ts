@@ -26,7 +26,7 @@ d("Conseiller IA : isolation et actions à confirmer", () => {
       const conv = rows[0].id as string;
       expect(rows[0].user_id).toBe(owner);
       await c.query("insert into public.advisor_messages (organization_id, conversation_id, role, content) values ($1, $2, 'user', 'Quel est mon CA ?')", [org, conv]);
-      await expectQueryError(c, "insert into public.advisor_messages (organization_id, conversation_id, role, content) values ($1, $2, 'system', 'x')", [org, conv], /check constraint/);
+      await expectQueryError(c, "insert into public.advisor_messages (organization_id, conversation_id, role, content) values ($1, $2, 'system', 'x')", [org, conv], /check constraint|row-level security/);
       const upd = await c.query("update public.advisor_messages set content = 'falsifié' where conversation_id = $1", [conv]).catch((e: Error) => e);
       expect(upd instanceof Error ? upd.message : (upd as { rowCount: number }).rowCount).toSatisfy((v: unknown) => v === 0 || /permission denied|row-level security/.test(String(v)));
 
