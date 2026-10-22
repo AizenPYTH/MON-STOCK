@@ -50,7 +50,8 @@
  *   POST /api/advisor/chat                conseiller IA (texte / voix) : flux NDJSON si Accept: application/x-ndjson
  *   POST /api/advisor/actions/confirm     exécute UNE action préparée, après revérification des droits (bouton de l'app)
  *   POST /api/advisor/actions/cancel      annule une action préparée
- *   POST /api/cron/sync | /api/cron/sourcing | /api/cron/library-checks
+ *   POST /api/cron/sync | /api/cron/sourcing | /api/cron/library-checks | /api/cron/sourcing-imports
+ *        | /api/cron/library-review-report (lecture seule ; /api/cron/library-activate : supprimée, 410)
  *                                         tâches planifiées (Authorization: Bearer CRON_SECRET)
  *
  * Authentification : `Authorization: Bearer <jeton d'accès Supabase de l'utilisateur>` validé par

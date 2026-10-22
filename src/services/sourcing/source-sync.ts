@@ -98,7 +98,8 @@ async function runSourceOnce(admin: AdminSupabaseClient, source: SourceRow, kind
     const results = [];
     for (const f of feeds) {
       const mode = ((parseFeedConfig(f).options as { mode?: IngestMode }).mode ?? "snapshot") as IngestMode;
-      results.push(await ingestFeed(f.id, { trigger, createdBy, admin, mode }));
+      // budget du passage propagé : un gros flux est traité par lots, la suite est reprise (import-jobs)
+      results.push(await ingestFeed(f.id, { trigger, createdBy, admin, mode, ...(budgetMs !== undefined ? { budgetMs } : {}) }));
     }
     const failed = results.filter((r) => r.status === "failed");
     return { ok: failed.length === 0, status: failed.length === 0 ? (results.some((r) => r.status === "partial") ? "partial" : "success") : failed.length === results.length ? "failed" : "partial", message: results.map((r) => r.message).join(" "), runIds: results.flatMap((r) => (r.runId ? [r.runId] : [])) };

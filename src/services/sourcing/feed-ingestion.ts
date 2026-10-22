@@ -9,7 +9,7 @@ import { loadFeedAuthHeaders } from "@/services/sourcing/feed-secrets";
 import { fieldMappingSchema, feedOptionsSchema, mapRow, parseFeedContent, previewFeed, type FeedFormat, type FeedPreview, type FieldMapping, type FeedOptions, type MappingDefaults } from "@/services/sourcing/feed-parsers";
 import { finishSyncRun, isDue, recordSyncErrors, startSyncRun } from "@/services/sourcing/sync-runs";
 import { assessImportQuality, rowIdentity } from "@/domain/sourcing/import-quality";
-import { createImportJob, MAX_IMPORT_ROWS, pendingIngestResult, processImportJob, rowExcerpt, type ChunkRow, type ImportJobParams, type IngestIssue, type IngestMode, type IngestResult } from "@/services/sourcing/import-jobs";
+import { createImportJob, MAX_IMPORT_ROWS, pendingIngestResult, processImportJob, rowExcerpt, type ChunkRow, type ImportJobParams, type IngestIssue, type IngestMode, type IngestResult, type ProcessOutcome } from "@/services/sourcing/import-jobs";
 
 export { MAX_IMPORT_ISSUES, rowExcerpt, type IngestIssue, type IngestMode, type IngestResult } from "@/services/sourcing/import-jobs";
 
@@ -185,7 +185,15 @@ export async function ingestFeed(feedId: string, options: IngestOptions = { trig
       remember: options.remember ?? null,
     };
     const jobId = await createImportJob({ admin, params, rows, jobId: options.importJobId ?? null, origin: options.origin ?? (feed.url ? "remote_feed" : "file"), job: { mapping: feed.field_mapping as Json, format: feed.format }, warnings: quality.warnings });
-    const outcome = await processImportJob(jobId, { admin, budgetMs: options.budgetMs ?? INGEST_DEFAULT_BUDGET_MS, cpuBudgetMs: options.cpuBudgetMs === undefined ? undefined : Math.max(100, options.cpuBudgetMs - cpuUsed) });
+    let outcome: ProcessOutcome;
+    try {
+      outcome = await processImportJob(jobId, { admin, budgetMs: options.budgetMs ?? INGEST_DEFAULT_BUDGET_MS, cpuBudgetMs: options.cpuBudgetMs === undefined ? undefined : Math.max(100, options.cpuBudgetMs - cpuUsed) });
+    } catch (e) {
+      // Incident pendant un lot : le job reste reprenable (bail expiré → reprise ; 5 échecs → clos).
+      log.warn("traitement d'un lot interrompu, reprise ultérieure", { feedId, jobId, error: e instanceof Error ? e.message : String(e) });
+      const { data: j } = await admin.from("sourcing_import_jobs").select("rows_processed, rows_total, chunks_done, chunks_total").eq("id", jobId).maybeSingle();
+      outcome = { jobId, claimed: true, status: "running", done: false, chunksThisRun: 0, result: null, message: null, progress: { rowsProcessed: j?.rows_processed ?? 0, rowsTotal: j?.rows_total ?? rows.length, chunksDone: j?.chunks_done ?? 0, chunksTotal: j?.chunks_total ?? 0 } };
+    }
     if (outcome.result) return outcome.result;
     if (outcome.done) {
       const { data: closed } = await admin.from("sourcing_import_jobs").select("status, message").eq("id", jobId).maybeSingle();

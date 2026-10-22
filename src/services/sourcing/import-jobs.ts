@@ -513,6 +513,8 @@ export async function processImportJob(jobId: string, options: ProcessOptions = 
     if (clock() - new Date(job.started_at).getTime() > IMPORT_UNSPLIT_STALE_MS) await failImportJob(admin, job, "Import interrompu avant son découpage en lots (fonction coupée) : relancez l'import.");
     return base((await loadJob(admin, jobId)) ?? job);
   }
+  // Pas assez de temps pour un lot : le job n'est pas pris (aucune tentative comptée pour rien).
+  if (job.chunks_done < job.chunks_total && deadline - clock() < IMPORT_MIN_CHUNK_MS) return base(job, { message: "Budget insuffisant pour traiter un lot : la suite est reprise plus tard." });
   if (!(await claimJob(admin, job, owner, clock()))) return base(job, { message: "Import déjà en cours de traitement ailleurs." });
   if (job.attempts + 1 > IMPORT_MAX_IDLE_ATTEMPTS) {
     await failImportJob(admin, job, `Import interrompu à ${job.attempts} reprises sans avancer (lot ${job.chunks_done + 1}/${job.chunks_total}) : relancez l'import ou scindez le fichier.`);

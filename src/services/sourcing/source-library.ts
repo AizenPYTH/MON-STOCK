@@ -906,7 +906,7 @@ export async function checkLibrarySourceDetect(s: LibrarySource, runtime: Librar
 }
 
 /** Sources vérifiées par passage planifié (les moins récemment vérifiées d'abord). */
-export const LIBRARY_CHECK_BATCH = 6;
+export const LIBRARY_CHECK_BATCH = 10;
 /** Budget de temps global d'un passage (la fonction serveur est coupée à 150 s). */
 export const LIBRARY_CHECK_BUDGET_MS = 110_000;
 /** Temps minimal restant pour commencer la vérification d'une source. */
