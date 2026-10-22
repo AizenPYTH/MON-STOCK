@@ -196,6 +196,31 @@ d("webhook eBay", () => {
     expect(alerts.some((a) => a.status === "open")).toBe(true);
   });
 
+  it("suppression d'un acheteur SANS commande synchronisée : conversations du conseiller purgées explicitement (cartes, textes, titres)", async () => {
+    const f = await createFixture();
+    const buyer = `acheteur-sans-cmd-${Date.now()}`;
+    const [conv] = await q<{ id: string }>("insert into public.advisor_conversations (organization_id, user_id, title) values ($1, $2, $3) returning id", [f.orgId, f.userId, `Messages de ${buyer}`]);
+    await q("insert into public.advisor_messages (organization_id, conversation_id, user_id, role, content, cards) values ($1, $2, $3, 'assistant', $4, $5)", [
+      f.orgId,
+      conv!.id,
+      f.userId,
+      `Le dernier message de ${buyer} demande un suivi.`,
+      JSON.stringify([{ kind: "message", buyer, text: "Bonjour, où est mon colis ?" }]),
+    ]);
+    const id = `del-advisor-${Date.now()}`;
+    const body = notificationBody("MARKETPLACE_ACCOUNT_DELETION", { username: buyer, userId: "uid-advisor" }, id);
+    const r = await handleEbayNotification(post(body, { "x-ebay-signature": signatureHeader(body) }), deps());
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ status: "processed", ordersAnonymized: 0 });
+    const [conversation] = await q<{ title: string }>("select title from public.advisor_conversations where id = $1", [conv!.id]);
+    const [message] = await q<{ content: string; cards: unknown[] }>("select content, cards from public.advisor_messages where conversation_id = $1", [conv!.id]);
+    // Avant : aucune purge (pas de commande à anonymiser, donc aucun déclencheur SQL).
+    expect(conversation!.title).toBe(`Messages de ${DELETED_ACCOUNT_LABEL}`);
+    expect(message!.content).not.toContain(buyer);
+    expect(message!.content).toContain(DELETED_ACCOUNT_LABEL);
+    expect(message!.cards).toEqual([]);
+  });
+
   it("suppression de compte en échec (écriture refusée) → 500, événement « failed » ; la relivraison eBay est retraitée", async () => {
     const id = `del-retry-${Date.now()}`;
     const body = notificationBody("MARKETPLACE_ACCOUNT_DELETION", { username: `u-${Date.now()}`, userId: "uid" }, id);

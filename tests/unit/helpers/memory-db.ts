@@ -136,19 +136,19 @@ export function memoryDb(seed: Record<string, Row[]> = {}, uniques: Record<strin
         return api;
       },
       lt(c: string, v: unknown) {
-        filters.push((r) => r[c] !== null && r[c] !== undefined && String(r[c]) < String(v));
+        filters.push((r) => r[c] !== null && r[c] !== undefined && (typeof r[c] === "number" && typeof v === "number" ? (r[c] as number) < v : String(r[c]) < String(v)));
         return api;
       },
       lte(c: string, v: unknown) {
-        filters.push((r) => r[c] !== null && r[c] !== undefined && String(r[c]) <= String(v));
+        filters.push((r) => r[c] !== null && r[c] !== undefined && (typeof r[c] === "number" && typeof v === "number" ? (r[c] as number) <= v : String(r[c]) <= String(v)));
         return api;
       },
       gt(c: string, v: unknown) {
-        filters.push((r) => r[c] !== null && r[c] !== undefined && String(r[c]) > String(v));
+        filters.push((r) => r[c] !== null && r[c] !== undefined && (typeof r[c] === "number" && typeof v === "number" ? (r[c] as number) > v : String(r[c]) > String(v)));
         return api;
       },
       gte(c: string, v: unknown) {
-        filters.push((r) => r[c] !== null && r[c] !== undefined && String(r[c]) >= String(v));
+        filters.push((r) => r[c] !== null && r[c] !== undefined && (typeof r[c] === "number" && typeof v === "number" ? (r[c] as number) >= v : String(r[c]) >= String(v)));
         return api;
       },
       ilike(c: string, pattern: string) {

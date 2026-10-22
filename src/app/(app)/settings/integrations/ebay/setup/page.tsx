@@ -157,7 +157,7 @@ export default async function EbaySetupPage({ searchParams }: { searchParams: Pr
                     {c.auto_sync ? ` La synchronisation automatique est active (toutes les ${c.sync_interval_minutes} min).` : " La synchronisation automatique est désactivée."}
                   </p>
                 ) : (
-                  <p className="text-ink-3">Import des commandes des 90 derniers jours (Sell Fulfillment API). Les ventes des annonces associées décrémentent le stock ; les autres restent visibles comme « non associées ». Vous pouvez lancer cette étape avant d'avoir tout validé.</p>
+                  <p className="text-ink-3">Import des commandes des 90 derniers jours (Sell Fulfillment API). Les ventes antérieures à la connexion de votre compte sont importées pour l'analyse sans modifier le stock ; les ventes suivantes des annonces associées décrémentent le stock ; les autres restent visibles comme « non associées ». Vous pouvez lancer cette étape avant d'avoir tout validé.</p>
                 )}
                 {writer && connectionOk ? <SyncNowForm connectionId={c.id} scope="full" trigger={ordersImported ? "manual" : "initial"} label={ordersImported ? "Synchroniser maintenant" : "Importer les commandes"} pendingText="Import en cours…" variant={ordersImported ? "secondary" : "primary"} /> : null}
                 {state.lastRun ? <p className="text-xs text-muted">Dernier run : {formatRunSummary(state.lastRun)}</p> : null}

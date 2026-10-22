@@ -76,9 +76,9 @@ describe("S-04 : gros fichier, écritures groupées, budget", () => {
     const r = await startImport(bigFile(1_000), { budgetMs: 1 });
     expect(r.result).toMatchObject({ status: "partial", pending: true, jobId: r.importJobId, progress: { rowsProcessed: 0, rowsTotal: 1_000, chunksDone: 0, chunksTotal: 4 } });
     expect(r.result.message).toMatch(/Import en cours : 0 \/ 1000 lignes/);
-    // horloge de calcul simulée : chaque mesure avance de 400 ms → budget de 1 200 ms atteint après 1 lot
+    // horloge de calcul simulée : chaque section de calcul « dure » 200 ms → budget de 500 ms atteint après 1 lot
     let cpu = 0;
-    const step = await processImportJob(r.importJobId!, { admin: counting(), cpuBudgetMs: 1_200, cpuClock: () => (cpu += 200) });
+    const step = await processImportJob(r.importJobId!, { admin: counting(), cpuBudgetMs: 500, cpuClock: () => (cpu += 200) });
     expect(step).toMatchObject({ claimed: true, done: false, chunksThisRun: 1, progress: { rowsProcessed: 250, chunksDone: 1 } });
     const pendingJob = (await listImportJobs(ctx()))[0]!;
     expect(pendingJob).toMatchObject({ status: "running", resumable: true });
@@ -146,7 +146,6 @@ describe("S-04 : interruption et reprise sûre", () => {
     expect(out).toMatchObject({ done: true, status: "partial" });
     expect(db.tables.sourcing_offers).toHaveLength(599);
     const detail = await getImportJob(ctx(), jobId);
-    console.log("DBG issues", JSON.stringify(db.tables.sourcing_import_issues));
     expect(detail.counts).toMatchObject({ created: 599, invalid: 1 });
     expect(detail.issues.filter((i) => i.kind === "invalid")).toHaveLength(1);
   });

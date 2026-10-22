@@ -140,19 +140,30 @@ La route `GET|POST /api/cron/sync` exécute, séquentiellement, les connexions `
   `npm run sync:run -- --connection <uuid>`, `npm run sync:run -- --all` ou `npm run sync:run -- --due`.
 
 Chaque exécution crée une ligne `sync_runs` (statut `running` → `success` / `partial` / `failed`, statistiques réelles, erreurs
-détaillées dans `sync_errors`). Un run encore `running` depuis moins de 15 min bloque un nouveau run sur la même connexion
+détaillées dans `sync_errors`). Un run encore `running` depuis moins de 10 min bloque un nouveau run sur la même connexion
 (index unique partiel : même deux démarrages simultanés n'en créent qu'un ; l'autre reçoit « Une synchronisation … est déjà en
-cours »). Au-delà de 15 min, le run est considéré interrompu et marqué `failed`.
+cours »). Au-delà de 10 min (un run vivant dure au plus son budget), le run est considéré interrompu et marqué `failed` ; le cron
+nettoie aussi, à chaque passage, les runs `running` abandonnés (canaux > 10 min, sources fournisseurs > 30 min).
 
-Le cron ne démarre plus de nouveau run après ~200 s (budget de temps) : les connexions restantes sont reportées au passage
-suivant (`deferred` dans la réponse JSON) plutôt que coupées en plein run par la limite de la plateforme.
+**Runs bornés et reprenables** (incident du 22/10/2026) : chaque run a une **échéance interne** (100 s par défaut,
+`SYNC_RUN_BUDGET_MS`, bornée à 8 min ; le cron partage la sienne entre les runs : 100 s sur l'Edge Function, 200 s sur la route
+web). Les appels eBay ont un délai réduit au temps restant et ne sont jamais relancés au-delà. La progression est enregistrée
+**après chaque étape confirmée** : page d'annonces écrite (`channel_connections.sync_state`, au plus 6 pages par run et la moitié
+du budget dans un run complet), tranche de commandes lue et ingérée en entier (`last_orders_cursor`). À l'échéance, le run se
+termine en `partial` avec la raison « Budget de temps atteint, reprise au prochain passage », libère le verrou, et le passage
+suivant reprend au dernier point confirmé (une page d'annonces est relue par sécurité). `last_sync_at` n'avance que lorsqu'une
+passe complète est finie : la connexion reste « due » d'ici là. Le cron sert d'abord les connexions les moins récemment tentées
+(`last_sync_attempt_at`). Une tranche de commandes trop longue pour le budget est divisée par deux au passage suivant.
+Le cron (Edge Function et route web : même service `src/services/sync/cron.ts`) reprend aussi les notifications eBay
+abandonnées. Aucun run n'est démarré s'il reste moins de 20 s au budget du cron : les connexions restantes sont reportées au
+passage suivant (`deferred` dans la réponse JSON).
 Les runs déclenchés par webhook (périmètre partiel) ne modifient pas `last_sync_at` : ils ne repoussent jamais la
 synchronisation complète planifiée.
 
 ## 7. Ce que fait une synchronisation
 
 1. **Annonces** : `GetMyeBaySelling` (ActiveList, 200 par page). Une ligne `channel_listings` par annonce ou par variation
-   (clé = SKU de variation, à défaut ses caractéristiques). Les annonces absentes de la liste active sont marquées `ended`.
+   (clé = SKU de variation, à défaut ses caractéristiques). Les annonces non revues pendant un parcours **complet et non tronqué** sont marquées `ended` (une annonce illisible mais identifiée est considérée revue : jamais terminée à tort).
    Association automatique **uniquement** si le SKU eBay est strictement égal (insensible à la casse) à un code SKU interne
    (`mapping_source = auto_sku_match`). Sinon, des **suggestions** (EAN, SKU proche, titre + attributs) sont calculées avec une
    confiance 0–1 et doivent être validées dans *Intégrations → Associations*.
@@ -162,11 +173,20 @@ synchronisation complète planifiée.
    de la dernière tranche lue **en entier**, et jamais au-delà d'une commande dont l'ingestion a échoué : aucune commande n'est
    sautée. Ingestion idempotente et transactionnelle (tout ou rien par commande) via `ingest_external_order` : création des
    commandes, mouvements de stock `sale` pour les lignes associées, recrédit en cas d'annulation/remboursement. Deux ingestions
-   simultanées de la même commande (webhook + cron) produisent une seule commande et un seul mouvement par ligne.
+   simultanées de la même commande (webhook + cron) produisent une seule commande et un seul mouvement par ligne ; la base
+   refuse d'ailleurs toute seconde vente pour une même ligne sans annulation intermédiaire (migration `20261023000120`).
+   **Ventes antérieures à la première connexion du compte** (`sales_stock_cutoff_at`) : importées pour l'analyse mais **sans
+   mouvement de stock** (le stock saisi les reflète déjà), ni à l'import ni par « appliquer les ventes en attente ». Une commande
+   **illisible** (format inattendu) n'est jamais ignorée : le curseur ne dépasse pas sa date et une alerte « import bloqué » reste
+   ouverte jusqu'à son import.
    Correspondance des statuts : `cancelState = CANCELED` → annulée ; `FULLY_REFUNDED` → remboursée ; `FULFILLED` → expédiée ;
    `PAID`/`PARTIALLY_REFUNDED` → payée ; `PENDING`/`FAILED` → en attente.
 3. **Quantités** (opt-in `push_inventory`, désactivé par défaut) : pour les annonces associées dont la quantité eBay diffère du
-   stock disponible, `ReviseInventoryStatus` (200 maximum par run). Une action manuelle **« Pousser la quantité vers eBay »**
+   stock disponible, `ReviseInventoryStatus` (200 maximum par run). L'envoi n'a lieu qu'après un import des commandes
+   **complet et sans erreur** dans le même run (sinon `INVENTORY_PUSH_SKIPPED`, raison détaillée). Un SKU associé à
+   **plusieurs annonces actives** n'est jamais poussé (chacune recevrait tout le stock : survente) : erreur
+   `INVENTORY_PUSH_SHARED_SKU` et alerte ; gardez une seule annonce associée par SKU. Un même compte eBay ne peut être relié
+   qu'à une seule organisation (par environnement). Une action manuelle **« Pousser la quantité vers eBay »**
    existe par annonce, avec confirmation.
 
 ### Tokens
@@ -243,7 +263,7 @@ synchronisation complète planifiée.
 | Le challenge du webhook échoue | L'URL saisie chez eBay diffère de `${NEXT_PUBLIC_APP_URL}/api/webhooks/ebay` (slash final, http/https) ou le token n'a pas 32–80 caractères. |
 | Notifications en statut `failed` (401) | Signature invalide : vérifiez que les clés eBay (`EBAY_CLIENT_ID/SECRET`) sont du même environnement que les notifications reçues. |
 | `/api/cron/sync` répond 503 | `CRON_SECRET` absent ou trop court. |
-| Run `failed` avec « Une synchronisation est déjà en cours » | Un run précédent n'a pas terminé ; il est automatiquement marqué échoué après 15 min. |
+| Run `failed` avec « Une synchronisation est déjà en cours » | Un run précédent n'a pas terminé ; il est automatiquement marqué échoué après 10 min. |
 | Ventes importées mais stock inchangé | L'annonce n'est pas associée à un SKU (page *Associations*). Après association, les ventes passées peuvent être appliquées depuis la fiche SKU (« appliquer les ventes en attente »). |
 
 Les journaux serveur sont préfixés `[SYNC]`, `[EBAY]`, `[EBAY_OAUTH]`, `[EBAY_WEBHOOK]`, `[CRON]` ; les clés sensibles y sont masquées.

@@ -8,6 +8,7 @@ import { createLogger } from "@/lib/logger";
 import { ebayNotificationSchema, notificationEventId, parseSignatureHeader, verifyNotificationSignature, type EbayNotification, type EbayPublicKey } from "@/integrations/ebay/webhook-verify";
 import { PublicKeyNotFoundError } from "@/integrations/ebay/notification-keys";
 import { connectionExpiredKey, upsertAlert } from "@/services/sync/alerts";
+import { purgeAdvisorDataForEbayAccount } from "@/services/ai/retention";
 import { sanitizeMessage } from "@/services/sync/context";
 import type { RunChannelSyncOptions, SyncRunResult } from "@/services/sync/engine";
 
@@ -444,6 +445,14 @@ export async function handleAccountDeletion(admin: AdminSupabaseClient, account:
     const { data, error } = await admin.from("orders").update({ buyer_username: DELETED_ACCOUNT_LABEL }).eq("provider", "ebay").eq("buyer_username", account.username).select("id");
     if (error) fail("anonymisation des commandes", error.message);
     ordersAnonymized = data?.length ?? 0;
+    // Conseiller IA (I-08) : purge EXPLICITE des cartes et textes citant ce pseudo, y compris pour un
+    // acheteur sans commande synchronisée (les déclencheurs SQL ne couvrent que les pseudos anonymisés
+    // dans orders / channel_connections). Libellé identique : DELETED_ACCOUNT_LABEL.
+    try {
+      await purgeAdvisorDataForEbayAccount(account.username, admin);
+    } catch (e) {
+      fail("purge du conseiller", e instanceof Error ? e.message : String(e));
+    }
     const { data: purged, error: purgeError } = await admin.from("webhook_events").update({ payload: null }).eq("provider", "ebay").eq("payload->notification->data->>username", account.username).select("id");
     if (purgeError) fail("purge des notifications", purgeError.message);
     eventsPurged += purged?.length ?? 0;

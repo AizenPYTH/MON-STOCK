@@ -7,7 +7,7 @@ import type { Client } from "pg";
 import { asService, asSuperuser, asUser, createOrgAs, createUser } from "./helpers";
 
 /** Tables accessibles au seul service_role (aucune policy, aucun privilège client). */
-export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states", "supplier_feed_secrets", "advisor_retention_policy"] as const;
+export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states", "supplier_feed_secrets", "advisor_retention_policy", "sourcing_import_chunks", "sourcing_host_policies"] as const;
 
 /** Tables globales (sans organisation), lisibles par tout utilisateur authentifié. */
 export const GLOBAL_READ_TABLES = ["fx_rates"] as const;
@@ -169,6 +169,7 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
   );
   await c.query("update public.sourcing_offers set last_import_job_id = $1 where id = $2", [job, offer]);
   await one("sourcing_import_issues", "insert into public.sourcing_import_issues (organization_id, job_id, line, kind, message) values ($1, $2, 3, 'invalid', 'Prix manquant') returning id", [orgId, job]);
+  await one("sourcing_import_chunks", "insert into public.sourcing_import_chunks (job_id, organization_id, chunk_index, first_index, row_count, rows) values ($1, $2, 0, 0, 1, '[{\"i\":0}]') returning job_id as id", [job, orgId]);
   await one("sourcing_mapping_profiles", "insert into public.sourcing_mapping_profiles (organization_id, supplier_id, header_signature, mapping, updated_by) values ($1, $2, $3, '{\"price\":\"Prix\"}'::jsonb, $4) returning id", [orgId, supplier, "c".repeat(64), ownerId]);
   await one("supplier_feed_secrets", "insert into public.supplier_feed_secrets (feed_id, organization_id, credentials_enc) values ($1, $2, 'enc') returning feed_id as id", [feed, orgId]);
   await one("supplier_price_history", "select id from public.supplier_price_history where offer_id = $1 limit 1", [offer]);
