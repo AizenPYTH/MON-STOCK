@@ -5,7 +5,7 @@ import type { OrgContext } from "@/features/auth/dal";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { sourcingSearch } from "@/features/mobile-api/service";
 import type { SourcingSearchDTO } from "@/features/mobile-api/contract";
-import { getLibrarySource } from "@/services/sourcing/source-library";
+import { getLibrarySource, termsStatusOf } from "@/services/sourcing/source-library";
 
 /**
  * Vérification de bout en bout du pipeline de recherche (outil serveur, CRON_SECRET) :
@@ -17,6 +17,9 @@ export async function runSearchSelfTest(query: string, libraryKey: string): Prom
   const admin = createAdminSupabaseClient();
   const entry = getLibrarySource(libraryKey);
   if (!entry) return { result: null, error: "Source inconnue.", cleaned: true };
+  // I-05 : aucun accès automatisé sans validation humaine des conditions. L'auto-test serveur ne
+  // s'exécute donc que sur une source dont MON STOCK a CONFIRMÉ les conditions (API officielle).
+  if (termsStatusOf(entry) !== "confirmed") return { result: null, error: "Auto-test refusé : les conditions d'utilisation de cette source ne sont pas confirmées ; seule une activation validée par un utilisateur permet de l'interroger.", cleaned: true };
   const { data: check } = await admin.from("sourcing_library_checks").select("status, adapter, checked_at").eq("key", libraryKey).maybeSingle();
   if (check?.status !== "ok") return { result: null, error: "La source n'a pas passé la vérification en direct.", cleaned: true };
   // Auteur technique des lignes temporaires : un utilisateur existant (contraintes de clés étrangères).
@@ -41,7 +44,8 @@ export async function runSearchSelfTest(query: string, libraryKey: string): Prom
       robots_checked_at: check.checked_at,
       robots_allowed: true,
       status: "active",
-      config: { adapter: check.adapter ?? entry.adapter, library_key: entry.key } as unknown as NonNullable<Json>,
+      // sans library_key : source technique temporaire, pas une activation de la bibliothèque
+      config: { adapter: check.adapter ?? entry.adapter, self_test_of: entry.key } as unknown as NonNullable<Json>,
     });
     if (srcErr) throw new Error(srcErr.message);
     const ctx = {

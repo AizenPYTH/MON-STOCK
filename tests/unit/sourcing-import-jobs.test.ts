@@ -172,6 +172,33 @@ describe("S-04 : interruption et reprise sûre", () => {
     expect(job2.message).toMatch(/5 reprises sans avancer/);
   });
 
+  it("budget insuffisant pour un lot : aucun bail pris, aucune tentative comptée (pas d'abandon à tort)", async () => {
+    const r = await startImport(bigFile(300), { budgetMs: 1 });
+    for (let i = 0; i < 7; i++) await processImportJob(r.importJobId!, { admin: counting(), budgetMs: 1 });
+    const job = db.tables.sourcing_import_jobs!.find((j) => j.id === r.importJobId)!;
+    expect(job).toMatchObject({ status: "running", attempts: 0, lease_owner: null });
+    const done = await processImportJob(r.importJobId!, { admin: counting() });
+    expect(done).toMatchObject({ done: true, status: "completed" });
+  });
+
+  it("incident base pendant un lot dans la requête d'import : réponse « en cours », job reprenable (jamais perdu)", async () => {
+    const base = counting() as unknown as { from: (t: string) => unknown; rpc: (...a: unknown[]) => unknown };
+    let broken = true;
+    const flaky = { ...base, from: (t: string) => (t === "supplier_price_history" && broken ? (() => { throw new Error("connexion perdue"); })() : base.from(t)) };
+    const file = bigFile(300);
+    const preview = await previewCatalogFileForOrg(ctx(), { file }, counting());
+    // 1er import (crée les offres), puis réimport avec incident pendant la lecture de l'historique
+    const first = await importCatalogFile(ctx(), { file, mapping: preview.mapping, defaults: { currency: "EUR", taxType: "ht" }, supplierName: "Grossiste Test", mode: "partial" } as never);
+    const mod = await import("@/services/sourcing/feed-ingestion");
+    const r = await mod.ingestFeed(first.feedId, { trigger: "manual", content: Buffer.from(file.contentBase64, "base64").toString("utf8"), admin: flaky as never, mode: "partial" });
+    expect(r).toMatchObject({ status: "partial", pending: true });
+    broken = false;
+    const later = Date.now() + IMPORT_LEASE_MS + 1_000;
+    const out = await processImportJob(r.jobId!, { admin: counting(), clock: () => later });
+    expect(out).toMatchObject({ done: true, status: "completed" });
+    expect(db.tables.sourcing_offers).toHaveLength(300);
+  });
+
   it("import remplacé (journal clos par un import plus récent) : le job s'arrête sans écrire", async () => {
     const r = await startImport(bigFile(300), { budgetMs: 1 });
     const job = db.tables.sourcing_import_jobs!.find((j) => j.id === r.importJobId)!;
