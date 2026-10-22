@@ -79,7 +79,7 @@ describe("production-guard (scripts TypeScript)", () => {
     // --conditions react-server : comme en exécution réelle, `server-only` ne bloque pas l'import.
     const r = spawnSync(process.execPath, ["--conditions", "react-server", "--import", "tsx", file, ...args], {
       cwd: root,
-      env: { PATH: process.env.PATH ?? "", ...env },
+      env: { PATH: process.env.PATH ?? "", ...env } as unknown as NodeJS.ProcessEnv,
       encoding: "utf8",
       timeout: 30_000,
     });
@@ -99,7 +99,7 @@ describe("db-local-reset.sh (garde-fou bash)", () => {
   function run(env: Record<string, string>) {
     rmSync(log, { force: true });
     const r = spawnSync("bash", [path.join(root, "scripts/db-local-reset.sh")], {
-      env: { PATH: `${dir}:${process.env.PATH ?? ""}`, HOME: dir, ...env },
+      env: { PATH: `${dir}:${process.env.PATH ?? ""}`, HOME: dir, ...env } as unknown as NodeJS.ProcessEnv,
       encoding: "utf8",
     });
     return { status: r.status, stderr: r.stderr, calls: existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : [] };

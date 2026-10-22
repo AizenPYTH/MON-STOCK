@@ -1,5 +1,8 @@
 -- =============================================================================
 -- MON STOCK — planification des tâches serveur (pg_cron → Edge Function `api`).
+-- REMPLACÉ par la migration versionnée supabase/migrations/20261023000700_versioned_cron_function.sql
+-- (URL lue dans le secret Vault PROJECT_URL, plus d'URL en dur). Conservé pour l'historique et le
+-- retour arrière (supabase/ops/rollback/20261023000700_versioned_cron_function_down.sql).
 -- À exécuter une fois par projet (SQL editor), en remplaçant <PROJECT_REF>.
 -- Le secret CRON_SECRET est lu dans Supabase Vault AU MOMENT de chaque exécution :
 -- il n'apparaît ni dans ce fichier ni dans cron.job.

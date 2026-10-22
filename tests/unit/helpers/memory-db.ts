@@ -2,7 +2,8 @@
  * Base en mémoire au comportement proche de PostgREST, pour tester les services serveur de
  * bout en bout sans réseau : select (colonnes et relations `alias:table(...)` résolues par
  * `<alias>_id`), insert / update / upsert / delete, filtres eq / neq / in / is / not / lt / lte /
- * gt / gte / ilike, order, limit, single / maybeSingle, count head.
+ * gt / gte / ilike, order, limit, range (pagination réelle), single / maybeSingle, count head, rpc
+ * (fonctions simulées passées à `memoryDb`).
  *
  * Limites assumées :
  * - pas de RLS ni de déclencheurs ;
@@ -75,6 +76,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}, uniques: Record<strin
     let returning = false;
     let orderBy: { col: string; asc: boolean; nullsFirst?: boolean }[] = [];
     let limitN: number | null = null;
+    let offsetN = 0;
     let single: "one" | "maybe" | null = null;
     let head = false;
     let countMode = false;
@@ -165,7 +167,9 @@ export function memoryDb(seed: Record<string, Row[]> = {}, uniques: Record<strin
         limitN = n;
         return api;
       },
-      range() {
+      range(from: number, to: number) {
+        offsetN = from;
+        limitN = to - from + 1;
         return api;
       },
       single() {
@@ -240,7 +244,7 @@ export function memoryDb(seed: Record<string, Row[]> = {}, uniques: Record<strin
         });
       }
       const count = countMode ? out.length : null;
-      if (limitN !== null) out = out.slice(0, limitN);
+      if (limitN !== null) out = out.slice(offsetN, offsetN + limitN);
       const data = out.map((r) => resolveSelect(r, selectCols));
       if (head) return { data: null, error: null, count };
       if (single === "one") return data.length === 1 ? { data: data[0], error: null, count } : { data: null, error: { code: "PGRST116", message: `${data.length} lignes au lieu d'une` }, count };

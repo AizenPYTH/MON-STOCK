@@ -100,9 +100,9 @@ export interface CronSyncSummary {
   results: CronSyncResultEntry[];
 }
 
-function defaultDeps(): CronSyncDeps {
+function defaultDeps(overrides: Partial<CronSyncDeps>): CronSyncDeps {
   return {
-    admin: createAdminSupabaseClient(),
+    admin: overrides.admin ?? createAdminSupabaseClient(),
     listDue: (now) => listDueConnections(now),
     recover: (admin) => recoverAbandonedWebhookEvents(admin, { findConnections: (account) => findConnectionsByExternalAccount("ebay", account) }),
     runSync: (connectionId, options) => runChannelSync(connectionId, options),
@@ -112,7 +112,7 @@ function defaultDeps(): CronSyncDeps {
 }
 
 export async function runSyncCron(options: { budgetMs: number }, overrides: Partial<CronSyncDeps> = {}): Promise<CronSyncSummary> {
-  const deps: CronSyncDeps = { ...defaultDeps(), ...overrides };
+  const deps: CronSyncDeps = { ...defaultDeps(overrides), ...overrides };
   const startedAt = deps.clock();
   const deadlineAt = startedAt + options.budgetMs;
 

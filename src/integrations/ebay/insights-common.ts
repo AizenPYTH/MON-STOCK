@@ -81,9 +81,10 @@ export function clip(s: string | null, max: number): string | null {
 }
 
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-// Numéros de téléphone commençant par « 0 » ou un indicatif « +33 » (séparateurs espace / point) ;
-// ni les numéros d'objet eBay (12 chiffres, jamais en 0) ni les numéros de commande (xx-xxxxx-xxxxx).
-const PHONE = /(?<![\w-])(?:\+\d{1,3}[ .]?|0)\d(?:[ .]?\d){7,10}(?![\w-])/g;
+// Numéros de téléphone commençant par « 0 » ou un indicatif « +33 » : séparateurs espace / point, ou
+// tirets par paires (06-12-34-56-78, +33-6-12-34-56-78 ; audit I-26). Ni les numéros d'objet eBay
+// (12 chiffres, jamais en 0) ni les numéros de commande (xx-xxxxx-xxxxx, même commençant par 0).
+const PHONE = /(?<![\w-])(?:(?:\+\d{1,3}[ .]?|0)\d(?:[ .]?\d){7,10}|(?:\+\d{1,3}-|0)\d(?:-\d{2}){4})(?![\w-])/g;
 
 /**
  * Masque les coordonnées (e-mails, téléphones) d'un texte libre écrit par un acheteur avant de

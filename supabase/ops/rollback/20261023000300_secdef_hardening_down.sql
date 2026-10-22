@@ -1,46 +1,20 @@
 -- Retour arrière MANUEL de 20261023000300_secdef_hardening.sql (Q-17, D-17).
 -- À n'exécuter qu'après décision explicite. Effets :
---   - search_path des fonctions SECURITY DEFINER remis à `public` ;
+--   - search_path des fonctions SECURITY DEFINER CONSERVÉ (voir plus bas) ;
 --   - apply_inventory_movement : date libre de nouveau (corps de 20261008005000) ;
 --   - adjust_reserved_quantity : corps d'origine, EXECUTE rendu à authenticated ;
 --   - le journal inventory_reservation_events est SUPPRIMÉ (exportez-le avant si besoin :
 --     copy (select * from public.inventory_reservation_events) to stdout with csv header).
 
-do $sp$
-declare
-  v_sig text;
-begin
-  foreach v_sig in array array[
-    'public.accept_invitation(text)',
-    'public.apply_pending_sales_for_sku(uuid)',
-    'public.can_write_org(uuid)',
-    'public.create_sku(uuid, jsonb, jsonb, uuid, jsonb, integer)',
-    'public.is_org_admin(uuid)',
-    'public.is_org_member(uuid)',
-    'public.map_listing_to_sku(uuid, uuid, text)',
-    'public.org_role_of(uuid)',
-    'public.receive_purchase_order_items(uuid, jsonb)',
-    'public.ingest_external_order(uuid, uuid, uuid, public.channel_provider, jsonb, jsonb)',
-    'public.store_refreshed_access_token(uuid, text, timestamptz, text)',
-    'public.clear_current_org_on_member_delete()',
-    'public.enforce_profile_current_org()',
-    'public.handle_auth_user_email_change()',
-    'public.handle_new_auth_user()',
-    'public.protect_last_owner()',
-    'public.purchase_order_items_after_write()'
-  ] loop
-    if to_regprocedure(v_sig) is not null then
-      execute format('alter function %s set search_path = public', to_regprocedure(v_sig));
-    end if;
-  end loop;
-end
-$sp$;
+-- search_path : NON rétabli volontairement. `public, pg_temp` est sans effet fonctionnel (toutes les
+-- références sont qualifiées) et d'autres migrations (ex. 20261023000120 / 0130) posent la même
+-- valeur sur certaines de ces fonctions : revenir à `public` les dégraderait aussi.
 
 create or replace function public.adjust_reserved_quantity(p_organization_id uuid, p_sku_id uuid, p_delta integer)
 returns public.inventory
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_inv public.inventory;
@@ -80,7 +54,7 @@ create or replace function public.apply_inventory_movement(
 returns public.inventory_movements
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_inv public.inventory;

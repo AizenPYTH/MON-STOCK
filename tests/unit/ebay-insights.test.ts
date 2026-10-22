@@ -161,6 +161,11 @@ describe("textes libres", () => {
       "Appelez le [téléphone masqué] ou le [téléphone masqué], mail [e-mail masqué] — commande 12-34567-89012, objet 405123456789",
     );
   });
+  it("téléphones avec tirets masqués (I-26) ; numéros de commande (même commençant par 0) et d'objet conservés", () => {
+    expect(maskPersonalData("Rappelez au 06-12-34-56-78 ou +33-6-12-34-56-78. Commandes 12-34567-89012 et 02-34567-89012, objet 405123456789")).toBe(
+      "Rappelez au [téléphone masqué] ou [téléphone masqué]. Commandes 12-34567-89012 et 02-34567-89012, objet 405123456789",
+    );
+  });
   it("HTML → texte", () => {
     expect(htmlToText("<div>Bonjour,<br/>le colis est-il parti&nbsp;?</div><script>x()</script><p>Merci &amp; bonne journée</p>")).toBe("Bonjour,\nle colis est-il parti ?\nMerci & bonne journée");
   });

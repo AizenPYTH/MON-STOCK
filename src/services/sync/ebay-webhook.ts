@@ -432,8 +432,11 @@ export async function recoverAbandonedWebhookEvents(
  * anonymisation du compte et du nom du canal. Toute erreur d'écriture est levée (→ 500, eBay redélivre).
  */
 export async function handleAccountDeletion(admin: AdminSupabaseClient, account: { username: string | null; userId: string | null }, connections: Array<Pick<ChannelConnection, "id" | "organization_id" | "sales_channel_id">>) {
-  const fail = (step: string, message: string) => {
-    throw new Error(`${step} : ${message}`);
+  // Étape nommée dans l'erreur (diagnostic de la notification, eBay redélivre) ; le message brut de la
+  // base n'est que journalisé (jamais affiché : voir toUserMessage).
+  const fail = (step: string, message: string): never => {
+    log.error("suppression de compte : étape en échec", { step, message: sanitizeMessage(message, 500) });
+    throw new AppError("INTERNAL", `Étape « ${step} » non appliquée (erreur d'écriture en base). eBay redélivrera la notification.`);
   };
   let ordersAnonymized = 0;
   let eventsPurged = 0;

@@ -87,6 +87,15 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   SOURCE_NOT_FOUND: { code: "NOT_FOUND", message: "Source introuvable." },
   ATTESTATION_INVALID: { code: "VALIDATION", message: "Attestation invalide (texte limité à 2 000 caractères)." },
   ATTESTATION_TEXT_REQUIRED: { code: "VALIDATION", message: "Décrivez les conditions d'accès vérifiées pour attester l'accès automatisé." },
+  // Migrations 20261023000500 à 20261023000530 (conseiller IA : quotas, actions, conservation).
+  AI_USAGE_KIND_INVALID: { code: "INTERNAL", message: "Contrôle du quota IA impossible : réessayez dans un instant." },
+  AI_USAGE_SUBJECT_REQUIRED: { code: "INTERNAL", message: "Contrôle du quota IA impossible : réessayez dans un instant." },
+  ADVISOR_ACTION_NOT_FOUND: { code: "NOT_FOUND", message: "Action introuvable (ou préparée par un autre utilisateur)." },
+  ADVISOR_ACTION_NOT_CLAIMED: { code: "CONFLICT", message: "Cette action n'est plus en attente de confirmation : rien n'a été modifié." },
+  ADVISOR_ACTION_INVALID: { code: "VALIDATION", message: "Action du conseiller invalide : rien n'a été modifié." },
+  ADVISOR_STOCK_CHANGED: { code: "CONFLICT", message: "Le stock a changé depuis la préparation : rien n'a été modifié. Redemandez l'ajustement." },
+  ADVISOR_PRICE_CHANGED: { code: "CONFLICT", message: "Le prix a changé depuis la préparation : rien n'a été modifié. Redemandez le changement." },
+  ADVISOR_RETENTION_POLICY_MISSING: { code: "INTERNAL", message: "Politique de conservation du conseiller absente : purge non effectuée." },
 };
 
 /** Erreurs réseau RÉELLES (client HTTP / DNS / socket) : un message SQL contenant « network » n'en est pas une. */

@@ -635,3 +635,16 @@ describe("minimisation et conservation", () => {
     expect(user.queries.filter((q) => q.target === "advisor_messages")).toHaveLength(1);
   });
 });
+
+describe("journaux du conseiller (aucune donnée personnelle)", () => {
+  it("erreur d'outil : seul le nom de l'outil est journalisé, jamais le contenu", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { client } = fakeModel([toolUse("ebay_message", { messageId: "1" }), text("ok")]);
+    const runTool = vi.fn(async () => ({ content: "Lecture impossible : jean.dupont@example.com 06 12 34 56 78 acheteur_77", isError: true, cards: [] }));
+    await runAdvisorTurn(orgCtx(fakeSupabase().client), { message: "Que dit le message de acheteur_77 ?" }, () => undefined, { meter: noMeter(), client, store: memoryStore().store, now: NOW, runTool: runTool as never });
+    const logged = warn.mock.calls.flat().map(String).join(" ");
+    warn.mockRestore();
+    expect(logged).toMatch(/ebay_message/);
+    expect(logged).not.toMatch(/jean\.dupont|06 12 34 56 78|acheteur_77/);
+  });
+});

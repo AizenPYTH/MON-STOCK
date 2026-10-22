@@ -19,6 +19,7 @@ function fakeClient(tables: Record<string, Row[]>, options: { failSource?: strin
       let head = false;
       let counting = false;
       let limit = Infinity;
+      let offset = 0;
       const b = {
         select(_cols: string, opts?: { count?: string; head?: boolean }) {
           head = opts?.head === true;
@@ -45,12 +46,21 @@ function fakeClient(tables: Record<string, Row[]>, options: { failSource?: strin
           limit = n;
           return b;
         },
+        // Lectures paginées (W-03) : ordre stable (ignoré ici) et fenêtre `.range()`.
+        order() {
+          return b;
+        },
+        range(from: number, to: number) {
+          offset = from;
+          limit = to - from + 1;
+          return b;
+        },
         then<T>(resolve: (v: unknown) => T) {
           calls.push({ table, head, filters });
           if (options.failSource && filters.includes(`source_id=${options.failSource}`)) return Promise.resolve({ data: null, count: null, error: { message: "timeout" } }).then(resolve);
           const rows = (tables[table] ?? []).filter((r) => preds.every((p) => p(r)));
           if (head) return Promise.resolve({ data: null, count: counting ? rows.length : null, error: null }).then(resolve);
-          return Promise.resolve({ data: rows.slice(0, Math.min(limit, 1000)), count: null, error: null }).then(resolve); // plafond max-rows
+          return Promise.resolve({ data: rows.slice(offset, offset + Math.min(limit, 1000)), count: null, error: null }).then(resolve); // plafond max-rows
         },
       };
       return b;

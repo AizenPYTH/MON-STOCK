@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Json } from "@/db/database.types";
 import type { OrgContext } from "@/features/auth/dal";
 import { AppError } from "@/lib/errors";
-import { serverEnv } from "@/lib/env";
+import { sourcingUserAgent } from "@/lib/env";
 import { createLogger } from "@/lib/logger";
 import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
 import { parseQuery } from "@/domain/sourcing/query-parser";
@@ -833,7 +833,7 @@ export async function checkLibrarySource(s: LibrarySource, runtime: LibraryCheck
   if (s.adapter === "ebay-browse" && !ebayEnv()) return { ...base, status: "not_configured", message: "Clés de l'application eBay non configurées sur le serveur.", durationMs: Date.now() - t0 };
   const config = adapterConfig(s);
   const parsed = parseQuery(s.probeQuery);
-  const userAgent = serverEnv().SOURCING_USER_AGENT;
+  const userAgent = sourcingUserAgent();
   let minDelayMs = LIBRARY_CHECK_MIN_DELAY_MS;
   if (adapter.urlsForQuery) {
     const urls = adapter.urlsForQuery(config, parsed, s.probeQuery);
@@ -1015,7 +1015,7 @@ export async function runLibraryChecks(input: string[] | LibraryChecksOptions = 
     const attemptAt = new Date(clock()).toISOString();
     const mark = prev
       ? await admin.from("sourcing_library_checks").update({ last_attempt_at: attemptAt }).eq("key", s.key)
-      : await admin.from("sourcing_library_checks").upsert({ key: s.key, checked_at: attemptAt, last_attempt_at: attemptAt, status: "unreachable", adapter: s.adapter, message: "Vérification commencée et non terminée (fonction interrompue ?) : elle sera reprise." });
+      : await admin.from("sourcing_library_checks").upsert({ key: s.key, checked_at: attemptAt, last_attempt_at: attemptAt, status: "unreachable", adapter: s.adapter, message: "Vérification commencée et non terminée (fonction interrompue ?) : elle sera reprise." }, { onConflict: "key" });
     if (mark.error) log.warn("tentative de vérification non marquée", { key: s.key, error: mark.error.message });
 
     const sourceBudget = remaining - 5_000;
@@ -1042,7 +1042,7 @@ export async function runLibraryChecks(input: string[] | LibraryChecksOptions = 
       sample: r.sample as unknown as Json,
       message: r.message,
       duration_ms: r.durationMs,
-    });
+    }, { onConflict: "key" });
     if (error) log.error("enregistrement de la vérification impossible", { key: r.key, error: error.message });
   }
   const pending = eligible.length - results.length;

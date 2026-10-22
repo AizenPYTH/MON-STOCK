@@ -8,7 +8,8 @@
  *   - mots-clés multilingues testés en début de mot, premier groupe qui correspond ;
  *   - « 8GB RAM » est une caractéristique d'appareil, pas un châssis (« rama/ramka » en polonais) ;
  *   - « bundle » / « caja » (boîte) ne font pas d'un téléphone un lot ;
- *   - une capacité (128 Go…) ne qualifie qu'un appareil ou une carte mère ;
+ *   - une capacité (128 Go…) citée AVANT le mot de pièce désigne un appareil (« iPhone 13 128 Go +
+ *     coque ») ; une pièce nommée d'abord reste une pièce (« Coque iPhone 13 128 Go ») ;
  *   - « vitre arrière fissurée », « écran cassé » décrivent l'état d'un APPAREIL abîmé, pas une pièce.
  */
 import { normalizeText } from "@/domain/sourcing/normalizer";
@@ -87,16 +88,24 @@ export function prepareKindText(title: string): string {
  */
 export function kindOfText(t: string, storage?: string | null): ProductKind {
   let kind: ProductKind = "device";
+  let kwIndex = -1;
   for (const { kind: k, re } of KIND_RES) {
-    if (re.test(t)) {
+    const m = re.exec(t);
+    if (m) {
       kind = k;
+      kwIndex = m.index;
       break;
     }
   }
   if (kind === "device" || kind === "lot" || PART_WITH_STORAGE.has(kind)) return kind;
   // « Apple iPhone 14 Pro 128 Go — vitre arrière fissurée » : appareil abîmé, pas une pièce
   if ((kind === "back_glass" || kind === "screen") && DAMAGED_PART_RE.test(t)) return "device";
-  if (storage || CAPACITY_RE.test(t)) return "device";
+  // Capacité : « iPhone 13 128 Go + coque » (capacité AVANT le mot de pièce) est un appareil ;
+  // « Coque iPhone 13 128 Go » (pièce nommée d'abord) reste un accessoire (I-18).
+  const cap = CAPACITY_RE.exec(t);
+  if (cap) return cap.index < kwIndex ? "device" : kind;
+  // capacité connue par ailleurs (colonne du fichier) : appareil, sauf titre qui commence par la pièce
+  if (storage && kwIndex > 1) return "device";
   return kind;
 }
 

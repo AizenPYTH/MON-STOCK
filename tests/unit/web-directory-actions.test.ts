@@ -10,10 +10,14 @@ vi.mock("@/features/auth/dal", () => ({
     return { supabase: {}, organization: { id: "org-1" }, user: { id: "u1", email: "a@b.c" } };
   }),
 }));
-vi.mock("@/services/sourcing/source-library", () => ({
-  activateLibrarySourceFor: (...args: unknown[]) => activate(...(args as [])),
-  getLibrarySource: (key: string) => (key === "foneday" ? { name: "Foneday", termsUrl: "https://www.foneday.shop/policies/terms-of-service" } : null),
-}));
+vi.mock("@/services/sourcing/source-library", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/services/sourcing/source-library")>();
+  return {
+    libraryActivateSchema: real.libraryActivateSchema,
+    activateLibrarySource: (...args: unknown[]) => activate(...(args as [])),
+    getLibrarySource: (key: string) => (key === "foneday" ? { name: "Foneday", termsUrl: "https://www.foneday.shop/policies/terms-of-service" } : null),
+  };
+});
 
 describe("annuaire web : activation d'une source de la bibliothèque", () => {
   beforeEach(() => {
@@ -29,15 +33,26 @@ describe("annuaire web : activation d'une source de la bibliothèque", () => {
     expect(activate).not.toHaveBeenCalled();
   });
 
-  it("rédacteur requis ; attestation datée et tracée « site web »", async () => {
+  it("rédacteur requis ; validation de l'utilisateur connecté transmise (canal « web », page des conditions lue)", async () => {
     const { activateLibrarySourceAction } = await import("@/features/directory/actions");
     const fd = new FormData();
     fd.set("key", "foneday");
     fd.set("attest", "on");
+    fd.set("termsUrl", "https://www.foneday.shop/pages/terms");
     expect(await activateLibrarySourceAction(null, fd)).toEqual({ ok: true, data: { message: "Foneday activée : elle sera interrogée à chaque recherche." } });
     expect(calls).toEqual([{ write: true }]);
-    const [, org, key, attestation] = activate.mock.calls[0] as unknown as [unknown, string, string, string];
-    expect([org, key]).toEqual(["org-1", "foneday"]);
-    expect(attestation).toMatch(/terms-of-service.*a@b\.c le \d{4}-\d{2}-\d{2}T.*\(site web\)/);
+    const [ctx, key, review, channel] = activate.mock.calls[0] as unknown as [{ user: { id: string } }, string, { termsUrl: string | null }, string];
+    expect(ctx.user.id).toBe("u1");
+    expect([key, review.termsUrl, channel]).toEqual(["foneday", "https://www.foneday.shop/pages/terms", "web"]);
+  });
+
+  it("adresse de la page des conditions invalide : refusée avant toute écriture", async () => {
+    const { activateLibrarySourceAction } = await import("@/features/directory/actions");
+    const fd = new FormData();
+    fd.set("key", "foneday");
+    fd.set("attest", "on");
+    fd.set("termsUrl", "pas une adresse");
+    expect(await activateLibrarySourceAction(null, fd)).toEqual({ ok: false, error: "Adresse de la page des conditions invalide." });
+    expect(activate).not.toHaveBeenCalled();
   });
 });

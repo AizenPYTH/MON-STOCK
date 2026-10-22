@@ -140,6 +140,8 @@ export async function syncListings(ctx: SyncContext, result: ListingsPhaseResult
   const pass: ListingsPassState = resumed ? { ...resumed, runs: resumed.runs + 1 } : { passStartedAt: nowIso, nextPage: 1, runs: 1, truncated: false, unreferencedInvalid: false };
   result.pass = pass;
   const startPage = pass.nextPage > 1 ? pass.nextPage - 1 : 1;
+  // La page relue (chevauchement) ne compte pas dans le plafond : chaque run avance d'au moins une page.
+  const overlapPages = pass.nextPage - startPage;
   if (resumed) log.info("reprise du parcours des annonces", { startPage, passStartedAt: pass.passStartedAt, runs: pass.runs });
   const maxPages = Math.max(1, options.maxPagesPerRun ?? LISTINGS_MAX_PAGES_PER_RUN);
   let finished = false;
@@ -177,7 +179,9 @@ export async function syncListings(ctx: SyncContext, result: ListingsPhaseResult
         finished = true;
         break;
       }
-      if (result.pagesRead >= maxPages || timeLeftMs(ctx) < LISTINGS_PAGE_MIN_REMAINING_MS) {
+      // Après la seule page relue, on tente toujours une page nouvelle (bornée par l'échéance des appels).
+      const onlyOverlapRead = result.pagesRead <= overlapPages;
+      if (result.pagesRead >= maxPages + overlapPages || (!onlyOverlapRead && timeLeftMs(ctx) < LISTINGS_PAGE_MIN_REMAINING_MS)) {
         result.stoppedByDeadline = true;
         break;
       }

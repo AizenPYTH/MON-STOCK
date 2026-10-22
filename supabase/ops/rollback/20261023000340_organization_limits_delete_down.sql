@@ -9,7 +9,7 @@ create or replace function public.create_organization_with_owner(p_name text, p_
 returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_user uuid := auth.uid();

@@ -73,7 +73,8 @@ import type { AdvisorToolContext, AdvisorToolOutput, AdvisorToolSpec } from "./a
  *  - FIABILITÉ : chaque résultat porte `readAt` (date de lecture chez eBay) ; un champ inconnu vaut null ;
  *    eBay non connecté / autorisation expirée / API refusée → `available: false` + raison claire.
  *  - CACHE : mémoire du processus, 60 s par connexion et par requête (questions enchaînées), jamais partagé
- *    entre organisations (clé = identifiant de connexion).
+ *    entre organisations (clé = identifiant de connexion). Propre à chaque instance (audit S-23) : simple
+ *    économie d'appels, ce n'est PAS une limite de sécurité (les quotas sont en base, voir quota.ts).
  *  - VIE PRIVÉE (audit D-11, Q-09, I-09) : AU MODÈLE, un acheteur n'est désigné que par un alias stable
  *    (« Acheteur XXXX ») et son pays ; ni pseudo, ni nom, ni ville, ni code postal, ni coordonnées. Les
  *    cartes affichées à l'utilisateur gardent le pseudo et la ville utiles à l'écran, mais leur version
