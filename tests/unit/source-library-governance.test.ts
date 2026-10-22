@@ -52,7 +52,7 @@ describe("S-02 / I-06 : vérifications par lots équitables, budget global", () 
     const seen = new Set<string>();
     let passes = 0;
     while (seen.size < eligible.length && passes < 20) {
-      const run = await runLibraryChecks({ check: okCheck(clock), clock: () => clock.t });
+      const run = await runLibraryChecks({ check: okCheck(clock, 5_000), clock: () => clock.t });
       expect(run.results.length).toBeLessThanOrEqual(LIBRARY_CHECK_BATCH);
       for (const r of run.results) seen.add(r.key);
       clock.t += 86_400_000;
