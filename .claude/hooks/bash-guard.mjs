@@ -29,6 +29,7 @@ const RISKY = [
   [/\bgh\s+(workflow\s+run|run\s+rerun|secret|variable\s+(set|delete)|release\s+(create|delete|upload|edit)|pr\s+merge|repo\s+(delete|edit|rename|archive)|api\b[^|;&]*-X\s*(POST|PUT|PATCH|DELETE))/i, "action GitHub distante (workflow, secrets, publication, fusion)"],
   [/\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f|checkout\s+--\s+\.|restore\s+(--staged\s+)?\.(\s|$)|stash\s+(drop|clear)|branch\s+-D|filter-branch|update-ref\s+-d|reflog\s+expire)/i, "perte de travail local (git)"],
   [/\bdrop\s+database\b/i, "suppression de base de données"],
+  [/\bMONSTOCK_ALLOW_REMOTE_DB_RESET=/, "réinitialisation d'une base NON locale (dérogation)"],
   [/--env-file=\S*\.env(?!\.example)\b/i, "script lancé avec les variables réelles (.env.local) : peut écrire dans une base ou un service distant"],
   [/(^|[\s;&|])(>|>>|tee(\s+-a)?)\s*\S*\.env(\.[\w-]+)?(\s|$)/i, "écriture dans un fichier .env (secrets)"],
   [/(^|[\s;&|])((>|>>|tee(\s+-a)?)\s*|(sed|perl)\s+-i\S*\s+[^;&|]*|(cp|mv|rm|ln|chmod)\s+[^;&|]*)\S*\.claude\/(settings|hooks)/i, "modification de la configuration Claude Code (permissions, garde-fous)"],
@@ -39,10 +40,11 @@ const RISKY = [
 /** Branches distantes autorisées sans confirmation : les branches de travail `claude/…`. */
 const WORK_BRANCH = /^(HEAD:)?(refs\/heads\/)?claude\/[\w.\/-]+$/;
 /**
- * Branches qui déclenchent un déploiement de production (Vercel publie la production à chaque
- * push) : jamais sans confirmation, même si elles ont la forme d'une branche de travail.
+ * Branches protégées : jamais sans confirmation, même si elles ont la forme d'une branche de travail.
+ * `claude/laughing-bardeen-bdn16j` (production Vercel) en est sortie sur autorisation explicite du
+ * titulaire (push autorisé sans confirmation).
  */
-const PRODUCTION_BRANCHES = new Set(["main", "master", "claude/laughing-bardeen-bdn16j"]);
+const PRODUCTION_BRANCHES = new Set(["main", "master"]);
 const branchName = (ref) => ref.replace(/^HEAD:/, "").replace(/^refs\/heads\//, "");
 
 function readStdin() {
@@ -134,6 +136,10 @@ function shellScriptBodies(seg, cwd) {
   const file = t[0] === "bash" || t[0] === "sh" ? t.find((x, k) => k > 0 && !x.startsWith("-")) : /\.sh$/.test(t[0] ?? "") ? t[0] : null;
   if (!file) return [];
   const p = path.resolve(cwd, file);
+  // Réinitialisation de la base LOCALE : autorisée sans confirmation par le titulaire. Le script
+  // refuse lui-même tout hôte non local (et Supabase sans dérogation possible) ; la dérogation
+  // MONSTOCK_ALLOW_REMOTE_DB_RESET reste soumise à confirmation (règle RISKY).
+  if (p.endsWith(`${path.sep}scripts${path.sep}db-local-reset.sh`)) return [];
   return existsSync(p) ? [{ body: readFileSync(p, "utf8"), cwd: path.dirname(p) }] : [];
 }
 

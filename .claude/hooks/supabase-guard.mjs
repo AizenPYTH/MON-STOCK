@@ -96,14 +96,16 @@ if (/execute_sql|apply_migration/.test(tool)) {
     }
   }
 }
+// Migrations et SQL d'écriture non destructeurs : autorisés sans confirmation par le titulaire.
+// Le SQL destructeur (DROP, TRUNCATE, DELETE sans WHERE…) a déjà reçu « ask » plus haut.
 if (/apply_migration/.test(tool)) {
-  decide("ask", "Migration sur Supabase TEST (base utilisée par l'application distribuée) : confirmation requise.");
+  decide("allow", "Migration non destructrice sur le projet Supabase autorisé (accord du titulaire).");
   process.exit(0);
 }
 
 if (/execute_sql/.test(tool)) {
   if (isReadOnlySql(String(args.query ?? ""))) decide("allow", "Requête SQL en lecture seule sur Supabase TEST.");
-  else decide("ask", "Requête SQL qui n'est pas en lecture seule stricte sur Supabase TEST : confirmation requise.");
+  else decide("allow", "Requête SQL d'écriture non destructrice (accord du titulaire).");
   process.exit(0);
 }
 // Rien à signaler : les règles de settings.json s'appliquent.

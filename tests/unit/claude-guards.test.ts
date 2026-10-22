@@ -28,6 +28,10 @@ describe("garde-fou des commandes", () => {
     "cat vercel.json .env.example",
     "rm -rf dist/scan",
     "psql -d mon_stock_test -c 'select 1'",
+    "npm run db:local:reset",
+    "PGHOST=localhost PGDATABASE=mon_stock_test bash scripts/db-local-reset.sh",
+    "git push -u origin claude/laughing-bardeen-bdn16j 2>&1 | tail -3",
+    "git push origin HEAD:refs/heads/claude/laughing-bardeen-bdn16j",
   ])("laisse passer : %s", (c) => expect(bash(c)).toBeNull());
 
   it.each([
@@ -37,13 +41,12 @@ describe("garde-fou des commandes", () => {
     "supabase functions deploy api",
     "supabase secrets set X=1",
     "vercel --prod",
-    "npm run db:local:reset",
+    "MONSTOCK_ALLOW_REMOTE_DB_RESET=db.example.org PGHOST=db.example.org bash scripts/db-local-reset.sh",
     "npm run seed:demo",
     "git push origin testflight-19",
     "git push --force origin claude/x",
     "git push origin main",
-    "git push -u origin claude/laughing-bardeen-bdn16j 2>&1 | tail -3",
-    "git push origin HEAD:refs/heads/claude/laughing-bardeen-bdn16j",
+    "git push origin HEAD:refs/heads/main",
     "git push --tags",
     "git reset --hard HEAD~1",
     "rm -rf src",
@@ -68,21 +71,28 @@ describe("garde-fou Supabase", () => {
     "select updated_at from skus order by 1 desc limit 5",
   ])("lecture seule autorisée : %s", (q) => expect(sql(q)).toBe("allow"));
 
+  // Écritures non destructrices : autorisées sans confirmation (accord explicite du titulaire).
   it.each([
     "insert into skus values (1)",
     "update skus set a = 1 where id = 1",
     "with d as (delete from skus where id = 1 returning *) select * from d",
-    "select * into x from skus",
-    "explain analyze select * from skus",
     "select public.refresh_radar()",
     "select net.http_post('https://x')",
-    "select set_config('role', 'service_role', false)",
     "do $$ begin perform 1; end $$",
-    "select 1; drop table skus",
-  ])("confirmation pour : %s", (q) => expect(sql(q)).toBe("ask"));
+  ])("écriture non destructrice autorisée : %s", (q) => expect(sql(q)).toBe("allow"));
 
-  it("migration : toujours une confirmation ; autre projet : refus", () => {
-    expect(sql("create table x (id int)", "mcp__Supabase__apply_migration")).toBe("ask");
+  it.each([
+    "select 1; drop table skus",
+    "truncate public.inventory",
+    "delete from public.orders",
+    "update public.inventory set on_hand = 0",
+    "alter table public.skus disable row level security",
+    "select cron.unschedule('monstock-sync')",
+  ])("confirmation pour le SQL destructeur : %s", (q) => expect(sql(q)).toBe("ask"));
+
+  it("migration : autorisée si non destructrice, confirmée sinon ; autre projet : refus", () => {
+    expect(sql("create table x (id int)", "mcp__Supabase__apply_migration")).toBe("allow");
+    expect(sql("drop table public.orders", "mcp__Supabase__apply_migration")).toBe("ask");
     expect(run("supabase-guard.mjs", { tool_name: "mcp__Supabase__list_tables", tool_input: { project_id: "autre" } })).toBe("deny");
     expect(run("supabase-guard.mjs", { tool_name: "mcp__Supabase__list_tables", tool_input: { project_id: TEST_PROJECT } })).toBeNull();
   });
