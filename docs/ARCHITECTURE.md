@@ -53,11 +53,12 @@ MON STOCK sert aux revendeurs de téléphones, de pièces et de matériel recond
 
 ### 4.1 Synchronisation eBay
 
-1. `pg_cron` appelle toutes les 15 min `public.call_monstock_cron('sync')`. Cette fonction fait un appel HTTP asynchrone (`pg_net`) vers `/api/cron/sync` de l'Edge Function.
+1. `pg_cron` appelle toutes les 15 min `public.call_monstock_cron('sync')`. Cette fonction fait un appel HTTP asynchrone (`pg_net`) vers `/functions/v1/api/cron/sync` de l'Edge Function. Les routes web `/api/cron/*` existent, mais ne sont pas planifiées : sur la branche de remédiation, elles sont désactivées par défaut (`MONSTOCK_WEB_LEGACY_ROUTES`).
 2. Pour chaque connexion due, l'Edge lit les annonces (Trading API) puis les commandes (Sell Fulfillment), sur une fenêtre bornée par un curseur.
 3. Chaque commande est ingérée par la RPC `ingest_external_order`. Elle verrouille la commande et applique au plus un mouvement de stock par ligne, même si un webhook et le cron arrivent en même temps.
 4. L'envoi des quantités vers eBay est désactivé par défaut (`push_inventory = false`).
-5. Chaque passage est tracé dans `sync_runs`. Attention : `cron.job_run_details` indique seulement que l'appel HTTP a été émis, pas que le traitement a réussi. La supervision lit `sync_runs` et `net._http_response`.
+5. Chaque run est borné (échéance de 100 s) et reprenable : la progression est enregistrée dans `channel_connections.sync_state` et dans le curseur des commandes. Un run abandonné depuis plus de 10 min est libéré par le cron suivant.
+6. Chaque passage est tracé dans `sync_runs`. Attention : `cron.job_run_details` indique seulement que l'appel HTTP a été émis, pas que le traitement a réussi. La supervision lit `sync_runs` et `net._http_response` ; une supervision en base (`ops_supervise`, migration `20261023000810`) est préparée, mais pas encore appliquée. Runbook : `docs/OPERATIONS.md` § 7.
 
 ### 4.2 Sourcing
 
@@ -78,7 +79,12 @@ Le conseiller pose des questions en langage naturel au modèle OpenAI, avec `sto
 | Préproduction | projet Supabase distinct, à créer (voir `docs/MIGRATIONS.md`) | essai des migrations, démo, autotests |
 | Production | projet Supabase `MON-STOCK` (UE) | données réelles |
 
-Les scripts qui écrivent dans une base (`seed:demo`, `sync:run`, `db:local:reset`) refusent par défaut de cibler une base distante ou la production.
+Garde-fous des scripts qui écrivent dans une base :
+
+- `seed:demo`, `sync:run` et `sourcing:test-searches` refusent la **production**, identifiée par la référence de son projet dans les variables de connexion (`scripts/lib/production-guard.ts`). Seule exception : la dérogation nommée `MONSTOCK_ALLOW_PRODUCTION=<référence exacte>`. Ils acceptent en revanche une autre base distante, par exemple une préproduction.
+- `db:local:reset` supprime et recrée la base. Il refuse **tout hôte non local** et, sans exception possible, toute base Supabase. Un serveur PostgreSQL distant jetable n'est accepté qu'avec `MONSTOCK_ALLOW_REMOTE_DB_RESET=<PGHOST exact>`.
+
+Ces garde-fous évitent les erreurs de bonne foi ; ce ne sont pas des frontières de sécurité.
 
 ## 6. Livraison
 
@@ -89,4 +95,8 @@ Les scripts qui écrivent dans une base (`seed:demo`, `sync:run`, `db:local:rese
 | Base | Migrations appliquées manuellement, après essai en préproduction (`docs/MIGRATIONS.md`) |
 | iPhone | Workflow GitHub `ios-testflight-local.yml` (manuel ou tag `testflight-*`) puis TestFlight |
 
-L'ordre recommandé est : migration, puis Edge, puis web, puis mobile. La CI (`.github/workflows/ci.yml`) valide chaque push et chaque PR. Les règles de travail sont dans `CONTRIBUTING.md`.
+L'ordre recommandé est : migration, puis Edge, puis web, puis mobile.
+
+La CI (`.github/workflows/ci.yml`) tourne sur chaque push et chaque PR : jobs `web`, `edge-bundle`, `integration`, `mobile` et `secrets`. Elle s'exécute bien sur GitHub. Au 23/10/2026, sur la branche de remédiation, le job `mobile` échoue au lint : un fichier d'aperçu généré n'est pas versionné. Rien n'oblige encore à avoir une CI verte avant de publier : la protection de la branche de production reste à activer (Q-01).
+
+Les règles de travail sont dans `CONTRIBUTING.md`.

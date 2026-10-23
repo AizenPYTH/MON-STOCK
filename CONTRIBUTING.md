@@ -2,7 +2,7 @@
 
 ## Branches et revue
 
-- **Branche de production** : chaque push publie le site Vercel. On n'y pousse jamais directement : on fusionne par pull request.
+- **Branche de production** : aujourd'hui `claude/laughing-bardeen-bdn16j`. Chaque push publie le site Vercel. On n'y pousse jamais directement : on fusionne par pull request. Cette règle n'est **pas encore imposée** par GitHub : la protection de branche est à activer (Q-01, `docs/OPERATIONS.md` § 12).
 - **Branches de travail** : une branche par sujet (`claude/<sujet>` pour l'assistant, `<initiales>/<sujet>` pour une personne).
 - **Pull request obligatoire**, avec CI verte (`.github/workflows/ci.yml`).
 - **Revue humaine obligatoire** pour les changements sensibles : migrations, politiques RLS, fonctions `SECURITY DEFINER`, authentification, synchro eBay, chiffrement, workflows.
@@ -12,6 +12,7 @@
 
 ```bash
 npm ci
+npm ci --prefix apps/mobile                # une fois, pour les contrôles mobiles
 npm run typecheck
 npm run lint
 npm test                                   # tests unitaires
@@ -20,7 +21,7 @@ npm --prefix apps/mobile run check         # si l'app mobile est touchée
 node scripts/build-edge.mjs                # si src/ ou server/ change : le bundle versionné doit suivre
 ```
 
-Recréer la base locale : `PGHOST=localhost PGUSER=postgres PGDATABASE=mon_stock_test bash scripts/db-local-reset.sh`. La commande ne vise que la machine locale ; elle refuse une base distante.
+Recréer la base locale : `PGHOST=localhost PGUSER=postgres PGPASSWORD=postgres PGDATABASE=mon_stock_test npm run db:local:reset`. La commande supprime puis recrée la base. Elle refuse tout hôte non local et toute base Supabase ; la seule dérogation, `MONSTOCK_ALLOW_REMOTE_DB_RESET=<PGHOST>`, est réservée à un serveur PostgreSQL jetable. Une base PostgreSQL 16 locale suffit (voir `README.md` § 3).
 
 ## Règles de code
 

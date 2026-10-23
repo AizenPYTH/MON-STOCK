@@ -101,8 +101,7 @@ $$;
 
 revoke all on function public.inventory_movements_set_reference_generation() from public, anon, authenticated;
 
-drop trigger if exists inventory_movements_reference_generation on public.inventory_movements;
-create trigger inventory_movements_reference_generation
+create or replace trigger inventory_movements_reference_generation
   before insert on public.inventory_movements
   for each row execute function public.inventory_movements_set_reference_generation();
 

@@ -144,6 +144,10 @@ jobs:
         run: npm ci
       - name: Dépendances mobiles
         run: npm ci --prefix apps/mobile
+      # Fixtures de l'aperçu web (fichier généré, ignoré par git) : importées par preview/mock-api.ts,
+      # donc nécessaires au typecheck et au lint. Base de démonstration en mémoire, aucun réseau.
+      - name: Fixtures de l'aperçu mobile
+        run: npx tsx --conditions=react-server scripts/preview-api-fixtures.ts
       - name: Typecheck, lint, Jest
         run: npm --prefix apps/mobile run check
       - name: Export iOS (JavaScript) et recherche de secrets dans le bundle

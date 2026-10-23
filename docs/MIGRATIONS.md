@@ -38,6 +38,20 @@ Sommaire
 
 ## 2. État constaté : dépôt ↔ production
 
+> **Mise à jour du 23/10/2026.** Appliquées en production depuis cet état des lieux, par l'outil
+> `apply_migration` (une entrée d'historique par migration, avec un numéro de version **horodaté à
+> l'application**, pas le numéro du fichier) :
+> - `20261023000100` → `0130` (synchro eBay reprenable, unicité des comptes, idempotence vente/annulation,
+>   date limite des ventes) — le 23/10 matin, avec l'Edge v65 ;
+> - `20261023000200` → `0220` (gouvernance de la bibliothèque, imports reprenables, politesse par hôte) —
+>   le 23/10 après-midi.
+>
+> Les autres `20261023*` ne sont **pas** appliquées : elles attendent le déploiement coordonné décrit dans
+> `docs/OPERATIONS.md` (plusieurs contiennent des `drop policy` / `drop constraint` de recréation, soumis à
+> confirmation). La 0120 du dépôt utilise `create or replace trigger`, comme le SQL appliqué en production.
+> À la réconciliation (§ 4), ces entrées horodatées sont à faire correspondre aux numéros des fichiers par
+> `migration repair`, après comparaison de schéma.
+
 ### 2.1 Historique (`supabase_migrations.schema_migrations`, lu le 22/10/2026)
 
 La production contient **13 versions** ; le dépôt contenait **30 fichiers** à la date de l'audit (plus les
@@ -183,8 +197,11 @@ npx supabase migration list   # attendu : Local = Remote pour toutes les version
 
 **Étape 7 — Migrations nouvelles**
 
-- Appliquer d'abord en préproduction (`db push`), lancer les contrôles (§ 7), puis en production :
-  `npx supabase db push --dry-run` (doit lister **uniquement** les `20261023*`), puis `npx supabase db push`.
+- Appliquer d'abord en préproduction (`db push`, légitime sur ce projet), lancer les contrôles (§ 7).
+- En production : **jamais `db push`** (règle d'or, § 1, et `README.md`). Appliquer chaque migration
+  restante une à une, dans l'ordre de `docs/OPERATIONS.md` (certaines doivent suivre le déploiement de
+  l'Edge), en vérifiant son effet après chacune. Un `db push --dry-run` reste utile en lecture seule pour
+  confirmer que seules les `20261023*` attendues manquent.
 
 **Étape 8 — Garde-fou durable**
 

@@ -42,9 +42,9 @@ Sommaire
 | Composant | Version en production | Remarques |
 | --- | --- | --- |
 | Edge Function `api` | **v65**, déployée le 23/10 à 07:05 UTC | `index.ts` importe le bundle figé au commit `43f55c9` (branche `claude/hotfix-sync`). C'est le correctif de la synchro eBay : échéance de 100 s, reprise par curseur, libération des runs abandonnés (plus de 10 min). |
-| Base (migrations) | jusqu'à `20261023000130` | `20261023000100` à `0130` ont été appliquées le 23/10 (§ 5.2). Toutes les migrations suivantes du dépôt (`20261023000200` et au-delà, jusqu'à `0820` au moment de la rédaction) ne sont **pas** appliquées. |
+| Base (migrations) | jusqu'à `20261023000220` | `20261023000100` à `0130` appliquées le 23/10 au matin (§ 5.2), `0200` à `0220` (sourcing, additives) le 23/10 après-midi. Les migrations suivantes (`20261023000300` à `0820`) ne sont **pas** appliquées : plusieurs recréent des politiques ou contraintes (`drop … if exists`) et exigent une confirmation humaine. |
 | Site web (Vercel) | commit `9c8b65b` | Branche de production `claude/laughing-bardeen-bdn16j`. Ce commit ne contient qu'une montée de version de sécurité (Next 16.4.2, fflate 0.8.3) sur la base de `a05affd`. |
-| Branche `claude/remediation-audit` | non déployée | Contient tout le reste de la remédiation : web, Edge, migrations `0200` et suivantes, mobile. |
+| Branche `claude/remediation-audit` | non déployée | Contient tout le reste de la remédiation : web, Edge, migrations `0300` et suivantes, mobile. |
 | App iPhone | dernier build TestFlight | Voir [`MOBILE.md`](MOBILE.md). La suppression de compte (écran mobile, route Edge `POST /account/delete`, page web `/settings/account`) est sur la branche de remédiation et attend le déploiement. |
 
 Synchronisation eBay, vérifiée après le déploiement de v65 :
@@ -104,6 +104,18 @@ Dépendances connues entre migrations et code ([`MIGRATIONS.md` § 3](MIGRATIONS
 - `20261023000820` (compteur quotidien d'appels eBay) : à appliquer avant ou avec l'Edge qui l'alimente.
 
 Une seule chaîne à la fois : on ne commence pas le web tant que l'Edge n'est pas vérifiée. Chaque étape est notée au journal (§ 13).
+
+### 3.1 Déploiement coordonné de la remédiation (reste à faire au 23/10)
+
+Déjà en production : migrations `0100`→`0220`, Edge v65 (`43f55c9`), web `9c8b65b`. Pour le reste, dans cet ordre :
+
+1. **Contrôles** de [`MIGRATIONS.md` § 7](MIGRATIONS.md#7-migrations-20261023000300--0360--impact-et-contrôles-avant-production) (vérifiés le 23/10 : 0 cron sur `adjust_reserved_quantity`, politiques `user_profiles` attendues, au plus 1 démo par utilisateur, aucune action du conseiller « executing »). Clé `TOKEN_ENCRYPTION_KEY` du Vault conforme (32 octets, vérifié le 23/10) ; vérifier qu'aucune autre valeur non conforme n'est posée dans les secrets de l'Edge ou sur Vercel.
+2. **Migrations avant l'Edge**, une à une : `0300`, `0310`, `0320`, `0330`, `0340`, `0350`, `0360`, `0500`, `0520`, `0530`, `0600`, `0610`, `0800`, `0810`, `0820`. Plusieurs contiennent des `drop … if exists` de recréation : le garde-fou de l'assistant demande une confirmation humaine pour chacune. Entre `0500` et l'étape 3, l'ancienne Edge refuse les demandes IA (quota non enregistrable) : enchaîner sans attendre.
+3. **Edge** : `index.ts` pointant sur le SHA de la branche dont le job CI `edge-bundle` est vert ; vérifier `GET /health` puis `GET /health/details` (en-tête `Authorization: Bearer <CRON_SECRET>`) : base joignable, chiffrement conforme.
+4. **Migrations après l'Edge** : `0510`, puis `0230` (lots de la bibliothèque, imports toutes les 5 min), puis créer le secret Vault `PROJECT_URL` (adresse publique du projet, pas un secret) et appliquer `0700`.
+5. **Web** : fusionner la branche de remédiation dans la branche de production (merge, jamais de push forcé) et pousser. Vérifier connexion, tableau de bord, Réglages → Intégrations, et une synchro manuelle.
+6. **Mobile** : build TestFlight quand l'Edge est vérifiée (suppression de compte, file hors ligne, consentement IA).
+7. **Retour arrière** : Edge → redéployer `index.ts` sur `43f55c9` ; migrations → scripts `supabase/ops/rollback/*_down.sql` dans l'ordre inverse ; web → « Promote » du déploiement Vercel précédent.
 
 ## 4. Déployer l'Edge Function
 
@@ -581,6 +593,7 @@ Ajouter une ligne par opération en production : la plus récente en haut. On n'
 
 | Date (UTC) | Composant | Version / SHA | Opération | Vérification |
 | --- | --- | --- | --- | --- |
+| 23/10/2026 13:40 | Base | `20261023000200` → `0220` | Gouvernance de la bibliothèque (CGV), imports reprenables, politesse par hôte (additives) | Colonnes, table et fonctions présentes |
 | 23/10/2026 07:05 | Edge `api` | v65 / `43f55c9` | Correctif de la synchro eBay | Runs `partial` à 07:15 et 07:30, `success` à 07:45 (2 comptes) |
 | 23/10/2026 | Base | `20261023000100` → `0130` | Synchro reprenable, unicité des comptes, idempotence, ventes antérieures non déduites | Numéros enregistrés : voir § 5.2 |
 | 23/10/2026 | Web (Vercel) | `9c8b65b` | Next 16.4.2, fflate 0.8.3 (sur `a05affd`) | — |
