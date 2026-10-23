@@ -70,17 +70,23 @@ export async function fetchStockPage(
   return { rows, total, page: params.page, hasMore: from + rows.length < total };
 }
 
+/** Nombre de mouvements affichés sur la fiche (les plus récents ; signalé quand il y en a plus). */
+export const SKU_MOVEMENTS_LIMIT = 50;
+
 export interface SkuDetail {
   view: StockRowView;
   movements: InventoryMovement[];
-  pendingSalesCount: number;
-  onOrder: number;
+  /** vrai si l'historique compte plus de SKU_MOVEMENTS_LIMIT mouvements (liste partielle, signalée) */
+  movementsTruncated: boolean;
+  /** null = lecture impossible (M-20 : jamais affiché comme 0) */
+  pendingSalesCount: number | null;
+  onOrder: number | null;
 }
 
 export async function fetchSkuDetail(supabase: MobileSupabase, organizationId: string, skuId: string, marginCtx: MarginContext): Promise<SkuDetail | null> {
   const [row, movements, pendingSales, purchaseItems] = await Promise.all([
     supabase.from("v_stock_overview").select("*").eq("organization_id", organizationId).eq("sku_id", skuId).maybeSingle(),
-    supabase.from("inventory_movements").select("*").eq("organization_id", organizationId).eq("sku_id", skuId).order("occurred_at", { ascending: false }).order("created_at", { ascending: false }).limit(50),
+    supabase.from("inventory_movements").select("*").eq("organization_id", organizationId).eq("sku_id", skuId).order("occurred_at", { ascending: false }).order("created_at", { ascending: false }).limit(SKU_MOVEMENTS_LIMIT + 1),
     // Ventes rattachées mais non déduites (hors commandes annulées / remboursées), comme sur le web.
     supabase
       .from("order_items")
@@ -99,8 +105,11 @@ export async function fetchSkuDetail(supabase: MobileSupabase, organizationId: s
   if (row.error) throw row.error;
   if (!row.data) return null;
   if (movements.error) throw movements.error;
-  const onOrder = (purchaseItems.data ?? []).reduce((s, pi) => s + Math.max(0, pi.quantity_ordered - pi.quantity_received), 0);
-  return { view: enrichStockRow(row.data, marginCtx), movements: movements.data ?? [], pendingSalesCount: pendingSales.count ?? 0, onOrder };
+  // M-20 : une lecture secondaire en échec donne « inconnu » (null), jamais 0.
+  const onOrder = purchaseItems.error ? null : (purchaseItems.data ?? []).reduce((s, pi) => s + Math.max(0, pi.quantity_ordered - pi.quantity_received), 0);
+  const pendingSalesCount = pendingSales.error || pendingSales.count === null ? null : pendingSales.count;
+  const all = movements.data ?? [];
+  return { view: enrichStockRow(row.data, marginCtx), movements: all.slice(0, SKU_MOVEMENTS_LIMIT), movementsTruncated: all.length > SKU_MOVEMENTS_LIMIT, pendingSalesCount, onOrder };
 }
 
 /** Toutes les lignes actives (bornées), pour les indicateurs du tableau de bord. */

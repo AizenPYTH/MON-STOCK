@@ -48,10 +48,3 @@ export function userMessage(e: unknown): string {
   if (known) return known.message;
   return GENERIC_MESSAGE;
 }
-
-/** Erreur de session expirée : l'interface renvoie vers la connexion. */
-export function isSessionExpired(e: unknown): boolean {
-  if (!e || typeof e !== "object") return false;
-  const o = e as { message?: unknown; code?: unknown };
-  return o.code === "PGRST301" || (typeof o.message === "string" && /jwt expired|refresh token/i.test(o.message));
-}

@@ -6,6 +6,7 @@ import { CircleAlert, CircleCheck, RefreshCw } from "lucide-react-native";
 import type { IntegrationDTO } from "@/features/mobile-api/contract";
 import { useActiveOrg } from "~/org/org-provider";
 import { useConnectEbay, useDisconnectEbay, useIntegrations, useSyncEbay } from "~/data/hooks";
+import { ebayNeedsReconnect } from "~/data/ebay";
 import { userMessage } from "~/lib/errors";
 import { formatDateTime, formatNumber } from "~/lib/format";
 import { BRANDS } from "~/brands/registry";
@@ -18,7 +19,7 @@ const CONNECTION_STATUS: Record<string, { label: string; tone: "success" | "dang
   expired: { label: "Expirée — reconnectez", tone: "danger" },
   error: { label: "Erreur", tone: "danger" },
   disconnected: { label: "Déconnectée", tone: "neutral" },
-  pending: { label: "En cours", tone: "accent" },
+  pending: { label: "Autorisation à terminer", tone: "accent" },
 };
 
 const RUN_STATUS: Record<string, string> = { success: "réussie", partial: "partielle", failed: "échouée", running: "en cours" };
@@ -56,8 +57,8 @@ export default function EbayScreen() {
   const d = q.data;
   const ebayConnections = d.connections.filter((c) => c.provider === "ebay" && c.status !== "disconnected");
 
-  function doConnect() {
-    connect.mutate(undefined, {
+  function doConnect(extended = false) {
+    connect.mutate({ extended }, {
       onSuccess: (r) => {
         if (!r) return; // fenêtre eBay fermée : rien n'a été créé
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -103,14 +104,20 @@ export default function EbayScreen() {
       {ebayConnections.length === 0 ? (
         <Card padded style={{ gap: space[3] }}>
           <Txt variant="body">Aucun compte eBay connecté</Txt>
-          <Txt variant="bodyRegular">La connexion ouvre la page officielle d'eBay : vous y saisissez vos identifiants et autorisez MON STOCK (lecture des annonces et commandes, mise à jour des quantités).</Txt>
+          <Txt variant="bodyRegular">La connexion ouvre la page officielle d'eBay (session privée : saisissez le compte à relier). Standard : annonces, commandes, mise à jour des quantités.</Txt>
           <Button
             label={permissions.isAdmin ? "Connecter mon compte eBay" : "Réservé aux administrateurs"}
             disabled={!d.ebay.configured || !permissions.isAdmin}
-            loading={connect.isPending}
-            onPress={doConnect}
+            loading={connect.isPending && !connect.variables?.extended}
+            onPress={() => doConnect(false)}
             testID="ebay-connect"
           />
+          {permissions.isAdmin ? (
+            <>
+              <Button label="Autoriser l'analyse complète" variant="secondary" disabled={!d.ebay.configured || connect.isPending} loading={connect.isPending && Boolean(connect.variables?.extended)} onPress={() => doConnect(true)} testID="ebay-connect-extended" />
+              <Txt variant="label">Analyse complète : en plus, lecture seule de vos finances eBay (transactions, frais, versements), du trafic des annonces, du niveau vendeur et des campagnes, pour le conseiller.</Txt>
+            </>
+          ) : null}
         </Card>
       ) : (
         <>
@@ -135,6 +142,7 @@ export default function EbayScreen() {
                     </Txt>
                   ) : null}
                   <Txt variant="label">Synchronisation automatique : {c.autoSync ? "activée (toutes les 15 min)" : "désactivée"}</Txt>
+                  <Txt variant="label" testID="ebay-access-level">Autorisation : {c.extendedAnalysis ? "analyse complète (finances, trafic, marketing en lecture)" : "standard (annonces, commandes, quantités)"}</Txt>
                 </View>
                 {c.lastError ? <AlertBanner text={`Dernière erreur : ${c.lastError}`} /> : (
                   <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
@@ -144,8 +152,12 @@ export default function EbayScreen() {
                 )}
                 <View style={{ flexDirection: "row", gap: space[2] }}>
                   <Button label="Synchroniser maintenant" loading={sync.isPending} disabled={!permissions.canWrite} onPress={() => doSync(c)} style={{ flex: 1 }} testID="ebay-sync" />
-                  {c.status === "expired" && permissions.isAdmin ? <Button label="Reconnecter" variant="secondary" loading={connect.isPending} onPress={doConnect} style={{ flex: 1 }} /> : null}
+                  {ebayNeedsReconnect(c.status) && permissions.isAdmin ? <Button label="Reconnecter" variant="secondary" loading={connect.isPending} onPress={() => doConnect(c.extendedAnalysis)} style={{ flex: 1 }} testID="ebay-reconnect" /> : null}
                 </View>
+                {ebayNeedsReconnect(c.status) && !permissions.isAdmin ? <Txt variant="label">Demandez à un administrateur de reconnecter eBay.</Txt> : null}
+                {!c.extendedAnalysis && permissions.isAdmin && !ebayNeedsReconnect(c.status) ? (
+                  <Button label="Autoriser l'analyse complète" variant="secondary" loading={connect.isPending} onPress={() => doConnect(true)} testID="ebay-upgrade-extended" />
+                ) : null}
                 {permissions.isAdmin ? <Button label="Déconnecter ce compte" variant="ghost" onPress={() => setConfirmDisconnect(c)} testID="ebay-disconnect" /> : null}
               </Card>
             );

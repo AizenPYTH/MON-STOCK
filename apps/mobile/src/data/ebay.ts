@@ -50,14 +50,26 @@ export interface EbayConnectResult {
 
 export type OpenAuthSession = (url: string, redirect: string) => Promise<{ type: string; url?: string }>;
 
+/**
+ * M-24 : session ÉPHÉMÈRE (aucun cookie Safari partagé) — l'utilisateur saisit explicitement le
+ * compte eBay à relier, au lieu de rattacher sans le voir celui qui serait déjà ouvert dans Safari.
+ */
+export const EBAY_AUTH_SESSION_OPTIONS = { preferEphemeralSession: true } as const;
+
 const defaultOpenAuthSession: OpenAuthSession = async (url, redirect) => {
-  const r = await WebBrowser.openAuthSessionAsync(url, redirect, { preferEphemeralSession: false });
+  const r = await WebBrowser.openAuthSessionAsync(url, redirect, EBAY_AUTH_SESSION_OPTIONS);
   return r.type === "success" ? { type: "success", url: r.url } : { type: r.type };
 };
 
-/** Connexion complète : autorisation eBay → finalisation serveur → première synchronisation. */
-export async function connectEbay(organizationId: string, openAuthSession: OpenAuthSession = defaultOpenAuthSession): Promise<EbayConnectResult | null> {
-  const start = await callApi<{ authorizeUrl: string; callbackScheme: string; environment: string | null }>("/ebay/connect", { method: "POST", organizationId });
+/**
+ * Connexion complète : autorisation eBay → finalisation serveur → première synchronisation.
+ * `extended` (M-02) : « Autoriser l'analyse complète » (finances, trafic, marketing en lecture).
+ * Une reconnexion doit passer le niveau DÉJÀ accordé (`IntegrationDTO.extendedAnalysis`) pour ne
+ * jamais rétrograder une connexion étendue.
+ */
+export async function connectEbay(organizationId: string, openAuthSession: OpenAuthSession = defaultOpenAuthSession, options: { extended?: boolean } = {}): Promise<EbayConnectResult | null> {
+  const extended = options.extended === true;
+  const start = await callApi<{ authorizeUrl: string; callbackScheme: string; environment: string | null }>("/ebay/connect", { method: "POST", organizationId, body: { extended } });
   const session = await openAuthSession(start.authorizeUrl, EBAY_CALLBACK_URL);
   if (session.type !== "success" || !session.url) return null; // fenêtre fermée par l'utilisateur : rien n'est créé
   const parsed = parseEbayCallback(session.url);
@@ -72,6 +84,11 @@ export async function connectEbay(organizationId: string, openAuthSession: OpenA
     syncError = userMessage(e);
   }
   return { ...done, sync, syncError };
+}
+
+/** Même règle que le web (needsReconnect) : autorisation expirée OU jamais finalisée (M-27). */
+export function ebayNeedsReconnect(status: string): boolean {
+  return status === "expired" || status === "pending";
 }
 
 export interface SyncResult {

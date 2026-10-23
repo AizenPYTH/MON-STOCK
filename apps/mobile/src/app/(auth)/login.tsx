@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, type TextInput } from "react-native";
 import { router } from "expo-router";
 import { signIn, type FieldErrors } from "~/auth/auth-service";
 import { AlertBanner, Button, Card, Screen, TextField, Txt } from "~/components/ui";
+import { LegalFooter } from "~/components/legal-footer";
 import { space } from "~/theme/tokens";
 
 export default function LoginScreen() {
@@ -64,6 +65,7 @@ export default function LoginScreen() {
         </Card>
         <Button label="Mot de passe oublié ?" variant="ghost" onPress={() => router.push("/forgot-password")} />
         <Button label="Créer un compte" variant="secondary" onPress={() => router.push("/signup")} />
+        <LegalFooter />
       </Screen>
     </KeyboardAvoidingView>
   );

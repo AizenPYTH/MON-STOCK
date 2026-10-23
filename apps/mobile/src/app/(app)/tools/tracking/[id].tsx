@@ -1,5 +1,6 @@
+import { openExternalUrl, safeExternalUrl } from "~/lib/url";
 import { useState } from "react";
-import { Linking, RefreshControl, View } from "react-native";
+import { RefreshControl, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { CARRIER_LABEL, carrierTrackingUrl, FINAL_STATUSES, parcelDisplay, universalTrackingUrl, type CarrierCode } from "@/domain/tools/tracking";
 import { FooterActions, HeaderAction } from "~/components/calc-screen";
@@ -51,8 +52,9 @@ export default function ParcelDetailScreen() {
   const d = parcelDisplay(p);
   const tone = PARCEL_TONE[d.tone];
   const site = carrierTrackingUrl(p.carrierCode, p.trackingNumber);
-  const siteUrl = p.providerUrl ?? site.url;
-  const openSite = () => void Linking.openURL(siteUrl);
+  // M-17 : l'URL du fournisseur de suivi vient d'un tiers → validée (http/https, sans identifiants).
+  const siteUrl = safeExternalUrl(p.providerUrl) ?? site.url;
+  const openSite = () => void openExternalUrl(siteUrl).then((ok) => !ok && toast({ text: "Lien du transporteur impossible à ouvrir.", tone: "error" }));
   const doRefresh = () =>
     refresh.mutate(p.id, {
       onSuccess: (r) => toast({ text: r.checked ? "À jour · il y a quelques secondes" : (r.message ?? "Suivi indisponible.") }),
@@ -98,7 +100,7 @@ export default function ParcelDetailScreen() {
         <CopyButton text={p.trackingNumber} label="Copier" />
       </View>
       {meta ? <Txt variant="micro" color={color.ink3}>{meta}</Txt> : null}
-      {!site.universal ? <Button testID="parcel-17track" label="Vérifier aussi sur 17TRACK" variant="ghost" compact onPress={() => void Linking.openURL(universalTrackingUrl(p.trackingNumber))} /> : null}
+      {!site.universal ? <Button testID="parcel-17track" label="Vérifier aussi sur 17TRACK" variant="ghost" compact onPress={() => void openExternalUrl(universalTrackingUrl(p.trackingNumber))} /> : null}
       <Txt variant="micro" color={color.ink3}>
         Heures telles que communiquées par le transporteur. Sites publics et gratuits ouverts dans le navigateur ; MON STOCK n'est affilié à aucun transporteur.
       </Txt>

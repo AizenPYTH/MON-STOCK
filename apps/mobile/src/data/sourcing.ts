@@ -13,7 +13,8 @@ export interface SourcingOverview {
   verifiedFromOfficialSites: number;
   connectedSources: number;
   sourcesTotal: number;
-  activeOffers: number;
+  /** null = comptage impossible (M-20 : jamais 0 par défaut) */
+  activeOffers: number | null;
   recentOffers: {
     id: string;
     title: string;
@@ -69,7 +70,7 @@ export async function fetchSourcingOverview(supabase: MobileSupabase, organizati
     verifiedFromOfficialSites: catalog.filter((c) => c.status === "verified_official_snippets").length,
     connectedSources: inputs.filter(isConnectedSource).length,
     sourcesTotal: inputs.length,
-    activeOffers: offersCount.count ?? 0,
+    activeOffers: offersCount.error ? null : (offersCount.count ?? null),
     recentOffers: (offers.data ?? []).map((o) => ({
       id: o.id,
       title: o.title_original,

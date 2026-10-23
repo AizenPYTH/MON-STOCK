@@ -1,7 +1,7 @@
+import { openExternalUrl } from "~/lib/url";
 import { useState } from "react";
 import { Linking, RefreshControl, View } from "react-native";
 import { router } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import { PRO_METHOD_LABEL, PRO_STATUS_LABEL } from "@/domain/sourcing/pro-accounts";
 import { useConnectProAccount, useDisconnectProAccount, useProAccounts, useSyncProAccount } from "~/data/hooks";
 import type { ProAccountDTO, PublicSourceDTO } from "~/data/pro-accounts";
@@ -74,7 +74,8 @@ function AccountCard({ account: a, canWrite, canAdmin, onConnect }: { account: P
   const toast = useToast();
   const sync = useSyncProAccount();
   const disconnect = useDisconnectProAccount();
-  const openSite = (url: string) => void WebBrowser.openBrowserAsync(url).catch(() => {});
+  // M-17 : URL d'inscription venant du serveur / d'un tiers → validée avant ouverture.
+  const openSite = (url: string) => void openExternalUrl(url).then((ok) => !ok && toast({ text: "Lien impossible à ouvrir.", tone: "error" }));
   const importFile = () => router.push({ pathname: "/sourcing-import", params: { supplierName: a.name, ...(a.supplierId ? { supplierId: a.supplierId } : {}) } });
   const askAccess = () => void Linking.openURL(mailtoLink(a.email.fr)).catch(() => toast({ text: "Aucune application de messagerie configurée sur cet appareil.", tone: "error" }));
 

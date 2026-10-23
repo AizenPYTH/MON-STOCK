@@ -10,7 +10,6 @@ import { fetchCatalog } from "~/data/catalog";
 import { fetchAnalysis, fetchOpenAlerts, fetchToday, type Period } from "~/data/intelligence";
 import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } from "~/data/sales";
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
-import { fetchSourcingOverview } from "~/data/sourcing";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
 import { decideMatch, fetchMatchSuggestions, fetchRadar, fetchRadarOffer, saveOffer, saveRadarSettings, unsaveOffer, type RadarCostSettings, type RadarSort } from "~/data/radar";
 import { fetchDirectory, previewImport, runImport, type PickedFile } from "~/data/suppliers-pro";
@@ -170,11 +169,6 @@ export function useOfferGroups() {
 export function useActiveSuppliers() {
   const orgId = useOrgId();
   return useQuery({ queryKey: [orgId, "suppliers"], queryFn: () => fetchActiveSuppliers(requireSupabase(), orgId) });
-}
-
-export function useSourcingOverview() {
-  const orgId = useOrgId();
-  return useQuery({ queryKey: [orgId, "sourcing-overview"], queryFn: () => fetchSourcingOverview(requireSupabase(), orgId) });
 }
 
 export function useComparison(key: string) {
@@ -471,7 +465,7 @@ function useInvalidateSales() {
 export function useConnectEbay() {
   const orgId = useOrgId();
   const invalidate = useInvalidateSales();
-  return useMutation({ mutationFn: () => connectEbay(orgId), onSettled: () => invalidate() });
+  return useMutation({ mutationFn: (options: { extended?: boolean } | void) => connectEbay(orgId, undefined, { extended: options?.extended === true }), onSettled: () => invalidate() });
 }
 
 export function useDisconnectEbay() {

@@ -15,3 +15,21 @@ export function safeExternalUrl(raw: unknown): string | null {
     return null;
   }
 }
+
+/**
+ * Ouvre une URL tierce dans le navigateur intégré APRÈS validation (M-17) ; `false` si l'adresse
+ * est refusée (schéma non http(s), identifiants intégrés…) — rien n'est alors ouvert.
+ */
+export async function openExternalUrl(raw: unknown): Promise<boolean> {
+  const safe = safeExternalUrl(raw);
+  if (!safe) return false;
+  // Import différé : module natif (tests sans environnement natif).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const WebBrowser = require("expo-web-browser") as typeof import("expo-web-browser");
+  try {
+    await WebBrowser.openBrowserAsync(safe);
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -32,6 +32,7 @@ export function Button({
   accessibilityHint,
   testID,
   icon,
+  labelColor,
 }: {
   label: string;
   onPress: () => void;
@@ -43,10 +44,12 @@ export function Button({
   accessibilityHint?: string;
   testID?: string;
   icon?: ReactNode;
+  /** couleur du libellé (ex. action destructive discrète en variante ghost) */
+  labelColor?: string;
 }) {
   const inactive = disabled || loading;
   const v = BUTTON[variant];
-  const fg = disabled ? color.ink3 : v.fg;
+  const fg = disabled ? color.ink3 : (labelColor ?? v.fg);
   return (
     <Pressable
       testID={testID}

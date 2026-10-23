@@ -13,15 +13,6 @@ export function draftProduct(organizationId: string, text: string): Promise<Prod
   return callApi<ProductDraftDTO>("/ai/product-draft", { method: "POST", organizationId, body: { text }, timeoutMs: 90_000 });
 }
 
-export function askAssistant(organizationId: string, messages: AssistantMessageDTO[]): Promise<AssistantReplyDTO> {
-  return callApi<AssistantReplyDTO>("/ai/assistant", { method: "POST", organizationId, body: { messages }, timeoutMs: 120_000 });
-}
-
-/** Montant → texte du formulaire (« 429,9 ») ; vide si inconnu (jamais 0 par défaut). */
-function moneyText(n: number | null): string {
-  return n === null ? "" : String(Math.round(n * 100) / 100).replace(".", ",");
-}
-
 export interface ProductFormPrefill {
   brand: string;
   model: string;
@@ -54,21 +45,4 @@ export function draftToForm(d: ProductDraftDTO): ProductFormPrefill {
     ),
   );
   return { ...identity, category: known ?? d.category ?? "", variants, notes: d.notes };
-}
-
-/** Historique envoyé à l'assistant : alternance stricte, 20 messages au plus, se termine par la question. */
-export function conversationForApi(history: readonly AssistantMessageDTO[], question: string): AssistantMessageDTO[] {
-  const all = [...history, { role: "user" as const, content: question.trim() }];
-  const merged: AssistantMessageDTO[] = [];
-  for (const m of all) {
-    const content = m.content.trim().slice(0, 4000);
-    if (!content) continue;
-    const last = merged[merged.length - 1];
-    if (last && last.role === m.role) last.content = `${last.content}\n${content}`.slice(0, 4000);
-    else merged.push({ role: m.role, content });
-  }
-  while (merged.length && merged[0]!.role !== "user") merged.shift();
-  let tail = merged.slice(-20);
-  while (tail.length && tail[0]!.role !== "user") tail = tail.slice(1);
-  return tail;
 }

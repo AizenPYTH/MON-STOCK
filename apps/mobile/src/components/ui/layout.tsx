@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
+import { Children, isValidElement, useState, type ReactElement, type ReactNode } from "react";
 import { Pressable, ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -12,6 +12,11 @@ import { useInTabs, useTabBarClearance } from "~/components/ui/tab-bar";
 import { markHeader, NIGHT_HEADER, NightHeader, type HeaderHero, type HeaderTabs } from "~/components/ui/header";
 import { TabFocusFade } from "~/components/ui/tab-focus";
 import { useUser } from "~/auth/session-provider";
+import { useOrg } from "~/org/org-provider";
+import { ROLE_LABEL } from "~/org/org-service";
+import { BottomSheet, useToast } from "~/components/ui/feedback";
+import { Button } from "~/components/ui/controls";
+import { StatusChip } from "~/components/ui/display";
 
 function headerOf(children: ReactNode): { header: ReactElement | null; rest: ReactNode[] } {
   const arr = Children.toArray(children);
@@ -121,17 +126,71 @@ export const TabHeader = markHeader(function TabHeader<T extends string = string
   return <NightHeader right={actions} over={overline} title={title} sub={sub} hero={hero} tabs={tabs} stage={stage} />;
 });
 
+/**
+ * Avatar du compte (M-05) : ouvre une feuille qui dit QUI est connecté (e-mail) et DANS QUELLE
+ * organisation, avec le changement d'organisation direct (appliqué à l'iPhone et au site web).
+ */
 export function AccountAvatar() {
   const user = useUser();
+  const org = useOrg();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
   const name = (user?.user_metadata as { full_name?: string } | undefined)?.full_name ?? user?.email;
+  const ready = org.status === "ready" ? org : null;
+  const go = (path: "/settings" | "/diagnostics") => {
+    setOpen(false);
+    router.push(path);
+  };
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Compte, réglages et diagnostic" onPress={() => router.push("/settings")} hitSlop={6}>
-      <View style={{ width: size.iconButton, height: size.iconButton, borderRadius: size.iconButton / 2, backgroundColor: color.nightRaised, alignItems: "center", justifyContent: "center" }}>
-        <Txt variant="label" color={color.inkOnDark} style={{ fontFamily: "Manrope_800ExtraBold" }}>
-          {initialsOf(name)}
-        </Txt>
-      </View>
-    </Pressable>
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Compte ${user?.email ?? ""}${ready ? `, organisation ${ready.active.organization.name}` : ""}`}
+        accessibilityHint="Ouvre le compte, l'organisation active et les réglages"
+        onPress={() => setOpen(true)}
+        hitSlop={4}
+        testID="account-avatar"
+        style={{ width: size.touchMin, height: size.touchMin, alignItems: "center", justifyContent: "center" }}
+      >
+        <View style={{ width: size.iconButton, height: size.iconButton, borderRadius: size.iconButton / 2, backgroundColor: color.nightRaised, alignItems: "center", justifyContent: "center" }}>
+          <Txt variant="label" color={color.inkOnDark} style={{ fontFamily: "Manrope_800ExtraBold" }}>
+            {initialsOf(name)}
+          </Txt>
+        </View>
+      </Pressable>
+      <BottomSheet visible={open} onClose={() => setOpen(false)} title="Compte" description={user?.email ?? undefined}>
+        {ready ? (
+          <View style={{ gap: space[2] }}>
+            <Txt variant="mono">Organisation active</Txt>
+            <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: color.line, overflow: "hidden" }}>
+              {ready.memberships.map((m, i) => {
+                const selected = m.organization.id === ready.active.organization.id;
+                return (
+                  <ListRow
+                    key={m.organization.id}
+                    title={m.organization.name}
+                    subtitle={`${ROLE_LABEL[m.role]}${m.organization.isDemo ? " · démo" : ""}`}
+                    right={selected ? <StatusChip label="Active" tone="dark" /> : undefined}
+                    accessibilityState={{ selected }}
+                    onPress={
+                      selected
+                        ? undefined
+                        : () => {
+                            setOpen(false);
+                            void ready.setActive(m.organization.id).then((r) => toast({ text: r.synced ? `Organisation active : ${m.organization.name}` : `Organisation active sur cet iPhone : ${m.organization.name} (site web non mis à jour)`, tone: r.synced ? "success" : "error" }));
+                          }
+                    }
+                    last={i === ready.memberships.length - 1}
+                  />
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+        <Button label="Compte et réglages" variant="secondary" onPress={() => go("/settings")} testID="account-settings" />
+        <Button label="Diagnostic" variant="ghost" onPress={() => go("/diagnostics")} />
+      </BottomSheet>
+    </>
   );
 }
 

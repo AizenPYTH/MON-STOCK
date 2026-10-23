@@ -44,7 +44,7 @@ export default function SkuScreen() {
       </Screen>
     );
 
-  const { view: v, movements, pendingSalesCount, onOrder } = q.data;
+  const { view: v, movements, movementsTruncated, pendingSalesCount, onOrder } = q.data;
   const r = v.row;
   const currency = r.currency ?? "EUR";
 
@@ -92,12 +92,13 @@ export default function SkuScreen() {
       <KpiGrid>
         {[
           <KpiCard key="cover" label="Couverture" value={v.daysOfCover === null ? "—" : formatDays(v.daysOfCover)} hint={v.velocity.dailyVelocity === null ? "vitesse inconnue" : `${v.velocity.dailyVelocity.toFixed(2)} / jour`} />,
-          <KpiCard key="sold" label="Vendus 30 j" value={formatNumber(r.units_30d ?? 0)} />,
-          <KpiCard key="order" label="En commande" value={formatNumber(onOrder)} />,
+          <KpiCard key="sold" label="Vendus 30 j" value={r.units_30d === null || r.units_30d === undefined ? "—" : formatNumber(r.units_30d)} />,
+          <KpiCard key="order" label="En commande" value={onOrder === null ? "—" : formatNumber(onOrder)} hint={onOrder === null ? "lecture impossible" : undefined} />,
         ]}
       </KpiGrid>
       <Txt variant="label">{v.classification.reason}</Txt>
-      {pendingSalesCount > 0 ? (
+      {pendingSalesCount === null ? <Txt variant="label">Ventes non déduites du stock : vérification impossible pour le moment (tirez pour actualiser).</Txt> : null}
+      {pendingSalesCount !== null && pendingSalesCount > 0 ? (
         <Card padded style={{ gap: 8 }}>
           <AlertBanner text={`${pendingSalesCount} vente${pendingSalesCount > 1 ? "s" : ""} rattachée${pendingSalesCount > 1 ? "s" : ""} pas encore déduite${pendingSalesCount > 1 ? "s" : ""} du stock.`} />
           <Txt variant="label">Vérifiez d'abord le stock physique : la déduction est enregistrée comme mouvement « vente » (une seule fois par ligne de commande).</Txt>
@@ -116,7 +117,7 @@ export default function SkuScreen() {
           ) : null}
         </Card>
       ) : null}
-      <SectionHeader title="Mouvements" />
+      <SectionHeader title={movementsTruncated ? `${movements.length} derniers mouvements` : "Mouvements"} />
       {movements.length === 0 ? (
         <Card padded>
           <Txt variant="bodyRegular">Aucun mouvement enregistré.</Txt>
