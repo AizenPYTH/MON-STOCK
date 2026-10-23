@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ProductDraftDTO } from "@/features/mobile-api/contract";
-import { conversationForApi, draftToForm } from "~/data/ai";
+import { draftToForm } from "~/data/ai";
 import { speechErrorMessage } from "~/lib/speech";
 
 /**
@@ -12,10 +12,10 @@ jest.mock("expo-speech-recognition", () => {
   throw new Error("module natif absent");
 });
 
-const mockAskAssistant = jest.fn();
 const mockDraftProduct = jest.fn();
-jest.mock("~/data/ai", () => ({ ...jest.requireActual("~/data/ai"), askAssistant: (...a: unknown[]) => mockAskAssistant(...a), draftProduct: (...a: unknown[]) => mockDraftProduct(...a) }));
+jest.mock("~/data/ai", () => ({ ...jest.requireActual("~/data/ai"), draftProduct: (...a: unknown[]) => mockDraftProduct(...a) }));
 jest.mock("~/org/org-provider", () => ({ useActiveOrg: () => ({ active: { organization: { id: "org-1", name: "Boutique Test", currency: "EUR" } }, permissions: { canWrite: true } }) }));
+jest.mock("~/lib/ai-consent", () => ({ useAiConsent: () => ({ status: "granted", grant: jest.fn(), revoke: jest.fn() }) }));
 jest.mock("~/data/hooks", () => ({ useCreateProduct: () => ({ isPending: false, mutate: jest.fn() }) }));
 jest.mock("expo-router", () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), canGoBack: () => true } }));
 
@@ -44,7 +44,6 @@ function wrap(node: React.ReactElement) {
 }
 
 beforeEach(() => {
-  mockAskAssistant.mockReset();
   mockDraftProduct.mockReset();
 });
 
@@ -84,30 +83,7 @@ describe("brouillon dicté → formulaire", () => {
   });
 });
 
-describe("assistant Intelligence", () => {
-  it("historique valide : alternance stricte, commence et finit par une question", () => {
-    expect(conversationForApi([], "Top ventes ?")).toEqual([{ role: "user", content: "Top ventes ?" }]);
-    const h = conversationForApi(
-      [
-        { role: "assistant", content: "orphelin" },
-        { role: "user", content: "a" },
-        { role: "user", content: "b" },
-        { role: "assistant", content: "c" },
-      ],
-      "d",
-    );
-    expect(h).toEqual([
-      { role: "user", content: "a\nb" },
-      { role: "assistant", content: "c" },
-      { role: "user", content: "d" },
-    ]);
-    const long = Array.from({ length: 30 }, (_, i) => ({ role: (i % 2 ? "assistant" : "user") as "user" | "assistant", content: `m${i}` }));
-    const t = conversationForApi(long, "fin");
-    expect(t.length).toBeLessThanOrEqual(20);
-    expect(t[0]!.role).toBe("user");
-    expect(t[t.length - 1]).toEqual({ role: "user", content: "fin" });
-  });
-
+describe("ancien assistant", () => {
   it("l'ancien écran assistant mène au conseiller (texte + voix, voir advisor-screen.test.tsx)", () => {
     const Redirected = jest.requireActual("~/app/(app)/assistant").default;
     const el = Redirected();

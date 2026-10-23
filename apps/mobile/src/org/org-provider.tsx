@@ -35,18 +35,18 @@ const storageKey = (userId: string) => `monstock.activeOrg.${userId}`;
 export function OrgProvider({ children }: { children: ReactNode }) {
   const user = useUser();
   const queryClient = useQueryClient();
-  const [storedId, setStoredId] = useState<string | null | undefined>(undefined);
+  // Choix mémorisé, attaché à l'utilisateur qui l'a lu (M-26 : jamais réutilisé pour un autre).
+  const [stored, setStored] = useState<{ userId: string; value: string | null } | null>(null);
 
   const userId = user?.id ?? null;
+  const storedId = stored && stored.userId === userId ? stored.value : undefined;
   useEffect(() => {
-    // M-26 : changement d'utilisateur → le choix mémorisé du précédent n'est jamais réutilisé.
-    setStoredId(undefined);
     if (!userId) return;
     let alive = true;
     securePreferences
       .getItem(storageKey(userId))
-      .then((v) => alive && setStoredId(v))
-      .catch(() => alive && setStoredId(null));
+      .then((v) => alive && setStored({ userId, value: v }))
+      .catch(() => alive && setStored({ userId, value: null }));
     return () => {
       alive = false;
     };
@@ -62,7 +62,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     async (organizationId: string) => {
       if (!user) return { synced: false };
       await securePreferences.setItem(storageKey(user.id), organizationId).catch(() => undefined);
-      setStoredId(organizationId);
+      setStored({ userId: user.id, value: organizationId });
       // Les données de l'organisation précédente ne doivent jamais s'afficher dans la nouvelle.
       queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "memberships" });
       const synced = await syncProfileOrganization(requireSupabase(), user.id, organizationId);

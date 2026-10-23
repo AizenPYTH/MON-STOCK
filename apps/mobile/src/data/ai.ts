@@ -1,4 +1,4 @@
-import type { AssistantMessageDTO, AssistantReplyDTO, ProductDraftDTO } from "@/features/mobile-api/contract";
+import type { ProductDraftDTO } from "@/features/mobile-api/contract";
 import { PRODUCT_CATEGORIES } from "@/features/stock/product-form";
 import { newVariantDraft, withSuggestedCode, type VariantDraft } from "~/components/product-form";
 import { callApi } from "~/lib/api";
@@ -11,6 +11,11 @@ import { callApi } from "~/lib/api";
 
 export function draftProduct(organizationId: string, text: string): Promise<ProductDraftDTO> {
   return callApi<ProductDraftDTO>("/ai/product-draft", { method: "POST", organizationId, body: { text }, timeoutMs: 90_000 });
+}
+
+/** Montant → texte du formulaire (« 429,9 ») ; vide si inconnu (jamais 0 par défaut). */
+function moneyText(n: number | null): string {
+  return n === null ? "" : String(Math.round(n * 100) / 100).replace(".", ",");
 }
 
 export interface ProductFormPrefill {

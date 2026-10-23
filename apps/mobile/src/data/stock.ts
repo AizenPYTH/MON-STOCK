@@ -11,14 +11,6 @@ import { UserFacingError, userMessage } from "~/lib/errors";
  * (vitesse, couverture, statut, marge : modules du domaine partagés) que l'application web.
  */
 
-export const STOCK_PAGE_SIZE = 30;
-export const STOCK_FILTERS = ["all", "in_stock", "empty", "negative"] as const;
-export type StockFilter = (typeof STOCK_FILTERS)[number];
-export const STOCK_FILTER_LABEL: Record<StockFilter, string> = { all: "Tous", in_stock: "En stock", empty: "Rupture", negative: "Négatif" };
-export const STOCK_SORTS = ["best_sellers", "low_stock", "name"] as const;
-export type StockSort = (typeof STOCK_SORTS)[number];
-export const STOCK_SORT_LABEL: Record<StockSort, string> = { best_sellers: "Meilleures ventes", low_stock: "Stock le plus bas", name: "Nom" };
-
 export async function fetchMarginContext(supabase: MobileSupabase, organizationId: string, orgSettings: unknown): Promise<MarginContext> {
   const { data, error } = await supabase
     .from("sales_channels")
@@ -27,47 +19,6 @@ export async function fetchMarginContext(supabase: MobileSupabase, organizationI
     .eq("is_active", true);
   if (error) throw error;
   return marginContextFromChannels(data ?? [], orgSettings);
-}
-
-export interface StockPage {
-  rows: StockRowView[];
-  total: number;
-  page: number;
-  hasMore: boolean;
-}
-
-export async function fetchStockPage(
-  supabase: MobileSupabase,
-  organizationId: string,
-  params: { q?: string; filter: StockFilter; sort: StockSort; page: number },
-  marginCtx: MarginContext,
-  now: Date = new Date(),
-): Promise<StockPage> {
-  const from = (params.page - 1) * STOCK_PAGE_SIZE;
-  let query = supabase.from("v_stock_overview").select("*", { count: "exact" }).eq("organization_id", organizationId).eq("is_active", true);
-  const search = params.q ? orIlikeAny(["product_name", "code", "barcode", "brand", "variant_name"], params.q) : null;
-  if (search) query = query.or(search);
-  if (params.filter === "in_stock") query = query.gt("quantity_available", 0);
-  if (params.filter === "empty") query = query.lte("quantity_available", 0);
-  if (params.filter === "negative") query = query.lt("quantity_available", 0);
-  switch (params.sort) {
-    case "low_stock":
-      query = query.order("quantity_available", { ascending: true }).order("product_name", { ascending: true });
-      break;
-    case "name":
-      query = query.order("product_name", { ascending: true }).order("code", { ascending: true });
-      break;
-    case "best_sellers":
-    default:
-      query = query.order("units_30d", { ascending: false, nullsFirst: false }).order("units_90d", { ascending: false, nullsFirst: false }).order("product_name", { ascending: true });
-  }
-  // Départage stable : une ligne ne change pas de page d'une requête à l'autre.
-  query = query.order("sku_id", { ascending: true });
-  const { data, error, count } = await query.range(from, from + STOCK_PAGE_SIZE - 1);
-  if (error) throw error;
-  const rows = (data ?? []).map((r) => enrichStockRow(r, marginCtx, now));
-  const total = count ?? rows.length;
-  return { rows, total, page: params.page, hasMore: from + rows.length < total };
 }
 
 /** Nombre de mouvements affichés sur la fiche (les plus récents ; signalé quand il y en a plus). */
