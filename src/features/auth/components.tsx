@@ -146,7 +146,7 @@ export function PasswordStrengthMeter({ password, id }: { password: string; id: 
         ))}
       </span>
       <span aria-live="polite" className="ms-mono shrink-0 text-[10.5px] leading-[14px] tracking-[0.06em] text-ink-3">
-        <span className="sr-only">Robustesse indicative : </span>
+        {s.score > 0 ? <span className="sr-only">Robustesse indicative : </span> : null}
         {s.label}
       </span>
     </div>

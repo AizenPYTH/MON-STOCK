@@ -9,6 +9,7 @@ import type { TodayDashboard } from "@/features/dashboard/queries";
 import { sceneDateLabel, shortDayLabel, stockLevelHref } from "@/features/dashboard/today.pure";
 import { LevelBarcode } from "@/features/dashboard/components/level-barcode";
 import { internalRoute } from "@/lib/routes";
+import { EmptyBarcode } from "@/features/onboarding/components/empty-barcode";
 
 type Stat = { label: string; value: ReactNode | null; note?: string; href?: string };
 
@@ -44,8 +45,29 @@ function SceneStats({ stats }: { stats: Stat[] }) {
 
 const plural = (n: number, one: string, many: string) => `${formatNumber(n)} ${n > 1 ? many : one}`;
 
+/**
+ * Scène d'un espace encore vide (aucune référence, aucune commande — `isEmptyWorkspace`) : aucune
+ * valeur chiffrée tant qu'il n'y a pas de donnée (ni « 0 € » ni barres de 14 jours), seulement
+ * l'état vide du code-barres et ce qui viendra (parcours v2, entrée du tableau de bord).
+ */
+function EmptyTodayScene({ d }: { d: TodayDashboard }) {
+  return (
+    <Scene>
+      <h1 className="sr-only">Aujourd&apos;hui</h1>
+      <p className="ms-mono text-[11px] leading-[14px] tracking-[0.08em] text-on-night-muted">{sceneDateLabel(d.now)} · Premiers pas</p>
+      <p className="mt-2 max-w-[720px] text-[30px] font-extrabold leading-[36px] tracking-[-0.03em] text-on-night sm:text-[40px] sm:leading-[44px]">Votre stock central est prêt.</p>
+      <p className="mt-2 max-w-[620px] text-[15px] font-medium leading-[22px] text-on-night-muted">Chiffre d&apos;affaires, ventes et marge apparaîtront ici avec vos premières données : rien n&apos;est affiché tant qu&apos;il n&apos;y en a pas.</p>
+      <div className="mt-7 border-t border-night-line pt-[18px]">
+        <p className="ms-mono mb-3 text-[11px] leading-[14px] tracking-[0.08em] text-on-night-muted">Stock · aucune référence</p>
+        <EmptyBarcode />
+      </div>
+    </Scene>
+  );
+}
+
 /** Scène de l'accueil : CA du jour (comptage), relevés, 14 jours, puis le stock en code-barres. */
 export function TodayScene({ d }: { d: TodayDashboard }) {
+  if (d.isEmpty) return <EmptyTodayScene d={d} />;
   const cur = d.currency;
   const money0 = (v: number) => formatMoney(v, cur, { decimals: 0 });
   const approx = <span className="font-medium text-on-night-subtle">≈ </span>;

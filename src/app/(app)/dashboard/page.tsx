@@ -5,12 +5,16 @@ import { Callout } from "@/components/ui/callout";
 import { getTodayDashboard } from "@/features/dashboard/queries";
 import { TodayScene } from "@/features/dashboard/components/today-scene";
 import { ActivitySection, AdvisorEntry, PrioritySection, RadarSection, SetupSection, ShortcutsSection, StockHealthSection, TasksSection } from "@/features/dashboard/components/today-paper";
+import { Checklist } from "@/features/onboarding/components/checklist";
+import { firstStepsChecklist } from "@/features/onboarding/checklist";
 
 export const metadata: Metadata = { title: "Aujourd'hui" };
 
 /**
  * Aujourd'hui (v5 « Instrument ») : l'argent du jour, l'état du stock et LA chose à faire.
  * Uniquement des données réelles de l'organisation (RLS) ; une valeur inconnue s'affiche « — ».
+ * Espace encore vide (parcours v2) : scène sans chiffre, code-barres à l'état vide et checklist des
+ * premiers pas (organisation ✓, eBay, import, premier produit) à la place de « Bien démarrer ».
  */
 export default async function DashboardPage() {
   const ctx = await requireOrgContext();
@@ -33,7 +37,7 @@ export default async function DashboardPage() {
         ) : null}
         <div className="flex max-w-[1280px] flex-wrap items-start gap-8">
           <div className="flex min-w-0 flex-[7_1_560px] flex-col gap-7">
-            {d.isEmpty ? <SetupSection d={d} /> : null}
+            {d.isEmpty ? <Checklist items={firstStepsChecklist({ organizationName: ctx.organization.name, ...d.firstSteps })} /> : null}
             <PrioritySection d={d} writable={writable} />
             <TasksSection tasks={d.tasks} />
             <ActivitySection d={d} />
