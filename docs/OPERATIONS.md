@@ -42,7 +42,7 @@ Sommaire
 | Composant | Version en production | Remarques |
 | --- | --- | --- |
 | Edge Function `api` | **v65**, déployée le 23/10 à 07:05 UTC | `index.ts` importe le bundle figé au commit `43f55c9` (branche `claude/hotfix-sync`). C'est le correctif de la synchro eBay : échéance de 100 s, reprise par curseur, libération des runs abandonnés (plus de 10 min). |
-| Base (migrations) | jusqu'à `20261023000130` | `20261023000100` à `0130` ont été appliquées le 23/10 (§ 5.2). Toutes les migrations suivantes du dépôt (`20261023000200` et au-delà) ne sont **pas** appliquées. |
+| Base (migrations) | jusqu'à `20261023000130` | `20261023000100` à `0130` ont été appliquées le 23/10 (§ 5.2). Toutes les migrations suivantes du dépôt (`20261023000200` et au-delà, jusqu'à `0820` au moment de la rédaction) ne sont **pas** appliquées. |
 | Site web (Vercel) | commit `9c8b65b` | Branche de production `claude/laughing-bardeen-bdn16j`. Ce commit ne contient qu'une montée de version de sécurité (Next 16.4.2, fflate 0.8.3) sur la base de `a05affd`. |
 | Branche `claude/remediation-audit` | non déployée | Contient tout le reste de la remédiation : web, Edge, migrations `0200` et suivantes, mobile. |
 | App iPhone | dernier build TestFlight | Voir [`MOBILE.md`](MOBILE.md). La suppression de compte (écran mobile, route Edge `POST /account/delete`, page web `/settings/account`) est sur la branche de remédiation et attend le déploiement. |
@@ -99,6 +99,9 @@ Dépendances connues entre migrations et code ([`MIGRATIONS.md` § 3](MIGRATIONS
 - `20261023000510` : l'Edge à jour doit être déployée **avant ou avec**.
 - `20261023000700` : le secret Vault `PROJECT_URL` doit exister avant.
 - `20261023000600` (suppression de compte) et `20261023000610` (brouillon de commande fournisseur) : à appliquer avant de déployer le web et le mobile qui les appellent.
+- `20261023000800` (limites de débit) : sans elle, une Edge à jour laisse passer les demandes avec un avertissement ; l'appliquer avant ou avec l'Edge.
+- `20261023000810` (supervision des tâches, `ops_supervise`, tâche `monstock-supervision`) : base seule, sans appel HTTP ; peut précéder l'Edge.
+- `20261023000820` (compteur quotidien d'appels eBay) : à appliquer avant ou avec l'Edge qui l'alimente.
 
 Une seule chaîne à la fois : on ne commence pas le web tant que l'Edge n'est pas vérifiée. Chaque étape est notée au journal (§ 13).
 
@@ -470,7 +473,8 @@ pg_dump "$PROD_URL" --no-owner --schema=public --schema=auth -Fc \
 ### 9.4 Clé `TOKEN_ENCRYPTION_KEY` : copie hors ligne (Q-08, D-05)
 
 - Cette clé chiffre les jetons eBay et les identifiants fournisseurs. **Sans elle, une sauvegarde restaurée contient des jetons inutilisables** : il faut reconnecter chaque compte.
-- Elle est aujourd'hui générée et conservée dans le Vault du projet. **Il faut aussi une copie hors ligne** :
+- Elle est aujourd'hui générée et conservée dans le Vault du projet. La clé de production a été vérifiée conforme au format exigé par le code de la branche de remédiation (32 octets encodés en base64) : `TOKEN_ENCRYPTION_KEY_FORMAT` n'y est pas nécessaire.
+- **Il faut aussi une copie hors ligne** :
   - dans le coffre du titulaire ;
   - et dans celui d'un second administrateur (Q-10) ;
   - jamais dans le dépôt, un ticket, un e-mail ou une conversation.
@@ -498,7 +502,7 @@ Ce tableau donne les **noms seulement**. Les valeurs ne sont écrites que dans l
 | **Vault Supabase**, générés par migration | `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET` (`20261009000400`), `EBAY_WEBHOOK_VERIFICATION_TOKEN` (`20261009000500`) | Lus par `server_runtime_secrets()` (`service_role` seulement) et par `call_monstock_cron`. Ne pas modifier, sauf rotation (§ 9.5). |
 | **Vault Supabase**, à créer | `PROJECT_URL` | URL du projet, exigée par `20261023000700` |
 | **Edge Function** ou Vault | `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME`, `SOURCING_DISCOVERY_PROVIDER`, `BRAVE_SEARCH_API_KEY` | `server_runtime_secrets()` peut renvoyer ces 9 noms (avec les 3 ci-dessus). Une variable de l'Edge a priorité sur le Vault. |
-| **Edge Function** seulement | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `ADVISOR_AUDIO_MAX_AGE_SECONDS`, `EBAY_LISTING_ENABLED`, `PACKLINK_API_KEY`, `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY`, `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE`, `BOXTAL_API_URL`, `LAPOSTE_OKAPI_KEY`, `SHIP24_API_KEY`, `DHL_API_KEY`, `SYNC_RUN_BUDGET_MS`, `SOURCING_USER_AGENT`, `SOURCING_BOT_CONTACT` | Dashboard → Edge Functions → Secrets. Pris en compte au démarrage d'une nouvelle instance. |
+| **Edge Function** seulement | `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `ADVISOR_AUDIO_MAX_AGE_SECONDS`, `EBAY_LISTING_ENABLED`, `PACKLINK_API_KEY`, `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY`, `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE`, `BOXTAL_API_URL`, `LAPOSTE_OKAPI_KEY`, `SHIP24_API_KEY`, `DHL_API_KEY`, `SYNC_RUN_BUDGET_MS`, `SOURCING_USER_AGENT`, `SOURCING_BOT_CONTACT` ; sur la branche : `EBAY_DAILY_CALL_BUDGET`, `APP_URL`, `EDGE_CORS_ORIGINS`, `EDGE_CORS_ALLOW_LOCALHOST` | Dashboard → Edge Functions → Secrets. Pris en compte au démarrage d'une nouvelle instance. |
 | **Edge Function**, branche de remédiation | `TOKEN_ENCRYPTION_KEY_VERSION`, `TOKEN_ENCRYPTION_KEY_PREVIOUS`, `TOKEN_ENCRYPTION_KEY_FORMAT` | rotation de clé (§ 9.5) ; à définir aussi dans Vercel |
 | **Vercel**, Environment Variables | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL` (publics), `SUPABASE_SERVICE_ROLE_KEY` (secret) | Au démarrage, le web lit dans le Vault `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`, `EBAY_*` et la découverte de sources (`src/lib/web-runtime-secrets.ts`). Facultatifs : `EBAY_WEB_RU_NAME` (connexion eBay web), `MONSTOCK_WEB_LEGACY_ROUTES`, `SYNC_RUN_BUDGET_MS`, secrets de rotation. L'IA et les transporteurs passent par l'Edge : pas de clé OpenAI ni de clé de transporteur dans Vercel. |
 | **EAS / Expo** | `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `EXPO_PUBLIC_APP_ENV`, `EXPO_PUBLIC_SITE_URL` | Valeurs **publiques** par conception, dans `apps/mobile/eas.json`. Jamais de clé `sb_secret_` : le scan du bundle les refuse. Les certificats iOS et la clé App Store Connect sont gardés par EAS. |

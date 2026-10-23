@@ -33,7 +33,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 const { POST } = await import("@/app/api/integrations/ebay/connect/route");
 const callback = await import("@/app/api/integrations/ebay/callback/route");
-const { resolveEbayWebConfig, isCanonicalOrigin } = await import("@/features/integrations/ebay-web");
+const { resolveEbayWebConfig, isCanonicalOrigin, publicRequestOrigin } = await import("@/features/integrations/ebay-web");
 const { createEbayConfig } = await import("@/integrations/ebay/config");
 const { oauthErrorMessage } = await import("@/features/integrations/oauth-flow");
 
@@ -99,6 +99,16 @@ describe("isCanonicalOrigin (W-29)", () => {
   });
 });
 
+describe("publicRequestOrigin (W-29)", () => {
+  const url = new URL("http://localhost:3000/api/integrations/ebay/connect");
+  it("hôte demandé par le navigateur : x-forwarded-host / proto (Vercel), puis host, puis l'URL d'écoute", () => {
+    expect(publicRequestOrigin(new Headers({ "x-forwarded-host": "mon-stock-git-x.vercel.app", "x-forwarded-proto": "https", host: "localhost:3000" }), url)).toBe("https://mon-stock-git-x.vercel.app");
+    expect(publicRequestOrigin(new Headers({ "x-forwarded-host": "a.example, b.example", "x-forwarded-proto": "https,http" }), url)).toBe("https://a.example");
+    expect(publicRequestOrigin(new Headers({ host: "127.0.0.1:3000" }), url)).toBe("http://127.0.0.1:3000");
+    expect(publicRequestOrigin(new Headers(), url)).toBe("http://localhost:3000");
+  });
+});
+
 describe("POST /api/integrations/ebay/connect", () => {
   it("sans EBAY_WEB_RU_NAME : retour vers les intégrations avec web_runame_missing, aucun état enregistré", async () => {
     configureApp(null);
@@ -122,6 +132,14 @@ describe("POST /api/integrations/ebay/connect", () => {
     expect(loc.searchParams.get("redirect_uri")).toBe("Mon-Stock-PRD-web");
     expect(inserted.rows).toHaveLength(1);
     expect(res.headers.get("set-cookie")).toContain("ebay_oauth_state=");
+  });
+
+  it("W-29 : hôte public différent (en-têtes du proxy) alors que l'URL d'écoute est canonique → wrong_host", async () => {
+    configureApp("Mon-Stock-PRD-web");
+    const req = new NextRequest(`${APP}/api/integrations/ebay/connect`, { method: "POST", headers: { origin: "https://mon-stock-git-x.vercel.app", "sec-fetch-site": "same-origin", "x-forwarded-host": "mon-stock-git-x.vercel.app", "x-forwarded-proto": "https" } });
+    const res = await POST(req);
+    expect(location(res).toString()).toBe(`${APP}/settings/integrations?error=wrong_host`);
+    expect(inserted.rows).toEqual([]);
   });
 
   it("W-29 : démarrage depuis un autre domaine refusé et renvoyé vers le domaine canonique, sans état ni cookie", async () => {

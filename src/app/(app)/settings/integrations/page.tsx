@@ -160,9 +160,11 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
                 ) : (
                   <Callout tone="neutral">Seuls les administrateurs de l&apos;organisation peuvent connecter eBay.</Callout>
                 )}
-                <p className="text-xs font-semibold text-ink-3">
-                  L&apos;analyse complète autorise en plus, en lecture seule, vos finances eBay (frais, versements), le trafic de vos annonces et vos campagnes publicitaires : le conseiller peut alors répondre à des questions précises sur ces sujets.
-                </p>
+                {overview.ebay.webConnect === "ready" ? (
+                  <p className="text-xs font-semibold text-ink-3">
+                    L&apos;analyse complète autorise en plus, en lecture seule, vos finances eBay (frais, versements), le trafic de vos annonces et vos campagnes publicitaires : le conseiller peut alors répondre à des questions précises sur ces sujets.
+                  </p>
+                ) : null}
               </div>
             ) : (
               activeEbay.map((view, i) => (

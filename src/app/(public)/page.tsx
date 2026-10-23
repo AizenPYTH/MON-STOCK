@@ -142,7 +142,7 @@ export default function HomePage() {
             </h2>
           </div>
 
-          <ul className="grid gap-4 md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <FeatureCard title="Stock multicanal" text="Produits, variantes (capacité, couleur, grade) et SKU. Les ventes eBay sont synchronisées et déduites du stock une seule fois ; les ventes en boutique aussi.">
               <ExampleHead label="Couverture en jours" />
               <ul className="flex flex-col gap-2">
@@ -317,10 +317,10 @@ export default function HomePage() {
 
 function FeatureCard({ title, text, children }: { title: string; text: string; children: ReactNode }) {
   return (
-    <li className="flex flex-col gap-3.5 rounded-3xl border border-border bg-surface p-5 sm:p-6">
+    <li className="flex min-w-0 flex-col gap-3.5 rounded-3xl border border-border bg-surface p-5 sm:p-6">
       <h3 className="text-[20px] font-extrabold leading-[26px] tracking-[-0.3px] text-foreground">{title}</h3>
       <p className="text-[15px] font-medium leading-[22px] text-muted">{text}</p>
-      <div className="mt-auto flex flex-col gap-2.5 rounded-2xl bg-background p-3.5">{children}</div>
+      <div className="mt-auto flex min-w-0 flex-col gap-2.5 rounded-2xl bg-background p-3.5">{children}</div>
     </li>
   );
 }

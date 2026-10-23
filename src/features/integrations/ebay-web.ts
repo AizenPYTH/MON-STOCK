@@ -45,6 +45,19 @@ export function ebayWebConnect(env: Readonly<Record<string, string | undefined>>
 }
 
 /**
+ * Origine PUBLIQUE de la requête, telle que le navigateur la voit. `request.nextUrl` ne suffit pas :
+ * sous `next start` (et derrière un proxy), il porte l'adresse d'écoute du serveur, pas l'hôte demandé.
+ * Ordre : `x-forwarded-host`/`x-forwarded-proto` (Vercel, proxy), puis `host`, puis l'URL reçue.
+ * Contrôle d'ergonomie (W-29), pas de sécurité : la protection du flux reste l'état OAuth + cookie.
+ */
+export function publicRequestOrigin(headers: Headers, url: URL): string {
+  const first = (v: string | null) => v?.split(",")[0]?.trim() || null;
+  const host = first(headers.get("x-forwarded-host")) ?? first(headers.get("host")) ?? url.host;
+  const proto = first(headers.get("x-forwarded-proto")) ?? url.protocol.replace(/:$/, "");
+  return `${proto}://${host}`;
+}
+
+/**
  * W-29 : le cookie d'état OAuth est posé sur le domaine qui DÉMARRE le flux, et eBay revient sur le
  * domaine du RuName (le domaine canonique, NEXT_PUBLIC_APP_URL). Un flux lancé depuis un autre domaine
  * (aperçu Vercel, alias) échouerait donc au retour (`browser_mismatch`) : il est refusé d'emblée.

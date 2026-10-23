@@ -95,3 +95,22 @@ Supabase → **Authentication → URL Configuration** :
 `src/content/legal.ts` : raison sociale ou nom, forme juridique, adresse, SIREN/RCS, directeur de
 la publication, e-mail de contact. Tant qu'ils manquent, les pages légales affichent « à compléter
 par l'éditeur » (rien n'est inventé) et le bouton « Demander un accès » est masqué.
+
+## 7. Sécurité du navigateur (CSP)
+
+En-têtes posés par `next.config.ts` (testés : `tests/unit/web-csp.test.ts`, `tests/e2e/public-pages.spec.ts`) :
+
+- `connect-src 'self'` (W-33) : le navigateur ne parle qu'au site. Aucun client Supabase navigateur,
+  aucun Realtime ; conseiller, voix, imports et Server Actions sont sur le site ; la dictée (Web
+  Speech API) est un service du navigateur, hors CSP.
+- `img-src 'self' data: https:` : les photos produit sont servies par le domaine de chaque
+  fournisseur (liste imprévisible) ; `blob:` retiré (aucune image locale créée par le site).
+- `script-src 'self' 'unsafe-inline'` : **CSP à nonce non retenue pour l'instant** (Q-22). Avec
+  Next 16.4, un nonce (`proxy.ts` + en-tête `x-nonce`) impose le rendu dynamique de **toutes** les
+  pages : l'accueil, `/conditions`, `/confidentialite`, `/mentions-legales`, `/support` et la page
+  404, aujourd'hui statiques (servies par le CDN), deviendraient rendues à chaque requête ; une page
+  restée statique perdrait son hydratation (scripts sans nonce bloqués). Le gain serait limité aux
+  scripts : `style-src` doit garder `'unsafe-inline'` (attributs `style` de React). À reprendre si
+  l'exigence de sécurité le justifie : nonce généré dans `proxy.ts` sur les requêtes de document
+  (hors préchargements), lu dans le layout racine (`headers()`) pour `ThemeScript nonce`, CSP retirée
+  de `next.config.ts` pour ces chemins, puis e2e « aucune violation CSP » sur toutes les pages.

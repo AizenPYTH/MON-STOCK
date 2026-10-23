@@ -20,15 +20,15 @@ export default defineConfig({
     testTimeout: 20_000,
     hookTimeout: 60_000,
     coverage: {
-      // Q-23 : `npm run test:coverage` (tests unitaires). Seuils = plancher anti-régression, mesurés
-      // le 23/10/2026 (lignes 47,9 %, instructions 46,7 %, fonctions 45,4 %, branches 41,1 %) et
-      // arrondis à l'entier inférieur moins 2 points : à relever au fil des ajouts de tests.
+      // Q-23 : `npm run test:coverage` (tests unitaires, src/ et server/ entiers, fichiers non testés
+      // compris). Seuils = plancher anti-régression, mesuré le 23/10/2026 (instructions 58,7 %, branches
+      // 44,1 %, fonctions 51,8 %, lignes 60,3 %) moins ~3 points de marge : à relever avec les tests.
       provider: "v8",
       include: ["src/**/*.{ts,tsx}", "server/**/*.ts"],
       exclude: ["src/db/database.types.ts", "**/*.d.ts"],
       reporter: ["text-summary", "json-summary"],
       reportsDirectory: path.resolve(root, "node_modules/.cache/coverage"),
-      thresholds: { lines: 45, statements: 44, functions: 43, branches: 39 },
+      thresholds: { lines: 57, statements: 55, functions: 48, branches: 41 },
     },
   },
 });

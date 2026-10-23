@@ -4,7 +4,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { randomToken } from "@/lib/crypto";
 import { createLogger } from "@/lib/logger";
-import { ebayWebConnect, isCanonicalOrigin } from "@/features/integrations/ebay-web";
+import { ebayWebConnect, isCanonicalOrigin, publicRequestOrigin } from "@/features/integrations/ebay-web";
 import { buildOAuthState, isCrossSiteRequest, OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, OAUTH_STATE_TTL_SECONDS, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
 
 const log = createLogger("EBAY_OAUTH");
@@ -33,14 +33,15 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   // 303 : le navigateur suit la redirection en GET (jamais un nouveau POST).
   const back = (code: OAuthErrorCode) => NextResponse.redirect(`${origin}/settings/integrations?error=${code}`, { status: 303 });
 
-  if (isCrossSiteRequest(request.headers, [origin, request.nextUrl.origin])) {
+  const requestOrigin = publicRequestOrigin(request.headers, request.nextUrl);
+  if (isCrossSiteRequest(request.headers, [origin, request.nextUrl.origin, requestOrigin])) {
     log.warn("démarrage OAuth refusé : requête inter-sites", { origin: request.headers.get("origin"), site: request.headers.get("sec-fetch-site") });
     return back("cross_site");
   }
 
   // Le retour eBay arrive sur le domaine canonique : un flux lancé ailleurs perdrait son cookie d'état.
-  if (!isCanonicalOrigin(request.nextUrl.origin, origin)) {
-    log.warn("démarrage OAuth refusé : domaine non canonique", { host: request.nextUrl.host });
+  if (!isCanonicalOrigin(requestOrigin, origin)) {
+    log.warn("démarrage OAuth refusé : domaine non canonique", { origin: requestOrigin });
     return back("wrong_host");
   }
 
