@@ -1,16 +1,17 @@
-import { LoadingRegion, PageHeaderSkeleton, Skeleton } from "@/components/ui/page";
+import { LoadingRegion, PageHeaderSkeleton, StatTileSkeleton, TableSkeleton } from "@/components/ui/page";
 
+/** Chargement générique d'une page de l'application : en-tête, rangée d'indicateurs, liste. */
 export default function Loading() {
   return (
     <LoadingRegion>
       <PageHeaderSkeleton />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
+        <StatTileSkeleton />
+        <StatTileSkeleton />
+        <StatTileSkeleton className="max-sm:hidden" />
+        <StatTileSkeleton className="max-sm:hidden" />
       </div>
-      <Skeleton className="h-64" />
+      <TableSkeleton rows={6} />
     </LoadingRegion>
   );
 }

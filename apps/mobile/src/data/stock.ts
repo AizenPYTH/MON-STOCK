@@ -1,6 +1,5 @@
 import type { StockOverviewRow, InventoryMovement } from "@/db/types";
 import { enrichStockRow, marginContextFromChannels, type MarginContext, type StockRowView } from "@/features/stock/model";
-import { orIlikeAny } from "@/lib/postgrest";
 import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { signedMovementQuantity, stockMovementInputSchema, type StockMovementInput } from "@/features/mobile-api/contract";
 import type { MobileSupabase } from "~/lib/supabase";

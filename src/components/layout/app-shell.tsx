@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { LogOut, X } from "lucide-react";
+import { LogOut, TriangleAlert, X } from "lucide-react";
 import { Sidebar, type SidebarCounts } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
@@ -170,7 +170,7 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
             {user.email ? <span className="truncate text-xs font-semibold text-on-night-subtle">{user.email}</span> : null}
           </span>
           <form action={signOutAction}>
-            <button type="submit" aria-label="Se déconnecter" title="Se déconnecter" className="flex h-8 w-8 items-center justify-center rounded-[10px] text-on-night-muted hover:bg-night-raised hover:text-on-night">
+            <button type="submit" aria-label="Se déconnecter" title="Se déconnecter" className="flex h-9 w-9 items-center justify-center rounded-[10px] text-on-night-muted transition-colors duration-150 ease-standard hover:bg-night-raised hover:text-on-night pointer-coarse:h-10 pointer-coarse:w-10">
               <LogOut aria-hidden="true" className="h-4 w-4" />
             </button>
           </form>
@@ -191,9 +191,9 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
 
       {drawer ? (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" aria-label="Fermer le menu" className="absolute inset-0 cursor-default bg-overlay" onClick={() => setDrawer(false)} />
-          <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Menu de navigation" onKeyDown={trapFocus} className="ms-fade absolute inset-y-0 left-0 w-[280px] max-w-[85vw] overflow-y-auto bg-night">
-            <button type="button" onClick={() => setDrawer(false)} aria-label="Fermer le menu" className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-[10px] text-on-night-muted hover:bg-night-raised">
+          <button type="button" aria-label="Fermer le menu" className="absolute inset-0 cursor-default bg-overlay transition-opacity duration-200 ease-standard starting:opacity-0" onClick={() => setDrawer(false)} />
+          <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Menu de navigation" onKeyDown={trapFocus} className="absolute inset-y-0 left-0 w-[296px] max-w-[86vw] overflow-y-auto bg-night shadow-modal transition-[transform,opacity] duration-[360ms] ease-sheet starting:-translate-x-8 starting:opacity-0">
+            <button type="button" onClick={() => setDrawer(false)} aria-label="Fermer le menu" className="absolute right-3 top-2 z-10 flex h-10 w-10 items-center justify-center rounded-[10px] text-on-night-muted transition-colors duration-150 ease-standard hover:bg-night-raised hover:text-on-night">
               <X aria-hidden="true" className="h-4 w-4" />
             </button>
             <Sidebar counts={counts} header={orgSwitcher(false)} footer={account(false)} onNavigate={() => setDrawer(false)} />
@@ -202,25 +202,30 @@ export function AppShell({ children, org, user, readOnly, counts, lastEbaySync, 
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onToggleAdvisor={onAdvisorPage ? undefined : toggleAdvisor} advisorOpen={advisorOpen} onOpenSearch={() => setSearch(true)} onOpenMenu={() => setDrawer(true)} addOpen={addOpen} setAddOpen={setAddOpen} readOnly={readOnly} lastEbaySync={lastEbaySync} alerts={alerts} alertTotal={alertTotal} />
+        <Topbar org={{ name: org.name, isDemo: org.isDemo }} onToggleAdvisor={onAdvisorPage ? undefined : toggleAdvisor} advisorOpen={advisorOpen} onOpenSearch={() => setSearch(true)} onOpenMenu={() => setDrawer(true)} addOpen={addOpen} setAddOpen={setAddOpen} readOnly={readOnly} lastEbaySync={lastEbaySync} alerts={alerts} alertTotal={alertTotal} />
         <main id="contenu" tabIndex={-1} className="flex min-w-0 flex-1 flex-col focus:outline-none">
           {org.fallback ? (
-            <div role="status" className="flex flex-wrap items-center gap-2.5 px-4 pb-2.5 pt-1 sm:px-8 lg:pl-8 lg:pr-10">
-              <span className="text-[13px] font-semibold text-on-night">
+            // Repli (W-28) : l'organisation mémorisée n'est plus accessible ; le choix reste explicite.
+            <div role="status" className="mx-4 mb-3 mt-1 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber/30 bg-amber/10 px-3.5 py-2.5 sm:mx-8 lg:ml-8 lg:mr-10">
+              <TriangleAlert aria-hidden="true" className="h-4 w-4 shrink-0 text-amber" />
+              <span className="min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-[18px] text-on-night">
                 Votre organisation habituelle n&apos;est plus accessible (accès retiré ou organisation supprimée) : MON STOCK affiche « {org.name} ».
               </span>
               <form action={switchOrganizationAction}>
                 <input type="hidden" name="organization_id" value={org.id} />
-                <button type="submit" className="rounded-lg px-2 py-1 text-[13px] font-bold text-mint underline underline-offset-2 hover:text-on-night">
+                <button type="submit" className="inline-flex h-9 items-center rounded-[10px] bg-night-raised px-3 text-[13px] font-bold text-on-night transition-colors duration-150 ease-standard hover:bg-night-hover pointer-coarse:h-10">
                   Continuer avec cette organisation
                 </button>
               </form>
             </div>
           ) : null}
           {org.isDemo ? (
-            <div className="flex flex-wrap items-center gap-2.5 px-4 pb-2.5 pt-1 sm:px-8 lg:pl-8 lg:pr-10">
+            <div className="flex items-start gap-2.5 px-4 pb-2.5 pt-1 sm:items-center sm:px-8 lg:pl-8 lg:pr-10">
               <DemoBadge />
-              <span className="text-[13px] font-semibold text-on-night-muted">Organisation de démonstration — données fictives. Aucun chiffre affiché ici ne provient d&apos;une vraie marketplace ni d&apos;un vrai fournisseur.</span>
+              <span className="min-w-0 text-[13px] font-semibold leading-[18px] text-on-night-muted">
+                <span className="sm:hidden">Organisation de démonstration : données fictives, aucune vraie marketplace ni vrai fournisseur.</span>
+                <span className="max-sm:hidden">Organisation de démonstration — données fictives. Aucun chiffre affiché ici ne provient d&apos;une vraie marketplace ni d&apos;un vrai fournisseur.</span>
+              </span>
             </div>
           ) : null}
           <div className="ms-content flex min-w-0 flex-1 flex-col">

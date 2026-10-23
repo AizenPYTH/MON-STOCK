@@ -6,7 +6,7 @@ import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { MonoTitle, Panel, Paper, Scene, SceneHeader, StageStats } from "@/components/instrument";
 import { StageFigure } from "@/components/instrument/figure";
 import { Callout, DescriptionList } from "@/components/ui/page";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { getSkuDetail } from "@/features/stock/queries";
@@ -65,7 +65,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
             <span className="flex flex-wrap items-center gap-2.5">
               {title}
               <NightLevelChip level={view.classification.level} />
-              {!row.is_active ? <span className="rounded-md bg-night-raised px-2 py-[3px] text-[11px] font-bold text-on-night-muted">Archivé</span> : null}
+              {!row.is_active ? <span className="rounded-md bg-night-raised px-2 py-[3px] text-[11.5px] font-bold tracking-normal text-on-night-muted">Archivé</span> : null}
             </span>
           }
           description={[row.brand, CONDITION_LABEL[row.condition ?? "unknown"], row.location ? `emplacement ${row.location}` : null].filter(Boolean).join(" · ")}
@@ -94,6 +94,20 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
         </div>
       </Scene>
       <Paper>
+        <nav aria-label="Sections de la fiche" className="-mx-1 mb-5 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+          {[
+            { href: "#ventes", label: "Ventes", count: orderItems.length },
+            { href: "#annonces", label: "Annonces", count: detail.listings.length },
+            { href: "#mouvements", label: "Mouvements", count: detail.movements.length },
+            { href: "#achats", label: "Achats", count: offers.length },
+            { href: "#produit", label: "Fiche produit" },
+          ].map((l) => (
+            <a key={l.href} href={l.href} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border-strong bg-surface px-3.5 text-[13.5px] font-semibold text-foreground transition-colors duration-150 ease-standard hover:bg-surface-2 pointer-coarse:h-10">
+              {l.label}
+              {l.count !== undefined && l.count > 0 ? <span className="tnum text-ink-3">· {l.count >= 100 ? "100+" : formatNumber(l.count)}</span> : null}
+            </a>
+          ))}
+        </nav>
         {pendingSalesCount > 0 ? (
           <Callout
             tone="warning"
@@ -110,7 +124,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
             <PriceTiles detail={detail} />
             <QuantityCard detail={detail} writable={writable} />
 
-            <section className="flex flex-col gap-2.5" aria-label="Ventes et vitesse">
+            <section id="ventes" className="flex scroll-mt-20 flex-col gap-2.5" aria-label="Ventes et vitesse">
               <MonoTitle title="Ventes et vitesse" />
               <Panel className="grid grid-cols-2 gap-px overflow-hidden bg-line-soft sm:grid-cols-4">
                 {[
@@ -128,7 +142,9 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
               </Panel>
             </section>
 
-            <ListingsCard detail={detail} limit={100} />
+            <div id="annonces" className="scroll-mt-20">
+              <ListingsCard detail={detail} limit={100} />
+            </div>
 
             <section className="flex flex-col gap-2.5" aria-label="Ventes récentes">
               <MonoTitle title="Ventes récentes" count={orderItems.length || undefined} />
@@ -136,7 +152,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                 {orderItems.length === 0 ? (
                   <p className="px-4 py-3.5 text-sm font-medium text-muted">Aucune vente enregistrée pour ce SKU.</p>
                 ) : (
-                  <Table className="min-w-[560px]">
+                  <Table className="min-w-[560px]" density="compact" stackOnMobile caption="Ventes récentes de ce SKU">
                     <THead>
                       <tr>
                         <TH>Date</TH>
@@ -152,18 +168,18 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                         const o = oi.order;
                         return (
                           <TR key={oi.id}>
-                            <TD className="text-muted">{formatDateTime(o?.placed_at)}</TD>
-                            <TD>{o ? PROVIDER_LABEL[o.provider] ?? o.provider : "—"}</TD>
-                            <TD className="ms-code text-xs">{o?.order_number ?? o?.external_order_id}</TD>
-                            <TD align="right">{oi.quantity}</TD>
-                            <TD align="right">{formatMoney(oi.unit_price, oi.currency ?? currency)}</TD>
-                            <TD>
+                            <TD primary className="whitespace-nowrap text-muted tnum">{formatDateTime(o?.placed_at)}</TD>
+                            <TD label="Canal">{o ? PROVIDER_LABEL[o.provider] ?? o.provider : "—"}</TD>
+                            <TD label="Commande" className="ms-code text-xs">{o?.order_number ?? o?.external_order_id}</TD>
+                            <TD label="Qté" align="right" className="font-bold">{oi.quantity}</TD>
+                            <TD label="Prix unitaire" align="right">{formatMoney(oi.unit_price, oi.currency ?? currency)}</TD>
+                            <TD label="Stock">
                               {o && (o.status === "cancelled" || o.status === "refunded") ? (
-                                <Badge variant="neutral">{o.status === "cancelled" ? "Annulée · sans effet sur le stock" : "Remboursée · sans effet sur le stock"}</Badge>
+                                <StatusBadge tone="neutral">{o.status === "cancelled" ? "Annulée · sans effet sur le stock" : "Remboursée · sans effet sur le stock"}</StatusBadge>
                               ) : oi.inventory_applied ? (
-                                <Badge variant="success">Déduite</Badge>
+                                <StatusBadge tone="success" variant="plain">Déduite</StatusBadge>
                               ) : (
-                                <Badge variant="warning">Non déduite</Badge>
+                                <StatusBadge tone="warning">Non déduite</StatusBadge>
                               )}
                             </TD>
                           </TR>
@@ -179,7 +195,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
               <MovementsCard detail={detail} />
             </div>
 
-            <section className="flex flex-col gap-2.5" aria-label="Produit et variante">
+            <section id="produit" className="flex scroll-mt-20 flex-col gap-2.5" aria-label="Produit et variante">
               <MonoTitle title="Produit et variante" />
               <Panel className="flex flex-col gap-5 p-4 sm:flex-row">
                 {imageUrl ? (
@@ -204,7 +220,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
             </section>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-[18px] lg:col-span-5">
+          <div id="achats" className="flex min-w-0 scroll-mt-20 flex-col gap-[18px] lg:col-span-5">
             <BestOfferCard detail={detail} writable={writable} findHref={sourcingHref(detail)} />
 
             <section className="flex flex-col gap-2.5" aria-label="Réapprovisionnement">
@@ -314,7 +330,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                   title="Autres variantes"
                   right={
                     writable ? (
-                      <Link href={`/stock/new?product=${row.product_id}` as never} className="text-[13px] font-bold hover:underline">
+                      <Link href={`/stock/new?product=${row.product_id}` as never} className="inline-flex min-h-10 items-center rounded-lg text-[13px] font-bold hover:underline">
                         Ajouter une variante
                       </Link>
                     ) : undefined

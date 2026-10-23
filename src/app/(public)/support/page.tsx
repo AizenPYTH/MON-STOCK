@@ -15,7 +15,7 @@ export default function SupportPage() {
       <LegalSection title="Mot de passe oublié">
         <p>
           Utilisez{" "}
-          <Link href="/reset-password" className="font-semibold underline">
+          <Link href="/reset-password" prefetch={false} className="font-semibold text-interactive underline">
             la page de réinitialisation
           </Link>{" "}
           : un lien vous est envoyé par e-mail.
@@ -23,8 +23,11 @@ export default function SupportPage() {
       </LegalSection>
       <LegalSection title="Supprimer mon compte ou mes données">
         <p>
-          Écrivez à <ContactLine /> depuis l&apos;adresse de votre compte. Voir aussi la{" "}
-          <Link href="/confidentialite" className="font-semibold underline">
+          Depuis le site, connecté : Réglages → Mon compte → « Supprimer mon compte ». La suppression est définitive et demande une confirmation saisie.
+        </p>
+        <p>
+          Vous pouvez aussi écrire à <ContactLine /> depuis l&apos;adresse de votre compte. Voir aussi la{" "}
+          <Link href="/confidentialite" className="font-semibold text-interactive underline">
             politique de confidentialité
           </Link>
           .

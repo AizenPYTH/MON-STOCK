@@ -13,7 +13,7 @@ export function RadarSortSelect({ sort, filter, offer }: { sort: RadarSort; filt
       <select
         value={sort}
         onChange={(e) => router.push(radarHref({ sort: e.target.value as RadarSort, filter, offer }) as never, { scroll: false })}
-        className="h-10 cursor-pointer appearance-none rounded-full border border-border bg-surface pl-3 pr-8 text-[12.5px] font-bold text-foreground"
+        className="h-10 cursor-pointer appearance-none rounded-full border border-border-control bg-surface pl-3 pr-8 text-[12.5px] font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         {SORT_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>

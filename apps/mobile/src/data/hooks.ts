@@ -8,7 +8,7 @@ import { useUser } from "~/auth/session-provider";
 import { applyMovement, fetchMarginContext, fetchSkuDetail } from "~/data/stock";
 import { fetchCatalog } from "~/data/catalog";
 import { fetchAnalysis, fetchOpenAlerts, fetchToday, type Period } from "~/data/intelligence";
-import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis } from "~/data/sales";
+import { fetchListings, fetchOrderDetail, fetchOrdersFiltered, fetchSalesKpis, type OrdersCursor } from "~/data/sales";
 import { createDraftPurchaseOrder, deleteDraftPurchaseOrder, fetchActiveSuppliers, fetchComparison, fetchOfferGroups, type OfferRow } from "~/data/compare";
 import { activateLibrarySource, fetchLibrary, searchOffers } from "~/data/sourcing-live";
 import { decideMatch, fetchMatchSuggestions, fetchRadar, fetchRadarOffer, saveOffer, saveRadarSettings, unsaveOffer, type RadarCostSettings, type RadarSort } from "~/data/radar";
@@ -139,9 +139,9 @@ export function useOrders(status?: string) {
   const orgId = useOrgId();
   return useInfiniteQuery({
     queryKey: [orgId, "orders", status ?? "all"],
-    queryFn: ({ pageParam }) => fetchOrdersFiltered(requireSupabase(), orgId, { status, page: pageParam }),
-    initialPageParam: 1,
-    getNextPageParam: (last, all) => (last.hasMore ? all.length + 1 : undefined),
+    queryFn: ({ pageParam }) => fetchOrdersFiltered(requireSupabase(), orgId, { status, cursor: pageParam }),
+    initialPageParam: null as OrdersCursor,
+    getNextPageParam: (last) => (last.hasMore && last.nextCursor ? last.nextCursor : undefined),
   });
 }
 
@@ -295,9 +295,9 @@ export function useActivateSource() {
 // Radar d'opportunités
 // ---------------------------------------------------------------------------------------------
 
-export function useRadar(sort: RadarSort) {
+export function useRadar(sort: RadarSort, enabled = true) {
   const orgId = useOrgId();
-  return useQuery({ queryKey: [orgId, "radar", sort], queryFn: () => fetchRadar(orgId, sort), staleTime: 2 * 60_000 });
+  return useQuery({ queryKey: [orgId, "radar", sort], queryFn: () => fetchRadar(orgId, sort), staleTime: 2 * 60_000, enabled });
 }
 
 export function useSaveRadarSettings() {
@@ -345,9 +345,9 @@ export function useImportPreview() {
 
 /* ───────── Sourcing B2B : sources, flux distants, historique des imports ───────── */
 
-export function useProAccounts() {
+export function useProAccounts(enabled = true) {
   const orgId = useOrgId();
-  return useQuery({ queryKey: [orgId, "sourcing", "accounts"], queryFn: () => fetchProAccounts(orgId), staleTime: 30_000 });
+  return useQuery({ queryKey: [orgId, "sourcing", "accounts"], queryFn: () => fetchProAccounts(orgId), staleTime: 30_000, enabled });
 }
 
 function useProAccountMutation<TInput, TOut>(fn: (orgId: string, input: TInput) => Promise<TOut>) {
@@ -400,9 +400,9 @@ export function useScheduleSource() {
   return useMutation({ mutationFn: (v: Parameters<typeof scheduleSource>[1]) => scheduleSource(orgId, v), onSettled: () => queryClient.invalidateQueries({ queryKey: [orgId, "sourcing", "sources"] }) });
 }
 
-export function useImportJobs(supplierId?: string) {
+export function useImportJobs(supplierId?: string, enabled = true) {
   const orgId = useOrgId();
-  return useQuery({ queryKey: [orgId, "sourcing", "imports", supplierId ?? "all"], queryFn: () => fetchImportJobs(orgId, supplierId) });
+  return useQuery({ queryKey: [orgId, "sourcing", "imports", supplierId ?? "all"], queryFn: () => fetchImportJobs(orgId, supplierId), enabled });
 }
 
 export function useImportJob(id: string) {
@@ -448,9 +448,9 @@ export function useRunImport() {
 // eBay (serveur pour les tokens ; association annonce ↔ SKU sous RLS)
 // ---------------------------------------------------------------------------------------------
 
-export function useIntegrations() {
+export function useIntegrations(enabled = true) {
   const orgId = useOrgId();
-  return useQuery({ queryKey: [orgId, "integrations"], queryFn: () => fetchIntegrations(orgId), retry: 0 });
+  return useQuery({ queryKey: [orgId, "integrations"], queryFn: () => fetchIntegrations(orgId), retry: 0, enabled });
 }
 
 function useInvalidateSales() {

@@ -1,23 +1,21 @@
 import { TrendingDown, TrendingUp, Minus } from "lucide-react";
-import { Badge, StatusDot } from "@/components/ui/badge";
+import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { STOCK_LEVEL_LABEL, type StockLevel } from "@/domain/inventory/alerts";
 import type { Trend } from "@/domain/inventory/velocity";
 
-const TONE: Record<StockLevel, "danger" | "warning" | "neutral" | "success"> = {
+const TONE: Record<StockLevel, StatusTone> = {
   out_of_stock: "danger",
   at_risk: "warning",
-  low: "neutral",
+  low: "warning",
   normal: "success",
 };
 
+/** Niveau de stock : icône + texte (jamais la couleur seule). */
 export function StockLevelBadge({ level, title }: { level: StockLevel; title?: string }) {
-  const tone = TONE[level];
-  const dotTone = level === "low" ? "warning" : tone;
   return (
-    <Badge variant={level === "low" ? "warning" : tone} title={title}>
-      <StatusDot tone={dotTone} />
+    <StatusBadge tone={TONE[level]} variant={level === "normal" ? "plain" : "soft"} title={title}>
       {STOCK_LEVEL_LABEL[level]}
-    </Badge>
+    </StatusBadge>
   );
 }
 

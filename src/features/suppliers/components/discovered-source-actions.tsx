@@ -41,7 +41,7 @@ export function DiscoveredSourceActions({ sourceId, canActivate, blockedReason, 
           <Feedback state={validateState} />
         </form>
       ) : (
-        <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-amber-800">{blockedReason}</p>
+        <p className="rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-xs font-semibold text-warning-ink">{blockedReason}</p>
       )}
       <form action={dismiss} className="space-y-1">
         <input type="hidden" name="source_id" value={sourceId} />

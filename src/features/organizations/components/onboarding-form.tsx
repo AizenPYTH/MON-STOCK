@@ -1,7 +1,7 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { Loader2 } from "lucide-react";
+import { CircleAlert, Loader2 } from "lucide-react";
 import { DemoBadge } from "@/components/instrument";
 import type { ActionResult } from "@/lib/result";
 import { createOrganizationAction } from "@/features/organizations/actions";
@@ -29,27 +29,35 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
       subtitle="Une organisation regroupe votre stock, vos ventes, vos fournisseurs et vos collaborateurs. Vous pourrez inviter des membres ensuite."
       error={err?.error}
       footer={
-        <section aria-labelledby="demo-title" className="flex flex-col gap-3 rounded-3xl border-[1.5px] border-dashed border-border-strong bg-surface p-5 sm:p-6">
-          <div className="flex items-center gap-2">
-            <DemoBadge onNight={false} />
-            <h2 id="demo-title" className="text-[15px] font-bold text-foreground">
-              Explorer avec des données fictives
-            </h2>
+        <>
+          <div className="flex items-center gap-3 text-ink-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-border-strong" />
+            <span className="ms-mono text-[10.5px] leading-[14px]">ou</span>
+            <span className="h-px flex-1 bg-border-strong" />
           </div>
-          <p className="text-sm font-medium leading-5 text-muted">
-            Crée une organisation de démonstration séparée, remplie de produits, commandes, fournisseurs et offres fictifs. Chaque écran l&apos;indique par le badge « DÉMO ». Aucune donnée réelle n&apos;est mélangée.
-          </p>
-          {demoErr?.error ? (
-            <div role="alert" className="rounded-[14px] border border-danger-line bg-danger-soft px-3.5 py-3 text-sm font-semibold text-danger">
-              {demoErr.error}
+          <section aria-labelledby="demo-title" className="flex flex-col gap-3 rounded-3xl border-[1.5px] border-dashed border-border-control/50 bg-surface p-5 sm:p-6">
+            <div className="flex items-center gap-2">
+              <DemoBadge onNight={false} />
+              <h2 id="demo-title" className="text-[15px] font-bold text-foreground">
+                Explorer avec des données fictives
+              </h2>
             </div>
-          ) : null}
-          <form action={demoAction} onSubmit={(e) => (anyLocked ? e.preventDefault() : demoLock.lock())}>
-            <SecondarySubmit pendingText="Génération des données…" locked={anyLocked}>
-              Créer une organisation de démonstration
-            </SecondarySubmit>
-          </form>
-        </section>
+            <p className="text-sm font-medium leading-5 text-muted">
+              Crée une organisation de démonstration séparée, remplie de produits, commandes, fournisseurs et offres fictifs. Chaque écran l&apos;indique par le badge « DÉMO ». Aucune donnée réelle n&apos;est mélangée.
+            </p>
+            {demoErr?.error ? (
+              <div role="alert" className="flex items-start gap-2.5 rounded-[14px] border border-danger-line bg-danger-soft px-3.5 py-3 text-sm font-semibold text-danger-ink">
+                <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="min-w-0">{demoErr.error}</span>
+              </div>
+            ) : null}
+            <form action={demoAction} onSubmit={(e) => (anyLocked ? e.preventDefault() : demoLock.lock())}>
+              <SecondarySubmit pendingText="Génération des données…" locked={anyLocked}>
+                Créer une organisation de démonstration
+              </SecondarySubmit>
+            </form>
+          </section>
+        </>
       }
     >
       <form action={action} onSubmit={(e) => (anyLocked ? e.preventDefault() : createLock.lock())}>
@@ -59,7 +67,7 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
           </AuthField>
           <div className="grid grid-cols-2 gap-3">
             <AuthField id="country" label="Pays" error={err?.fieldErrors?.country}>
-              {(d, inv) => <TextInput id="country" name="country" placeholder="FR" maxLength={2} defaultValue="FR" invalid={inv} describedBy={d} />}
+              {(d, inv) => <TextInput id="country" name="country" placeholder="FR" maxLength={2} defaultValue="FR" autoComplete="country" invalid={inv} describedBy={d} />}
             </AuthField>
             <AuthField id="default_currency" label="Devise" error={err?.fieldErrors?.default_currency}>
               {(d, inv) => (
@@ -106,7 +114,12 @@ function SecondarySubmit({ children, pendingText, locked = false }: { children: 
   const { pending } = useFormStatus();
   const busy = pending || locked;
   return (
-    <button type="submit" disabled={busy} aria-busy={busy || undefined} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-surface px-5 text-[15px] font-extrabold text-foreground transition-colors hover:bg-line-soft disabled:opacity-60">
+    <button
+      type="submit"
+      disabled={busy}
+      aria-busy={busy || undefined}
+      className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-surface px-5 text-[15px] font-extrabold text-foreground transition-[background-color,transform] duration-150 ease-standard hover:bg-line-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px disabled:cursor-progress disabled:opacity-60"
+    >
       {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
       {busy ? pendingText : children}
     </button>

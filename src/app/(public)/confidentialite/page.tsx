@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ContactLine, Fact, LegalPage, LegalSection } from "@/components/public/legal-page";
 import { LEGAL, PROCESSORS } from "@/content/legal";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 export const metadata: Metadata = { title: "Politique de confidentialité", description: "Données traitées par MON STOCK, finalités, prestataires et droits." };
 
@@ -49,26 +50,30 @@ export default function PrivacyPage() {
       </LegalSection>
 
       <LegalSection title="Prestataires (sous-traitants)">
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-surface-muted text-xs uppercase text-muted">
-              <tr>
-                <th className="px-4 py-2">Prestataire</th>
-                <th className="px-4 py-2">Rôle</th>
-                <th className="px-4 py-2">Localisation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {PROCESSORS.map((p) => (
-                <tr key={p.name} className="border-t border-border align-top">
-                  <td className="px-4 py-2 font-semibold">{p.name}</td>
-                  <td className="px-4 py-2">{p.role}</td>
-                  <td className="px-4 py-2">{p.location}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table className="min-w-[600px] text-[14px] leading-5" stackOnMobile caption="Prestataires (sous-traitants) et leur localisation">
+          <THead>
+            <tr>
+              <TH>Prestataire</TH>
+              <TH>Rôle</TH>
+              <TH>Localisation</TH>
+            </tr>
+          </THead>
+          <TBody>
+            {PROCESSORS.map((p) => (
+              <TR key={p.name} className="align-top hover:bg-transparent">
+                <TD primary className="font-bold text-foreground">
+                  {p.name}
+                </TD>
+                <TD label="Rôle" className="text-left text-muted-strong">
+                  {p.role}
+                </TD>
+                <TD label="Localisation" className="text-left text-muted-strong">
+                  {p.location}
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
         <p>Les transferts hors de l&apos;Union européenne reposent sur les garanties prévues par le RGPD (clauses contractuelles types ou cadre de protection des données UE–États-Unis).</p>
       </LegalSection>
 
@@ -78,7 +83,10 @@ export default function PrivacyPage() {
 
       <LegalSection title="Vos droits">
         <p>
-          Vous disposez des droits d&apos;accès, de rectification, d&apos;effacement, de limitation, d&apos;opposition et de portabilité. Pour les exercer, ou pour supprimer votre compte, écrivez à <ContactLine />. Vous pouvez aussi saisir la CNIL (cnil.fr).
+          Vous disposez des droits d&apos;accès, de rectification, d&apos;effacement, de limitation, d&apos;opposition et de portabilité. Pour les exercer, écrivez à <ContactLine />. Vous pouvez aussi saisir la CNIL (cnil.fr).
+        </p>
+        <p>
+          Vous pouvez supprimer vous-même votre compte depuis le site : Réglages → Mon compte → « Supprimer mon compte » (organisations dont vous êtes le seul membre comprises). Vous pouvez aussi en faire la demande par écrit à l&apos;adresse ci-dessus.
         </p>
       </LegalSection>
     </LegalPage>

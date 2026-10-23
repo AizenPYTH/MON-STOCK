@@ -19,7 +19,7 @@ const SIZES = {
 export function SupplierBadge({ name, domain, size = "md", className }: { name: string; domain?: string | null; size?: keyof typeof SIZES; className?: string }) {
   const logo = supplierLogoUrl(domain, name);
   return (
-    <span aria-hidden="true" className={cn("inline-flex shrink-0 select-none items-center justify-center overflow-hidden border border-border font-bold text-muted", logo ? "bg-white" : "bg-line-soft", SIZES[size], className)}>
+    <span aria-hidden="true" className={cn("inline-flex shrink-0 select-none items-center justify-center overflow-hidden border border-border font-bold text-muted", /* plaque claire dans les deux thèmes : les logos officiels sont dessinés pour un fond clair */ logo ? "bg-on-night" : "bg-line-soft", SIZES[size], className)}>
       {/* eslint-disable-next-line @next/next/no-img-element -- petite icône statique déjà optimisée, servie depuis public/ */}
       {logo ? <img src={logo} alt="" loading="lazy" decoding="async" className="h-[72%] w-[72%] object-contain" /> : initialsOf(name)}
     </span>

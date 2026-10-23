@@ -27,12 +27,13 @@ import {
   WalletCards,
 } from "lucide-react";
 import { MonoTitle, Kbd, ToneIcon } from "@/components/instrument";
+import { StatTile } from "@/components/ui/stat-tile";
 import type { RadarItemDTO } from "@/features/mobile-api/contract";
 import { classifyBreakdown } from "@/features/radar/labels";
 import { formatMoney, formatNumber, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TodayDashboard } from "@/features/dashboard/queries";
-import { saleTimeLabel, type SetupIcon, type Task, type TaskIcon, type SaleTone } from "@/features/dashboard/today.pure";
+import { saleTimeLabel, stockLevelHref, type SetupIcon, type Task, type TaskIcon, type SaleTone } from "@/features/dashboard/today.pure";
 import { PriorityShell, TaskRows } from "@/features/dashboard/components/disclosures";
 import { SupplierMark } from "@/features/dashboard/components/supplier-mark";
 
@@ -79,6 +80,41 @@ function SectionLink({ href, children }: { href: string; children: ReactNode }) 
 
 function signedMoney(v: number, currency: string) {
   return `${v >= 0 ? "+" : "−"}${formatMoney(Math.abs(v), currency)}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// État du stock : indicateurs actionnables (valeurs réelles, chacune mène à sa liste filtrée)
+// ---------------------------------------------------------------------------------------------
+
+export function StockHealthSection({ d }: { d: TodayDashboard }) {
+  const c = d.stock.counts;
+  if (d.stock.skus === 0) return null;
+  const out = c.out_of_stock;
+  const risk = c.at_risk;
+  const low = c.low;
+  return (
+    <section className="flex flex-col gap-2.5">
+      <MonoTitle title="État du stock" right={<SectionLink href="/stock/alerts">Toutes les alertes</SectionLink>} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile
+          label="Ruptures"
+          value={out}
+          tone={out > 0 ? "danger" : "neutral"}
+          hint={out > 0 ? (d.stock.outShare ? `${formatNumber(d.stock.outShare)} % des ventes 30 j` : "plus aucune unité disponible") : "aucune référence épuisée"}
+          href={stockLevelHref("out_of_stock")}
+        />
+        <StatTile label="Risque de rupture" value={risk} tone={risk > 0 ? "warning" : "neutral"} hint={risk > 0 ? "couverture < délai fournisseur" : "aucune couverture trop courte"} href={stockLevelHref("at_risk")} />
+        <StatTile label="Stock faible" value={low} tone={low > 0 ? "warning" : "neutral"} hint={low > 0 ? "sous le seuil de réappro." : "tout est au-dessus du seuil"} href={stockLevelHref("low")} />
+        <StatTile
+          label="Ventes non déduites"
+          value={d.pendingSales}
+          tone={d.pendingSales > 0 ? "warning" : "neutral"}
+          hint={d.pendingSales > 0 ? "le stock affiché est surestimé" : "toutes les ventes sont déduites"}
+          href={d.pendingSales > 0 ? "/sales?inventory=pending" : "/sales"}
+        />
+      </div>
+    </section>
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -344,18 +380,24 @@ export function ActivitySection({ d }: { d: TodayDashboard }) {
 // Colonne droite
 // ---------------------------------------------------------------------------------------------
 
-function Tile({ href, icon, title, detail, kbd, dark = false }: { href: string; icon: ReactNode; title: string; detail: string; kbd?: string; dark?: boolean }) {
+function Tile({ href, icon, title, detail, kbd, strong = false }: { href: string; icon: ReactNode; title: string; detail: string; kbd?: string; strong?: boolean }) {
   return (
-    <Link href={href as never} className={cn("flex min-h-24 flex-col justify-between gap-2 rounded-2xl border p-3 pb-[11px]", dark ? "border-night bg-night hover:bg-night-raised" : "border-border bg-surface hover:bg-line-soft")}>
+    <Link
+      href={href as never}
+      className={cn(
+        "group flex min-h-24 flex-col justify-between gap-2 rounded-2xl border p-3 pb-[11px] transition-colors duration-150 ease-standard",
+        strong ? "border-inverse bg-inverse hover:bg-inverse-hover" : "border-border bg-surface hover:border-border-strong hover:bg-surface-2",
+      )}
+    >
       <span className="flex w-full items-start justify-between">
-        <span aria-hidden="true" className={cn("flex h-[30px] w-[30px] items-center justify-center rounded-[10px] [&>svg]:h-4 [&>svg]:w-4", dark ? "bg-mint text-night" : "bg-background text-foreground")}>
+        <span aria-hidden="true" className={cn("flex h-[30px] w-[30px] items-center justify-center rounded-[10px] [&>svg]:h-4 [&>svg]:w-4", strong ? "bg-mint text-night" : "bg-background text-foreground")}>
           {icon}
         </span>
-        {kbd ? <Kbd onNight={dark}>{kbd}</Kbd> : null}
+        {kbd ? <Kbd onNight={false}>{kbd}</Kbd> : null}
       </span>
       <span className="flex flex-col gap-px">
-        <span className={cn("text-[13.5px] font-bold leading-[18px]", dark ? "text-on-night" : "text-foreground")}>{title}</span>
-        <span className={cn("text-xs font-semibold leading-4", dark ? "text-on-night-muted" : "text-ink-3")}>{detail}</span>
+        <span className={cn("text-[13.5px] font-bold leading-[18px]", strong ? "text-on-inverse" : "text-foreground")}>{title}</span>
+        <span className={cn("text-xs font-semibold leading-4", strong ? "text-on-inverse opacity-75" : "text-ink-3")}>{detail}</span>
       </span>
     </Link>
   );
@@ -366,7 +408,7 @@ export function ShortcutsSection({ writable }: { writable: boolean }) {
     <section className="flex flex-col gap-2.5">
       <MonoTitle title="Raccourcis" />
       <div className="grid grid-cols-2 gap-2">
-        <Tile dark href="/sourcing" icon={<Search />} title="Chercher une offre" detail="Chez vos fournisseurs" />
+        <Tile strong href="/sourcing" icon={<Search />} title="Chercher une offre" detail="Chez vos fournisseurs" />
         {writable ? <Tile href="/stock/new" icon={<Plus />} title="Ajouter un produit" detail="Variantes, saisie ou import" kbd="N" /> : <Tile href="/stock" icon={<Package />} title="Voir le stock" detail="Lecture seule" />}
         <Tile href="/sourcing/imports/new" icon={<Upload />} title="Importer un catalogue" detail="CSV, XLSX, XML, JSON" />
         <Tile href="/suppliers" icon={<Library />} title="Fournisseurs" detail="Annuaire et comptes pro" />
@@ -437,13 +479,15 @@ export function RadarSection({ d }: { d: TodayDashboard }) {
 
 export function AdvisorEntry() {
   return (
-    <Link href="/advisor" className="flex items-center gap-3 rounded-2xl bg-night py-3.5 pl-4 pr-3.5 hover:bg-night-raised">
-      <Sparkles aria-hidden="true" className="h-[18px] w-[18px] shrink-0 text-mint" />
-      <span className="flex min-w-0 flex-1 flex-col gap-px">
-        <span className="text-[15px] font-semibold leading-5 text-on-night">Votre conseiller</span>
-        <span className="truncate text-[13px] font-semibold leading-[18px] text-on-night-muted">« Que dois-je racheter cette semaine ? »</span>
+    <Link href="/advisor" className="group flex items-center gap-3 rounded-2xl border border-border bg-surface py-3.5 pl-4 pr-3.5 transition-colors duration-150 ease-standard hover:border-border-strong hover:bg-surface-2">
+      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-inverse text-mint">
+        <Sparkles className="h-[18px] w-[18px]" />
       </span>
-      <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-night">
+      <span className="flex min-w-0 flex-1 flex-col gap-px">
+        <span className="text-[15px] font-bold leading-5 text-foreground">Votre conseiller</span>
+        <span className="truncate text-[13px] font-semibold leading-[18px] text-ink-3">« Que dois-je racheter cette semaine ? »</span>
+      </span>
+      <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-night transition-transform duration-150 ease-standard group-hover:translate-x-0.5">
         <ArrowRight className="h-[18px] w-[18px]" />
       </span>
     </Link>

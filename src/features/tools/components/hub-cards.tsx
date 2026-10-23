@@ -28,9 +28,9 @@ const HIT = "relative after:absolute after:inset-x-0 after:-inset-y-1 after:cont
 
 function HubCard({ glyph, dark, title, desc, href, copy, children, note, footer }: { glyph: string; dark?: boolean; title: string; desc: string; href: string; copy: string | null; children: ReactNode; note?: ReactNode; footer?: ReactNode }) {
   return (
-    <article className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border bg-surface p-4">
+    <article className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-surface p-4 transition-colors duration-150 hover:border-border-strong">
       <div className="flex items-start gap-3">
-        <span aria-hidden="true" className={cn("flex h-[42px] w-[42px] shrink-0 items-center justify-center whitespace-nowrap rounded-xl text-base font-extrabold tracking-[-0.5px]", dark ? "bg-night text-on-night" : "bg-line-soft text-foreground")}>
+        <span aria-hidden="true" className={cn("flex h-[42px] w-[42px] shrink-0 items-center justify-center whitespace-nowrap rounded-xl text-base font-extrabold tracking-[-0.5px]", dark ? "bg-inverse text-on-inverse" : "bg-surface-3 text-foreground")}>
           {glyph}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-px">
@@ -90,7 +90,7 @@ function Chips<T extends string | number>({ label, options, value, onChange }: {
             type="button"
             aria-pressed={on}
             onClick={() => onChange(o.value)}
-            className={cn("h-8 whitespace-nowrap rounded-full border px-3 text-[12.5px] font-bold transition-colors", on ? "border-night bg-night text-on-night" : "border-border-strong bg-surface text-foreground hover:bg-line-soft", HIT, FOCUS)}
+            className={cn("h-8 whitespace-nowrap rounded-full border px-3 text-[12.5px] font-bold transition-colors", on ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2", HIT, FOCUS)}
           >
             {o.label}
           </button>
@@ -107,7 +107,7 @@ function HubInput({ label, value, onChange, suffix, placeholder = "—", inputMo
       <label htmlFor={id} className="text-[12.5px] font-bold leading-[17px]">
         {label}
       </label>
-      <div className={cn("flex h-11 items-center rounded-[10px] border bg-surface pl-3 pr-2.5 focus-within:ring-2 focus-within:ring-ring", error ? "border-danger-line bg-danger-soft" : "border-border")}>
+      <div className={cn("flex h-11 items-center rounded-xl border bg-surface pl-3 pr-2.5 transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/25", error ? "border-danger bg-danger-soft" : "border-border-control hover:border-muted")}>
         <input
           id={id}
           type="text"
@@ -139,13 +139,13 @@ function Lines({ lines, label }: { lines: HubLine[]; label: string }) {
         const total = l.kind === "total";
         const color = l.tone ? TONE_TEXT[l.tone] : total ? "text-foreground" : l.kind === "muted" ? "text-ink-3" : "text-muted";
         return (
-          <div key={`${l.label}-${i}`} className="flex items-center gap-2 border-b border-line-soft py-[9px]">
+          <div key={`${l.label}-${i}`} className={cn("flex items-center gap-2 border-b border-line-soft", total ? "-mx-4 bg-surface-2 px-4 py-3" : "py-[9px]")}>
             <dt className={cn("flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-[13.5px] leading-[19px]", total ? "font-extrabold text-foreground" : l.kind === "muted" ? "font-medium text-ink-3" : "font-medium text-muted")}>
               {l.label}
               {l.kind === "input" ? <span className="rounded-md bg-line-soft px-1.5 py-px text-[10.5px] font-bold leading-[15px] text-muted">saisi</span> : null}
               {l.aside ? <span className={cn("ms-code text-[10.5px]", l.aside.tone === "warning" ? "text-warning" : "text-ink-3")}>{l.aside.text}</span> : null}
             </dt>
-            <dd className={cn("shrink-0 text-right leading-5 tnum", total ? "text-[17px] font-extrabold" : "text-[13.5px] font-semibold", color)}>
+            <dd className={cn("shrink-0 text-right leading-5 tnum", total ? "text-[20px] font-extrabold tracking-[-0.3px]" : "text-[13.5px] font-semibold", color)}>
               {l.approx && l.value !== UNKNOWN ? <span className="mr-1 font-medium opacity-60">≈</span> : null}
               {l.value}
             </dd>

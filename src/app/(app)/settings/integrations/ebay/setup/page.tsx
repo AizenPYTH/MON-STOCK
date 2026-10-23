@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Check } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { Callout, EmptyState } from "@/components/ui/page";
+import { Alert, Callout, EmptyState } from "@/components/ui/page";
 import { MonoLabel, Panel } from "@/components/instrument";
 import { cn } from "@/lib/utils";
 import { ButtonLink } from "@/components/ui/button";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { getSetupState } from "@/features/integrations/queries";
-import { formatRunSummary } from "@/features/integrations/format";
+import { RunSummary } from "@/features/integrations/components/run-status";
 import { SyncNowForm } from "@/features/integrations/components/sync-now-form";
 import { ConnectEbayButton } from "@/features/integrations/components/connect-ebay-button";
 import { SettingsSectionHeader } from "@/features/organizations/components/settings-section-header";
@@ -17,22 +17,22 @@ export const metadata: Metadata = { title: "Configuration de votre catalogue" };
 
 type StepStatus = "done" | "current" | "todo";
 
-/** Pastille d'étape (handoff v5) : faite = nuit + coche menthe, en cours = contour nuit 2 px, à venir = contour clair. */
+/** Pastille d'étape : faite = aplat contrasté + coche, en cours = contour appuyé 2 px, à venir = contour clair. */
 function StepMark({ index, status }: { index: number; status: StepStatus }) {
   if (status === "done")
     return (
-      <span className="absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-night text-mint">
+      <span className="absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-inverse text-on-inverse">
         <Check aria-hidden="true" className="h-4 w-4" strokeWidth={2.6} />
       </span>
     );
-  return <span className={cn("ms-code absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-surface text-[11px]", status === "current" ? "border-2 border-night text-foreground" : "border border-border-strong text-ink-3")}>{index}</span>;
+  return <span className={cn("ms-code absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full bg-surface text-[11px]", status === "current" ? "border-2 border-foreground font-bold text-foreground" : "border border-border-control/50 text-ink-3")}>{index}</span>;
 }
 
 const STEP_STATUS_LABEL: Record<StepStatus, string> = { done: "faite", current: "en cours", todo: "à venir" };
 
 function Step({ index, title, status, children }: { index: number; title: string; status: StepStatus; children: ReactNode }) {
   return (
-    <li className="relative pl-11">
+    <li className="relative pl-11 [&:not(:last-child)]:before:absolute [&:not(:last-child)]:before:bottom-[-22px] [&:not(:last-child)]:before:left-[13.5px] [&:not(:last-child)]:before:top-9 [&:not(:last-child)]:before:w-px [&:not(:last-child)]:before:bg-border-strong" aria-current={status === "current" ? "step" : undefined}>
       <StepMark index={index} status={status} />
       <MonoLabel>
         Étape {index} · {STEP_STATUS_LABEL[status]}
@@ -89,9 +89,9 @@ export default async function EbaySetupPage({ searchParams }: { searchParams: Pr
         description={`Compte eBay ${c.external_username ?? ""} (${c.environment}). Chaque étape reflète l'état réel de vos données : rien n'est simulé et aucune donnée existante n'est supprimée.`}
       />
       {!connectionOk ? (
-        <Callout tone="danger" title="Connexion inactive" action={<ConnectEbayButton label="Reconnecter eBay" variant="secondary" />}>
+        <Alert tone="danger" title="Connexion inactive" action={<ConnectEbayButton label="Reconnecter eBay" variant="secondary" />}>
           {c.last_error ?? "Cette connexion n'est plus valide."}
-        </Callout>
+        </Alert>
       ) : null}
       {!writer ? <Callout tone="neutral">Votre rôle (lecture seule) permet de consulter l'avancement mais pas de lancer les actions.</Callout> : null}
 
@@ -102,11 +102,16 @@ export default async function EbaySetupPage({ searchParams }: { searchParams: Pr
                 {analysed ? (
                   <p>
                     <strong className="tnum">{state.listingsActive}</strong> annonce(s) active(s) importée(s) ({state.listingsTotal} au total, variations comprises).
-                    {state.initialRun ? ` Dernière analyse ${formatRelative(state.initialRun.started_at)} : ${formatRunSummary(state.initialRun)}.` : ""}
                   </p>
                 ) : (
                   <p className="text-ink-3">Lecture de vos annonces actives via GetMyeBaySelling (Trading API). Aucune commande n'est importée à cette étape.</p>
                 )}
+                {analysed && state.initialRun ? (
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+                    <span className="text-ink-3">Dernière analyse {formatRelative(state.initialRun.started_at)} :</span>
+                    <RunSummary run={state.initialRun} />
+                  </p>
+                ) : null}
                 {writer && connectionOk ? <SyncNowForm connectionId={c.id} scope="listings" trigger="initial" label={analysed ? "Relancer l'analyse" : "Analyser mes annonces eBay"} pendingText="Analyse en cours…" variant={analysed ? "secondary" : "primary"} /> : null}
               </Step>
 
@@ -160,7 +165,12 @@ export default async function EbaySetupPage({ searchParams }: { searchParams: Pr
                   <p className="text-ink-3">Import des commandes des 90 derniers jours (Sell Fulfillment API). Les ventes antérieures à la connexion de votre compte sont importées pour l'analyse sans modifier le stock ; les ventes suivantes des annonces associées décrémentent le stock ; les autres restent visibles comme « non associées ». Vous pouvez lancer cette étape avant d'avoir tout validé.</p>
                 )}
                 {writer && connectionOk ? <SyncNowForm connectionId={c.id} scope="full" trigger={ordersImported ? "manual" : "initial"} label={ordersImported ? "Synchroniser maintenant" : "Importer les commandes"} pendingText="Import en cours…" variant={ordersImported ? "secondary" : "primary"} /> : null}
-                {state.lastRun ? <p className="text-xs text-muted">Dernier run : {formatRunSummary(state.lastRun)}</p> : null}
+                {state.lastRun ? (
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+                    <span className="text-ink-3">Dernier passage :</span>
+                    <RunSummary run={state.lastRun} />
+                  </p>
+                ) : null}
               </Step>
             </ol>
         </Panel>
@@ -168,7 +178,7 @@ export default async function EbaySetupPage({ searchParams }: { searchParams: Pr
         <div className="space-y-4">
           <Panel className="space-y-2 p-4 text-sm">
               <MonoLabel>Ce que fait l&apos;assistant</MonoLabel>
-              <ul className="list-disc space-y-1 pl-5 font-semibold text-muted">
+              <ul className="list-disc space-y-1.5 pl-5 font-semibold leading-5 text-muted">
                 <li>Lit vos annonces et commandes via les API officielles eBay.</li>
                 <li>N'applique automatiquement que les correspondances de SKU exactes.</li>
                 <li>Ne supprime jamais vos produits, SKU ou mouvements existants.</li>

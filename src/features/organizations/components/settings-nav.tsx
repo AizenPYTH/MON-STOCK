@@ -2,7 +2,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, Building2, Calculator, CreditCard, Plug, RefreshCw, Users, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Building2, Calculator, CircleUserRound, CreditCard, Plug, RefreshCw, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { activeSettingsSection, SETTINGS_SECTIONS, type SettingsSectionId } from "@/features/organizations/components/settings-sections";
 
@@ -13,6 +13,7 @@ const ICONS: Record<SettingsSectionId, LucideIcon> = {
   sync: RefreshCw,
   "radar-costs": Calculator,
   billing: CreditCard,
+  account: CircleUserRound,
 };
 
 /**

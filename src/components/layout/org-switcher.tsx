@@ -41,7 +41,7 @@ export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed
         aria-haspopup="menu"
         aria-label={`Organisation active : ${current.name}. Changer ou créer une organisation`}
         title={current.name}
-        className={cn("flex min-h-[52px] w-full items-center gap-2.5 rounded-xl border border-night-stroke py-2 text-left hover:bg-night-raised", collapsed ? "justify-center px-1.5" : "px-2.5")}
+        className={cn("flex min-h-[52px] w-full items-center gap-2.5 rounded-xl border border-night-stroke py-2 text-left transition-colors duration-150 ease-standard hover:bg-night-raised", open && "bg-night-raised", collapsed ? "justify-center px-1.5" : "px-2.5")}
       >
         <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-night-raised text-[11.5px] font-extrabold tracking-[.3px] text-on-night">{initials(current.name)}</span>
         {collapsed ? null : (
@@ -60,23 +60,23 @@ export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed
         )}
       </button>
       {open ? (
-        <div role="menu" className="absolute left-0 top-[58px] z-[60] w-[272px] rounded-[14px] border border-border bg-surface p-1.5 shadow-[0_6px_14px_rgba(16,28,44,.10),0_18px_40px_rgba(10,20,32,.18)]">
+        <div role="menu" className="ms-fade absolute left-0 top-[58px] z-[60] w-[272px] max-w-[calc(100vw-24px)] rounded-[14px] border border-border bg-surface p-1.5 text-foreground shadow-floating">
           <div className="ms-mono px-2.5 pb-1.5 pt-2 text-[10px] leading-[13px] text-ink-3">Mes organisations</div>
           {options.map((o) => (
             <form key={o.id} action={switchOrganizationAction}>
               <input type="hidden" name="organization_id" value={o.id} />
-              <button type="submit" role="menuitem" className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left hover:bg-line-soft">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-selection text-[11px] font-extrabold">{initials(o.name)}</span>
-                <span className="flex-1 truncate text-sm font-semibold">{o.name}</span>
+              <button type="submit" role="menuitem" aria-current={o.id === currentId ? "true" : undefined} className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left hover:bg-line-soft">
+                <span aria-hidden="true" className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold", o.id === currentId ? "bg-inverse text-on-inverse" : "bg-selection")}>{initials(o.name)}</span>
+                <span className={cn("flex-1 truncate text-sm", o.id === currentId ? "font-bold" : "font-semibold")}>{o.name}</span>
                 {o.isDemo ? <DemoBadge onNight={false} /> : null}
                 {o.id === currentId ? <Check aria-label="Organisation active" className="h-4 w-4 text-success" /> : null}
               </button>
             </form>
           ))}
-          <div className="my-1 border-t border-border" />
+          <div className="my-1 border-t border-line-soft" />
           {/* prefetch={false} : /onboarding dépend de l'état du compte (voir W-01). */}
           <Link href="/onboarding" prefetch={false} role="menuitem" onClick={() => setOpen(false)} className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left text-sm font-semibold hover:bg-line-soft">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-selection">
+            <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-lg bg-selection">
               <Plus aria-hidden="true" className="h-4 w-4" />
             </span>
             Nouvelle organisation

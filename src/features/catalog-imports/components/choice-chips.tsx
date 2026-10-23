@@ -2,7 +2,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Choix exclusif en puces v5 (sélection nuit) : groupe radio accessible, flèches gauche/droite
+ * Choix exclusif en puces v5 (sélection en aplat contrasté) : groupe radio accessible, flèches gauche/droite
  * pour passer d'une option à l'autre. Cibles de 40 px.
  */
 export function ChoiceChips<T extends string>({ label, options, value, onChange, disabled, className }: { label: string; options: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void; disabled?: boolean; className?: string }) {
@@ -34,8 +34,8 @@ export function ChoiceChips<T extends string>({ label, options, value, onChange,
               }
             }}
             className={cn(
-              "inline-flex min-h-10 items-center whitespace-nowrap rounded-full border px-3.5 text-[13.5px] font-bold transition-colors disabled:opacity-50",
-              selected ? "border-night bg-night text-on-night" : "border-border bg-surface text-foreground hover:bg-line-soft",
+              "inline-flex min-h-10 items-center whitespace-nowrap rounded-full border px-3.5 text-[13.5px] font-bold transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50",
+              selected ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2",
             )}
           >
             {o.label}

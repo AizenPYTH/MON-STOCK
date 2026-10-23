@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type FormEvent, type KeyboardEvent, type ReactNode, type SetStateAction } from "react";
 import Link from "next/link";
-import { ArrowUp, AudioLines, Database, History, MessageSquarePlus, Mic, Square, Volume2, VolumeX } from "lucide-react";
+import { ArrowUp, AudioLines, Database, History, MessageSquarePlus, Mic, Sparkles, Square, TriangleAlert, Volume2, VolumeX } from "lucide-react";
 import type { AdvisorActionDTO, AdvisorStreamEvent } from "@/features/mobile-api/contract";
 import { ADVISOR_MESSAGE_MAX_CHARS } from "@/features/mobile-api/contract";
 import { cn } from "@/lib/utils";
@@ -346,7 +346,7 @@ export function AdvisorChat({
           onClick={() => setPrefs({ conversation: !prefs.conversation })}
           aria-pressed={prefs.conversation}
           title="Après une question dictée : la réponse est lue pendant que le micro écoute — parlez pour couper la parole au conseiller — puis l'écoute reprend"
-          className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-bold", prefs.conversation ? "border-foreground bg-foreground text-on-night" : "border-border bg-surface hover:bg-line-soft", FOCUS)}
+          className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-bold", prefs.conversation ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2", FOCUS)}
         >
           <AudioLines aria-hidden="true" className="h-3.5 w-3.5" />
           Conversation
@@ -357,7 +357,7 @@ export function AdvisorChat({
         onClick={() => setPrefs({ autoRead: !prefs.autoRead })}
         aria-pressed={prefs.autoRead}
         title="Lire à voix haute toutes les réponses (les questions dictées sont toujours lues)"
-        className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-bold", prefs.autoRead ? "border-foreground bg-foreground text-on-night" : "border-border bg-surface hover:bg-line-soft", FOCUS)}
+        className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-bold", prefs.autoRead ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2", FOCUS)}
       >
         {prefs.autoRead ? <Volume2 aria-hidden="true" className="h-3.5 w-3.5" /> : <VolumeX aria-hidden="true" className="h-3.5 w-3.5" />}
         Lire les réponses
@@ -369,7 +369,7 @@ export function AdvisorChat({
         id={`advisor-voice-${variant}`}
         value={prefs.voice}
         onChange={(e) => setPrefs({ voice: e.target.value === "cedar" ? "cedar" : "marin" })}
-        className={cn("min-h-9 rounded-full border border-border bg-surface px-3 text-[12.5px] font-bold", FOCUS)}
+        className={cn("min-h-9 cursor-pointer rounded-full border border-border-strong bg-surface px-3 text-[12.5px] font-bold text-foreground hover:bg-surface-2", FOCUS)}
       >
         {VOICE_CHOICES.map((v) => (
           <option key={v.id} value={v.id}>
@@ -392,16 +392,16 @@ export function AdvisorChat({
                 onClick={toggleMic}
                 disabled={busy || disabled}
                 aria-label={listening ? "Arrêter l'écoute et envoyer" : "Parler au conseiller"}
-                className={cn("relative flex h-28 w-28 items-center justify-center rounded-full text-night transition-transform active:scale-95 disabled:opacity-50", listening ? "bg-danger text-on-night" : "bg-mint hover:bg-mint-pressed", FOCUS)}
+                className={cn("relative flex h-28 w-28 items-center justify-center rounded-full transition-[transform,background-color] duration-150 active:scale-95 disabled:opacity-50", listening ? "bg-danger-strong text-on-danger-strong ring-[12px] ring-danger-soft" : "bg-mint text-night ring-[12px] ring-mint/15 hover:bg-mint-pressed", FOCUS)}
               >
-                {listening ? <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full bg-danger/30 motion-reduce:animate-none" /> : null}
+                {listening ? <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full bg-danger-strong/30 motion-reduce:animate-none" /> : null}
                 {listening ? <Square aria-hidden="true" className="relative h-8 w-8 fill-current" /> : <Mic aria-hidden="true" className="h-11 w-11" />}
               </button>
-              <p className="text-lg font-bold">{listening ? "J'écoute… parlez maintenant" : "Touchez le micro et posez votre question"}</p>
+              <p className="mt-2 text-lg font-bold text-foreground">{listening ? "J'écoute… parlez maintenant" : "Touchez le micro et posez votre question"}</p>
               {listening && dictation.transcript ? <p className="max-w-[560px] text-[15px] font-semibold text-muted">« {dictation.transcript} »</p> : null}
             </>
           ) : (
-            <p className="text-lg font-bold">Posez votre question</p>
+            <p className="text-lg font-bold text-foreground">Posez votre question</p>
           )}
           <p className="max-w-[520px] text-[13.5px] font-semibold leading-[19px] text-ink-3">Le conseiller consulte les ventes, marges, stock, commandes et le compte eBay de {organizationName}, puis vous répond {canDictate ? "à l'écrit et à voix haute" : "à l'écrit"}.</p>
           {recent.length > 0 ? (
@@ -410,7 +410,7 @@ export function AdvisorChat({
               <ul className="flex flex-wrap justify-center gap-1.5">
                 {recent.map((h) => (
                   <li key={h.id}>
-                    <Link href={`/advisor?conversation=${h.id}` as never} className={cn("inline-flex min-h-8 max-w-[260px] items-center rounded-full border border-border bg-surface px-3 text-[12.5px] font-semibold hover:bg-line-soft", FOCUS)}>
+                    <Link href={`/advisor?conversation=${h.id}` as never} className={cn("inline-flex min-h-8 max-w-[260px] items-center rounded-full border border-border bg-surface px-3 text-[12.5px] font-semibold text-foreground hover:border-border-strong hover:bg-surface-2 pointer-coarse:min-h-10", FOCUS)}>
                       <span className="truncate">{h.title}</span>
                     </Link>
                   </li>
@@ -447,7 +447,7 @@ export function AdvisorChat({
                   void send(s);
                 }}
                 disabled={busy || disabled}
-                className={cn("relative min-h-8 rounded-full border border-border bg-surface px-3 py-1 text-left text-[12.5px] font-bold leading-[17px] hover:bg-line-soft disabled:opacity-50", "after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']", FOCUS)}
+                className={cn("relative min-h-8 rounded-full border border-border bg-surface px-3 py-1 text-left text-[12.5px] font-bold leading-[17px] text-foreground transition-colors duration-150 hover:border-border-strong hover:bg-surface-2 disabled:opacity-50", "after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']", FOCUS)}
               >
                 {s}
               </button>
@@ -461,12 +461,12 @@ export function AdvisorChat({
         </p>
       ) : null}
       {conversing ? (
-        <div role="status" className="flex items-center gap-3 rounded-2xl bg-night px-4 py-2.5 text-on-night">
-          <span aria-hidden="true" className={cn("h-2.5 w-2.5 shrink-0 rounded-full", speaker.speakingKey ? "ms-pulse bg-mint" : listening ? "animate-pulse bg-danger-on-night" : "ms-pulse bg-on-night-muted")} />
+        <div role="status" className="ms-fade flex items-center gap-3 rounded-2xl bg-inverse px-4 py-2.5 text-on-inverse shadow-raised">
+          <span aria-hidden="true" className={cn("h-2.5 w-2.5 shrink-0 rounded-full", speaker.speakingKey ? "ms-pulse bg-mint" : listening ? "animate-pulse bg-red motion-reduce:animate-none" : "ms-pulse bg-ink-4")} />
           <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">
             {speaker.speakingKey ? "Le conseiller parle — parlez pour l'interrompre" : listening ? (dictation.transcript ? `« ${dictation.transcript} »` : "J'écoute…") : busy ? "Le conseiller réfléchit…" : "Conversation en pause"}
           </span>
-          <button type="button" onClick={endConversation} className={cn("min-h-8 shrink-0 rounded-full border border-night-stroke px-3 text-[12.5px] font-bold hover:bg-night-raised", FOCUS)}>
+          <button type="button" onClick={endConversation} className={cn("min-h-8 shrink-0 rounded-full border border-current/30 px-3 text-[12.5px] font-bold hover:bg-inverse-hover pointer-coarse:min-h-10", FOCUS)}>
             Terminer
           </button>
         </div>
@@ -476,7 +476,7 @@ export function AdvisorChat({
           {dictation.error}
         </p>
       ) : null}
-      <div className={cn("flex items-end gap-2 rounded-2xl border bg-surface py-2 pl-3.5 pr-2 focus-within:ring-2 focus-within:ring-ring", listening ? "border-danger" : "border-border-strong")}>
+      <div className={cn("flex items-end gap-2 rounded-2xl border bg-surface py-2 pl-3.5 pr-2 shadow-raised transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/25", listening ? "border-danger" : "border-border-control")}>
         <label htmlFor={`advisor-input-${variant}`} className="sr-only">
           Votre question
         </label>
@@ -499,17 +499,17 @@ export function AdvisorChat({
             onClick={toggleMic}
             disabled={disabled}
             aria-label={speaker.speakingKey ? "Couper la parole au conseiller" : listening ? "Arrêter l'écoute et envoyer" : "Parler au conseiller"}
-            className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl disabled:opacity-50", listening ? "bg-danger text-on-night" : "bg-line-soft text-foreground hover:bg-border", FOCUS)}
+            className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl disabled:opacity-50", listening ? "bg-danger-strong text-on-danger-strong" : "bg-surface-3 text-foreground hover:bg-selection", FOCUS)}
           >
             {listening ? <Square aria-hidden="true" className="h-3.5 w-3.5 fill-current" /> : <Mic aria-hidden="true" className="h-[18px] w-[18px]" />}
           </button>
         ) : null}
         {busy ? (
-          <button type="submit" aria-label="Arrêter la réponse" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-night text-on-night hover:bg-night-raised", FOCUS)}>
+          <button type="submit" aria-label="Arrêter la réponse" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-inverse text-on-inverse hover:bg-inverse-hover", FOCUS)}>
             <Square aria-hidden="true" className="h-3.5 w-3.5 fill-current" />
           </button>
         ) : (
-          <button type="submit" disabled={!text.trim() || disabled || listening} aria-label="Envoyer la question" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-night hover:bg-mint-pressed disabled:bg-line-soft disabled:text-ink-4", FOCUS)}>
+          <button type="submit" disabled={!text.trim() || disabled || listening} aria-label="Envoyer la question" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint text-night hover:bg-mint-pressed disabled:bg-surface-3 disabled:text-ink-4", FOCUS)}>
             <ArrowUp aria-hidden="true" className="h-[18px] w-[18px]" />
           </button>
         )}
@@ -541,11 +541,11 @@ export function AdvisorChat({
     <section aria-label="Conversation" className="mx-auto flex w-full max-w-[780px] flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={newConversation} className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-strong bg-surface px-3 text-[12.5px] font-extrabold hover:bg-line-soft", FOCUS)}>
+          <button type="button" onClick={newConversation} className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border-strong bg-surface px-3 text-[12.5px] font-extrabold text-foreground hover:bg-surface-2 pointer-coarse:min-h-10", FOCUS)}>
             <MessageSquarePlus aria-hidden="true" className="h-3.5 w-3.5" />
             Nouvelle conversation
           </button>
-          <Link href="/advisor/history" className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold hover:bg-line-soft", FOCUS)}>
+          <Link href="/advisor/history" className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-bold text-muted-strong hover:bg-surface-3 hover:text-foreground pointer-coarse:min-h-10", FOCUS)}>
             <History aria-hidden="true" className="h-3.5 w-3.5" />
             Historique
           </Link>
@@ -563,15 +563,19 @@ export function AdvisorChat({
 
 function MessageView({ item, statusDetail, speaking, onSpeak, children }: { item: ChatItem; statusDetail: string | null; speaking: boolean; onSpeak: () => void; children: ReactNode }) {
   if (item.role === "notice") {
-    return <p className={cn("max-w-[92%] self-center rounded-xl px-3 py-2 text-center text-[13px] font-semibold leading-[18px]", item.error ? "bg-danger-soft text-danger" : "bg-line-soft text-muted")}>{item.content}</p>;
+    return <p className={cn("max-w-[92%] self-center rounded-xl px-3 py-2 text-center text-[13px] font-semibold leading-[18px]", item.error ? "border border-danger-line bg-danger-soft text-danger-ink" : "bg-surface-3 text-muted")}>{item.content}</p>;
   }
   if (item.role === "user") {
-    return <div className="ms-fade max-w-[80%] self-end whitespace-pre-wrap break-words rounded-2xl bg-foreground px-3.5 py-3 text-[15px] font-semibold leading-[21px] text-on-night">{item.content}</div>;
+    return <div className="ms-fade max-w-[80%] self-end whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-inverse px-4 py-3 text-[15px] font-semibold leading-[21px] text-on-inverse">{item.content}</div>;
   }
   if (item.streaming && !item.content) {
     return (
-      <div role="status" className="flex items-center gap-2.5 self-start rounded-2xl bg-line-soft px-3 py-2.5 text-sm font-semibold text-muted">
-        <span aria-hidden="true" className="ms-pulse h-2 w-2 shrink-0 rounded-full bg-foreground" />
+      <div role="status" className="ms-fade flex items-center gap-2.5 self-start rounded-2xl rounded-tl-md border border-border bg-surface px-4 py-3 text-sm font-semibold text-muted">
+        <span aria-hidden="true" className="flex shrink-0 gap-1">
+          <span className="ms-pulse h-1.5 w-1.5 rounded-full bg-foreground" />
+          <span className="ms-pulse h-1.5 w-1.5 rounded-full bg-foreground [animation-delay:200ms]" />
+          <span className="ms-pulse h-1.5 w-1.5 rounded-full bg-foreground [animation-delay:400ms]" />
+        </span>
         <span className="min-w-0">
           Le conseiller analyse vos données…
           {statusDetail ? <span className="block truncate text-xs font-semibold text-ink-3">{statusDetail}</span> : null}
@@ -581,14 +585,17 @@ function MessageView({ item, statusDetail, speaking, onSpeak, children }: { item
   }
   return (
     <>
-      <div className="flex max-w-[88%] flex-col gap-1 self-start">
-        <div className={cn("whitespace-pre-wrap break-words rounded-2xl border px-3.5 py-3 text-[15px] font-medium leading-[21px]", item.error ? "border-danger-line bg-danger-soft text-danger" : "border-border bg-surface text-foreground")}>
+      <div className="ms-fade flex max-w-[88%] flex-col gap-1 self-start">
+        <span aria-hidden="true" className="ms-mono flex items-center gap-1.5 px-1 text-[10px] leading-[13px] text-ink-3">
+          <Sparkles className="h-3 w-3 text-success" /> Conseiller
+        </span>
+        <div className={cn("whitespace-pre-wrap break-words rounded-2xl rounded-tl-md border px-4 py-3 text-[15px] font-medium leading-[22px]", item.error ? "border-danger-line bg-danger-soft text-danger-ink" : "border-border bg-surface text-foreground")}>
           {item.content}
           {item.streaming ? <span aria-hidden="true" className="ms-pulse ml-0.5 text-ink-3">▍</span> : null}
         </div>
-        {item.interrupted ? <span className="self-start rounded-md bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning">Réponse incomplète</span> : null}
+        {item.interrupted ? <span className="inline-flex items-center gap-1 self-start rounded-md bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning-ink ring-1 ring-inset ring-warning-line"><TriangleAlert aria-hidden="true" className="h-3 w-3" /> Réponse incomplète</span> : null}
         {!item.streaming && !item.error && item.content ? (
-          <button type="button" onClick={onSpeak} aria-pressed={speaking} className={cn("inline-flex min-h-8 items-center gap-1.5 self-start rounded-full px-2 text-[12.5px] font-bold text-ink-3 hover:bg-line-soft hover:text-foreground", speaking && "text-foreground", FOCUS)}>
+          <button type="button" onClick={onSpeak} aria-pressed={speaking} className={cn("inline-flex min-h-8 items-center gap-1.5 self-start rounded-full px-2.5 text-[12.5px] font-bold text-muted hover:bg-surface-3 hover:text-foreground pointer-coarse:min-h-10", speaking && "bg-surface-3 text-foreground", FOCUS)}>
             {speaking ? <Square aria-hidden="true" className="h-3 w-3 fill-current" /> : <Volume2 aria-hidden="true" className="h-3.5 w-3.5" />}
             {speaking ? "Arrêter la lecture" : "Écouter"}
           </button>
@@ -607,7 +614,7 @@ function MessageView({ item, statusDetail, speaking, onSpeak, children }: { item
 
 export function AdvisorNotConfigured() {
   return (
-    <div role="status" className="self-stretch rounded-2xl border border-[#f1dcb8] bg-warning-soft px-4 py-3 text-[13.5px] font-semibold leading-[19px] text-warning">
+    <div role="status" className="self-stretch rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-[13.5px] font-semibold leading-[19px] text-warning-ink">
       <p className="font-bold">Le conseiller n&apos;est pas encore activé sur le serveur.</p>
       <p className="mt-0.5">La clé OPENAI_API_KEY doit être ajoutée par l&apos;administrateur dans les secrets du serveur MON STOCK.</p>
     </div>

@@ -55,11 +55,11 @@ export function AssignSkuDialog({ listingId, listingTitle, externalSku, label = 
             {listingTitle}
           </p>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher par nom, code SKU ou code-barres…" aria-label="Rechercher un SKU" className="pl-8" autoFocus />
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-ink-3" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher par nom, code SKU ou code-barres…" aria-label="Rechercher un SKU" className="pl-9" autoFocus />
           </div>
           {searchError ? <FormError message={searchError} /> : null}
-          <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
+          <div className="max-h-64 overflow-y-auto rounded-xl border border-border bg-surface" aria-busy={pending || undefined}>
             {pending && results.length === 0 ? <p className="px-3 py-3 text-sm text-muted">Recherche…</p> : null}
             {!pending && results.length === 0 ? <p className="px-3 py-3 text-sm text-muted">Aucun SKU trouvé. Vous pouvez créer un SKU depuis cette annonce.</p> : null}
             {results.map((r) => (
@@ -67,15 +67,16 @@ export function AssignSkuDialog({ listingId, listingTitle, externalSku, label = 
                 key={r.sku_id}
                 type="button"
                 onClick={() => setSelected(r)}
-                className={`flex w-full items-center justify-between gap-3 border-b border-border px-3 py-2 text-left text-sm last:border-b-0 hover:bg-surface-muted ${selected?.sku_id === r.sku_id ? "bg-accent-soft" : ""}`}
+                aria-pressed={selected?.sku_id === r.sku_id}
+                className={`flex min-h-12 w-full items-center justify-between gap-3 border-b border-line-soft px-3 py-2 text-left text-sm transition-colors last:border-b-0 hover:bg-surface-2 focus-visible:-outline-offset-2 ${selected?.sku_id === r.sku_id ? "bg-selection shadow-[inset_3px_0_0_var(--inverse)]" : ""}`}
               >
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">
+                  <span className="block truncate font-semibold text-foreground">
                     {r.brand ? `${r.brand} · ` : ""}
                     {r.product_name}
                     {r.variant_name ? ` — ${r.variant_name}` : ""}
                   </span>
-                  <span className="font-mono text-xs text-muted">{r.code}</span>
+                  <span className="ms-code text-xs text-muted">{r.code}</span>
                 </span>
                 <span className="shrink-0 text-xs text-muted tnum">Stock {formatNumber(r.quantity_available)}</span>
               </button>
@@ -85,8 +86,8 @@ export function AssignSkuDialog({ listingId, listingTitle, externalSku, label = 
             <input type="hidden" name="listing_id" value={listingId} />
             <input type="hidden" name="sku_id" value={selected?.sku_id ?? ""} />
             {state && !state.ok ? <FormError message={state.error} action={state.action} /> : null}
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted">{selected ? `SKU sélectionné : ${selected.code}` : "Sélectionnez un SKU dans la liste."}</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line-soft pt-3">
+              <span className="text-xs font-semibold text-muted">{selected ? `SKU sélectionné : ${selected.code}` : "Sélectionnez un SKU dans la liste."}</span>
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={() => setOpen(false)}>
                   Annuler

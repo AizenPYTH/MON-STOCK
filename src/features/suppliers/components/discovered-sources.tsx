@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { activationCheck, PLATFORM_LABEL, PRICE_VISIBILITY_LABEL, ROBOTS_STATUS_LABEL, SUPPLIER_TYPE_LABEL } from "@/features/suppliers/discovered";
 import type { PendingDiscoveredSource } from "@/features/suppliers/discovered-queries";
 import { DiscoveredSourceActions } from "@/features/suppliers/components/discovered-source-actions";
@@ -17,7 +17,7 @@ export function DiscoveredSourcesPanel({ sources, writable, showSupplier = true,
   return (
     <Card id={id}>
       <CardHeader title={`Découvertes — à valider (${sources.length})`} description="Sources trouvées automatiquement par la découverte. Ni vérifiées ni connectées : aucune n'est interrogée avant votre validation explicite." />
-      <CardContent className="p-0">
+      <div>
         {sources.length === 0 ? (
           <p className="px-5 py-4 text-sm text-muted">Aucune source découverte en attente de validation.</p>
         ) : (
@@ -72,7 +72,7 @@ export function DiscoveredSourcesPanel({ sources, writable, showSupplier = true,
             })}
           </ul>
         )}
-      </CardContent>
+      </div>
     </Card>
   );
 }

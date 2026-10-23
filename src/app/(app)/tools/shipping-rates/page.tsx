@@ -41,10 +41,9 @@ export default async function RateCardsPage() {
         <EmptyState icon={<Truck aria-hidden="true" className="h-7 w-7" />} title="Aucune grille" description="Saisissez les tarifs de vos transporteurs (contrat ou grille publique) : MON STOCK n'en fournit aucun." action={writer ? <ButtonLink href="/tools/shipping-rates/new" variant="secondary">Ajouter une grille</ButtonLink> : undefined} />
       ) : (
         <Card className="overflow-hidden">
-          <Table>
-            <caption className="sr-only">Grilles tarifaires de l'organisation</caption>
+          <Table stackOnMobile caption="Grilles tarifaires de l'organisation">
             <THead>
-              <TR>
+              <tr>
                 <TH scope="col">Transporteur · service</TH>
                 <TH scope="col">Tranches</TH>
                 <TH scope="col" align="right">
@@ -53,7 +52,7 @@ export default async function RateCardsPage() {
                 <TH scope="col">Trajet</TH>
                 <TH scope="col">Délai · suivi</TH>
                 <TH scope="col">Vérifiée le</TH>
-              </TR>
+              </tr>
             </THead>
             <TBody>
               {cards.map((c) => {
@@ -61,25 +60,25 @@ export default async function RateCardsPage() {
                 const p = first ? parseDecimal(first.price) : null;
                 return (
                   <TR key={c.id}>
-                    <TD>
-                      <Link href={`/tools/shipping-rates/${c.id}` as never} className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <TD primary>
+                      <Link href={`/tools/shipping-rates/${c.id}` as never} className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                         {c.carrier}
                         {c.service ? ` · ${c.service}` : ""}
                       </Link>
                     </TD>
-                    <TD>
+                    <TD label="Tranches">
                       {c.bands.length} tranche{c.bands.length > 1 ? "s" : ""}
                       <div className="text-xs text-muted">{c.bands.map((b) => `≤ ${toFrInput(b.maxWeightKg)} kg`).join(" · ")}</div>
                     </TD>
-                    <TD align="right">{p?.ok ? formatMoneyDec(p.value, c.currency) : "—"}</TD>
-                    <TD>
+                    <TD label="Dès" align="right" className="font-semibold text-foreground">{p?.ok ? formatMoneyDec(p.value, c.currency) : "—"}</TD>
+                    <TD label="Trajet">
                       {c.fromCountries.length ? c.fromCountries.join(", ") : "tous départs"} → {c.toCountries.length ? c.toCountries.join(", ") : "toutes destinations"}
                     </TD>
-                    <TD>
+                    <TD label="Délai · suivi">
                       {transitText(c)}
                       <div className="text-xs text-muted">{trackingText(c.tracking)}</div>
                     </TD>
-                    <TD>{frDate(c.verifiedAt) ?? <span className="text-muted">Date inconnue</span>}</TD>
+                    <TD label="Vérifiée le" className="tnum">{frDate(c.verifiedAt) ?? <span className="text-muted">Date inconnue</span>}</TD>
                   </TR>
                 );
               })}

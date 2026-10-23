@@ -13,10 +13,10 @@ import { ACTION_STATUS, CARD_TONE_CLASS, displayedActionStatus, formatActionAmou
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1";
 
 const STATUS_PILL = {
-  accent: "bg-warning-soft text-warning",
+  accent: "bg-warning-soft text-warning-ink",
   neutral: "bg-line-soft text-muted",
-  success: "bg-success-soft text-success",
-  danger: "bg-danger-soft text-danger",
+  success: "bg-success-soft text-success-ink",
+  danger: "bg-danger-soft text-danger-ink",
 } as const;
 
 function CopyDraft({ text }: { text: string }) {
@@ -65,7 +65,7 @@ export function AdvisorCardView({
     <section className="ms-fade flex w-full max-w-[560px] flex-col gap-2 self-stretch rounded-2xl border border-border bg-surface p-4" aria-label={`${card.title}${card.subtitle ? `, ${card.subtitle}` : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h3 className="text-xs font-bold leading-4 tracking-[0.4px] text-ink-3">{card.title}</h3>
+          <h3 className="ms-mono text-[10.5px] leading-[14px] text-ink-3">{card.title}</h3>
           {card.subtitle ? <p className="text-[13px] font-semibold text-ink-3">{card.subtitle}</p> : null}
         </div>
         {card.kind === "draft" && card.text ? <CopyDraft text={card.text} /> : null}
@@ -133,7 +133,7 @@ function ActionCard({
   return (
     <section className={cn("ms-fade flex w-full max-w-[560px] flex-col gap-3 self-stretch rounded-2xl border-2 bg-surface p-4", pending ? "border-amber" : "border-border")} aria-label={`${title}. ${action.summary}. ${st.label}`}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-bold leading-4 tracking-[0.4px] text-ink-3">{title}</h3>
+        <h3 className="ms-mono text-[10.5px] leading-[14px] text-ink-3">{title}</h3>
         <span className={cn("shrink-0 rounded-md px-2 py-[3px] text-[11px] font-bold", STATUS_PILL[st.tone])}>{st.label}</span>
       </div>
       <p className="text-[15px] font-semibold leading-[21px] text-foreground">{action.summary}</p>
@@ -146,7 +146,7 @@ function ActionCard({
           </p>
           {!canConfirm ? <p className="text-[13px] font-semibold text-warning">Votre rôle (lecture seule) ne permet pas de confirmer cette action.</p> : null}
           <div className="flex gap-2">
-            <button type="button" onClick={() => onCancel(action)} disabled={disabled} className={cn("min-h-10 flex-1 rounded-[10px] border border-border-strong bg-surface text-sm font-extrabold hover:bg-line-soft disabled:opacity-50", FOCUS)}>
+            <button type="button" onClick={() => onCancel(action)} disabled={disabled} className={cn("min-h-10 flex-1 rounded-[10px] border border-border-strong bg-surface text-sm font-extrabold text-foreground hover:bg-surface-2 disabled:opacity-50", FOCUS)}>
               Annuler
             </button>
             <button

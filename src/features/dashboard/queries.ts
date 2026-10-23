@@ -73,6 +73,8 @@ export interface TodayDashboard {
   otherCurrencies: ForeignCurrencyTotal[];
   marginToday: number | null;
   toShip: number | null;
+  /** ventes rattachées à un SKU mais pas encore déduites du stock (compteur opérationnel existant) */
+  pendingSales: number;
   stock: {
     skus: number;
     units: number;
@@ -267,6 +269,7 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
     otherCurrencies: windows.otherCurrencies,
     marginToday,
     toShip: toShipRes.error ? null : (toShipRes.count ?? 0),
+    pendingSales: counts.pendingSales,
     stock: {
       skus: stock.totals.skus,
       units: stock.totals.unitsOnHand,

@@ -97,7 +97,7 @@ export function AdvisorPanel({ onClose }: { onClose: () => void }) {
       ref={panelRef}
       role="dialog"
       aria-labelledby="advisor-panel-title"
-      className="ms-slide fixed inset-y-0 right-0 z-[85] flex w-[460px] max-w-full flex-col bg-background shadow-[-12px_0_40px_rgba(10,20,32,.25)]"
+      className="ms-slide fixed inset-y-0 right-0 z-[85] flex w-[460px] max-w-full flex-col bg-background shadow-modal"
     >
       {data ? (
         <AdvisorUsageProvider initialUsed={data.usedThisHour} limit={data.perUserPerHour}>

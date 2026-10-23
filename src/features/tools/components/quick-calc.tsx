@@ -51,7 +51,7 @@ export function QuickCalc({
   return (
     <Card className="space-y-4 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        {tabs ? <ChoiceChips label={tabs.label} size="lg" options={tabs.options.map((o) => ({ value: o.value, label: o.label, a11y: o.a11y }))} value={tabs.value} onChange={tabs.onChange} /> : <span />}
+        {tabs ? <ChoiceChips label={tabs.label} size="lg" options={tabs.options.map((o) => ({ value: o.value, label: o.label, a11y: o.a11y }))} value={tabs.value} onChange={tabs.onChange} /> : <p className="ms-mono self-center text-[11px] leading-[14px] tracking-[0.08em] text-muted">{title}</p>}
         <div className="flex items-center gap-2">
           {aside}
           <CopyButton text={quickCopyText(title, fields, view)} disabled={!view.anyResult} />
@@ -63,7 +63,7 @@ export function QuickCalc({
           if (f.result) {
             const v = view.valueOf(f.key);
             return (
-              <div key={f.key} className="rounded-xl bg-night px-4 py-3 text-on-night">
+              <div key={f.key} className="rounded-xl bg-night px-4 py-3 text-on-night ring-1 ring-inset ring-night-line">
                 <div id={`${id}-label`} className="ms-mono text-[10px] leading-[13px] text-on-night-subtle">
                   {f.label}
                 </div>
@@ -79,7 +79,7 @@ export function QuickCalc({
           const v = view.valueOf(f.key);
           const value = !bidir || on ? (state.entries[f.key] ?? "") : v ? fmtQuick(v) : "";
           return (
-            <div key={f.key} className={cn("rounded-xl border px-4 py-3 focus-within:ring-2 focus-within:ring-ring", on && bidir ? "border-night ring-1 ring-night" : "border-border")}>
+            <div key={f.key} className={cn("rounded-xl border bg-surface px-4 py-3 transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/25", on && bidir ? "border-inverse ring-1 ring-inverse" : "border-border-control hover:border-muted")}>
               <label htmlFor={id} className="ms-mono block text-[10px] leading-[13px] text-ink-3">
                 {f.label}
                 {on && bidir ? <span className="sr-only"> (saisie)</span> : null}

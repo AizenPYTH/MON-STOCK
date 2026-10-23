@@ -17,7 +17,7 @@ export function LegalPage({ title, intro, children }: { title: string; intro?: R
       </section>
       <div className="-mt-6 rounded-t-3xl bg-background">
         <div className="mx-auto w-full max-w-[880px] px-4 pb-16 pt-8 sm:px-6 lg:px-12">
-          <article className="legal space-y-8 rounded-3xl border border-border bg-surface p-5 text-[15px] font-medium leading-7 text-muted-strong sm:p-8">{children}</article>
+          <article className="legal max-w-none space-y-9 rounded-3xl border border-border bg-surface p-5 text-[15px] font-medium leading-7 text-muted-strong sm:p-10 [&_a]:underline-offset-4 [&_strong]:font-bold [&_strong]:text-foreground">{children}</article>
         </div>
       </div>
     </>
@@ -26,8 +26,8 @@ export function LegalPage({ title, intro, children }: { title: string; intro?: R
 
 export function LegalSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-extrabold tracking-[-0.2px] text-foreground">{title}</h2>
+    <section className="space-y-3 [&+&]:border-t [&+&]:border-line-soft [&+&]:pt-8">
+      <h2 className="text-[19px] font-extrabold leading-[26px] tracking-[-0.3px] text-foreground">{title}</h2>
       {children}
     </section>
   );
@@ -35,12 +35,12 @@ export function LegalSection({ title, children }: { title: string; children: Rea
 
 /** Valeur fournie par l'éditeur, ou mention visible « à compléter » (jamais inventée). */
 export function Fact({ value }: { value: string | null }) {
-  return value ? <>{value}</> : <span className="rounded-md bg-warning-soft px-1.5 py-0.5 font-semibold text-warning">{TO_COMPLETE}</span>;
+  return value ? <>{value}</> : <span className="whitespace-nowrap rounded-md bg-warning-soft px-1.5 py-0.5 text-[0.92em] font-semibold text-warning-ink ring-1 ring-inset ring-warning-line">{TO_COMPLETE}</span>;
 }
 
 export function ContactLine() {
   return LEGAL.contactEmail ? (
-    <a className="font-bold text-foreground underline underline-offset-2" href={`mailto:${LEGAL.contactEmail}`}>
+    <a className="font-bold text-interactive underline underline-offset-4 hover:text-interactive-hover" href={`mailto:${LEGAL.contactEmail}`}>
       {LEGAL.contactEmail}
     </a>
   ) : (

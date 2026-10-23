@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ChevronRight, ClipboardList, ExternalLink, ScanSearch, Store } from "lucide-react";
+import { ChevronRight, CircleCheck, CircleX, ClipboardList, ExternalLink, ScanSearch, Store, TriangleAlert } from "lucide-react";
+import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { MonoTitle, Panel } from "@/components/instrument";
 import { initials } from "@/components/instrument/pure";
 import { computeMargin, UNKNOWN_COST_LABEL } from "@/domain/pricing/margin";
@@ -18,11 +19,17 @@ function ageInDays(iso: string): number {
   return (Date.now() - new Date(iso).getTime()) / DAY;
 }
 
-/** Puce de niveau posée sur la scène nuit. */
+/** Puce de niveau posée sur la scène nuit : icône + texte (jamais la couleur seule). */
 export function NightLevelChip({ level }: { level: SkuDetail["view"]["classification"]["level"] }) {
   const d = levelDisplay(level);
-  const cls = d.tone === "out" ? "bg-[rgba(242,163,163,.16)] text-danger-on-night" : d.tone === "low" ? "bg-[rgba(229,163,77,.16)] text-amber" : "bg-[rgba(139,232,190,.14)] text-mint";
-  return <span className={cn("shrink-0 whitespace-nowrap rounded-md px-2 py-[3px] text-[11px] font-bold leading-[14px]", cls)}>{d.label === "Risque" ? "Risque de rupture" : d.label}</span>;
+  const cls = d.tone === "out" ? "bg-danger-on-night/16 text-danger-on-night" : d.tone === "low" ? "bg-amber/16 text-amber" : "bg-mint/14 text-mint";
+  const Icon = d.tone === "out" ? CircleX : d.tone === "low" ? TriangleAlert : CircleCheck;
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-[3px] text-[11.5px] font-bold leading-[14px] tracking-normal", cls)}>
+      <Icon aria-hidden="true" className="h-3 w-3" strokeWidth={2.25} />
+      {d.label === "Risque" ? "Risque de rupture" : d.label}
+    </span>
+  );
 }
 
 /** Relevés de la scène de fiche : vendus 30 j, couverture, en commande, seuil d'alerte. */
@@ -40,7 +47,7 @@ export function skuStageStats(detail: SkuDetail) {
 function Tile({ label, value, reason, unknown, tone }: { label: string; value: string; reason: string; unknown?: boolean; tone?: "success" | "danger" }) {
   return (
     <div className={cn("flex min-h-[88px] min-w-0 flex-col justify-between gap-1 rounded-2xl bg-surface p-3 sm:p-3.5", unknown ? "border-[1.5px] border-dashed border-amber" : "border border-border")}>
-      <span className="text-xs font-bold leading-4 tracking-[0.03em] text-ink-3">{label}</span>
+      <span className="ms-mono text-[10.5px] leading-[14px] text-ink-3">{label}</span>
       <span className={cn("truncate text-[19px] font-extrabold leading-7 tracking-[-0.5px] tnum sm:text-[22px]", unknown ? "text-ink-3" : tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-foreground")}>{value}</span>
       <span className={cn("text-xs font-bold leading-4", unknown ? "text-warning" : tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-ink-3")}>{reason}</span>
     </div>
@@ -158,7 +165,7 @@ function OfferBody({ best, supplier, writable, recommendation, marginCtx, row }:
       <div className="flex flex-wrap items-center gap-2">
         {m && m.netProfit !== null ? (
           <>
-            <span className={cn("rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-[14px]", m.netProfit > 0 ? "bg-success-soft text-success" : "bg-danger-soft text-danger")}>{m.netProfit > 0 ? "Rentable" : "Non rentable"}</span>
+            <StatusBadge tone={m.netProfit > 0 ? "success" : "danger"}>{m.netProfit > 0 ? "Rentable" : "Non rentable"}</StatusBadge>
             <span className={cn("text-[13px] font-bold leading-[18px] tnum", m.netProfit > 0 ? "text-success" : "text-danger")}>
               ≈ {m.netProfit >= 0 ? "+" : "−"}
               {formatMoney(Math.abs(m.netProfit), row.currency ?? "EUR")} / u{m.complete ? "" : " · provisoire"}
@@ -180,11 +187,11 @@ function OfferBody({ best, supplier, writable, recommendation, marginCtx, row }:
   );
 }
 
-const LISTING_STATUS: Record<string, { label: string; cls: string }> = {
-  active: { label: "En ligne", cls: "bg-success-soft text-success" },
-  ended: { label: "Terminée", cls: "bg-line-soft text-muted" },
-  unsold: { label: "Invendue", cls: "bg-warning-soft text-warning" },
-  unknown: { label: "Statut inconnu", cls: "bg-line-soft text-muted" },
+const LISTING_STATUS: Record<string, { label: string; tone: StatusTone }> = {
+  active: { label: "En ligne", tone: "success" },
+  ended: { label: "Terminée", tone: "neutral" },
+  unsold: { label: "Invendue", tone: "warning" },
+  unknown: { label: "Statut inconnu", tone: "neutral" },
 };
 
 /** Annonces rattachées (pictogramme générique, jamais de logo de plateforme). */
@@ -200,7 +207,7 @@ export function ListingsCard({ detail, limit = 4 }: { detail: SkuDetail; limit?:
         ) : (
           <ul>
             {shown.map((l) => {
-              const st = LISTING_STATUS[l.status] ?? { label: l.status, cls: "bg-line-soft text-muted" };
+              const st = LISTING_STATUS[l.status] ?? { label: l.status, tone: "neutral" as const };
               const url = safeExternalUrl(l.listing_url);
               const qty = l.quantity_available ?? l.quantity_listed;
               return (
@@ -216,7 +223,7 @@ export function ListingsCard({ detail, limit = 4 }: { detail: SkuDetail; limit?:
                       {providerLabel(l.provider)} · {l.external_listing_id} · qté publiée {formatNumber(qty)} · {formatMoney(l.price, l.currency ?? row.currency ?? "EUR")} · synchro {formatRelative(l.last_synced_at)}
                     </span>
                   </span>
-                  <span className={cn("shrink-0 whitespace-nowrap rounded-md px-2 py-[3px] text-[11px] font-bold leading-[14px]", st.cls)}>{st.label}</span>
+                  <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
                   {url ? (
                     <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`Ouvrir l'annonce ${l.title}`} className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:text-foreground">
                       <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
@@ -227,7 +234,7 @@ export function ListingsCard({ detail, limit = 4 }: { detail: SkuDetail; limit?:
             })}
           </ul>
         )}
-        <Link href="/settings/integrations#mapping" className="flex min-h-11 w-full items-center justify-center gap-1.5 text-[13.5px] font-bold hover:bg-line-soft">
+        <Link href="/settings/integrations#mapping" className="flex min-h-11 w-full items-center justify-center gap-1.5 bg-surface-2 text-[13.5px] font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-line-soft">
           Gérer les associations d&apos;annonces
         </Link>
       </Panel>

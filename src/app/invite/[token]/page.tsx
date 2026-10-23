@@ -28,14 +28,17 @@ export default async function InvitePage({ params, searchParams }: { params: Pro
                 <form action={acceptInvitationAction} className="flex flex-col gap-2.5">
                   <input type="hidden" name="token" value={token} />
                   <AuthSubmit pendingText="Vérification…">Accepter l&apos;invitation</AuthSubmit>
-                  <p className="text-[12.5px] font-semibold text-ink-3">Connecté en tant que {user.email}. L&apos;invitation doit correspondre à cette adresse.</p>
+                  <p className="text-[12.5px] font-semibold text-ink-3">
+                    Connecté en tant que <span className="text-foreground">{user.email}</span>. L&apos;invitation doit correspondre à cette adresse.
+                  </p>
                 </form>
               ) : (
                 <>
-                  <Link href={`/login?next=${back}` as never} className="inline-flex min-h-[52px] w-full items-center justify-center rounded-xl bg-mint px-5 text-base font-extrabold text-night hover:bg-mint-pressed">
+                  {/* prefetch={false} (W-01) : /login et /signup dépendent de l'état du compte. */}
+                  <Link href={`/login?next=${back}` as never} prefetch={false} className="inline-flex min-h-[52px] w-full items-center justify-center rounded-xl bg-mint px-5 text-base font-extrabold text-night transition-colors hover:bg-mint-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                     Se connecter pour accepter
                   </Link>
-                  <Link href={`/signup?next=${back}` as never} className="inline-flex min-h-[52px] w-full items-center justify-center rounded-xl border border-border-strong bg-surface px-5 text-base font-extrabold text-foreground hover:bg-line-soft">
+                  <Link href={`/signup?next=${back}` as never} prefetch={false} className="inline-flex min-h-[52px] w-full items-center justify-center rounded-xl border border-border-strong bg-surface px-5 text-base font-extrabold text-foreground transition-colors hover:bg-line-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                     Créer un compte
                   </Link>
                   <p className="text-center text-[12.5px] font-semibold text-ink-3">L&apos;invitation est liée à l&apos;adresse e-mail à laquelle elle a été créée.</p>

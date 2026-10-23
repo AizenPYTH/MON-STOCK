@@ -151,8 +151,8 @@ export function RadarOfferDetail({
                   <label htmlFor={`qty-${variant}`} className="sr-only">
                     Simuler une quantité
                   </label>
-                  <input id={`qty-${variant}`} name="quantity" type="number" min={1} max={100000} step={1} defaultValue={quantity.value ?? ""} placeholder="Qté" className="h-10 w-20 rounded-[10px] border border-border bg-surface px-2 text-[13px] font-semibold tnum" />
-                  <button type="submit" className="h-10 rounded-[10px] border border-border bg-surface px-3 text-[13px] font-bold hover:bg-line-soft">
+                  <input id={`qty-${variant}`} name="quantity" type="number" min={1} max={100000} step={1} defaultValue={quantity.value ?? ""} placeholder="Qté" className="h-10 w-20 rounded-[10px] border border-border-control bg-surface px-2 text-[13px] font-semibold tnum focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25" />
+                  <button type="submit" className="h-10 rounded-[10px] border border-border-strong bg-surface px-3 text-[13px] font-bold hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                     Simuler
                   </button>
                 </form>

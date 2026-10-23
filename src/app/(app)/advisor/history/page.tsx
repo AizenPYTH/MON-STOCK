@@ -8,6 +8,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { listConversations } from "@/features/advisor/queries";
 import { DeleteConversationButton } from "@/features/advisor/components/delete-conversation-button";
 import { formatDateTime, formatRelative } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Conversations du conseiller" };
 
@@ -35,18 +36,18 @@ export default async function AdvisorHistoryPage() {
         <div className="mx-auto flex max-w-[820px] flex-col gap-2.5">
           <MonoTitle title="Historique" count={conversations.length} aside={conversations.length === 50 ? "50 plus récentes" : undefined} />
           {conversations.length === 0 ? (
-            <EmptyState title="Aucune conversation" description="Posez votre première question au conseiller." action={<ButtonLink href="/advisor">Nouvelle conversation</ButtonLink>} />
+            <EmptyState icon={<MessageSquare aria-hidden="true" />} title="Aucune conversation" description="Posez votre première question au conseiller." action={<ButtonLink href="/advisor">Nouvelle conversation</ButtonLink>} />
           ) : (
             <Panel as="section">
               <ul>
                 {conversations.map((c, i) => (
-                  <li key={c.id} className={i > 0 ? "flex items-center gap-3 border-t border-line-soft px-4 py-2" : "flex items-center gap-3 px-4 py-2"}>
-                    <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-line-soft text-muted">
+                  <li key={c.id} className={cn("flex items-center gap-3 px-4 py-2 transition-colors duration-150 hover:bg-surface-2", i > 0 && "border-t border-line-soft")}>
+                    <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-surface-3 text-muted">
                       <MessageSquare className="h-4 w-4" />
                     </span>
-                    <Link href={`/advisor?conversation=${c.id}` as never} className="min-w-0 flex-1 rounded-lg py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Link href={`/advisor?conversation=${c.id}` as never} className="min-w-0 flex-1 rounded-lg py-1.5 hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:hover>span:first-child]:underline">
                       <span className="block truncate text-sm font-bold text-foreground">{c.title}</span>
-                      <span className="ms-code block text-[10.5px] text-ink-3" title={formatDateTime(c.lastMessageAt)}>
+                      <span className="ms-code mt-0.5 block text-[10.5px] text-ink-3" title={formatDateTime(c.lastMessageAt)}>
                         {formatRelative(c.lastMessageAt)}
                       </span>
                     </Link>

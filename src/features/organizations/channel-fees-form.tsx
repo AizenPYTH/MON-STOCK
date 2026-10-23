@@ -19,25 +19,26 @@ export function ChannelFeesForm({ channels, disabled }: { channels: SalesChannel
         <form action={action} className="space-y-4">
           <FormError message={err?.error} />
           {state?.ok ? <FormSuccess message="Frais enregistrés." /> : null}
-          {channels.length === 0 ? <p className="text-sm text-muted">Aucun canal de vente.</p> : null}
+          {channels.length === 0 ? <p className="rounded-xl border border-dashed border-border-strong px-3 py-4 text-center text-sm font-semibold text-muted">Aucun canal de vente pour le moment.</p> : null}
           {channels.map((c) => (
-            <fieldset key={c.id} className="rounded-lg border border-border p-3">
-              <legend className="px-1 text-sm font-medium">
-                {PROVIDER_LABEL[c.provider] ?? c.provider} · {c.name}
+            <fieldset key={c.id} className="rounded-xl border border-line-soft bg-surface-2 px-3.5 pb-3.5 pt-1">
+              <legend className="flex items-center gap-2 px-1 text-sm font-bold text-foreground">
+                {PROVIDER_LABEL[c.provider] ?? c.provider}
+                <span className="font-semibold text-ink-3">· {c.name}</span>
               </legend>
               <input type="hidden" name="channel_id" value={c.id} />
-              <div className="grid grid-cols-3 gap-2">
-                <label className="text-xs text-muted">
+              <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-3">
+                <label className="block text-[12.5px] font-bold text-muted-strong">
                   Commission (%)
-                  <Input name={`fee_percent:${c.id}`} type="number" step="0.01" min="0" max="100" defaultValue={c.fee_percent ?? ""} disabled={disabled} className="mt-1" />
+                  <Input name={`fee_percent:${c.id}`} type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="—" defaultValue={c.fee_percent ?? ""} disabled={disabled} className="mt-1 tnum" />
                 </label>
-                <label className="text-xs text-muted">
+                <label className="block text-[12.5px] font-bold text-muted-strong">
                   Paiement (%)
-                  <Input name={`payment_fee_percent:${c.id}`} type="number" step="0.01" min="0" max="100" defaultValue={c.payment_fee_percent ?? ""} disabled={disabled} className="mt-1" />
+                  <Input name={`payment_fee_percent:${c.id}`} type="number" inputMode="decimal" step="0.01" min="0" max="100" placeholder="—" defaultValue={c.payment_fee_percent ?? ""} disabled={disabled} className="mt-1 tnum" />
                 </label>
-                <label className="text-xs text-muted">
+                <label className="block text-[12.5px] font-bold text-muted-strong">
                   Paiement fixe
-                  <Input name={`payment_fee_fixed:${c.id}`} type="number" step="0.01" min="0" defaultValue={c.payment_fee_fixed ?? ""} disabled={disabled} className="mt-1" />
+                  <Input name={`payment_fee_fixed:${c.id}`} type="number" inputMode="decimal" step="0.01" min="0" placeholder="—" defaultValue={c.payment_fee_fixed ?? ""} disabled={disabled} className="mt-1 tnum" />
                 </label>
               </div>
             </fieldset>

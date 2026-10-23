@@ -1,3 +1,4 @@
+import { CircleX, TriangleAlert } from "lucide-react";
 import type { CatalogPreviewDTO } from "@/features/mobile-api/contract";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,7 @@ export function PreviewSample({ sample, limit = 6, caption = "Aperçu des premi�
           <col className="w-[60px]" />
           <col className="w-[52px]" />
         </colgroup>
-        <thead className="ms-mono bg-[#F7F8FA] text-[10px] leading-[13px] text-ink-3">
+        <thead className="ms-mono bg-surface-2 text-[10px] leading-[13px] text-ink-3">
           <tr className="border-b border-line-soft">
             <th scope="col" className="py-2 pl-3 font-medium">
               Ligne
@@ -41,15 +42,25 @@ export function PreviewSample({ sample, limit = 6, caption = "Aperçu des premi�
           {sample.slice(0, limit).map((s, i) => {
             const meta = [s.reference, `EAN ${s.ean ?? "—"}`, s.condition, `grade ${s.grade ?? "—"}`].filter(Boolean).join(" · ");
             return (
-              <tr key={s.line} className={cn("align-baseline", i > 0 && "border-t border-line-soft", s.errors.length > 0 && "bg-[#FDF5F5]")}>
+              <tr key={s.line} className={cn("align-baseline", i > 0 && "border-t border-line-soft", s.errors.length > 0 && "bg-danger-soft")}>
                 <td className="ms-code py-2.5 pl-3 text-[11px] text-ink-3">L{s.line}</td>
                 <td className="min-w-0 px-2 py-2.5">
                   <span className="block truncate text-[13.5px] font-semibold leading-[18px]" title={s.title ?? undefined}>
                     {s.title ?? "—"}
                   </span>
                   <span className="ms-code block truncate text-[10px] leading-[14px] text-ink-3">{meta}</span>
-                  {s.errors.length ? <span className="mt-1 block text-xs font-semibold leading-4 text-danger">{s.errors.join(" ")}</span> : null}
-                  {s.warnings.length ? <span className="mt-1 block text-xs font-semibold leading-4 text-warning">{s.warnings.join(" ")}</span> : null}
+                  {s.errors.length ? (
+                    <span className="mt-1 flex items-start gap-1 text-xs font-semibold leading-4 text-danger-ink">
+                      <CircleX aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0">{s.errors.join(" ")}</span>
+                    </span>
+                  ) : null}
+                  {s.warnings.length ? (
+                    <span className="mt-1 flex items-start gap-1 text-xs font-semibold leading-4 text-warning-ink">
+                      <TriangleAlert aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0">{s.warnings.join(" ")}</span>
+                    </span>
+                  ) : null}
                 </td>
                 <td className="whitespace-nowrap px-2 py-2.5 text-right text-[13px] font-bold tnum">
                   {s.price !== null && s.currency ? formatMoney(s.price, s.currency) : "—"}

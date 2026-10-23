@@ -243,3 +243,37 @@ d("M-01 : suppression de compte (migration 20261023000600 + service)", () => {
     });
   });
 });
+
+d("M-16 : brouillon de commande fournisseur atomique (migration 20261023000610)", () => {
+  it("en-tête + ligne en une transaction ; ligne refusée → aucun brouillon orphelin ; lecture seule refusée", async () => {
+    await withRollback(async (c) => {
+      const u = await createUser(c, "po@account.test");
+      const org = await createOrgAs(c, u, "Achats", "acc-po");
+      const sku = await createSkuAs(c, u, org, "PO-1", { initial: 1 });
+      await asSuperuser(c);
+      const supplier = await one<{ id: string }>(c, "insert into public.suppliers (organization_id, name) values ($1, 'Grossiste') returning id", [org]);
+      const call = "select public.create_draft_purchase_order($1, $2, 'EUR', $3, null, $4, 12.5, 'test') as id";
+      await asUser(c, u);
+      const po = (await one<{ id: string }>(c, call, [org, supplier.id, sku, 3])).id;
+      await asSuperuser(c);
+      const rows = await c.query("select p.status, i.quantity_ordered, i.unit_cost::float as unit_cost from public.purchase_orders p join public.purchase_order_items i on i.purchase_order_id = p.id where p.id = $1", [po]);
+      expect(rows.rows).toEqual([{ status: "draft", quantity_ordered: 3, unit_cost: 12.5 }]);
+      // SKU d'une autre organisation : la ligne est refusée et l'en-tête n'existe pas non plus.
+      const other = await createUser(c, "po-other@account.test");
+      const otherOrg = await createOrgAs(c, other, "Autre", "acc-po-other");
+      const otherSku = await createSkuAs(c, other, otherOrg, "PO-X", { initial: 0 });
+      await asSuperuser(c);
+      const before = (await one<{ n: number }>(c, "select count(*)::int as n from public.purchase_orders where organization_id = $1", [org])).n;
+      await asUser(c, u);
+      await expectQueryError(c, call, [org, supplier.id, otherSku, 1], /CROSS_ORGANIZATION_REFERENCE|SKU_NOT_FOUND|violates|permission|row-level/);
+      await expectQueryError(c, call, [org, supplier.id, sku, 0], "PURCHASE_ORDER_QUANTITY_INVALID");
+      await asSuperuser(c);
+      expect((await one<{ n: number }>(c, "select count(*)::int as n from public.purchase_orders where organization_id = $1", [org])).n).toBe(before);
+      // Rôle lecture seule : refusé par la RLS, rien n'est créé.
+      const viewer = await createUser(c, "po-viewer@account.test");
+      await addMember(c, org, viewer, "viewer");
+      await asUser(c, viewer);
+      await expectQueryError(c, call, [org, supplier.id, sku, 1], /row-level security|permission|FORBIDDEN/);
+    });
+  });
+});

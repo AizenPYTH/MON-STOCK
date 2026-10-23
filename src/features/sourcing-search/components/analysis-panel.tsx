@@ -47,7 +47,7 @@ export function AnalysisPanel({ offer: o, orgCurrency, onClose }: { offer: Simpl
   return (
     <div className="fixed inset-0 z-50">
       <button type="button" aria-label="Fermer l'analyse" className="ms-fade absolute inset-0 cursor-default bg-overlay" onClick={onClose} />
-      <div ref={ref} role="dialog" aria-modal="true" aria-label={`Analyse de l'offre ${title}`} tabIndex={-1} className="ms-slide absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col bg-background shadow-[-12px_0_40px_rgba(10,20,32,.25)] focus:outline-none">
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={`Analyse de l'offre ${title}`} tabIndex={-1} className="ms-slide absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col bg-background shadow-modal focus:outline-none">
         <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-5 pb-3 pt-3.5">
           <SupplierBadge name={o.supplierName} domain={o.domain} className="h-9 w-9 rounded-[10px]" />
           <div className="min-w-0 flex-1">

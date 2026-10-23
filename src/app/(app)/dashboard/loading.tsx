@@ -1,4 +1,4 @@
-import { LoadingRegion, Skeleton } from "@/components/ui/page";
+import { LoadingRegion, Skeleton, StatTileSkeleton } from "@/components/ui/page";
 import { Paper, Scene } from "@/components/instrument";
 
 /** Squelette de « Aujourd'hui » : scène (chiffre, relevés, 14 jours, stock) puis papier 7/5. */
@@ -17,6 +17,12 @@ export default function DashboardLoading() {
         <div className="mt-7 h-[110px] rounded-xl bg-night-raised/60" />
       </Scene>
       <Paper>
+        <div className="mb-7 grid max-w-[1280px] grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTileSkeleton />
+          <StatTileSkeleton />
+          <StatTileSkeleton />
+          <StatTileSkeleton />
+        </div>
         <div className="flex max-w-[1280px] flex-wrap items-start gap-8">
           <div className="flex min-w-0 flex-[7_1_560px] flex-col gap-7">
             <Skeleton className="h-[236px] rounded-2xl" />

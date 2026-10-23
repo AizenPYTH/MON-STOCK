@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Paper } from "@/components/instrument";
+import { Callout } from "@/components/ui/callout";
 import { getTodayDashboard } from "@/features/dashboard/queries";
 import { TodayScene } from "@/features/dashboard/components/today-scene";
-import { ActivitySection, AdvisorEntry, PrioritySection, RadarSection, SetupSection, ShortcutsSection, TasksSection } from "@/features/dashboard/components/today-paper";
+import { ActivitySection, AdvisorEntry, PrioritySection, RadarSection, SetupSection, ShortcutsSection, StockHealthSection, TasksSection } from "@/features/dashboard/components/today-paper";
 
 export const metadata: Metadata = { title: "Aujourd'hui" };
 
@@ -20,6 +21,16 @@ export default async function DashboardPage() {
     <>
       <TodayScene d={d} />
       <Paper>
+        {d.unavailable.length > 0 ? (
+          <Callout tone="warning" role="status" className="mb-6 max-w-[1280px]" title="Données partiellement indisponibles">
+            Indisponible pour le moment : {d.unavailable.join(", ")}. Les blocs concernés sont masqués ou incomplets ; rechargez la page dans quelques instants.
+          </Callout>
+        ) : null}
+        {d.stock.skus > 0 ? (
+          <div className="mb-7 max-w-[1280px]">
+            <StockHealthSection d={d} />
+          </div>
+        ) : null}
         <div className="flex max-w-[1280px] flex-wrap items-start gap-8">
           <div className="flex min-w-0 flex-[7_1_560px] flex-col gap-7">
             {d.isEmpty ? <SetupSection d={d} /> : null}
@@ -34,11 +45,6 @@ export default async function DashboardPage() {
             {d.isEmpty ? null : <SetupSection d={d} />}
           </div>
         </div>
-        {d.unavailable.length > 0 ? (
-          <p className="mt-8 text-xs font-semibold text-ink-3" role="status">
-            Indisponible pour le moment : {d.unavailable.join(", ")}. Les blocs concernés sont masqués ou incomplets ; rechargez la page dans quelques instants.
-          </p>
-        ) : null}
       </Paper>
     </>
   );

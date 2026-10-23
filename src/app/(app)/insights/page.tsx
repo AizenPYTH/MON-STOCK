@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowRight, Lightbulb, OctagonAlert, RefreshCw, TriangleAlert } from "lucide-react";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Section, Callout, EmptyState } from "@/components/ui/page";
-import { Paper, Scene, SceneHeader } from "@/components/instrument";
+import { Paper, Scene, SceneHeader, ToneIcon } from "@/components/instrument";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge, StatusDot } from "@/components/ui/badge";
 import { getStockAnalytics } from "@/features/analytics/stock-analytics";
 import { getOperationalCounts } from "@/features/analytics/dashboard";
 import { getRecommendationHistory, listOpenRecommendations } from "@/features/analytics/replenishment";
@@ -68,21 +68,23 @@ export default async function InsightsPage() {
           />
         ) : (
           <Card>
-            <ul className="divide-y divide-border">
+            <ul className="divide-y divide-line-soft">
               {insights.map((it) => (
-                <li key={it.key} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <StatusDot tone={SEVERITY_TONE[it.severity]} className="mt-1.5" />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-foreground">{it.title}</span>
-                        <Badge variant={it.severity === "critical" ? "danger" : it.severity === "warning" ? "warning" : "info"}>{SEVERITY_LABEL[it.severity]}</Badge>
-                      </div>
-                      {it.detail ? <p className="text-xs text-muted">{it.detail}</p> : null}
-                    </div>
-                  </div>
-                  <Link href={it.href as never} className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-accent hover:underline">
-                    {it.action} <ArrowRight className="h-3.5 w-3.5" />
+                <li key={it.key}>
+                  <Link href={it.href as never} className="group flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors duration-150 ease-standard hover:bg-surface-2 sm:px-5">
+                    <ToneIcon tone={SEVERITY_TONE[it.severity]}>{it.severity === "critical" ? <OctagonAlert /> : it.severity === "warning" ? <TriangleAlert /> : <Lightbulb />}</ToneIcon>
+                    <span className="min-w-0 flex-1 basis-64">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-[14.5px] font-semibold text-foreground">{it.title}</span>
+                        <StatusBadge tone={SEVERITY_TONE[it.severity]} icon={false}>
+                          {SEVERITY_LABEL[it.severity]}
+                        </StatusBadge>
+                      </span>
+                      {it.detail ? <span className="mt-0.5 block text-[12.5px] font-medium text-ink-3">{it.detail}</span> : null}
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-bold text-foreground max-sm:pl-11">
+                      {it.action} <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 transition-transform duration-150 ease-standard group-hover:translate-x-0.5" />
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -132,13 +134,13 @@ export default async function InsightsPage() {
         <Section className="mt-8" title="Stock dormant" description={`${analytics.deadStock.length} SKU en stock sans vente depuis 60 jours (ou jamais vendus).`}>
           <Card>
             <CardHeader title="Les plus immobilisés" description="Classés par valeur de stock (coût connu) puis par quantité." />
-            <ul className="divide-y divide-border text-sm">
+            <ul className="divide-y divide-line-soft text-sm">
               {analytics.deadStock.slice(0, 10).map((v) => (
                 <li key={v.row.sku_id} className="flex items-center justify-between gap-3 px-5 py-2.5">
                   <Link href={`/stock/${encodeURIComponent(v.row.code ?? "")}` as never} className="min-w-0 truncate hover:underline">
                     {skuLabel(v.row)} <span className="ms-code text-xs text-muted">{v.row.code}</span>
                   </Link>
-                  <span className="shrink-0 text-xs text-muted">
+                  <span className="shrink-0 text-xs text-muted tnum">
                     {v.row.quantity_available} u. · {v.row.last_sale_at ? `dernière vente ${formatRelative(v.row.last_sale_at)}` : "jamais vendu"}
                   </span>
                 </li>

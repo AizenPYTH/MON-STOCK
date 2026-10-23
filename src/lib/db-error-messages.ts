@@ -100,6 +100,8 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   // Migration 20261023000600 (suppression de compte, audit M-01).
   ACCOUNT_DELETE_INVALID: { code: "VALIDATION", message: "Demande de suppression de compte invalide." },
   ACCOUNT_SOLE_OWNER: { code: "CONFLICT", message: "Suppression du compte impossible : vous êtes le seul propriétaire d'une organisation qui compte d'autres membres. Désignez un autre propriétaire ou retirez les membres, puis réessayez." },
+  // Migration 20261023000610 (brouillon de commande atomique, audit M-16).
+  PURCHASE_ORDER_QUANTITY_INVALID: { code: "VALIDATION", message: "Quantité invalide : entre 1 et 100 000 unités." },
   ACCOUNT_ORGANIZATIONS_REMAIN: { code: "CONFLICT", message: "Suppression du compte interrompue : une de vos organisations n'a pas encore été supprimée. Réessayez." },
 };
 

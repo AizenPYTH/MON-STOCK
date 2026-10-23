@@ -4,7 +4,7 @@ import { connectionTone, intervalLabel } from "@/features/integrations/component
 
 describe("sous-navigation des Réglages", () => {
   it("suit l'ordre du handoff, « Coûts du radar » pointe vers /radar/settings", () => {
-    expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["Organisation", "Membres et invitations", "Intégrations", "Synchronisation", "Coûts du radar", "Facturation"]);
+    expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["Organisation", "Membres et invitations", "Intégrations", "Synchronisation", "Coûts du radar", "Facturation", "Mon compte"]);
     expect(SETTINGS_SECTIONS.find((s) => s.id === "radar-costs")).toMatchObject({ href: "/radar/settings", external: true });
   });
 
@@ -15,6 +15,7 @@ describe("sous-navigation des Réglages", () => {
     expect(activeSettingsSection("/settings/sync/0b6f1c1e-0000-4000-8000-000000000000")).toBe("sync");
     expect(activeSettingsSection("/settings/users/")).toBe("users");
     expect(activeSettingsSection("/radar/settings")).toBe("radar-costs");
+    expect(activeSettingsSection("/settings/account")).toBe("account");
   });
 
   it("n'active rien hors des réglages ni sur un préfixe trompeur", () => {

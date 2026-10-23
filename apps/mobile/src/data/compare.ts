@@ -222,27 +222,19 @@ export async function createDraftPurchaseOrder(
   if (!input.offer.supplierId) throw new UserFacingError("Cette offre n'a pas de fournisseur associé.");
   if (!input.offer.skuId) throw new UserFacingError("Associez d'abord cette offre à un SKU (depuis l'application web).");
   if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 100_000) throw new UserFacingError("Quantité invalide.");
-  const { data: po, error } = await supabase
-    .from("purchase_orders")
-    .insert({ organization_id: input.organizationId, supplier_id: input.offer.supplierId, currency: input.currency, status: "draft", created_by: input.userId, notes: "Brouillon préparé depuis l'application mobile (comparaison d'offres)." })
-    .select("id")
-    .single();
-  if (error || !po) throw new UserFacingError(userMessage(error ?? { message: "Création impossible" }));
-  const { error: itemError } = await supabase.from("purchase_order_items").insert({
-    organization_id: input.organizationId,
-    purchase_order_id: po.id,
-    sku_id: input.offer.skuId,
-    offer_id: input.offer.id,
-    quantity_ordered: input.quantity,
-    unit_cost: input.offer.price,
-    currency: input.currency,
+  // M-16 : en-tête et ligne dans UNE transaction (RPC sous RLS) : jamais de brouillon vide.
+  const { data, error } = await supabase.rpc("create_draft_purchase_order", {
+    p_organization_id: input.organizationId,
+    p_supplier_id: input.offer.supplierId,
+    p_currency: input.currency,
+    p_sku_id: input.offer.skuId,
+    p_offer_id: input.offer.id,
+    p_quantity: input.quantity,
+    p_unit_cost: input.offer.price,
+    p_notes: "Brouillon préparé depuis l'application mobile (comparaison d'offres).",
   });
-  if (itemError) {
-    // Pas de brouillon vide orphelin (un brouillon est supprimable).
-    await supabase.from("purchase_orders").delete().eq("id", po.id).eq("organization_id", input.organizationId);
-    throw new UserFacingError(userMessage(itemError));
-  }
-  return { purchaseOrderId: po.id };
+  if (error || !data) throw new UserFacingError(userMessage(error ?? { message: "Création impossible" }));
+  return { purchaseOrderId: data };
 }
 
 export async function deleteDraftPurchaseOrder(supabase: MobileSupabase, organizationId: string, purchaseOrderId: string): Promise<void> {

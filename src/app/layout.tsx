@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import localFont from "next/font/local";
 import { GeistMono } from "geist/font/mono";
 import { siteUrl } from "@/lib/site";
+import { ThemeScript } from "@/components/ui/theme-script";
 import "./globals.css";
 
 /** Manrope (OFL, fichiers dans ./fonts) : 300 pour les grands chiffres, 500–800 pour le texte (charte v5). */
@@ -30,7 +31,11 @@ export const viewport: Viewport = { themeColor: "#101C2C" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr" className={`${manrope.variable} ${GeistMono.variable} h-full antialiased`}>
+    // suppressHydrationWarning : ThemeScript pose `data-theme` sur <html> avant l'hydratation (préférence enregistrée).
+    <html lang="fr" className={`${manrope.variable} ${GeistMono.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

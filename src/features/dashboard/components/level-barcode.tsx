@@ -3,7 +3,7 @@ import { barcodeBars, type BarcodeItem, type BarcodeLevel } from "@/components/i
 import type { StockLevel } from "@/domain/inventory/alerts";
 import { stockLevelHref } from "@/features/dashboard/today.pure";
 
-const FILL: Record<BarcodeLevel, string> = { ok: "rgba(247,248,250,.86)", low: "var(--amber)", out: "var(--danger-on-night)" };
+const FILL: Record<BarcodeLevel, string> = { ok: "color-mix(in srgb, var(--on-night) 86%, transparent)", low: "var(--amber)", out: "var(--danger-on-night)" };
 
 /**
  * Code-barres du stock de l'accueil : une barre par référence (largeur = ventes 30 j, couleur =

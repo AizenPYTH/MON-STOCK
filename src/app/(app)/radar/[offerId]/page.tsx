@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { ButtonLink } from "@/components/ui/button";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Paper, Scene, SceneHeader, StageStats } from "@/components/instrument";
 import { buildRadarOffer } from "@/services/radar/radar";
@@ -40,9 +40,7 @@ export default async function RadarOfferPage({ params, searchParams }: { params:
         <Paper>
           <div className="mx-auto flex max-w-[640px] flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-6 py-7 text-center">
             <p className="text-sm font-medium text-muted">{error}</p>
-            <Link href="/radar" className="inline-flex h-10 items-center rounded-xl bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed">
-              Retour au radar
-            </Link>
+            <ButtonLink href="/radar">Retour au radar</ButtonLink>
           </div>
         </Paper>
       </>

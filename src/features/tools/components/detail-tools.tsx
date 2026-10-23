@@ -102,7 +102,7 @@ export function EbayFeesDetail({ channel }: { channel: EbayChannelFees | null })
       form={
         <>
           <FormBlock title="Vente">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <AmountField label="Prix de l'objet" value={input.itemPrice} onChange={(v) => set("itemPrice", v)} suffix="€" large error={errors.itemPrice} />
               <AmountField label="Frais de port facturés à l'acheteur" value={input.shippingCharged} onChange={(v) => set("shippingCharged", v)} suffix="€" placeholder="0,00" error={errors.shippingCharged} />
             </div>
@@ -127,7 +127,7 @@ export function EbayFeesDetail({ channel }: { channel: EbayChannelFees | null })
           >
             <p className="text-xs text-muted">Les taux eBay dépendent de la catégorie, de votre statut et de vos options : saisissez ceux de votre grille en vigueur. MON STOCK n'en suppose aucun.</p>
             {prefilled.length ? <p className="text-xs text-muted">Repris de vos réglages du canal eBay : {prefilled.join(", ")}.</p> : null}
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <AmountField label="Commission sur la valeur finale" value={input.finalValueFeePercent} onChange={(v) => set("finalValueFeePercent", v)} suffix="%" placeholder="Non renseigné" error={errors.finalValueFeePercent} />
               <ChoiceChips
                 label="Commission calculée sur"
@@ -144,7 +144,7 @@ export function EbayFeesDetail({ channel }: { channel: EbayChannelFees | null })
             </div>
           </FormBlock>
           <FormBlock title="Vos coûts (facultatif)">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <AmountField label="Coût réel de l'envoi" value={input.actualShippingCost} onChange={(v) => set("actualShippingCost", v)} suffix="€" placeholder="Non renseigné" error={errors.actualShippingCost} />
               <AmountField label="Coût d'achat de l'objet" value={input.purchaseCost} onChange={(v) => set("purchaseCost", v)} suffix="€" placeholder="Non renseigné" error={errors.purchaseCost} />
             </div>
@@ -241,7 +241,7 @@ export function CurrencyDetail({ rates }: { rates: FxRate[] }) {
           </FormBlock>
           <FormBlock title="Frais bancaires (facultatif)">
             <p className="text-xs text-muted">Commission de change de votre banque ou plateforme de paiement, distincte du taux de référence.</p>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <AmountField label="Commission" value={input.bankFeePercent} onChange={(v) => set("bankFeePercent", v)} suffix="%" placeholder="—" error={errors.bankFeePercent} />
               <AmountField label={`Frais fixes (${input.to})`} value={input.bankFeeFixed} onChange={(v) => set("bankFeeFixed", v)} placeholder="—" error={errors.bankFeeFixed} />
             </div>

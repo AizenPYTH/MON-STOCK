@@ -22,19 +22,19 @@ export function OrganizationForm({ organization, disabled }: { organization: Org
             <Input id="name" name="name" defaultValue={organization.name} disabled={disabled} required />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Pays" htmlFor="country" error={err?.fieldErrors?.country}>
-              <Input id="country" name="country" defaultValue={organization.country ?? ""} maxLength={2} disabled={disabled} />
+            <Field label="Pays" htmlFor="country" hint="Code à 2 lettres (FR)." error={err?.fieldErrors?.country}>
+              <Input id="country" name="country" defaultValue={organization.country ?? ""} maxLength={2} disabled={disabled} className="uppercase" autoComplete="country" />
             </Field>
-            <Field label="Devise" htmlFor="default_currency" error={err?.fieldErrors?.default_currency}>
-              <Input id="default_currency" name="default_currency" defaultValue={organization.default_currency} maxLength={3} disabled={disabled} />
+            <Field label="Devise" htmlFor="default_currency" hint="Code à 3 lettres (EUR)." error={err?.fieldErrors?.default_currency}>
+              <Input id="default_currency" name="default_currency" defaultValue={organization.default_currency} maxLength={3} disabled={disabled} className="uppercase" />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Transport par unité (défaut)" htmlFor="default_shipping_cost" hint="Laisser vide = coût inconnu." error={err?.fieldErrors?.default_shipping_cost}>
-              <Input id="default_shipping_cost" name="default_shipping_cost" type="number" step="0.01" min="0" defaultValue={settings.default_shipping_cost ?? ""} disabled={disabled} />
+              <Input id="default_shipping_cost" name="default_shipping_cost" type="number" inputMode="decimal" step="0.01" min="0" placeholder="—" className="tnum" defaultValue={settings.default_shipping_cost ?? ""} disabled={disabled} />
             </Field>
             <Field label="TVA (%)" htmlFor="vat_rate" hint="Utilisée pour convertir HT ↔ TTC." error={err?.fieldErrors?.vat_rate}>
-              <Input id="vat_rate" name="vat_rate" type="number" step="0.1" min="0" max="100" defaultValue={settings.vat_rate ?? ""} disabled={disabled} />
+              <Input id="vat_rate" name="vat_rate" type="number" inputMode="decimal" step="0.1" min="0" max="100" placeholder="—" className="tnum" defaultValue={settings.vat_rate ?? ""} disabled={disabled} />
             </Field>
           </div>
           {!disabled ? <SubmitButton pendingText="Enregistrement…">Enregistrer</SubmitButton> : null}

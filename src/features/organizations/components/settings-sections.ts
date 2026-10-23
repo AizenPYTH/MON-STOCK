@@ -2,7 +2,7 @@
  * Sous-navigation des Réglages (module pur, testé) : sections dans l'ordre du handoff v5.
  * « Coûts du radar » vit sous /radar/settings (même page que le radar) : la section est un lien.
  */
-export type SettingsSectionId = "organization" | "users" | "integrations" | "sync" | "radar-costs" | "billing";
+export type SettingsSectionId = "organization" | "users" | "integrations" | "sync" | "radar-costs" | "billing" | "account";
 
 export interface SettingsSection {
   id: SettingsSectionId;
@@ -19,6 +19,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "sync", href: "/settings/sync", label: "Synchronisation" },
   { id: "radar-costs", href: "/radar/settings", label: "Coûts du radar", external: true },
   { id: "billing", href: "/settings/billing", label: "Facturation" },
+  // Compte personnel (et non de l'organisation) : identité, organisations, suppression du compte.
+  { id: "account", href: "/settings/account", label: "Mon compte" },
 ];
 
 /**

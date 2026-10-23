@@ -7,6 +7,7 @@ import { FooterActions } from "~/components/calc-screen";
 import { carrierText, PARCEL_TONE } from "~/components/tracking";
 import { AlertBanner, cardStyle, EmptyState, ErrorState, NightHeader, Screen, SkeletonList, Txt } from "~/components/ui";
 import { useParcels, useToolsStatus } from "~/data/hooks";
+import { PARCELS_LIMIT } from "~/data/tracking";
 import { userMessage } from "~/lib/errors";
 import { useActiveOrg } from "~/org/org-provider";
 import { color, radius, size, space } from "~/theme/tokens";
@@ -83,6 +84,7 @@ export default function TrackingListScreen() {
           })}
         </View>
       )}
+      {parcels.data && parcels.data.length >= PARCELS_LIMIT ? <Txt variant="label">Les {PARCELS_LIMIT} colis les plus récents sont affichés : archivez les colis livrés pour voir les autres.</Txt> : null}
       {!archived ? (
         <Pressable accessibilityRole="button" testID="tracking-archived" onPress={() => setArchived(true)} style={{ alignSelf: "center", minHeight: size.touchMin, justifyContent: "center", paddingHorizontal: space[3], borderRadius: radius.md }}>
           <Txt variant="label" color={color.ink2} style={{ fontFamily: "Manrope_700Bold" }}>

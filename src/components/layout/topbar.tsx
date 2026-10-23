@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Bell, Boxes, FileSpreadsheet, Info, Menu, Plus, Search, Sparkles, Truck, UserPlus } from "lucide-react";
-import { Kbd, ToneIcon } from "@/components/instrument";
+import { DemoBadge, Kbd, ToneIcon } from "@/components/instrument";
+import { initials } from "@/components/instrument/pure";
 import type { ShellAlert } from "@/features/shell/queries";
 import { formatRelativeShort } from "@/components/layout/relative-time";
 import { cn } from "@/lib/utils";
@@ -34,16 +35,16 @@ function useDismiss(open: boolean, close: () => void) {
   return ref;
 }
 
-const FLOAT = "absolute right-0 top-[46px] z-[60] rounded-[14px] border border-border bg-surface shadow-[0_6px_14px_rgba(16,28,44,.10),0_18px_40px_rgba(10,20,32,.18)]";
+const FLOAT = "ms-fade absolute right-0 top-[48px] z-[60] max-sm:fixed max-sm:inset-x-3 max-sm:top-[60px] max-sm:w-auto! rounded-[14px] border border-border bg-surface text-foreground shadow-floating";
 
 function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number | null }) {
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={total === null ? "Alertes : nombre inconnu" : `Alertes : ${total} à traiter`} className="relative flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-night-raised text-on-night hover:bg-night-hover">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={total === null ? "Alertes : nombre inconnu" : `Alertes : ${total} à traiter`} className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-night-raised text-on-night transition-colors duration-150 ease-standard hover:bg-night-hover">
         <Bell aria-hidden="true" className="h-[18px] w-[18px]" />
-        {total !== null && total > 0 ? <span aria-hidden="true" className="absolute right-[9px] top-2 h-2 w-2 rounded-full bg-amber shadow-[0_0_0_2px_var(--night-raised)]" /> : null}
+        {total !== null && total > 0 ? <span aria-hidden="true" className="absolute right-[9px] top-2 h-2 w-2 rounded-full bg-amber ring-2 ring-night-raised" /> : null}
       </button>
       {open ? (
         <div role="dialog" aria-label="Alertes" className={cn(FLOAT, "w-[400px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl")}>
@@ -88,13 +89,14 @@ function AddMenu({ readOnly, open, setOpen }: { readOnly: boolean; open: boolean
         aria-expanded={open}
         aria-haspopup="menu"
         title={readOnly ? "Votre rôle ne permet pas d'ajouter des données." : "Ajouter (N)"}
-        className={cn("flex h-[38px] items-center gap-2 rounded-[10px] pl-3 pr-2", readOnly ? "cursor-not-allowed bg-night-raised text-on-night-subtle" : "bg-mint text-night hover:bg-mint-pressed")}
+        className={cn("flex h-10 shrink-0 items-center gap-2 rounded-[10px] transition-colors duration-150 ease-standard max-sm:w-10 max-sm:justify-center sm:pl-3 sm:pr-2", readOnly ? "cursor-not-allowed bg-night-raised text-on-night-subtle" : "bg-mint text-night hover:bg-mint-pressed")}
       >
         <Plus aria-hidden="true" className="h-[18px] w-[18px]" />
-        <span className="text-sm font-extrabold">Ajouter</span>
-        <Kbd onNight={false} className="hidden border-[rgba(16,28,44,.22)] text-night lg:inline">
+        <span className="text-sm font-extrabold max-sm:sr-only">Ajouter</span>
+        {/* Touche posée sur l'aplat menthe : encre nuit dans les deux thèmes (la menthe ne change pas). */}
+        <kbd aria-hidden="true" className="ms-code hidden h-5 min-w-5 items-center justify-center rounded-[5px] border border-night/25 px-1.5 text-[10.5px] leading-none text-night lg:inline-flex">
           N
-        </Kbd>
+        </kbd>
       </button>
       {open ? (
         <div role="menu" className={cn(FLOAT, "w-[280px] p-1.5")}>
@@ -115,24 +117,78 @@ function AddMenu({ readOnly, open, setOpen }: { readOnly: boolean; open: boolean
   );
 }
 
-/** Barre du haut nuit : recherche ⌘K, état de synchro eBay, Conseiller, Alertes, + Ajouter. */
-export function Topbar({ onToggleAdvisor, advisorOpen = false, onOpenSearch, onOpenMenu, addOpen, setAddOpen, readOnly, lastEbaySync, alerts, alertTotal, menuButton }: { onToggleAdvisor?: () => void; advisorOpen?: boolean; onOpenSearch: () => void; onOpenMenu: () => void; addOpen: boolean; setAddOpen: (v: boolean) => void; readOnly: boolean; lastEbaySync: string | null; alerts: ShellAlert[]; alertTotal: number | null; menuButton?: ReactNode }) {
+/** Barre du haut nuit : recherche ⌘K, organisation active (sous 1024 px), état de synchro eBay, Conseiller, Alertes, + Ajouter. */
+export function Topbar({
+  onToggleAdvisor,
+  advisorOpen = false,
+  onOpenSearch,
+  onOpenMenu,
+  addOpen,
+  setAddOpen,
+  readOnly,
+  lastEbaySync,
+  alerts,
+  alertTotal,
+  menuButton,
+  org,
+}: {
+  onToggleAdvisor?: () => void;
+  advisorOpen?: boolean;
+  onOpenSearch: () => void;
+  onOpenMenu: () => void;
+  addOpen: boolean;
+  setAddOpen: (v: boolean) => void;
+  readOnly: boolean;
+  lastEbaySync: string | null;
+  alerts: ShellAlert[];
+  alertTotal: number | null;
+  menuButton?: ReactNode;
+  /** Organisation affichée : rappelée dans la barre quand la barre latérale est masquée (tiroir). */
+  org?: { name: string; isDemo: boolean };
+}) {
   const router = useRouter();
   const sync = lastEbaySync ? formatRelativeShort(lastEbaySync) : null;
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2.5 bg-night pl-2 pr-3 sm:pr-6">
-      <button type="button" onClick={onOpenMenu} aria-label="Ouvrir le menu" className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] text-on-night hover:bg-night-raised lg:hidden">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 bg-night pl-2 pr-3 sm:gap-2.5 sm:pr-6">
+      <button type="button" onClick={onOpenMenu} aria-label="Ouvrir le menu" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-on-night transition-colors duration-150 ease-standard hover:bg-night-raised lg:hidden">
         <Menu aria-hidden="true" className="h-5 w-5" />
       </button>
+      {org ? (
+        // Sous 1024 px, la barre latérale (et son sélecteur) vit dans le tiroir : l'organisation reste visible ici.
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          aria-label={`Organisation affichée : ${org.name}${org.isDemo ? " (démonstration)" : ""}. Ouvrir le menu pour en changer`}
+          title={org.name}
+          className="flex h-10 min-w-0 shrink items-center gap-2 rounded-[10px] pr-1 transition-colors duration-150 ease-standard hover:bg-night-raised sm:max-w-[220px] sm:border sm:border-night-stroke sm:pl-1 sm:pr-2.5 lg:hidden"
+        >
+          <span aria-hidden="true" className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px] bg-night-raised text-[11.5px] font-extrabold tracking-[.3px] text-on-night">
+            {initials(org.name)}
+          </span>
+          <span className="hidden min-w-0 truncate text-[13.5px] font-bold text-on-night sm:block">{org.name}</span>
+          {org.isDemo ? (
+            <span className="hidden sm:inline-flex">
+              <DemoBadge />
+            </span>
+          ) : null}
+        </button>
+      ) : null}
       {menuButton}
-      <button type="button" onClick={onOpenSearch} aria-label="Recherche globale (⌘K)" className="flex h-[38px] min-w-[44px] max-w-[460px] flex-[0_1_460px] items-center gap-2.5 rounded-[10px] bg-night-raised pl-3 pr-2 text-on-night-muted hover:bg-night-hover">
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        aria-label="Recherche globale (⌘K)"
+        className="flex h-10 w-10 shrink-0 items-center justify-center gap-2.5 rounded-[10px] bg-night-raised text-on-night-muted transition-colors duration-150 ease-standard hover:bg-night-hover hover:text-on-night sm:w-auto sm:max-w-[460px] sm:flex-[0_1_460px] sm:justify-start sm:pl-3 sm:pr-2"
+      >
         <Search aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
         <span className="hidden min-w-0 flex-1 truncate text-left text-[13.5px] font-semibold text-on-night-subtle sm:block">Rechercher un produit, un SKU, un fournisseur, une offre…</span>
-        <Kbd className="hidden md:inline">⌘ K</Kbd>
+        <span className="hidden md:inline-flex">
+          <Kbd>⌘ K</Kbd>
+        </span>
       </button>
       <span className="flex-1" />
       {readOnly ? (
-        <span title="Votre rôle ne permet pas de modifier les données de cette organisation." className="ms-mono hidden rounded-md border border-night-stroke px-[7px] py-1 text-[10px] leading-[13px] text-on-night sm:inline">
+        <span title="Votre rôle ne permet pas de modifier les données de cette organisation." className="ms-mono hidden shrink-0 rounded-md border border-night-stroke px-[7px] py-1 text-[10px] leading-[13px] text-on-night sm:inline">
           Lecture seule
         </span>
       ) : null}
@@ -142,14 +198,21 @@ export function Topbar({ onToggleAdvisor, advisorOpen = false, onOpenSearch, onO
           <span className="ms-mono text-[10px] leading-[13px] text-on-night-subtle">eBay · synchro {sync}</span>
         </span>
       ) : null}
-      <button type="button" onClick={() => (onToggleAdvisor ? onToggleAdvisor() : router.push("/advisor"))} aria-expanded={onToggleAdvisor ? advisorOpen : undefined} aria-label="Ouvrir le conseiller (⌘J)" className="flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] bg-night-raised pl-3 pr-2.5 text-on-night hover:bg-night-hover">
+      <button
+        type="button"
+        onClick={() => (onToggleAdvisor ? onToggleAdvisor() : router.push("/advisor"))}
+        aria-expanded={onToggleAdvisor ? advisorOpen : undefined}
+        aria-label="Ouvrir le conseiller (⌘J)"
+        className="flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-[10px] bg-night-raised text-on-night transition-colors duration-150 ease-standard hover:bg-night-hover sm:w-auto sm:pl-3 sm:pr-2.5"
+      >
         <Sparkles aria-hidden="true" className="h-[18px] w-[18px] text-mint" />
         <span className="hidden text-[13.5px] font-bold sm:inline">Conseiller</span>
-        <Kbd className="hidden lg:inline">⌘ J</Kbd>
+        <span className="hidden lg:inline-flex">
+          <Kbd>⌘ J</Kbd>
+        </span>
       </button>
       <AlertsMenu alerts={alerts} total={alertTotal} />
       <AddMenu readOnly={readOnly} open={addOpen} setOpen={setAddOpen} />
     </header>
   );
 }
-

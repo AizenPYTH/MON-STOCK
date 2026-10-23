@@ -1,7 +1,7 @@
 "use client";
 import { useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, FileSpreadsheet, FileUp } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileSpreadsheet, FileUp, Loader2, TriangleAlert } from "lucide-react";
 import type { CatalogImportDTO, CatalogMapping, CatalogPreviewDTO } from "@/features/mobile-api/contract";
 import type { ActionResult } from "@/lib/result";
 import { MonoTitle, Panel, Paper, Scene, SceneHeader, SplitBar } from "@/components/instrument";
@@ -18,6 +18,7 @@ import { PreviewSample } from "@/features/catalog-imports/components/preview-sam
 import { Steps } from "@/features/catalog-imports/components/steps";
 import { ChoiceChips } from "@/features/catalog-imports/components/choice-chips";
 import { StatusPill } from "@/features/catalog-imports/components/status-pill";
+import { ImportProgress } from "@/features/catalog-imports/components/import-progress";
 
 const PREVIEW_URL = "/sourcing/imports/new/preview";
 const IMPORT_URL = "/sourcing/imports/new/import";
@@ -231,7 +232,7 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                 ) : (
                   <label className="flex max-w-[420px] flex-col gap-1.5">
                     <span className="text-[13px] font-semibold text-muted">Fournisseur</span>
-                    <select value={supplierId} onChange={(e) => chooseSupplier(e.target.value)} className="h-12 rounded-xl border border-border-strong bg-surface px-3 text-[15px] font-semibold text-foreground">
+                    <select value={supplierId} onChange={(e) => chooseSupplier(e.target.value)} className="h-12 rounded-xl border border-border-control bg-surface px-3 text-[15px] font-semibold text-foreground focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25">
                       <option value="">Nouveau fournisseur…</option>
                       {suppliers.map((s) => (
                         <option key={s.id} value={s.id}>
@@ -251,7 +252,7 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                       maxLength={160}
                       placeholder="Nom du fournisseur"
                       aria-describedby={`${id}-supplier-hint`}
-                      className="h-12 rounded-xl border border-border-strong bg-surface px-3 text-[15px] font-semibold text-foreground placeholder:text-ink-3"
+                      className="h-12 rounded-xl border border-border-control bg-surface px-3 text-[15px] font-semibold text-foreground transition-[border-color,box-shadow] duration-150 ease-standard placeholder:font-medium placeholder:text-ink-3 hover:border-muted focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25"
                     />
                     <span id={`${id}-supplier-hint`} className="text-xs font-semibold text-ink-3">
                       2 à 160 caractères. Un fournisseur du même nom est réutilisé.
@@ -280,7 +281,7 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                   onDrop={onDrop}
                   className={cn(
                     "flex cursor-pointer flex-col items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed px-5 py-9 text-center transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring",
-                    dragOver ? "border-ink-3 bg-background" : "border-border-strong bg-[#F7F8FA] hover:border-ink-3 hover:bg-background",
+                    dragOver ? "border-ink-3 bg-selection" : "border-border-strong bg-surface-2 hover:border-ink-3 hover:bg-selection",
                     busy !== null && "pointer-events-none opacity-70",
                   )}
                 >
@@ -289,7 +290,8 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                   <span className="text-[13px] font-semibold leading-[18px] text-ink-3">CSV, XLSX, XML ou JSON reçu par e-mail ou téléchargé depuis l&apos;espace pro du fournisseur · {WEB_UPLOAD_MAX_LABEL} maximum depuis le site (15 Mo depuis l&apos;iPhone)</span>
                   <input ref={fileInput} id={`${id}-file`} type="file" accept={ACCEPT_ATTRIBUTE} onChange={(e) => choose(e.target.files?.[0] ?? null)} disabled={busy !== null} className="sr-only" />
                   {busy === "preview" ? (
-                    <span role="status" className="text-[13px] font-bold text-info">
+                    <span role="status" className="inline-flex items-center gap-2 text-[13px] font-bold text-info">
+                      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                       Lecture du fichier et détection des colonnes…
                     </span>
                   ) : null}
@@ -335,9 +337,12 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                   </Callout>
                 ) : null}
                 {data.warnings.length ? (
-                  <ul className="space-y-0.5 text-[12.5px] font-semibold text-warning">
+                  <ul className="space-y-1 text-[12.5px] font-semibold text-warning">
                     {data.warnings.map((w) => (
-                      <li key={w}>{w}</li>
+                      <li key={w} className="flex items-start gap-1.5">
+                        <TriangleAlert aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0">{w}</span>
+                      </li>
                     ))}
                   </ul>
                 ) : null}
@@ -376,7 +381,7 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                         }}
                         maxLength={3}
                         aria-invalid={!currencyOk || undefined}
-                        className={cn("ms-code h-10 w-[120px] rounded-[10px] border bg-surface px-2.5 text-[13px] uppercase text-foreground", currencyOk ? "border-border-strong" : "border-danger-line")}
+                        className={cn("ms-code h-10 w-[120px] rounded-[10px] border bg-surface px-2.5 text-[13px] uppercase text-foreground focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25 pointer-coarse:text-base", currencyOk ? "border-border-control" : "border-danger")}
                       />
                     </label>
                     {!currencyOk ? (
@@ -389,7 +394,7 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                     <MonoTitle title={`Aperçu · ${Math.min(allRows ? data.sample.length : 6, data.sample.length)} premières lignes`} as="h3" />
                     <PreviewSample sample={data.sample} limit={allRows ? data.sample.length : 6} />
                     {data.sample.length > 6 ? (
-                      <button type="button" onClick={() => setAllRows((x) => !x)} aria-expanded={allRows} className="min-h-10 self-start text-[13px] font-bold hover:opacity-60">
+                      <button type="button" onClick={() => setAllRows((x) => !x)} aria-expanded={allRows} className={buttonClasses("link", "sm", "min-h-10 self-start text-[13px]")}>
                         {allRows ? "Afficher 6 lignes" : `Afficher les ${data.sample.length} lignes de l'aperçu`}
                       </button>
                     ) : null}
@@ -426,21 +431,21 @@ export function ImportWizard({ suppliers, orgCurrency, initialSupplierId, initia
                       role="radio"
                       aria-checked={mode === m}
                       onClick={() => setMode(m)}
-                      className={cn("min-h-10 flex-1 rounded-[10px] px-2 text-[13px] font-bold transition-colors", mode === m ? "bg-surface text-foreground shadow-[0_2px_6px_rgba(16,28,44,.08)]" : "text-muted hover:text-foreground")}
+                      className={cn("min-h-10 flex-1 rounded-[10px] px-2 text-[13px] font-bold transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring", mode === m ? "bg-surface text-foreground shadow-raised" : "text-muted hover:text-foreground")}
                     >
                       {IMPORT_MODE_LABEL[m]}
                     </button>
                   ))}
                 </div>
                 <p className="text-[13.5px] font-semibold leading-[19px] text-muted">{IMPORT_MODE_HELP[mode]}</p>
-                <div className="flex flex-col gap-1.5 rounded-[14px] bg-background p-4">
+                <div className="flex flex-col gap-1.5 rounded-[14px] border border-border bg-surface-2 p-4">
                   <span className="text-[15px] font-bold leading-5">Importer ce catalogue ?</span>
                   <span className="text-sm font-medium leading-5 text-muted">
                     {formatNumber(data.validCount)} offre{data.validCount > 1 ? "s" : ""} de <strong className="font-bold text-foreground">{supplierLabel || "ce fournisseur"}</strong> seront enregistrées ({taxType === "ht" ? "prix HT" : taxType === "ttc" ? "prix TTC" : "type de prix non précisé"}, {currency.toUpperCase()}), datées de cet import. {IMPORT_MODE_LABEL[mode]}. Les lignes incomplètes sont ignorées.
                   </span>
                 </div>
-                {!supplierOk ? <span className="text-sm font-semibold text-danger">Choisissez le fournisseur de ce catalogue (étape 1).</span> : null}
-                {!columnsOk ? <span className="text-sm font-semibold text-danger">Corrigez les colonnes puis actualisez l&apos;aperçu (étape 3).</span> : null}
+                {!supplierOk ? <span className="flex items-center gap-1.5 text-sm font-semibold text-danger"><TriangleAlert aria-hidden="true" className="h-4 w-4 shrink-0" />Choisissez le fournisseur de ce catalogue (étape 1).</span> : null}
+                {!columnsOk ? <span className="flex items-center gap-1.5 text-sm font-semibold text-danger"><TriangleAlert aria-hidden="true" className="h-4 w-4 shrink-0" />Corrigez les colonnes puis actualisez l&apos;aperçu (étape 3).</span> : null}
                 <div className="flex flex-wrap justify-between gap-2.5">
                   <Button variant="ghost" size="lg" onClick={() => setView(2)}>
                     <ArrowLeft aria-hidden="true" className="h-4 w-4" />
@@ -473,7 +478,7 @@ function resultStatus(result: CatalogImportDTO): { label: string; tone: ImportTo
   return { label: "Import en échec", tone: "danger" };
 }
 
-const MESSAGE_TONE: Record<ImportTone, string> = { success: "bg-success-soft text-success", warning: "bg-warning-soft text-warning", danger: "bg-danger-soft text-danger", info: "bg-info-soft text-info", neutral: "bg-background text-muted" };
+const MESSAGE_TONE: Record<ImportTone, string> = { success: "border-success-line bg-success-soft text-success-ink", warning: "border-warning-line bg-warning-soft text-warning-ink", danger: "border-danger-line bg-danger-soft text-danger-ink", info: "border-info-line bg-info-soft text-info-ink", neutral: "border-border bg-surface-2 text-muted-strong" };
 
 function ImportResult({ result, mode, busy, onReimport, onForce, onFix, onRestart }: { result: CatalogImportDTO; mode: ImportMode; busy: boolean; onReimport: () => void; onForce: () => void; onFix: () => void; onRestart: () => void }) {
   const r = result.result;
@@ -515,7 +520,8 @@ function ImportResult({ result, mode, busy, onReimport, onForce, onFix, onRestar
         ) : r.status === "failed" && !r.quarantined ? (
           <span aria-hidden="true" className="block h-3 rounded-full bg-track" />
         ) : null}
-        <div className={cn("rounded-[14px] px-4 py-3.5 text-sm font-semibold leading-5", MESSAGE_TONE[status.tone])}>{r.message}</div>
+        <div className={cn("rounded-[14px] border px-4 py-3.5 text-sm font-semibold leading-5", MESSAGE_TONE[status.tone])}>{r.message}</div>
+        {r.pending ? <ImportProgress progress={r.progress} className="max-w-[640px]" /> : null}
         {(r.quality?.warnings ?? []).map((w) => (
           <p key={w} className="text-[12.5px] font-semibold text-warning">
             {w}
@@ -533,7 +539,7 @@ function ImportResult({ result, mode, busy, onReimport, onForce, onFix, onRestar
             ) : null}
           </Callout>
         ) : null}
-        {r.truncated ? <p className="text-[12.5px] font-semibold text-danger">Fichier tronqué : seules les premières lignes ont été traitées.</p> : null}
+        {r.truncated ? <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-danger"><TriangleAlert aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />Fichier tronqué : seules les premières lignes ont été traitées.</p> : null}
         {written ? (
           <p className="text-[13.5px] font-semibold leading-[19px] text-muted">
             Les offres apparaissent dans Sourcing et dans le radar d&apos;opportunités, datées de cet import.{" "}

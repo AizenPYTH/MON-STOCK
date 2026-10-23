@@ -1,7 +1,8 @@
 "use client";
 import { useEffect } from "react";
-import { AlertTriangle } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/error-state";
 
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
@@ -15,22 +16,29 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
   const isEnv = !masked && error.message.includes("Configuration");
   const message = masked ? "Une erreur inattendue s'est produite côté serveur. Réessayez dans un instant." : error.message || "Une erreur inattendue s'est produite.";
   return (
-    <div role="alert" className="mx-auto max-w-lg rounded-xl border border-red-200 bg-danger-soft p-6">
-      <h1 className="flex items-center gap-2 text-base font-semibold text-red-900">
-        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-        Impossible d'afficher cette page
-      </h1>
-      <p className="mt-2 whitespace-pre-wrap break-words text-sm text-red-800">{message}</p>
-      {isEnv ? <p className="mt-2 text-xs text-red-800">Vérifiez vos variables d'environnement (voir .env.example).</p> : null}
-      {error.digest ? <p className="mt-2 font-mono text-xs text-red-800">Référence : {error.digest}</p> : null}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => reset()}>
-          Réessayer
-        </Button>
-        <ButtonLink href="/dashboard" variant="ghost">
-          Tableau de bord
-        </ButtonLink>
-      </div>
+    <div className="mx-auto w-full max-w-xl py-6">
+      <ErrorState
+        title="Impossible d'afficher cette page"
+        description={
+          <span className="block whitespace-pre-wrap break-words">
+            {message}
+            {isEnv ? <span className="mt-2 block text-xs">Vérifiez vos variables d&apos;environnement (voir .env.example).</span> : null}
+            <span className="mt-2 block text-xs">Vos données ne sont pas modifiées.</span>
+          </span>
+        }
+        details={error.digest ? `Référence : ${error.digest}` : undefined}
+        action={
+          <>
+            <Button variant="secondary" onClick={() => reset()}>
+              <RotateCcw aria-hidden="true" className="h-4 w-4" />
+              Réessayer
+            </Button>
+            <ButtonLink href="/dashboard" variant="ghost">
+              Tableau de bord
+            </ButtonLink>
+          </>
+        }
+      />
     </div>
   );
 }

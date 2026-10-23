@@ -11,11 +11,14 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { toUserMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { fetchParcels, fetchToolsStatus } from "@/features/tools/queries";
-import { carrierText, frDateTime, PARCEL_TONE_CLASS } from "@/features/tools/format";
+import { carrierText, frDateTime } from "@/features/tools/format";
+import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { ToolScreen } from "@/features/tools/components/tool-page";
 import type { TrackedParcel } from "@/features/tools/parcels";
 
 export const metadata: Metadata = { title: "Suivi de colis" };
+
+const PARCEL_STATUS_TONE: Record<string, StatusTone> = { problem: "danger", progress: "info", unverified: "warning", delivered: "success", waiting: "pending" };
 
 /**
  * Colis suivis : statut renvoyé par l'API de suivi (« Non vérifié » tant qu'aucune API n'a
@@ -54,7 +57,7 @@ export default async function TrackingListPage({ searchParams }: { searchParams:
     >
       <div className="space-y-4">
         {noApi ? <Callout tone="warning">Suivi automatique pas encore activé sur le serveur : les statuts restent « Non vérifié ». Ouvrez un colis pour le suivre gratuitement sur le site du transporteur.</Callout> : null}
-        {"error" in status ? <p className="text-xs text-muted">État des API de suivi indisponible ({status.error}).</p> : null}
+        {"error" in status ? <Callout tone="neutral">État des API de suivi indisponible ({status.error}).</Callout> : null}
         {"error" in list ? (
           <Callout tone="danger" title="Colis indisponibles">
             {list.error}
@@ -68,39 +71,34 @@ export default async function TrackingListPage({ searchParams }: { searchParams:
           />
         ) : (
           <Card className="overflow-hidden">
-            <Table>
-              <caption className="sr-only">{archived ? "Colis archivés" : "Colis suivis"}</caption>
+            <Table stackOnMobile caption={archived ? "Colis archivés" : "Colis suivis"}>
               <THead>
-                <TR>
-                  <TH scope="col">Statut</TH>
+                <tr>
                   <TH scope="col">Colis</TH>
+                  <TH scope="col">Statut</TH>
                   <TH scope="col">Transporteur</TH>
                   <TH scope="col">Livraison</TH>
                   <TH scope="col">Dernière activité</TH>
-                </TR>
+                </tr>
               </THead>
               <TBody>
                 {parcels.map((p) => {
                   const d = parcelDisplay(p);
-                  const tone = PARCEL_TONE_CLASS[d.tone];
                   return (
                     <TR key={p.id}>
-                      <TD>
-                        <span className="inline-flex items-center gap-2">
-                          <span aria-hidden="true" className={cn("inline-block h-2.5 w-2.5 rounded-full", tone.dot)} />
-                          <span className={cn("font-semibold", tone.text)}>{d.label}</span>
-                        </span>
-                      </TD>
-                      <TD>
-                        <Link href={`/tools/tracking/${p.id}` as never} className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <TD primary>
+                        <Link href={`/tools/tracking/${p.id}` as never} className={cn("font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", !p.label && "ms-code text-[13px]")}>
                           {p.label || p.trackingNumber}
                         </Link>
-                        {p.label ? <div className="text-xs text-muted tnum">N° {p.trackingNumber}</div> : null}
-                        {p.order ? <div className="text-xs text-muted">Commande {p.order.orderNumber ?? "—"}</div> : null}
+                        {p.label ? <div className="ms-code text-[11.5px] font-normal text-ink-3">N° {p.trackingNumber}</div> : null}
+                        {p.order ? <div className="text-xs font-normal text-muted">Commande {p.order.orderNumber ?? "—"}</div> : null}
                       </TD>
-                      <TD>{carrierText(p)}</TD>
-                      <TD className="text-sm">{p.status === "delivered" && p.deliveredAt ? `Livré le ${frDateTime(p.deliveredAt)}` : p.estimatedDelivery ? `Estimée : ${frDateTime(p.estimatedDelivery)}` : <span className="text-muted">—</span>}</TD>
-                      <TD className="text-sm text-muted">{p.lastCheckedAt ? `vérifié ${relativeFr(p.lastCheckedAt, now) ?? "—"}` : `ajouté ${relativeFr(p.createdAt, now) ?? "—"}`}</TD>
+                      <TD label="Statut">
+                        <StatusBadge tone={PARCEL_STATUS_TONE[d.tone] ?? "neutral"}>{d.label}</StatusBadge>
+                      </TD>
+                      <TD label="Transporteur">{carrierText(p)}</TD>
+                      <TD label="Livraison" className="text-sm tnum">{p.status === "delivered" && p.deliveredAt ? `Livré le ${frDateTime(p.deliveredAt)}` : p.estimatedDelivery ? `Estimée : ${frDateTime(p.estimatedDelivery)}` : <span className="text-muted">—</span>}</TD>
+                      <TD label="Dernière activité" className="text-sm text-muted">{p.lastCheckedAt ? `vérifié ${relativeFr(p.lastCheckedAt, now) ?? "—"}` : `ajouté ${relativeFr(p.createdAt, now) ?? "—"}`}</TD>
                     </TR>
                   );
                 })}

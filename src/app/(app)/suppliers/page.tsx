@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/page";
 import { ButtonLink } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { MonoTitle, Panel, Paper, Scene, SceneHeader, Segmented, StageStats } from "@/components/instrument";
+import { MonoTitle, Paper, Scene, SceneHeader, Segmented, StageStats } from "@/components/instrument";
 import { listSuppliers } from "@/features/suppliers/queries";
 import { listPendingDiscoveredSources } from "@/features/suppliers/discovered-queries";
 import { DiscoveredSourcesPanel } from "@/features/suppliers/components/discovered-sources";
@@ -23,6 +23,11 @@ function domainOf(website: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** Score interne : repère visuel du niveau (même seuils que le détail du score) ; le chiffre reste affiché. */
+function scoreVariant(score: number): "success" | "info" | "neutral" {
+  return score >= 70 ? "success" : score >= 45 ? "info" : "neutral";
 }
 
 export default async function SuppliersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -89,9 +94,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
             action={writable && !archived ? <ButtonLink href="/suppliers/new">Ajouter un fournisseur</ButtonLink> : undefined}
           />
         ) : (
-          <Panel className="overflow-hidden">
-            <Table>
-              <caption className="sr-only">{archived ? "Fournisseurs archivés" : "Fournisseurs actifs"}</caption>
+          <Table stackOnMobile wrapperClassName="rounded-2xl" caption={archived ? "Fournisseurs archivés" : "Fournisseurs actifs"}>
               <THead>
                 <tr>
                   <TH scope="col">Fournisseur</TH>
@@ -107,8 +110,8 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
               <TBody>
                 {rows.map(({ supplier, offersCount, offersCountExact, sourcesCount, sourceTypes, lastSyncAt }) => (
                   <TR key={supplier.id}>
-                    <TD>
-                      <Link href={`/suppliers/${supplier.id}` as never} className="flex items-center gap-2.5 hover:underline">
+                    <TD primary>
+                      <Link href={`/suppliers/${supplier.id}` as never} className="flex min-w-0 items-center gap-2.5 rounded-lg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                         <SupplierBadge name={supplier.name} domain={domainOf(supplier.website)} size="sm" />
                         <span className="min-w-0">
                           <span className="block truncate font-bold">{supplier.name}</span>
@@ -116,12 +119,12 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                         </span>
                       </Link>
                     </TD>
-                    <TD className="ms-code text-xs">{supplier.country ?? "—"}</TD>
-                    <TD>{supplier.internal_score === null || supplier.internal_score === undefined || !Number.isFinite(Number(supplier.internal_score)) ? <span className="text-xs font-semibold text-ink-3">Données insuffisantes</span> : <Badge variant="success">{Math.round(Number(supplier.internal_score))}/100</Badge>}</TD>
-                    <TD align="right" className="font-bold">
+                    <TD label="Pays" className="ms-code text-xs">{supplier.country ?? "—"}</TD>
+                    <TD label="Score">{supplier.internal_score === null || supplier.internal_score === undefined || !Number.isFinite(Number(supplier.internal_score)) ? <span className="text-xs font-semibold text-ink-3">Données insuffisantes</span> : <Badge variant={scoreVariant(Number(supplier.internal_score))}>{Math.round(Number(supplier.internal_score))}/100</Badge>}</TD>
+                    <TD label="Offres actives" align="right" className="font-bold">
                       {offersCount !== null && !offersCountExact ? <span title="Comptage partiel : borne de lecture atteinte">≥ {formatNumber(offersCount)}</span> : formatNumber(offersCount)}
                     </TD>
-                    <TD>
+                    <TD label="Sources">
                       {sourcesCount === null ? (
                         <span className="text-xs font-semibold text-ink-3" aria-label="inconnu">
                           —
@@ -138,12 +141,11 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                         </span>
                       )}
                     </TD>
-                    <TD className="text-xs font-semibold text-muted">{lastSyncAt ? formatRelative(lastSyncAt) : "Jamais"}</TD>
+                    <TD label="Dernière synchronisation" className="text-xs font-semibold text-muted">{lastSyncAt ? formatRelative(lastSyncAt) : "Jamais"}</TD>
                   </TR>
                 ))}
               </TBody>
-            </Table>
-          </Panel>
+          </Table>
         )}
       </Paper>
     </>

@@ -1,6 +1,6 @@
 import { CircleCheck, CircleX, ExternalLink, KeyRound } from "lucide-react";
 import type { LibraryEntryDTO } from "@/services/sourcing/source-library";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Panel } from "@/components/instrument";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { safeExternalUrl } from "@/lib/utils";
@@ -27,11 +27,17 @@ export function LibraryCard({ entry: e, canActivate }: { entry: LibraryEntryDTO;
               {LIBRARY_SEGMENT_LABEL[e.segment]} · {e.country} · {LIBRARY_ACCESS_LABEL[e.access]}
             </p>
           </div>
-          {e.sourceId ? <Badge variant="success">Activée</Badge> : e.blocked ? <Badge variant="danger">Accès automatisé interdit</Badge> : null}
+          {e.sourceId ? <StatusBadge tone="success">Activée</StatusBadge> : e.blocked ? <StatusBadge tone="danger">Accès automatisé interdit</StatusBadge> : null}
         </div>
-        <p className="text-xs text-muted-strong">{e.notes}</p>
-        {e.blocked ? <p className="text-xs text-danger">{e.blocked}</p> : null}
-        <p className={ok ? "text-xs text-success" : "text-xs text-muted-strong"}>
+        <p className="text-xs leading-[17px] text-muted-strong">{e.notes}</p>
+        {e.blocked ? <p className="text-xs font-semibold text-danger">{e.blocked}</p> : null}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge tone={e.termsStatus === "confirmed" ? "success" : "warning"} title={e.termsLabel}>
+            {e.termsStatus === "confirmed" ? "CGU / CGV confirmées" : "CGU / CGV à localiser"}
+          </StatusBadge>
+          {e.requiresTermsUrl && !e.sourceId ? <span className="text-xs font-medium text-muted">adresse des conditions exigée à l&apos;activation</span> : null}
+        </div>
+        <p className={ok ? "text-xs font-semibold text-success" : "text-xs text-muted-strong"}>
           {status ? `${CHECK_STATUS_LABEL[status] ?? status}${e.check?.checkedAt ? ` · ${formatDateTime(e.check.checkedAt)}` : ""}` : "Pas encore vérifiée"}
           {!ok && e.check?.message ? ` — ${e.check.message.slice(0, 160)}` : ""}
         </p>
@@ -40,8 +46,9 @@ export function LibraryCard({ entry: e, canActivate }: { entry: LibraryEntryDTO;
             <p className="text-muted">Relevé lors de la vérification :</p>
             <ul className="mt-0.5 space-y-0.5">
               {samples.map((s) => (
-                <li key={s.title} className="truncate">
-                  • {s.title} — {s.price === null ? "prix non communiqué" : formatMoney(s.price, s.currency ?? e.currency)}
+                <li key={s.title} className="flex min-w-0 justify-between gap-3">
+                  <span className="truncate">{s.title}</span>
+                  <span className="shrink-0 font-semibold tnum">{s.price === null ? "prix non communiqué" : formatMoney(s.price, s.currency ?? e.currency)}</span>
                 </li>
               ))}
             </ul>
@@ -58,9 +65,9 @@ export function LibraryCard({ entry: e, canActivate }: { entry: LibraryEntryDTO;
           )}
         </div>
         {canActivate && !e.sourceId && e.activatable ? (
-          <details className="rounded-xl border border-border px-3 py-1">
-            <summary className="min-h-10 cursor-pointer py-2 text-sm font-bold">Activer cette source</summary>
-            <div className="pt-2">
+          <details className="rounded-xl border border-border bg-surface-2 px-3.5 py-1">
+            <summary className="flex min-h-10 cursor-pointer items-center text-sm font-bold">Activer cette source</summary>
+            <div className="pb-3 pt-1">
               <ActivateLibraryForm libraryKey={e.key} name={e.name} termsUrl={e.termsUrl} termsConfirmed={e.termsStatus === "confirmed"} />
             </div>
           </details>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import type { DiscoveryPanelData } from "@/services/sourcing/discovery/search-discovery";
 import type { DiscoveryCandidateStatus, DiscoveryReportCandidate } from "@/services/sourcing/discovery/discovery-service";
 import { PLATFORM_LABEL, ROBOTS_STATUS_LABEL } from "@/features/suppliers/discovered";
@@ -60,7 +60,7 @@ export function DiscoveryPanel({ discovery }: { discovery: DiscoveryPanelData })
   return (
     <Card>
       <CardHeader title="Sources découvertes" description={discovery.message} />
-      <CardContent className="p-0">
+      <div>
         {discovery.state === "disabled" ? (
           <div className="space-y-2 px-5 py-4 text-sm text-muted">
             <p>Découverte désactivée : aucune API de recherche configurée. Seules vos sources enregistrées sont interrogées.</p>
@@ -91,7 +91,7 @@ export function DiscoveryPanel({ discovery }: { discovery: DiscoveryPanelData })
             </ul>
           </>
         )}
-      </CardContent>
+      </div>
     </Card>
   );
 }

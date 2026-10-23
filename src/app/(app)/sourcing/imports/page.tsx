@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { EmptyState } from "@/components/ui/page";
-import { ButtonLink } from "@/components/ui/button";
+import { ButtonLink, buttonClasses } from "@/components/ui/button";
 import { MonoTitle, Paper, Scene, SceneHeader, StageStats } from "@/components/instrument";
 import { listImportJobs } from "@/services/sourcing/catalog-import";
 import { activeSupplierOptions } from "@/features/catalog-imports/queries";
@@ -18,7 +18,7 @@ function first(v: string | string[] | undefined): string {
   return ((Array.isArray(v) ? v[0] : v) ?? "").trim();
 }
 
-const control = "h-10 rounded-xl border border-border bg-surface px-3 text-sm font-semibold text-foreground";
+const control = "h-10 rounded-xl border border-border-control bg-surface px-3 text-sm font-semibold text-foreground transition-[border-color,box-shadow] duration-150 ease-standard hover:border-muted focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25 pointer-coarse:text-base";
 
 export default async function CatalogImportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await requireOrgContext();
@@ -88,7 +88,7 @@ export default async function CatalogImportsPage({ searchParams }: { searchParam
               ))}
             </select>
           </label>
-          <button type="submit" className="h-10 rounded-xl border border-border bg-surface px-4 text-sm font-bold hover:bg-line-soft">
+          <button type="submit" className={buttonClasses("secondary", "md")}>
             Appliquer
           </button>
           {supplierId || limit !== 50 ? (

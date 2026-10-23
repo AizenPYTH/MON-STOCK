@@ -11,7 +11,7 @@ export function DeleteConversationButton({ conversationId, title }: { conversati
     <form action={formAction} className="inline-flex flex-col items-end gap-1">
       <input type="hidden" name="conversationId" value={conversationId} />
       <SubmitButton variant="ghost" size="sm" pendingText="Suppression…" confirmMessage={`Supprimer la conversation ?\n« ${title} » et ses messages seront supprimés définitivement.`} aria-label={`Supprimer : ${title}`}>
-        <Trash2 aria-hidden="true" className="h-3.5 w-3.5 text-danger" /> Supprimer
+        <Trash2 aria-hidden="true" className="h-3.5 w-3.5 text-danger" /> <span className="text-danger max-sm:sr-only">Supprimer</span>
       </SubmitButton>
       {state && !state.ok ? (
         <span role="alert" className="text-xs text-danger">

@@ -75,10 +75,10 @@ export function trackingSourceText(provider: string | null): string | null {
 /** Couleurs des statuts de colis (point et texte), mêmes tonalités que l'application. */
 export const PARCEL_TONE_CLASS: Record<ParcelTone, { dot: string; text: string }> = {
   problem: { dot: "bg-danger", text: "text-danger" },
-  progress: { dot: "bg-night", text: "text-foreground" },
+  progress: { dot: "bg-foreground", text: "text-foreground" },
   unverified: { dot: "bg-amber", text: "text-warning" },
   delivered: { dot: "bg-success", text: "text-success" },
-  waiting: { dot: "bg-zinc-400", text: "text-muted" },
+  waiting: { dot: "bg-ink-4", text: "text-muted" },
 };
 
 /** Symboles de l'onglet devise du convertisseur simple. */

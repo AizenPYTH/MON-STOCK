@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { MessageSquare, Trash2 } from "lucide-react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DetailHeader, EmptyState, ErrorState, Screen, SkeletonList, Txt, useToast } from "~/components/ui";
-import { deleteConversation, fetchConversations } from "~/data/advisor";
+import { CONVERSATIONS_LIMIT, deleteConversation, fetchConversations } from "~/data/advisor";
 import { useActiveOrg } from "~/org/org-provider";
 import { requireSupabase } from "~/lib/supabase";
 import { userMessage } from "~/lib/errors";
@@ -38,6 +38,7 @@ export default function AdvisorHistoryScreen() {
       {list.isPending ? <SkeletonList rows={6} thumb={false} /> : null}
       {list.isError ? <ErrorState description={userMessage(list.error)} onRetry={() => void list.refetch()} /> : null}
       {list.data && list.data.length === 0 ? <EmptyState title="Aucune conversation" description="Posez votre première question au conseiller." actions={[{ label: "Nouvelle conversation", onPress: () => router.replace("/advisor") }]} /> : null}
+      {list.data && list.data.length >= CONVERSATIONS_LIMIT ? <Txt variant="label">Les {CONVERSATIONS_LIMIT} conversations les plus récentes sont affichées ; supprimez-en pour voir les plus anciennes.</Txt> : null}
       {(list.data ?? []).map((c) => (
         <View key={c.id} style={{ flexDirection: "row", alignItems: "center", gap: space[2], backgroundColor: color.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: color.line, paddingLeft: space[3] }}>
           <MessageSquare size={18} color={color.ink3} />

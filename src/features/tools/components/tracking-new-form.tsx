@@ -100,7 +100,7 @@ export function TrackingNewForm() {
   const total = queue.length + (entry.number && !queue.some((q) => q.number === entry.number) ? 1 : 0);
   return (
     <form
-      className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]"
+      className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -126,7 +126,7 @@ export function TrackingNewForm() {
                 placeholder="N° de suivi"
                 aria-invalid={entry.error ? true : undefined}
                 aria-describedby="tracking-number-status"
-                className="h-14 min-w-0 flex-1 rounded-xl border-2 border-night bg-surface px-4 text-2xl font-extrabold tracking-tight text-foreground placeholder:font-semibold placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-ring aria-invalid:border-danger"
+                className="h-14 min-w-0 flex-1 rounded-xl border-2 border-inverse bg-surface px-4 text-2xl font-extrabold tracking-tight text-foreground placeholder:font-semibold placeholder:text-ink-4 focus:outline-none focus:ring-2 focus:ring-ring aria-invalid:border-danger"
               />
               <Button variant="secondary" size="lg" className="h-14" onClick={() => void paste()}>
                 Coller

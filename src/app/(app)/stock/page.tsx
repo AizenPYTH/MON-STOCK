@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Package } from "lucide-react";
+import { ChevronLeft, ChevronRight, Package, PackageSearch, TriangleAlert } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Paper } from "@/components/instrument";
 import { ButtonLink } from "@/components/ui/button";
-import { Callout } from "@/components/ui/page";
+import { Callout, EmptyState } from "@/components/ui/page";
 import { getSkuDetail } from "@/features/stock/queries";
 import { skuLabel, type StockRowView } from "@/features/stock/model";
 import { loadStockWebList, type BestOfferChip } from "@/features/stock-web/queries";
@@ -112,26 +112,37 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   }
 
   const resetHref = archived ? "/stock?archived=1" : "/stock";
-  const btn = "flex h-10 w-10 items-center justify-center rounded-[9px] border border-border-strong hover:bg-line-soft";
+  const btn = "flex h-10 w-10 items-center justify-center rounded-[10px] border border-border-strong bg-surface text-foreground transition-colors duration-150 ease-standard hover:bg-surface-2";
 
   return (
     <>
       <StockScene analytics={analytics} currency={currency} archived={archived} exportHref={exportBase} filterHref={filterHref} />
       <Paper className="lg:pt-5">
-        <StockToolbar flat={flat} params={params} analytics={analytics} facets={list.facets} />
-        <div className="mx-0.5 mb-2.5 mt-3.5 flex flex-wrap items-center justify-between gap-3">
-          <span className="ms-mono text-[10px] leading-[13px] text-ink-3">
-            {formatNumber(list.total)} référence{list.total > 1 ? "s" : ""} · {SORT_LABEL[params.sort]}
-          </span>
-          {missingFees.length > 0 ? (
-            <span className="text-[12.5px] font-semibold leading-[17px] text-warning">
-              Marges provisoires : {missingFees.join(", ")} non réglé{missingFees.length > 1 ? "s" : ""} ·{" "}
-              <Link href="/settings/organization" className="font-bold underline">
-                régler mes coûts
-              </Link>
-            </span>
-          ) : null}
-        </div>
+        <StockToolbar
+          flat={flat}
+          params={params}
+          analytics={analytics}
+          facets={list.facets}
+          summary={
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="ms-mono whitespace-nowrap text-[10.5px] leading-[14px] text-ink-3">
+                <span className="tnum text-foreground">{formatNumber(list.total)}</span> référence{list.total > 1 ? "s" : ""} · {SORT_LABEL[params.sort]}
+              </span>
+              {missingFees.length > 0 ? (
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold leading-[17px] text-warning">
+                  <TriangleAlert aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Marges provisoires : {missingFees.join(", ")} non réglé{missingFees.length > 1 ? "s" : ""} ·{" "}
+                    <Link href="/settings/organization" className="font-bold underline underline-offset-2 hover:no-underline">
+                      régler mes coûts
+                    </Link>
+                  </span>
+                </span>
+              ) : null}
+            </div>
+          }
+        />
+        <div className="h-3" />
         {list.truncated ? (
           <Callout tone="warning" className="mb-3">
             Analyse limitée aux premières références : affinez la recherche pour un résultat exhaustif. Les compteurs sont des minima.
@@ -145,51 +156,54 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         ) : null}
 
         {list.rows.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-6 py-10 text-center">
-            <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-background text-muted">
-              <Package className="h-7 w-7" strokeWidth={1.8} />
-            </span>
-            {list.total > 0 ? (
-              <>
-                <span className="text-[17px] font-bold leading-[22px]">Cette page n&apos;existe plus</span>
-                <span className="max-w-[420px] text-sm font-medium text-muted">La liste compte {formatNumber(list.total)} références : revenez à la première page.</span>
+          list.total > 0 ? (
+            <EmptyState
+              icon={<Package />}
+              title="Cette page n'existe plus"
+              description={`La liste compte ${formatNumber(list.total)} références : revenez à la première page.`}
+              action={
                 <ButtonLink href={pageHref(1)} variant="secondary">
                   Première page
                 </ButtonLink>
-              </>
-            ) : hasFilters ? (
-              <>
-                <span className="text-[17px] font-bold leading-[22px]">Aucun résultat</span>
-                <span className="max-w-[420px] text-sm font-medium text-muted">{params.base.q ? `Aucune référence ne correspond à « ${params.base.q} » avec ces filtres.` : "Aucune référence ne correspond à ces filtres."}</span>
-                <div className="mt-1 flex flex-wrap justify-center gap-2">
-                  <ButtonLink href={resetHref}>Effacer la recherche et les filtres</ButtonLink>
-                  {params.base.q ? (
-                    <ButtonLink href={`/sourcing?q=${encodeURIComponent(params.base.q)}`} variant="secondary">
-                      Chercher « {params.base.q} » chez les fournisseurs
-                    </ButtonLink>
-                  ) : null}
-                </div>
-              </>
-            ) : archived ? (
-              <>
-                <span className="text-[17px] font-bold leading-[22px]">Aucun produit archivé</span>
+              }
+            />
+          ) : hasFilters ? (
+            <EmptyState
+              icon={<PackageSearch />}
+              title="Aucun résultat"
+              description={params.base.q ? `Aucune référence ne correspond à « ${params.base.q} » avec ces filtres.` : "Aucune référence ne correspond à ces filtres."}
+              action={<ButtonLink href={resetHref}>Effacer la recherche et les filtres</ButtonLink>}
+              secondaryAction={
+                params.base.q ? (
+                  <ButtonLink href={`/sourcing?q=${encodeURIComponent(params.base.q)}`} variant="secondary">
+                    Chercher « {params.base.q} » chez les fournisseurs
+                  </ButtonLink>
+                ) : undefined
+              }
+            />
+          ) : archived ? (
+            <EmptyState
+              icon={<Package />}
+              title="Aucun produit archivé"
+              action={
                 <ButtonLink href="/stock" variant="secondary">
                   Voir le stock actif
                 </ButtonLink>
-              </>
-            ) : (
-              <>
-                <span className="text-[17px] font-bold leading-[22px]">Aucun produit</span>
-                <span className="max-w-[420px] text-sm font-medium text-muted">Ajoutez votre premier produit et ses variantes, ou connectez eBay pour importer vos annonces.</span>
-                <div className="mt-1 flex flex-wrap justify-center gap-2">
-                  {writable ? <ButtonLink href="/stock/new">Créer un produit</ButtonLink> : null}
-                  <ButtonLink href="/settings/integrations" variant="secondary">
-                    Connecter eBay
-                  </ButtonLink>
-                </div>
-              </>
-            )}
-          </div>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<Package />}
+              title="Aucun produit"
+              description="Ajoutez votre premier produit et ses variantes, ou connectez eBay pour importer vos annonces."
+              action={writable ? <ButtonLink href="/stock/new">Créer un produit</ButtonLink> : undefined}
+              secondaryAction={
+                <ButtonLink href="/settings/integrations" variant="secondary">
+                  Connecter eBay
+                </ButtonLink>
+              }
+            />
+          )
         ) : (
           <StockTableV5
             rows={rows}
@@ -199,8 +213,8 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             writable={writable}
             exportBase="/stock/export.csv"
             footer={
-              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
-                <span className="text-[12.5px] font-semibold leading-[17px] text-ink-3">Couverture : stock disponible ÷ vitesse de vente récente (7, 30 ou 90 jours selon l&apos;historique).</span>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft bg-surface-2 px-4 py-2.5">
+                <span className="min-w-0 flex-1 basis-64 text-[12.5px] font-semibold leading-[17px] text-ink-3">Couverture : stock disponible ÷ vitesse de vente récente (7, 30 ou 90 jours selon l&apos;historique).</span>
                 <nav aria-label="Pagination" className="flex items-center gap-2">
                   <span className="ms-code whitespace-nowrap text-[11px] leading-[15px] text-muted tnum">
                     {formatNumber(from)}–{formatNumber(to)} sur {formatNumber(list.total)}
@@ -210,8 +224,8 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <ChevronLeft aria-hidden="true" className="h-4 w-4" />
                     </Link>
                   ) : (
-                    <span aria-hidden="true" className={cn(btn, "opacity-40")}>
-                      <ChevronLeft className="h-4 w-4" />
+                    <span aria-hidden="true" className={cn(btn, "pointer-events-none opacity-40")}>
+                      <ChevronLeft aria-hidden="true" className="h-4 w-4" />
                     </span>
                   )}
                   {list.page < pageCount ? (
@@ -219,8 +233,8 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <ChevronRight aria-hidden="true" className="h-4 w-4" />
                     </Link>
                   ) : (
-                    <span aria-hidden="true" className={cn(btn, "opacity-40")}>
-                      <ChevronRight className="h-4 w-4" />
+                    <span aria-hidden="true" className={cn(btn, "pointer-events-none opacity-40")}>
+                      <ChevronRight aria-hidden="true" className="h-4 w-4" />
                     </span>
                   )}
                 </nav>

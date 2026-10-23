@@ -1,7 +1,6 @@
 import type { DailySalesRow, Order } from "@/db/types";
 import { dayKey, shiftDayKey, summarizeSalesWindows } from "@/features/analytics/series.pure";
 import type { MobileSupabase } from "~/lib/supabase";
-import { orIlikeAny } from "@/lib/postgrest";
 
 /** Ventes — commandes réellement importées (eBay) ou saisies, lues sous RLS. */
 export const SALES_PAGE_SIZE = 30;
@@ -62,37 +61,52 @@ export async function fetchSalesKpis(supabase: MobileSupabase, organizationId: s
   return { toShip: toShip.count ?? 0, revenue7d, refunded30d: refunded.count ?? 0, listingsActive: listings.count ?? 0 };
 }
 
-export async function fetchOrdersFiltered(supabase: MobileSupabase, organizationId: string, params: { status?: string; page: number }) {
-  const from = (params.page - 1) * SALES_PAGE_SIZE;
+/** Curseur de la liste des commandes : dernière ligne lue (tri placed_at desc, id asc). */
+export type OrdersCursor = { placedAt: string | null; id: string } | null;
+
+const quoted = (v: string) => `"${v.replace(/"/g, '\\"')}"`;
+
+/**
+ * Commandes par CURSEUR (M-25) : tri stable placed_at desc (dates inconnues à la fin) puis id ; la
+ * page suivante reprend STRICTEMENT après la dernière ligne lue — une commande importée entre deux
+ * pages ne décale plus la liste (ni doublon, ni commande sautée). Pas de comptage exact à chaque
+ * page : `hasMore` vient d'une ligne lue en plus.
+ */
+export async function fetchOrdersFiltered(supabase: MobileSupabase, organizationId: string, params: { status?: string; cursor: OrdersCursor }) {
   let query = supabase
     .from("orders")
-    .select("id, order_number, external_order_id, provider, status, placed_at, total, currency, buyer_username, items:order_items(title, quantity, sku_id, inventory_applied)", { count: "exact" })
+    .select("id, order_number, external_order_id, provider, status, placed_at, total, currency, buyer_username, items:order_items(title, quantity, sku_id, inventory_applied)")
     .eq("organization_id", organizationId);
   if (params.status) query = query.eq("status", params.status as "paid");
-  const { data, error, count } = await query.order("placed_at", { ascending: false, nullsFirst: false }).order("id", { ascending: true }).range(from, from + SALES_PAGE_SIZE - 1);
+  const c = params.cursor;
+  if (c && c.placedAt !== null) query = query.or(`placed_at.lt.${quoted(c.placedAt)},and(placed_at.eq.${quoted(c.placedAt)},id.gt.${c.id}),placed_at.is.null`);
+  else if (c) query = query.is("placed_at", null).gt("id", c.id);
+  const { data, error } = await query.order("placed_at", { ascending: false, nullsFirst: false }).order("id", { ascending: true }).limit(SALES_PAGE_SIZE + 1);
   if (error) throw error;
-  const rows = data ?? [];
-  const total = count ?? rows.length;
-  return { rows, total, hasMore: from + rows.length < total };
+  const all = data ?? [];
+  const rows = all.slice(0, SALES_PAGE_SIZE);
+  const last = rows[rows.length - 1];
+  const hasMore = all.length > SALES_PAGE_SIZE;
+  return { rows, hasMore, nextCursor: hasMore && last ? { placedAt: last.placed_at, id: last.id } : null };
 }
 
 export const LISTINGS_PAGE_SIZE = 30;
 
+/** Annonces : pages de 30 (une ligne lue en plus pour savoir s'il en reste), sans comptage par page. */
 export async function fetchListings(supabase: MobileSupabase, organizationId: string, page: number) {
   const from = (page - 1) * LISTINGS_PAGE_SIZE;
-  const { data, error, count } = await supabase
+  const { data, error } = await supabase
     .from("channel_listings")
-    .select("id, title, price, currency, quantity_available, status, image_url, external_listing_id, last_synced_at, sku_id", { count: "exact" })
+    .select("id, title, price, currency, quantity_available, status, image_url, external_listing_id, last_synced_at, sku_id")
     .eq("organization_id", organizationId)
     .eq("provider", "ebay")
     .order("status", { ascending: true })
     .order("last_synced_at", { ascending: false, nullsFirst: false })
     .order("id", { ascending: true })
-    .range(from, from + LISTINGS_PAGE_SIZE - 1);
+    .range(from, from + LISTINGS_PAGE_SIZE);
   if (error) throw error;
-  const rows = data ?? [];
-  const total = count ?? rows.length;
-  return { rows, total, hasMore: from + rows.length < total };
+  const all = data ?? [];
+  return { rows: all.slice(0, LISTINGS_PAGE_SIZE), hasMore: all.length > LISTINGS_PAGE_SIZE };
 }
 
 export interface OrderListItem {

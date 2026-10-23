@@ -44,8 +44,8 @@ export default async function NewProductPage({ searchParams }: { searchParams: P
         />
       </Scene>
       <Paper>
-        <div className="max-w-4xl">
-          <ProductForm product={product} suppliers={suppliers ?? []} currency={ctx.organization.default_currency} defaults={defaults} />
+        <div className="max-w-5xl">
+          <ProductForm product={product} suppliers={suppliers ?? []} currency={ctx.organization.default_currency} defaults={defaults} cancelHref="/stock" />
         </div>
       </Paper>
     </>

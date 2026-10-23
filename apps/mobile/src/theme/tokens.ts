@@ -134,7 +134,7 @@ export const motion = {
   segmented: 240,
   chip: 160,
   toast: 280,
-  toastAutoDismiss: 4000,
+  toastAutoDismiss: 6000,
   undoWindow: 5000,
   skeletonPulse: 1000,
 } as const;

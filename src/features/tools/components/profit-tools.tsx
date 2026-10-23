@@ -14,7 +14,7 @@ const CURRENCY = "EUR";
 /** Colonnes : saisie à gauche, résultat à droite (collant) sur grand écran. */
 export function ToolColumns({ form, result }: { form: ReactNode; result: ReactNode }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
       <div className="space-y-5">{form}</div>
       <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">{result}</div>
     </div>
@@ -31,7 +31,7 @@ function ProfitCostsForm({ form, onChange, errors, defaults }: { form: ProfitFor
   return (
     <>
       <FormBlock title="Achat">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <AmountField label="Prix d'achat unitaire" value={form.purchasePrice} onChange={(v) => set("purchasePrice", v)} suffix="€" error={errors.purchasePrice} />
           <ChoiceChips
             label="Le prix d'achat est"
@@ -78,7 +78,7 @@ function ProfitCostsForm({ form, onChange, errors, defaults }: { form: ProfitFor
           value={form.vatRegime}
           onChange={(v) => set("vatRegime", v)}
         />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {form.vatRegime === "normal" || form.vatRegime === "margin" ? <AmountField label="Taux de TVA" value={form.vatRate} onChange={(v) => set("vatRate", v)} suffix="%" placeholder="Ex. 20" error={errors.vatRate} hint="Taux applicable à votre produit, à vérifier." /> : null}
           {form.vatRegime !== "franchise" ? (
             <ChoiceChips<boolean | null>
@@ -124,7 +124,7 @@ export function MarginDetail({ defaults }: { defaults: CostDefaults | null }) {
   if (computation.state === "ok") {
     const { economics: e, marginOnCostPercent, marginOnRevenuePercent, partial } = computation.result;
     const summary: ResultLine[] = [
-      { label: partial ? "Bénéfice estimé (coûts connus)" : "Bénéfice estimé", value: formatMoney(e.estimatedProfit, CURRENCY), kind: "total" },
+      { label: partial ? "Bénéfice estimé (coûts connus)" : "Bénéfice estimé", value: `${partial ? "≈ " : ""}${formatMoney(e.estimatedProfit, CURRENCY)}`, kind: "total" },
       { label: "Taux de marge", value: pctText(marginOnCostPercent), note: "Bénéfice ÷ coût d'achat rendu" },
       { label: "Taux de marque", value: pctText(marginOnRevenuePercent), note: "Bénéfice ÷ chiffre d'affaires hors TVA" },
       { label: "Coût d'achat rendu", value: formatMoney(e.landedCost, CURRENCY) },

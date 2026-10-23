@@ -10,6 +10,7 @@ import type { RadarItemDTO, RadarOfferDetailDTO, RadarRestockDTO, RadarSort } fr
 import { isAppError, toUserMessage } from "@/lib/errors";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ButtonLink } from "@/components/ui/button";
 import { FILTER_OPTIONS, FRESHNESS_LABEL, PRICE_ORIGIN_SHORT, STATUS_LABEL, filterItems, parseRadarParams, radarFigure, radarHref, signedProfit, type RadarFilter } from "@/features/radar/labels";
 import { Chip, FRESH_CHIP, STATUS_CHIP } from "@/features/radar/components/chips";
 import { OfferStretchLink } from "@/features/radar/components/offer-link";
@@ -25,7 +26,7 @@ const SEGMENTS = [
   { key: "profitable", label: "Rentables", color: "var(--mint)" },
   { key: "estimated", label: "Estimations", color: "var(--amber)" },
   { key: "unprofitable", label: "Non rentables", color: "var(--danger-on-night)" },
-  { key: "insufficient", label: "Incomplètes", color: "rgba(247,248,250,.26)" },
+  { key: "insufficient", label: "Incomplètes", color: "color-mix(in srgb, var(--on-night) 26%, transparent)" },
 ] as const;
 
 /**
@@ -58,7 +59,7 @@ export default async function RadarPage({ searchParams }: { searchParams: Promis
             <div className="ms-mono text-[11px] leading-[14px] tracking-[0.08em] text-on-night-muted">Sourcing · ventes réelles × offres fournisseurs</div>
             <h1 className="mt-1 text-[28px] font-extrabold leading-[34px] tracking-[-0.6px] text-on-night">Radar d&apos;opportunités</h1>
           </div>
-          <Link href="/radar/settings" className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-night-raised px-3 text-[13.5px] font-bold text-on-night hover:bg-night-hover">
+          <Link href="/radar/settings" className="inline-flex h-10 items-center gap-2 rounded-[10px] bg-night-raised px-3 text-[13.5px] font-bold text-on-night hover:bg-night-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             <Settings2 aria-hidden="true" className="h-4 w-4" /> Coûts du radar
           </Link>
         </div>
@@ -165,15 +166,15 @@ function Banners({ missing, pendingMatches, unlinked, fromChannel }: { missing: 
     <div className="mb-5 flex flex-col gap-2">
       <div className="flex flex-wrap gap-2.5">
         {missing.length > 0 ? (
-          <Link href="/radar/settings" className="flex min-h-12 flex-[1_1_360px] items-center gap-2.5 rounded-2xl bg-warning-soft px-3.5 py-3 hover:brightness-[.98]">
+          <Link href="/radar/settings" className="flex min-h-12 flex-[1_1_360px] items-center gap-2.5 rounded-2xl border border-warning-line bg-warning-soft px-3.5 py-3 hover:brightness-[.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-amber" />
-            <span className="flex-1 text-sm font-semibold leading-5 text-warning">Coûts manquants ({missing.join(", ")}) : bénéfices partiels. Compléter →</span>
+            <span className="flex-1 text-sm font-semibold leading-5 text-warning-ink">Coûts manquants ({missing.join(", ")}) : bénéfices partiels. Compléter →</span>
           </Link>
         ) : null}
         {pendingMatches > 0 ? (
-          <Link href="/sourcing/matches" className="flex min-h-12 flex-[1_1_360px] items-center gap-2.5 rounded-2xl bg-night px-3.5 py-3 hover:bg-night-raised">
+          <Link href="/sourcing/matches" className="flex min-h-12 flex-[1_1_360px] items-center gap-2.5 rounded-2xl bg-inverse px-3.5 py-3 transition-colors hover:bg-inverse-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-amber" />
-            <span className="flex-1 text-sm font-semibold leading-5 text-on-night">
+            <span className="flex-1 text-sm font-semibold leading-5 text-on-inverse">
               {formatNumber(pendingMatches)} offre{pendingMatches > 1 ? "s" : ""} à rapprocher de vos produits →
             </span>
           </Link>
@@ -240,7 +241,7 @@ function OfferCard({ item: i, selected, columnHref }: { item: RadarItemDTO; sele
   const cur = i.sku.currency;
   const tax = o.taxType === "ht" ? " HT" : o.taxType === "ttc" ? " TTC" : "";
   return (
-    <article aria-current={selected ? "true" : undefined} className={cn("relative flex flex-col gap-2 rounded-2xl border border-border bg-surface p-3.5 hover:bg-[#f7f8fa]", selected && "xl:border-2 xl:border-night xl:p-[13px]")}>
+    <article aria-current={selected ? "true" : undefined} className={cn("relative flex flex-col gap-2 rounded-2xl border border-border bg-surface p-3.5 transition-colors duration-150 ease-standard hover:border-border-strong hover:bg-surface-2", selected && "xl:border-2 xl:border-inverse xl:p-[13px]")}>
       <div className="flex items-center gap-2">
         <h3 className="min-w-0 flex-1 truncate text-base font-bold leading-[21px]">{i.sku.name}</h3>
         {i.savedAt ? <Bookmark aria-label="Offre enregistrée" className="h-4 w-4 shrink-0 fill-current text-warning" /> : null}
@@ -252,7 +253,7 @@ function OfferCard({ item: i, selected, columnHref }: { item: RadarItemDTO; sele
       <div className="flex flex-wrap gap-1.5">
         <Chip className={STATUS_CHIP[e.status]}>{STATUS_LABEL[e.status]}</Chip>
         {e.estimatedProfit !== null ? (
-          <Chip className="bg-night text-on-night">
+          <Chip className="bg-inverse text-on-inverse">
             {signedProfit(e.estimatedProfit, e.status, (n) => formatMoney(n, cur))} / u{e.marginPercent !== null ? ` (${formatNumber(e.marginPercent, 1)} %)` : ""}
           </Chip>
         ) : null}
@@ -270,17 +271,17 @@ function OfferCard({ item: i, selected, columnHref }: { item: RadarItemDTO; sele
 
 function EmptyOffers({ skus, filter }: { skus: number; filter: RadarFilter }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-6 py-7 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border-strong bg-surface px-6 py-8 text-center">
       <p className="text-[15px] font-bold">{filter !== "all" ? "Aucune offre dans ce filtre." : "Aucune offre à évaluer"}</p>
       <p className="text-sm font-medium text-muted">{skus === 0 ? "Ajoutez vos produits : le radar les compare aux offres de vos fournisseurs." : filter !== "all" ? "Changez de filtre pour voir les autres offres évaluées." : "Importez un catalogue fournisseur, activez une source ou validez les correspondances offre ↔ produit."}</p>
       {filter === "all" ? (
         <div className="flex flex-wrap justify-center gap-2">
-          <Link href="/sourcing/catalog" className="inline-flex h-10 items-center rounded-xl border border-border bg-surface px-4 text-sm font-bold hover:bg-line-soft">
+          <ButtonLink href="/sourcing/catalog" variant="secondary">
             Offres collectées
-          </Link>
-          <Link href="/suppliers" className="inline-flex h-10 items-center rounded-xl px-4 text-sm font-bold text-muted-strong hover:bg-line-soft">
+          </ButtonLink>
+          <ButtonLink href="/suppliers" variant="ghost">
             Fournisseurs et sources
-          </Link>
+          </ButtonLink>
         </div>
       ) : null}
     </div>

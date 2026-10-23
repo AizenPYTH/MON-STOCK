@@ -7,15 +7,14 @@ import { ChevronRight } from "lucide-react-native";
 import { color, radius, shadow, size, space } from "~/theme/tokens";
 import { useLayout } from "~/theme/layout";
 import { Txt } from "~/components/ui/text";
-import { initialsOf } from "~/components/ui/controls";
+import { Button, initialsOf } from "~/components/ui/controls";
 import { useInTabs, useTabBarClearance } from "~/components/ui/tab-bar";
 import { markHeader, NIGHT_HEADER, NightHeader, type HeaderHero, type HeaderTabs } from "~/components/ui/header";
 import { TabFocusFade } from "~/components/ui/tab-focus";
 import { useUser } from "~/auth/session-provider";
-import { useOrg } from "~/org/org-provider";
+import { useActiveOrg } from "~/org/org-provider";
 import { ROLE_LABEL } from "~/org/org-service";
 import { BottomSheet, useToast } from "~/components/ui/feedback";
-import { Button } from "~/components/ui/controls";
 import { StatusChip } from "~/components/ui/display";
 
 function headerOf(children: ReactNode): { header: ReactElement | null; rest: ReactNode[] } {
@@ -132,11 +131,12 @@ export const TabHeader = markHeader(function TabHeader<T extends string = string
  */
 export function AccountAvatar() {
   const user = useUser();
-  const org = useOrg();
+  // Avatar affiché seulement dans les onglets, donc sous la garde d'organisation (état « ready »).
+  const org = useActiveOrg();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const name = (user?.user_metadata as { full_name?: string } | undefined)?.full_name ?? user?.email;
-  const ready = org.status === "ready" ? org : null;
+  const ready = org.memberships ? org : null;
   const go = (path: "/settings" | "/diagnostics") => {
     setOpen(false);
     router.push(path);

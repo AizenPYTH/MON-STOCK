@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { BarChart3, Boxes, LayoutDashboard, Library, PanelLeftClose, PanelLeftOpen, ScanSearch, Settings, Sparkles, Tag, Wrench, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { activeHref } from "@/components/layout/active-href";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 /**
  * Barre latérale v5 « Instrument » (handoff web) : fond nuit, groupes Pilotage · Achats ·
@@ -125,7 +126,7 @@ export function Sidebar({ collapsed = false, onToggle, counts, footer, header, o
           const n = s.countKey ? counts?.[s.countKey] : undefined;
           return (
             <li key={s.href}>
-              <Link href={s.href as never} onClick={onNavigate} aria-current={on ? "page" : undefined} className={cn("flex h-8 items-center gap-3 rounded-lg pl-[23px] pr-2.5 hover:bg-[rgba(247,248,250,.06)]", on ? "text-on-night" : "text-on-night-muted")}>
+              <Link href={s.href as never} onClick={onNavigate} aria-current={on ? "page" : undefined} className={cn("flex h-8 items-center gap-3 rounded-lg pl-[23px] pr-2.5 transition-colors duration-150 ease-standard hover:bg-night-raised/60 hover:text-on-night pointer-coarse:h-10", on ? "text-on-night" : "text-on-night-muted")}>
                 <span aria-hidden="true" className={cn("h-[18px] w-0.5 shrink-0 rounded-[1px]", on ? "bg-mint" : "bg-night-stroke")} />
                 <span className={cn("flex-1 truncate text-[13.5px] leading-[18px]", on ? "font-bold" : "font-semibold")}>{s.label}</span>
                 {n === null ? (
@@ -150,7 +151,7 @@ export function Sidebar({ collapsed = false, onToggle, counts, footer, header, o
       aria-current={on ? "page" : undefined}
       data-nav-active={on ? "true" : undefined}
       title={collapsed ? label : undefined}
-      className={cn("relative flex h-[38px] items-center gap-1.5 rounded-[10px] pl-1 pr-2.5 hover:bg-[rgba(247,248,250,.06)]", on ? "text-on-night" : "text-on-night-muted")}
+      className={cn("relative flex h-[38px] items-center gap-1.5 rounded-[10px] pl-1 pr-2.5 transition-colors duration-150 ease-standard hover:bg-night-raised/60 hover:text-on-night pointer-coarse:h-10", on ? "text-on-night" : "text-on-night-muted")}
     >
       <span className={cn("relative z-10 flex h-7 w-10 shrink-0 items-center justify-center transition-colors duration-150", on ? "text-night" : "")}>
         <Icon aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={on ? 2.2 : 1.8} />
@@ -205,7 +206,7 @@ export function Sidebar({ collapsed = false, onToggle, counts, footer, header, o
             onClick={onNavigate}
             aria-current={current === "/settings" ? "page" : undefined}
             title={collapsed ? "Réglages" : undefined}
-            className={cn("flex h-[38px] items-center gap-1.5 rounded-[10px] pl-1 pr-2.5 hover:bg-[rgba(247,248,250,.06)]", current === "/settings" ? "text-on-night" : "text-on-night-muted")}
+            className={cn("flex h-[38px] items-center gap-1.5 rounded-[10px] pl-1 pr-2.5 transition-colors duration-150 ease-standard hover:bg-night-raised/60 hover:text-on-night pointer-coarse:h-10", current === "/settings" ? "text-on-night" : "text-on-night-muted")}
           >
             <span className={cn("flex h-7 w-10 items-center justify-center rounded-[14px]", current === "/settings" ? "bg-mint text-night" : "")}>
               <Settings aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={current === "/settings" ? 2.2 : 1.8} />
@@ -213,6 +214,14 @@ export function Sidebar({ collapsed = false, onToggle, counts, footer, header, o
             {collapsed ? <span className="sr-only">Réglages</span> : <span className={cn("flex-1 text-sm", current === "/settings" ? "font-bold" : "font-semibold")}>Réglages</span>}
           </Link>
           {current === "/settings" && !collapsed ? renderSubs(SETTINGS_SUBS) : null}
+        </div>
+        {/* Préférence d'affichage : segmentée dépliée, bouton unique replié (72 px). */}
+        <div className={cn("py-1.5", collapsed ? "flex justify-center" : "px-0.5")}>
+          {collapsed ? (
+            <ThemeToggle variant="icon" onNight />
+          ) : (
+            <ThemeToggle onNight className="flex w-full [&>label]:flex-1 [&>label]:justify-center [&>label]:gap-1 [&>label]:px-1 [&>label]:text-[12.5px]" />
+          )}
         </div>
         {footer}
         {collapsed && onToggle ? (

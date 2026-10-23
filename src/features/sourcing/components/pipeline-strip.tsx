@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/format";
 import { formatDuration } from "@/features/integrations/format";
@@ -35,14 +35,17 @@ export function PipelineStrip({ live, total, duplicatesCollapsed, connectedSourc
     { key: "results", label: "Résultats", detail: `${formatNumber(total)} offre(s)`, tone: total > 0 ? "done" : "muted" },
   ];
   return (
-    <ol className={cn("flex flex-wrap items-stretch gap-1 rounded-xl border border-border bg-surface p-2 text-[11px]", className)} aria-label="Pipeline de recherche">
+    <ol className={cn("flex flex-wrap items-stretch gap-1 rounded-2xl border border-border bg-surface p-2 text-[11.5px]", className)} aria-label="Pipeline de recherche">
       {steps.map((s, i) => (
         <li key={s.key} className="flex items-center gap-1">
-          <div className={cn("rounded-lg px-2 py-1", s.tone === "done" ? "bg-surface-muted text-foreground" : s.tone === "warn" ? "bg-warning-soft text-amber-800" : "text-muted")}>
-            <div className="font-semibold uppercase tracking-wide">{s.label}</div>
-            <div className={s.tone === "done" ? "text-muted-strong" : ""}>{s.detail}</div>
+          <div className={cn("rounded-[10px] px-2.5 py-1.5", s.tone === "done" ? "bg-surface-2 text-foreground" : s.tone === "warn" ? "bg-warning-soft text-warning-ink" : "text-muted")}>
+            <div className="ms-mono flex items-center gap-1 text-[10px] leading-[13px]">
+              {s.tone === "done" ? <Check aria-hidden="true" className="h-3 w-3 text-success" strokeWidth={2.75} /> : s.tone === "warn" ? <TriangleAlert aria-hidden="true" className="h-3 w-3" /> : null}
+              {s.label}
+            </div>
+            <div className={cn("mt-0.5 font-semibold leading-4 tnum", s.tone === "done" ? "text-muted-strong" : "")}>{s.detail}</div>
           </div>
-          {i < steps.length - 1 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden /> : null}
+          {i < steps.length - 1 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-4" aria-hidden /> : null}
         </li>
       ))}
     </ol>

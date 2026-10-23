@@ -17,8 +17,8 @@ export const metadata: Metadata = { title: "Colis" };
 
 function Step({ dot, title, sub }: { dot: string; title: string; sub?: string | null }) {
   return (
-    <li className="relative flex gap-3 pb-5 last:pb-0">
-      <span aria-hidden="true" className={cn("mt-1 h-3.5 w-3.5 shrink-0 rounded-full", dot)} />
+    <li className="relative flex gap-3 pb-5 before:absolute before:bottom-0 before:left-[6.5px] before:top-5 before:w-px before:bg-border last:pb-0 last:before:hidden">
+      <span aria-hidden="true" className={cn("relative mt-1 h-3.5 w-3.5 shrink-0 rounded-full ring-4 ring-surface", dot)} />
       <div className="min-w-0">
         <p className="font-semibold text-foreground">{title}</p>
         {sub ? <p className="text-sm text-muted">{sub}</p> : null}
@@ -86,14 +86,14 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <Card className="px-5 py-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted">Étapes</h2>
+          <h2 className="ms-mono mb-4 text-[11px] leading-[14px] tracking-[0.08em] text-muted">Étapes</h2>
           <ol>
             {!d.verified ? (
               <Step dot="border-2 border-amber bg-transparent" title="Statut non vérifié" sub={p.lastError ? "Pas de suivi automatique pour ce colis pour le moment" : "Pas de suivi automatique pour ce transporteur"} />
             ) : p.events.length === 0 ? (
               <Step dot={tone.dot} title={d.label} sub="Aucune étape transmise par le transporteur pour le moment" />
             ) : (
-              p.events.map((e, i) => <Step key={`${e.at}-${i}`} dot={i === 0 ? tone.dot : "bg-night"} title={e.label} sub={[frDateTime(e.at), e.location].filter(Boolean).join(" · ") || null} />)
+              p.events.map((e, i) => <Step key={`${e.at}-${i}`} dot={i === 0 ? tone.dot : "bg-ink-4"} title={e.label} sub={[frDateTime(e.at), e.location].filter(Boolean).join(" · ") || null} />)
             )}
           </ol>
         </Card>
@@ -104,7 +104,7 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
             {p.estimatedDelivery && p.status !== "delivered" ? <p>Livraison estimée par le transporteur : {frDateTime(p.estimatedDelivery)}</p> : null}
             {p.status === "delivered" && p.deliveredAt ? <p>Livré le {frDateTime(p.deliveredAt)}</p> : null}
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium tnum">N° {p.trackingNumber}</span>
+              <span className="ms-code text-[13px] font-semibold text-foreground">N° {p.trackingNumber}</span>
               <CopyButton text={p.trackingNumber} />
             </div>
             {p.destinationCountry ? <p className="text-muted">Destination : {p.destinationCountry}</p> : null}

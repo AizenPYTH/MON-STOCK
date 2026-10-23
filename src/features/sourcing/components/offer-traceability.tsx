@@ -40,7 +40,7 @@ export function OfferTraceability({ offer, supplierName, supplierCountry, proven
     { label: "MOQ", value: offer.moq === null ? NOT_PROVIDED : `${formatNumber(offer.moq)} unité(s)` },
     { label: "Stock", value: offer.available_quantity !== null ? `${formatNumber(offer.available_quantity)} unité(s)` : STOCK_STATUS_LABEL[offer.stock_status] ?? "Stock non communiqué" },
     { label: "Pays", value: offer.country ?? supplierCountry ?? NOT_PROVIDED },
-    { label: "Livraison", value: offer.delivery_min_days === null && offer.delivery_max_days === null ? "Non communiquée" : deliveryLabel(offer.delivery_min_days, offer.delivery_max_days) },
+    { label: "Livraison", value: offer.delivery_min_days == null && offer.delivery_max_days == null ? "Non communiquée" : deliveryLabel(offer.delivery_min_days ?? null, offer.delivery_max_days ?? null) },
     { label: "Dernière vérification", value: `${formatDateTime(verifiedAt)} (${formatRelative(verifiedAt)})` },
     {
       label: "Méthode de récupération",
@@ -61,18 +61,18 @@ export function OfferTraceability({ offer, supplierName, supplierCountry, proven
   if (provenance.requestUrl) rows.push({ label: "Requête effectuée", value: <span className="break-all font-mono text-[11px]">{provenance.requestUrl}</span> });
   return (
     <div className={className}>
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 text-xs sm:grid-cols-2">
         {rows.map((r) => (
           <div key={r.label} className="min-w-0">
-            <dt className="text-muted">{r.label}</dt>
-            <dd className="font-medium text-foreground">{r.value}</dd>
+            <dt className="ms-mono text-[10px] leading-[13px] text-ink-3">{r.label}</dt>
+            <dd className="mt-0.5 text-[13px] font-semibold leading-[18px] text-foreground">{r.value}</dd>
           </div>
         ))}
       </dl>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {sourceUrl ? (
           <ButtonLink href={sourceUrl} variant="ghost" size="sm">
-            <ExternalLink className="h-3.5 w-3.5" /> Voir la source
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" /> Voir la source
           </ButtonLink>
         ) : (
           <span className="text-xs text-muted">URL source non communiquée</span>

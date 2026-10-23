@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { Search } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
-import { Paper, Scene, SceneHeader, Segmented, StageStats } from "@/components/instrument";
+import { Paper, Scene, SceneHeader, StageStats } from "@/components/instrument";
+import { LinkTabs } from "@/components/ui/tabs";
 import { SupplierBadge } from "@/features/directory/components/supplier-badge";
 import { formatNumber } from "@/lib/format";
 import type { Supplier } from "@/db/types";
@@ -23,13 +24,14 @@ function domainOf(website: string | null): string | null {
  */
 export function SupplierHeader({ supplier, tab, counts, children }: { supplier: Supplier; tab: SupplierTab; counts: { offers: number; sources: number; orders: number }; children: ReactNode }) {
   const base = `/suppliers/${supplier.id}`;
-  const items: { href: string; label: string; key: SupplierTab }[] = [
+  const items: { href: string; label: string; key: SupplierTab; count?: number }[] = [
     { href: base, label: "Informations", key: "info" },
-    { href: `${base}/offers`, label: `Offres · ${formatNumber(counts.offers)}`, key: "offers" },
-    { href: `${base}/sources`, label: `Sources & flux · ${formatNumber(counts.sources)}`, key: "sources" },
-    { href: `${base}/orders`, label: `Achats · ${formatNumber(counts.orders)}`, key: "orders" },
+    { href: `${base}/offers`, label: "Offres", key: "offers", count: counts.offers },
+    { href: `${base}/sources`, label: "Sources & flux", key: "sources", count: counts.sources },
+    { href: `${base}/orders`, label: "Achats", key: "orders", count: counts.orders },
     { href: `${base}/performance`, label: "Performance", key: "performance" },
   ];
+  const current = items.find((i) => i.key === tab)?.href ?? base;
   // score et délai : inconnus (null ou absents) → « — », jamais 0 ni NaN
   const rawScore = supplier.internal_score === null || supplier.internal_score === undefined ? NaN : Number(supplier.internal_score);
   const score = Number.isFinite(rawScore) ? rawScore : null;
@@ -64,9 +66,7 @@ export function SupplierHeader({ supplier, tab, counts, children }: { supplier: 
         />
       </Scene>
       <Paper>
-        <div className="mb-5 overflow-x-auto">
-          <Segmented label="Sections du fournisseur" className="min-w-max" options={items.map((i) => ({ href: i.href, label: i.label, selected: i.key === tab }))} />
-        </div>
+        <LinkTabs label="Sections du fournisseur" current={current} items={items.map((i) => ({ href: i.href, label: i.label, count: i.count }))} className="mb-6" />
         {children}
       </Paper>
     </>

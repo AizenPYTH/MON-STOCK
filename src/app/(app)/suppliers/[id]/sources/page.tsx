@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge, StatusDot } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Callout, EmptyState } from "@/components/ui/page";
 import { getSupplier, getSupplierSources, getSupplierTabCounts } from "@/features/suppliers/queries";
 import { SupplierHeader } from "@/features/suppliers/components/supplier-header";
@@ -59,11 +60,11 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
 
         <Card>
           <CardHeader title="Flux CSV / XML / JSON" description="Fichier ou URL fourni par le fournisseur, avec mapping des colonnes." actions={writable ? <FeedForm supplierId={supplier.id} defaultCurrency={supplier.currency} /> : null} />
-          <CardContent className="p-0">
+          <div>
             {feedSources.length === 0 ? (
               <p className="px-5 py-5 text-sm text-muted">Aucun flux. <span className="font-medium">Source non connectée.</span></p>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="divide-y divide-line-soft">
                 {feedSources.map((s) =>
                   s.feeds.map((f) => (
                     <li key={f.id} className="flex flex-wrap items-start justify-between gap-3 px-5 py-4 text-sm">
@@ -73,7 +74,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                           <span className="font-medium">{s.name}</span>
                           <Badge variant="outline">{SOURCE_TYPE_LABEL[s.source_type]}</Badge>
                           <Badge variant="outline">{RETRIEVAL_METHOD_LABEL.public_feed}</Badge>
-                          <Badge variant={tone(f.status) === "neutral" ? "neutral" : tone(f.status)}>{SOURCE_STATUS_LABEL[f.status] ?? f.status}</Badge>
+                          <StatusBadge tone={tone(f.status)}>{SOURCE_STATUS_LABEL[f.status] ?? f.status}</StatusBadge>
                         </div>
                         <div className="mt-1 text-xs text-muted">
                           {f.url ? <span className="break-all">{f.url}</span> : "Import manuel de fichier"} · {SYNC_FREQUENCY_LABEL[f.sync_frequency]} · dernière sync {f.last_sync_at ? formatRelative(f.last_sync_at) : "jamais"}
@@ -94,7 +95,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                 )}
               </ul>
             )}
-          </CardContent>
+          </div>
         </Card>
 
         <Card>
@@ -103,11 +104,11 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
             description={publicAdapters.length === 0 ? "Aucun adaptateur de source public n'est disponible pour l'instant." : `Adaptateurs disponibles : ${publicAdapters.map((a) => a.label).join(", ")}. Lecture respectueuse : robots.txt, délai entre requêtes, User-Agent identifiable, aucune connexion.`}
             actions={writable ? <PublicWebSourceButton supplierId={supplier.id} adapters={publicAdapters} /> : null}
           />
-          <CardContent className="p-0">
+          <div>
             {webSources.length === 0 ? (
               <p className="px-5 py-5 text-sm text-muted">Aucune source publique déclarée. <span className="font-medium">Source non connectée.</span></p>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="divide-y divide-line-soft">
                 {webSources.map((s) => {
                   const cfg = readStoredSourceConfig(s.config);
                   const adapter = cfg.adapter ? adapterByKey.get(cfg.adapter) ?? null : null;
@@ -128,12 +129,12 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                           ) : (
                             <Badge variant="warning">{cfg.adapter ? `Adaptateur inconnu : ${cfg.adapter}` : "Sans adaptateur (crawler JSON-LD historique)"}</Badge>
                           )}
-                          <Badge variant={tone(s.status) === "neutral" ? "neutral" : tone(s.status)}>{SOURCE_STATUS_LABEL[s.status] ?? s.status}</Badge>
-                          {s.robots_allowed === false ? <Badge variant="danger">Interdit par robots.txt</Badge> : s.robots_allowed === true ? <Badge variant="success">robots.txt OK</Badge> : <Badge variant="neutral">robots.txt non vérifié</Badge>}
-                          {needsAttestation && !s.automated_access_confirmed ? <Badge variant="warning">Accès non attesté</Badge> : null}
+                          <StatusBadge tone={tone(s.status)}>{SOURCE_STATUS_LABEL[s.status] ?? s.status}</StatusBadge>
+                          {s.robots_allowed === false ? <StatusBadge tone="danger">Interdit par robots.txt</StatusBadge> : s.robots_allowed === true ? <StatusBadge tone="success">robots.txt OK</StatusBadge> : <Badge variant="neutral">robots.txt non vérifié</Badge>}
+                          {needsAttestation && !s.automated_access_confirmed ? <StatusBadge tone="warning">Accès non attesté</StatusBadge> : null}
                           {readDiscoveredConfig(s.config).discovered ? <Badge variant="outline">{readDiscoveredConfig(s.config).dismissed ? "Découverte — ignorée" : "Découverte — validée"}</Badge> : null}
                           {adapter && !adapter.capabilities.search ? <Badge variant="neutral">Catalogue synchronisé uniquement</Badge> : null}
-                          {adapter?.verification === "fixtures" ? <Badge variant="warning">Non testé en conditions réelles</Badge> : null}
+                          {adapter?.verification === "fixtures" ? <StatusBadge tone="warning">Non testé en conditions réelles</StatusBadge> : null}
                         </div>
                         <div className="mt-1 text-xs text-muted">
                           {s.base_url} · {cfg.urls.length} page(s) de catalogue{cfg.adapter ? "" : ` · parser ${cfg.parser ?? "jsonld"}`} · {SYNC_FREQUENCY_LABEL[s.sync_frequency]} · délai {s.crawl_delay_seconds ?? 2} s · dernière sync {s.last_sync_at ? formatRelative(s.last_sync_at) : "jamais"}
@@ -161,7 +162,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                 })}
               </ul>
             )}
-          </CardContent>
+          </div>
         </Card>
 
         <Card>
@@ -178,7 +179,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
               </p>
             ) : null}
             {view.connections.length > 0 ? (
-              <ul className="divide-y divide-border text-sm">
+              <ul className="divide-y divide-line-soft text-sm">
                 {view.connections.map((c) => {
                   const connector = connectorByKey.get(c.connector_key) ?? null;
                   const canSync = c.status === "connected";
@@ -190,7 +191,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                           <span className="font-medium">{connector?.label ?? c.connector_key}</span>
                           <Badge variant="outline" className="font-mono">{c.connector_key}</Badge>
                           <Badge variant="outline">{RETRIEVAL_METHOD_LABEL.supplier_account}</Badge>
-                          <Badge variant={connectionTone(c.status)}>{c.status === "pending" ? "Non testée" : CONNECTION_STATUS_LABEL[c.status] ?? c.status}</Badge>
+                          <StatusBadge tone={c.status === "pending" ? "pending" : connectionTone(c.status)}>{c.status === "pending" ? "Non testée" : CONNECTION_STATUS_LABEL[c.status] ?? c.status}</StatusBadge>
                         </div>
                         <div className="mt-1 text-xs text-muted">
                           {!connector ? "Connecteur indisponible : cette connexion ne peut plus être utilisée." : c.status === "pending" ? "Identifiants enregistrés mais non vérifiés : testez la connexion." : c.status === "connected" ? `Dernière synchronisation : ${c.last_sync_at ? formatRelative(c.last_sync_at) : "jamais"}` : c.status === "expired" ? "Identifiants expirés : reconnectez le compte." : c.status === "error" ? "Dernier test en erreur." : "Déconnectée."}

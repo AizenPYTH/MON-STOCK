@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Download } from "lucide-react";
+import { CircleCheck, Download, TriangleAlert } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { ButtonLink } from "@/components/ui/button";
 import { FilterChip, MonoTitle, MonoLabel, Panel, Paper, Scene, SceneHeader, SplitBar, StageStats } from "@/components/instrument";
@@ -10,14 +10,19 @@ import { formatDateTime, formatNumber, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { durationLabel, fileSizeLabel, ignoredCount, IMPORT_MODE_LABEL, IMPORT_STATUS_LABEL, IMPORT_STATUS_SHORT, IMPORT_STATUS_TONE, importSegments, isIssueKind, ISSUE_KIND_HINT, ISSUE_KIND_LABEL, issuesCsv, upToDateCount, type IssueKind } from "@/features/catalog-imports/labels";
 import { StatusPill } from "@/features/catalog-imports/components/status-pill";
+import { ImportProgress } from "@/features/catalog-imports/components/import-progress";
+import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { buttonClasses } from "@/components/ui/button";
 import { ImportHistory } from "@/features/catalog-imports/components/import-history";
 
 export const metadata: Metadata = { title: "Rapport d'import" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHOWN_ROWS = 300;
-const MESSAGE_TONE = { success: "bg-success-soft text-success", warning: "bg-warning-soft text-warning", danger: "bg-danger-soft text-danger", info: "bg-info-soft text-info", neutral: "bg-background text-muted" } as const;
-const KIND_TONE: Record<IssueKind, string> = { invalid: "text-danger", rejected: "text-danger", duplicate: "text-muted", unrecognized: "text-warning", warning: "text-info" };
+const MESSAGE_TONE = { success: "border-success-line bg-success-soft text-success-ink", warning: "border-warning-line bg-warning-soft text-warning-ink", danger: "border-danger-line bg-danger-soft text-danger-ink", info: "border-info-line bg-info-soft text-info-ink", neutral: "border-border bg-surface-2 text-muted-strong" } as const;
+/** Type de ligne → statut lisible (icône + texte) : bloquante en rouge, à vérifier en ambre, simple remarque en bleu. */
+const KIND_TONE: Record<IssueKind, StatusTone> = { invalid: "danger", rejected: "danger", duplicate: "neutral", unrecognized: "warning", warning: "info" };
 
 export default async function ImportJobPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await requireOrgContext();
@@ -89,13 +94,14 @@ export default async function ImportJobPage({ params, searchParams }: { params: 
                 <StatusPill tone={tone}>{IMPORT_STATUS_SHORT[job.status]}</StatusPill>
               </div>
               {written && c.read > 0 ? <SplitBar segments={importSegments(c)} /> : <span aria-hidden="true" className="block h-3 rounded-full bg-track" />}
-              {message ? <div className={cn("rounded-[14px] px-4 py-3.5 text-sm font-semibold leading-5", MESSAGE_TONE[tone])}>{message}</div> : null}
+              {job.status === "running" ? <ImportProgress progress={job.progress} resumable={job.resumable} /> : null}
+              {message ? <div className={cn("rounded-[14px] border px-4 py-3.5 text-sm font-semibold leading-5", MESSAGE_TONE[tone])}>{message}</div> : null}
               {c.expired > 0 ? (
                 <p className="text-[13px] font-semibold text-muted tnum">
                   {formatNumber(c.expired)} offre{c.expired > 1 ? "s" : ""} absente{c.expired > 1 ? "s" : ""} du catalogue complet : marquée{c.expired > 1 ? "s" : ""} expirée{c.expired > 1 ? "s" : ""} (historique conservé).
                 </p>
               ) : null}
-              {job.truncated ? <p className="text-[13px] font-semibold text-danger">Fichier tronqué : seules les premières lignes ont été traitées.</p> : null}
+              {job.truncated ? <p className="flex items-center gap-1.5 text-[13px] font-semibold text-danger"><TriangleAlert aria-hidden="true" className="h-4 w-4 shrink-0" />Fichier tronqué : seules les premières lignes ont été traitées.</p> : null}
               {canWrite(ctx.role) && (job.status === "failed" || job.status === "partial" || job.status === "quarantined") ? (
                 <div className="flex flex-wrap gap-2.5">
                   <ButtonLink href={retryHref} variant={job.status === "partial" ? "secondary" : "primary"} size="lg">
@@ -112,7 +118,7 @@ export default async function ImportJobPage({ params, searchParams }: { params: 
                 count={job.issues.length >= 500 ? `${formatNumber(job.issues.length)} (500 premières)` : formatNumber(job.issues.length)}
                 right={
                   job.issues.length > 0 ? (
-                    <a href={csvHref} download={csvName} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg text-[13px] font-bold hover:opacity-60">
+                    <a href={csvHref} download={csvName} className={buttonClasses("secondary", "sm")}>
                       <Download aria-hidden="true" className="h-4 w-4" />
                       Exporter (CSV)
                     </a>
@@ -123,7 +129,10 @@ export default async function ImportJobPage({ params, searchParams }: { params: 
                 Lignes ignorées ou signalées
               </h2>
               {job.issues.length === 0 ? (
-                <Panel className="px-4 py-4 text-sm font-semibold text-success">Aucune ligne ignorée.</Panel>
+                <Panel className="flex items-center gap-2 px-4 py-4 text-sm font-semibold text-success">
+                  <CircleCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
+                  Aucune ligne ignorée.
+                </Panel>
               ) : (
                 <>
                   <nav aria-label="Filtrer par type de ligne" className="flex flex-wrap gap-1.5">
@@ -137,39 +146,42 @@ export default async function ImportJobPage({ params, searchParams }: { params: 
                     ))}
                   </nav>
                   {kind ? <p className="text-[13px] font-semibold text-muted">{ISSUE_KIND_HINT[kind]}</p> : null}
-                  <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-                    <table className="w-full min-w-[620px] border-collapse text-left">
-                      <caption className="sr-only">Lignes ignorées et leur raison</caption>
-                      <thead className="ms-mono bg-[#F7F8FA] text-[10px] leading-[13px] text-ink-3">
-                        <tr className="border-b border-line-soft">
-                          <th scope="col" className="w-[72px] py-2 pl-3.5 font-medium">
+                  <Table density="compact" stackOnMobile wrapperClassName="rounded-2xl bg-surface" className="min-w-[620px] sm:table-fixed" caption="Lignes ignorées et leur raison">
+                      <THead>
+                        <tr>
+                          <TH scope="col" className="w-[76px]">
                             Ligne
-                          </th>
-                          <th scope="col" className="w-[170px] px-2 py-2 font-medium">
+                          </TH>
+                          <TH scope="col" className="w-[190px]">
                             Type
-                          </th>
-                          <th scope="col" className="w-[160px] px-2 py-2 font-medium">
+                          </TH>
+                          <TH scope="col" className="w-[180px]">
                             Référence lue
-                          </th>
-                          <th scope="col" className="py-2 pr-3.5 font-medium">
-                            Problème
-                          </th>
+                          </TH>
+                          <TH scope="col">Problème</TH>
                         </tr>
-                      </thead>
-                      <tbody>
+                      </THead>
+                      <TBody>
                         {shown.slice(0, SHOWN_ROWS).map((i, k) => (
-                          <tr key={`${i.line ?? "x"}-${k}`} className={cn("align-baseline", k > 0 && "border-t border-line-soft")}>
-                            <td className="ms-code py-2.5 pl-3.5 text-[11.5px] text-muted">{i.line ?? "—"}</td>
-                            <td className="px-2 py-2.5 text-[13px] font-semibold">{ISSUE_KIND_LABEL[i.kind]}</td>
-                            <td className="ms-code max-w-[160px] truncate px-2 py-2.5 text-[11.5px] text-muted" title={i.reference ?? undefined}>
+                          <TR key={`${i.line ?? "x"}-${k}`} className="align-baseline">
+                            <TD label="Ligne" className="ms-code text-[11.5px] text-muted tnum">
+                              {i.line ?? "—"}
+                            </TD>
+                            <TD label="Type" primary>
+                              <StatusBadge tone={KIND_TONE[i.kind]} title={ISSUE_KIND_HINT[i.kind]}>
+                                {ISSUE_KIND_LABEL[i.kind]}
+                              </StatusBadge>
+                            </TD>
+                            <TD label="Référence lue" className="ms-code truncate text-[11.5px] text-muted-strong" title={i.reference ?? undefined}>
                               {i.reference ?? "—"}
-                            </td>
-                            <td className={cn("py-2.5 pr-3.5 text-[13px] font-semibold", KIND_TONE[i.kind])}>{i.message}</td>
-                          </tr>
+                            </TD>
+                            <TD label="Problème" className="text-[13px] font-semibold leading-[18px] text-foreground">
+                              {i.message}
+                            </TD>
+                          </TR>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      </TBody>
+                    </Table>
                   {shown.length > SHOWN_ROWS ? <p className="text-xs font-semibold text-ink-3">… {formatNumber(shown.length - SHOWN_ROWS)} autres lignes dans le CSV exporté.</p> : null}
                 </>
               )}

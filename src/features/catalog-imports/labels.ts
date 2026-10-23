@@ -165,7 +165,7 @@ export function importBreakdown(c: ImportJobDTO["counts"]): BreakdownPart[] {
   const parts: Omit<BreakdownPart, "percent">[] = [
     { key: "created", label: "Nouvelles", value: c.created, className: "bg-success" },
     { key: "updated", label: "Mises à jour", value: c.updated, className: "bg-accent" },
-    { key: "unchanged", label: "Inchangées", value: c.unchanged, className: "bg-zinc-300" },
+    { key: "unchanged", label: "Inchangées", value: c.unchanged, className: "bg-border-strong" },
     { key: "ignored", label: "Ignorées", value: ignoredCount(c), className: "bg-warning" },
   ];
   const total = parts.reduce((a, p) => a + p.value, 0);
@@ -205,8 +205,8 @@ export type ImportTone = "success" | "warning" | "danger" | "info" | "neutral";
 
 export const IMPORT_STATUS_TONE: Record<ImportJobDTO["status"], ImportTone> = { completed: "success", partial: "warning", failed: "danger", quarantined: "warning", running: "info", skipped_duplicate: "neutral" };
 
-/** Couleurs v5 de la répartition : nouvelles vert, mises à jour nuit, inchangées filet fort, ignorées rouge. */
-export const IMPORT_PART_COLOR = { created: "var(--success)", updated: "var(--night)", unchanged: "var(--border-strong)", ignored: "var(--red)" } as const;
+/** Couleurs v5 de la répartition : nouvelles vert, mises à jour aplat contrasté (nuit en clair, clair en sombre), inchangées filet fort, ignorées rouge. */
+export const IMPORT_PART_COLOR = { created: "var(--success-strong)", updated: "var(--inverse)", unchanged: "var(--border-strong)", ignored: "var(--red)" } as const;
 
 /** Segments de la barre de répartition (vrais comptes) d'un import de l'historique. Pur. */
 export function importSegments(c: Pick<ImportJobDTO["counts"], "created" | "updated" | "unchanged" | "duplicates" | "invalid" | "rejected" | "unrecognized">): { label: string; value: number; color: string }[] {

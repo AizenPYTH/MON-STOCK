@@ -37,8 +37,8 @@ export function StockSearch({ flat, initial }: { flat: Record<string, string>; i
     go(q);
   };
   return (
-    <form role="search" onSubmit={submit} className="w-full sm:w-80">
-      <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-surface pl-3 pr-2 text-ink-3 focus-within:ring-2 focus-within:ring-ring">
+    <form role="search" onSubmit={submit} className="w-full sm:w-72 xl:w-80">
+      <label className="flex h-10 items-center gap-2 rounded-xl border border-border-control bg-surface pl-3 pr-2 text-ink-3 transition-[border-color,box-shadow] duration-150 ease-standard hover:border-muted focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/25">
         <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
         <input
           ref={ref}
@@ -55,14 +55,14 @@ export function StockSearch({ flat, initial }: { flat: Record<string, string>; i
           aria-label="Rechercher dans le stock (nom, SKU, code-barres)"
           placeholder="Nom, SKU, code-barres…"
           maxLength={120}
-          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-foreground placeholder:text-ink-3 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-foreground placeholder:font-medium placeholder:text-ink-3 focus:outline-none focus-visible:outline-none pointer-coarse:text-base [&::-webkit-search-cancel-button]:hidden"
         />
         {initial ? (
-          <button type="button" onClick={() => go("")} aria-label="Effacer la recherche" className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-line-soft hover:text-foreground">
+          <button type="button" onClick={() => go("")} aria-label="Effacer la recherche" className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-line-soft hover:text-foreground">
             <X aria-hidden="true" className="h-3.5 w-3.5" />
           </button>
         ) : (
-          <kbd className="ms-code rounded-[5px] border border-border-strong px-1.5 text-[10.5px] leading-[18px] text-muted">/</kbd>
+          <kbd aria-hidden="true" className="ms-code rounded-[5px] border border-border-strong px-1.5 text-[10.5px] leading-[18px] text-muted max-sm:hidden">/</kbd>
         )}
       </label>
     </form>
@@ -78,7 +78,7 @@ export function CategorySelect({ flat, categories, current }: { flat: Record<str
       <select
         value={current ?? ""}
         onChange={(e) => router.push(stockHref(flat, { category: e.target.value || null }) as never, { scroll: false })}
-        className={cn("h-9 cursor-pointer appearance-none rounded-full border pl-3.5 pr-8 text-[13px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", current ? "border-night bg-night text-on-night" : "border-border bg-surface text-foreground")}
+        className={cn("h-9 cursor-pointer appearance-none rounded-full border pl-3.5 pr-8 text-[13.5px] font-semibold transition-colors duration-150 ease-standard pointer-coarse:h-10", current ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2")}
       >
         <option value="">Toutes catégories</option>
         {categories.map((c) => (
@@ -87,7 +87,7 @@ export function CategorySelect({ flat, categories, current }: { flat: Record<str
           </option>
         ))}
       </select>
-      <ChevronDown aria-hidden="true" className={cn("pointer-events-none absolute right-2.5 h-3.5 w-3.5", current ? "text-on-night-muted" : "text-muted")} />
+      <ChevronDown aria-hidden="true" className={cn("pointer-events-none absolute right-2.5 h-3.5 w-3.5", current ? "text-on-inverse opacity-70" : "text-muted")} />
     </label>
   );
 }
@@ -117,19 +117,19 @@ export function ColumnsMenu() {
   }, [open]);
   return (
     <div ref={box} className="relative">
-      <button type="button" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((o) => !o)} className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-border-strong bg-surface px-2.5 text-[13px] font-bold hover:bg-line-soft">
+      <button type="button" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((o) => !o)} className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-border-strong bg-surface px-2.5 text-[13px] font-bold text-foreground transition-colors duration-150 ease-standard hover:bg-surface-2 pointer-coarse:h-10">
         <Columns3 aria-hidden="true" className="h-4 w-4" />
         Colonnes
         {hidden.size > 0 ? <span className="ms-code text-[11px] text-ink-3">−{hidden.size}</span> : null}
       </button>
       {open ? (
-        <div role="group" aria-label="Colonnes affichées" className="ms-fade absolute right-0 top-10 z-30 w-56 rounded-[14px] border border-border bg-surface p-1.5 shadow-[0_6px_14px_rgba(16,28,44,.10),0_18px_40px_rgba(10,20,32,.18)]">
+        <div role="group" aria-label="Colonnes affichées" className="ms-fade absolute right-0 top-11 z-30 w-56 rounded-[14px] border border-border bg-surface p-1.5 text-foreground shadow-floating">
           <div className="ms-mono px-2.5 pb-1.5 pt-2 text-[10px] leading-[13px] text-ink-3">Colonnes affichées</div>
           {STOCK_COLUMNS.map((c) => {
             const on = !hidden.has(c.key);
             return (
               <button key={c.key} type="button" role="checkbox" aria-checked={on} onClick={() => toggleColumn(c.key, hidden)} className="flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13.5px] font-semibold hover:bg-line-soft">
-                <span aria-hidden="true" className={cn("flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border-[1.5px]", on ? "border-night bg-night text-white" : "border-border-strong bg-surface")}>
+                <span aria-hidden="true" className={cn("flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border-[1.5px]", on ? "border-inverse bg-inverse text-on-inverse" : "border-border-control bg-surface")}>
                   {on ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
                 </span>
                 {c.label}

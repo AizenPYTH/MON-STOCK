@@ -136,8 +136,11 @@ export interface AdvisorStoredMessage {
   createdAt: string;
 }
 
+/** Conversations listées (les plus récentes) ; au-delà, l'écran le signale. */
+export const CONVERSATIONS_LIMIT = 50;
+
 export async function fetchConversations(supabase: MobileSupabase, organizationId: string): Promise<AdvisorConversation[]> {
-  const { data, error } = await supabase.from("advisor_conversations").select("id, title, last_message_at").eq("organization_id", organizationId).order("last_message_at", { ascending: false }).limit(50);
+  const { data, error } = await supabase.from("advisor_conversations").select("id, title, last_message_at").eq("organization_id", organizationId).order("last_message_at", { ascending: false }).limit(CONVERSATIONS_LIMIT);
   if (error) throw error;
   return (data ?? []).map((c) => ({ id: c.id, title: c.title, lastMessageAt: c.last_message_at }));
 }

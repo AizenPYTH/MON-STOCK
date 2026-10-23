@@ -2,7 +2,8 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Check, Download, Minus, PackagePlus, ScanSearch, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, CircleCheck, Download, Minus, PackagePlus, ScanSearch, SlidersHorizontal, X } from "lucide-react";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 import { CategoryGlyph } from "@/features/stock-web/components/glyph";
 import { useHiddenColumns, type StockColumn } from "@/features/stock-web/components/columns";
@@ -51,12 +52,24 @@ const RESPONSIVE: Record<StockColumn, string> = {
 };
 
 const TONE_TEXT: Record<Tone, string> = { danger: "text-danger", warning: "text-warning", success: "text-success", muted: "text-ink-3", default: "text-foreground" };
-const LEVEL_DOT = { out: "var(--red)", low: "var(--amber)", ok: "var(--success)" } as const;
-const LEVEL_TEXT = { out: "text-danger", low: "text-warning", ok: "text-foreground" } as const;
+
+/**
+ * Niveau de stock : icône + texte, jamais la couleur seule. Rupture et stock faible en pastille
+ * douce (visibles sans agressivité) ; « En stock » reste neutre pour que les signaux ressortent.
+ */
+function LevelBadge({ level }: { level: StockRowDTO["level"] }) {
+  if (level.tone === "out") return <StatusBadge tone="danger" title={level.title}>{level.label}</StatusBadge>;
+  if (level.tone === "low") return <StatusBadge tone="warning" title={level.title}>{level.label}</StatusBadge>;
+  return (
+    <StatusBadge tone="neutral" variant="plain" icon={<CircleCheck />} title={level.title}>
+      {level.label}
+    </StatusBadge>
+  );
+}
 
 function Box({ checked, mixed }: { checked: boolean; mixed?: boolean }) {
   return (
-    <span aria-hidden="true" className={cn("flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border-[1.5px] transition-colors", checked || mixed ? "border-night bg-night text-white" : "border-border-strong bg-surface")}>
+    <span aria-hidden="true" className={cn("flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border-[1.5px] transition-colors", checked || mixed ? "border-inverse bg-inverse text-on-inverse" : "border-border-control bg-surface")}>
       {checked ? <Check className="h-3 w-3" strokeWidth={3} /> : mixed ? <Minus className="h-3 w-3" strokeWidth={3} /> : null}
     </span>
   );
@@ -116,7 +129,7 @@ export function StockTableV5({
   const exportHref = `${exportBase}${exportBase.includes("?") ? "&" : "?"}codes=${encodeURIComponent(chosen.map((r) => r.code).join(","))}`;
   const single = chosen.length === 1 ? chosen[0] : null;
 
-  const th = "ms-mono sticky top-14 z-[5] h-10 bg-surface px-1.5 text-[10.5px] font-medium leading-[13px] text-ink-3 border-b border-border whitespace-nowrap";
+  const th = "ms-mono sticky top-14 z-[5] h-10 bg-surface-2 px-1.5 text-[10.5px] font-medium leading-[13px] text-ink-3 border-b border-border whitespace-nowrap first:rounded-tl-2xl last:rounded-tr-2xl";
   const head = (id: keyof typeof sortHeaders, label: string, align: "left" | "right", extra = "") => {
     const s = sortHeaders[id];
     return (
@@ -143,7 +156,8 @@ export function StockTableV5({
 
   return (
     <div className="overflow-clip rounded-2xl border border-border bg-surface">
-      <table className="w-full table-auto border-separate border-spacing-0" aria-label="Références en stock">
+      <MobileList rows={rows} selected={selected} toggle={toggle} openCode={openCode} />
+      <table className="w-full table-auto border-separate border-spacing-0 max-sm:hidden" aria-label="Références en stock">
         <thead>
           <tr>
             <th scope="col" className={cn(th, "w-11 pl-2")}>
@@ -177,8 +191,8 @@ export function StockTableV5({
             const checked = selected.has(r.skuId);
             const td = cn("border-b border-line-soft px-1.5 align-middle", compact ? "h-11" : "h-[60px]");
             return (
-              <tr key={r.skuId} aria-selected={open || undefined} onClick={(e) => openRow(e, r.openHref)} className={cn("cursor-pointer transition-colors", open ? "bg-selection" : checked ? "bg-background" : "hover:bg-background/70")}>
-                <td className={cn(td, "pl-2")} style={open ? { boxShadow: "inset 3px 0 0 var(--night)" } : undefined}>
+              <tr key={r.skuId} aria-selected={open || undefined} onClick={(e) => openRow(e, r.openHref)} className={cn("cursor-pointer transition-colors duration-150 ease-standard", open ? "bg-selection" : checked ? "bg-surface-2" : "hover:bg-surface-2")}>
+                <td className={cn(td, "pl-2")} style={open ? { boxShadow: "inset 3px 0 0 var(--inverse)" } : undefined}>
                   <button type="button" role="checkbox" aria-checked={checked} aria-label={`Sélectionner ${r.title}`} onClick={() => toggle(r.skuId)} className="flex h-10 w-9 items-center justify-center rounded-lg">
                     <Box checked={checked} />
                   </button>
@@ -203,7 +217,7 @@ export function StockTableV5({
                   </div>
                 </td>
                 <td className={cn(td, "whitespace-nowrap text-[13px] font-semibold text-muted", col("category"))}>{r.category ?? "—"}</td>
-                {hidden.has("qty") ? null : <td className={cn(td, "text-right text-[15px] font-bold tnum", r.qtyNegative && "text-danger")}>{r.qty}</td>}
+                {hidden.has("qty") ? null : <td className={cn(td, "pr-3 text-right text-[15px] font-extrabold tnum", r.qtyNegative ? "text-danger" : r.level.tone === "out" ? "text-danger" : "text-foreground")}>{r.qty}</td>}
                 <td className={cn(td, "whitespace-nowrap text-right text-[13px] font-semibold tnum", TONE_TEXT[r.cover.tone], col("cover"))} title={r.cover.title}>
                   <span className="flex items-center justify-end gap-1.5">
                     {r.cover.dot ? <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: r.cover.tone === "danger" ? "var(--red)" : "var(--amber)" }} /> : null}
@@ -221,11 +235,8 @@ export function StockTableV5({
                 <td className={cn(td, "max-w-[150px] truncate whitespace-nowrap pl-4 text-[13px] font-semibold", r.channel.muted ? "text-ink-3" : "text-foreground", col("channel"))} title={r.channel.text}>
                   {r.channel.text}
                 </td>
-                <td className={cn(td, "whitespace-nowrap pl-3 pr-3", col("level"))} title={r.level.title}>
-                  <span className="flex items-center gap-1.5">
-                    <span aria-hidden="true" className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: LEVEL_DOT[r.level.tone] }} />
-                    <span className={cn("text-[13px] font-bold", LEVEL_TEXT[r.level.tone])}>{r.level.label}</span>
-                  </span>
+                <td className={cn(td, "whitespace-nowrap pl-3 pr-4", col("level"))}>
+                  <LevelBadge level={r.level} />
                 </td>
               </tr>
             );
@@ -235,28 +246,28 @@ export function StockTableV5({
       {footer}
 
       {chosen.length > 0 ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
-          <div role="toolbar" aria-label="Actions groupées" className="ms-fade pointer-events-auto flex max-w-full flex-wrap items-center gap-1.5 rounded-2xl border border-night-stroke bg-night py-2 pl-4 pr-2 shadow-[0_12px_32px_rgba(10,20,32,.35)]">
-            <span className="mr-2 whitespace-nowrap text-sm font-bold text-on-night">
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3 sm:bottom-6">
+          <div role="toolbar" aria-label="Actions groupées" className="ms-pop pointer-events-auto flex max-w-full flex-wrap items-center gap-1.5 rounded-2xl bg-inverse py-2 pl-4 pr-2 text-on-inverse shadow-modal">
+            <span className="mr-2 whitespace-nowrap text-sm font-bold tnum">
               {chosen.length} sélectionnée{chosen.length > 1 ? "s" : ""}
             </span>
             {writable ? (
-              <button type="button" onClick={() => setAdjustOpen(true)} className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-mint px-3 text-[13.5px] font-extrabold text-night hover:bg-mint-pressed">
+              <button type="button" onClick={() => setAdjustOpen(true)} className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-mint px-3 text-[13.5px] font-extrabold text-night transition-colors duration-150 ease-standard hover:bg-mint-pressed">
                 <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
                 Ajuster le stock
               </button>
             ) : null}
-            <a href={exportHref} download className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-night-raised px-3 text-[13.5px] font-bold text-on-night hover:bg-night-hover">
+            <a href={exportHref} download className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-on-inverse/10 px-3 text-[13.5px] font-bold transition-colors duration-150 ease-standard hover:bg-on-inverse/20">
               <Download aria-hidden="true" className="h-4 w-4" />
               Exporter
             </a>
             {single ? (
-              <Link href={`/sourcing?q=${encodeURIComponent(single.productName)}` as never} className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-night-raised px-3 text-[13.5px] font-bold text-on-night hover:bg-night-hover">
+              <Link href={`/sourcing?q=${encodeURIComponent(single.productName)}` as never} className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-on-inverse/10 px-3 text-[13.5px] font-bold transition-colors duration-150 ease-standard hover:bg-on-inverse/20">
                 <ScanSearch aria-hidden="true" className="h-4 w-4" />
                 Chercher des offres
               </Link>
             ) : null}
-            <button type="button" onClick={() => setSelected(new Set())} aria-label="Désélectionner (Échap)" title="Désélectionner (Échap)" className="flex h-10 w-10 items-center justify-center rounded-[10px] text-on-night-muted hover:bg-night-raised hover:text-on-night">
+            <button type="button" onClick={() => setSelected(new Set())} aria-label="Désélectionner (Échap)" title="Désélectionner (Échap)" className="flex h-10 w-10 items-center justify-center rounded-[10px] opacity-80 transition-[background-color,opacity] duration-150 ease-standard hover:bg-on-inverse/10 hover:opacity-100">
               <X aria-hidden="true" className="h-4 w-4" />
             </button>
           </div>
@@ -264,5 +275,53 @@ export function StockTableV5({
       ) : null}
       {writable && targets.length > 0 ? <AdjustDialog open={adjustOpen} onClose={() => setAdjustOpen(false)} targets={targets} onDone={() => setSelected(new Set())} /> : null}
     </div>
+  );
+}
+
+/**
+ * Vue cartes (sous 640 px) : même sélection et même ouverture de fiche que le tableau ; la
+ * quantité reste le chiffre dominant, le niveau est porté par une pastille icône + texte.
+ */
+function MobileList({ rows, selected, toggle, openCode }: { rows: StockRowDTO[]; selected: Set<string>; toggle: (id: string) => void; openCode: string | null }) {
+  return (
+    <ul aria-label="Références en stock" className="divide-y divide-line-soft sm:hidden">
+      {rows.map((r) => {
+        const checked = selected.has(r.skuId);
+        const open = r.code === openCode;
+        return (
+          <li key={r.skuId} className={cn("flex items-start gap-1 py-3 pl-1 pr-3.5", open ? "bg-selection" : checked ? "bg-surface-2" : "")}>
+            <button type="button" role="checkbox" aria-checked={checked} aria-label={`Sélectionner ${r.title}`} onClick={() => toggle(r.skuId)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+              <Box checked={checked} />
+            </button>
+            <Link href={r.openHref as never} scroll={false} className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg pt-1.5">
+              <span className="flex min-w-0 items-start gap-3">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="line-clamp-2 text-[14.5px] font-semibold leading-[19px] text-foreground">{r.title}</span>
+                  <span className="ms-code truncate text-[11px] leading-[15px] text-ink-3">{r.code}</span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end">
+                  <span className={cn("text-[20px] font-extrabold leading-6 tnum", r.qtyNegative || r.level.tone === "out" ? "text-danger" : "text-foreground")}>{r.qty}</span>
+                  <span className="ms-mono text-[10px] leading-[13px] text-ink-3">dispo</span>
+                </span>
+              </span>
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] font-semibold text-muted">
+                <LevelBadge level={r.level} />
+                <span className="tnum" title={r.cover.title}>
+                  Couv. <span className={TONE_TEXT[r.cover.tone]}>{r.cover.text}</span>
+                </span>
+                <span className="tnum">
+                  Prix <span className="font-bold text-foreground">{r.price}</span>
+                </span>
+                {r.margin.text !== "—" ? (
+                  <span className="tnum" title={r.margin.title}>
+                    Marge <span className={cn("font-bold", TONE_TEXT[r.margin.tone])}>{r.margin.text}</span>
+                  </span>
+                ) : null}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -87,10 +87,13 @@ function fromRow(r: Row): TrackedParcel {
   };
 }
 
+/** Colis listés (les plus récents) ; au-delà, l'écran le signale. */
+export const PARCELS_LIMIT = 200;
+
 export async function fetchParcels(supabase: MobileSupabase, organizationId: string, archived: boolean): Promise<TrackedParcel[]> {
   let q = supabase.from("tracked_parcels").select(COLUMNS).eq("organization_id", organizationId);
   q = archived ? q.not("archived_at", "is", null) : q.is("archived_at", null);
-  const { data, error } = await q.order("created_at", { ascending: false }).limit(200);
+  const { data, error } = await q.order("created_at", { ascending: false }).limit(PARCELS_LIMIT);
   if (error) throw error;
   return ((data ?? []) as unknown as Row[]).map(fromRow);
 }

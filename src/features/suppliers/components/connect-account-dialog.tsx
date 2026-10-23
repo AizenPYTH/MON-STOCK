@@ -39,10 +39,10 @@ export function ConnectAccountDialog({ supplierId, connectors }: { supplierId: s
               </Select>
             </Field>
             {connector ? (
-              <div className="rounded-lg bg-surface-muted/60 px-3 py-2 text-xs text-muted">
+              <div className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs leading-[17px] text-muted">
                 <p>{connector.description}</p>
                 {connector.accessConditions ? <p className="mt-1">Conditions d&apos;accès : {connector.accessConditions}</p> : null}
-                <p className="mt-1 text-amber-700">Compte requis : vous connectez votre propre compte fournisseur. Les identifiants sont chiffrés côté serveur et ne sont jamais renvoyés au navigateur.</p>
+                <p className="mt-1.5 font-semibold text-warning">Compte requis : vous connectez votre propre compte fournisseur. Les identifiants sont chiffrés côté serveur et ne sont jamais renvoyés au navigateur.</p>
               </div>
             ) : null}
             {connector?.credentialFields.map((f) => (

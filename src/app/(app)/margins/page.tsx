@@ -73,7 +73,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
 
       <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {data.channels.map(({ channel, ctx: c, missing }) => (
-          <Card key={channel.id} className={channel.id === data.selectedChannel?.id ? "border-foreground" : undefined}>
+          <Card key={channel.id} className={channel.id === data.selectedChannel?.id ? "border-inverse ring-1 ring-inverse" : undefined}>
             <CardHeader
               title={
                 <span className="flex items-center gap-2">
@@ -159,10 +159,11 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
         />
       ) : (
         <div className="space-y-3">
-          <Table className="min-w-[1240px]">
+          <p className="ms-mono hidden text-[10.5px] leading-[14px] text-ink-3 sm:block min-[1700px]:hidden">Tableau large : la colonne Produit reste fixe, faites défiler horizontalement →</p>
+          <Table className="min-w-[1240px]" stackOnMobile caption="Marges par SKU sur 30 jours">
             <THead>
               <tr>
-                <TH>Produit</TH>
+                <TH className="sticky left-0 z-[2]">Produit</TH>
                 <TH align="right">Prix de vente</TH>
                 <TH align="right">Prix d'achat</TH>
                 <TH align="right">Frais marketplace</TH>
@@ -180,44 +181,46 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
                 const m = l.margin;
                 return (
                   <TR key={l.skuId}>
-                    <TD>
-                      <Link href={`/stock/${encodeURIComponent(l.code)}` as never} className="block max-w-[280px]">
-                        <div className="truncate font-medium text-foreground">{l.name}</div>
-                        <div className="ms-code text-xs text-muted">{l.code}</div>
+                    <TD primary className="sm:sticky sm:left-0 sm:z-[1] sm:bg-surface">
+                      <Link href={`/stock/${encodeURIComponent(l.code)}` as never} className="block max-w-[280px] rounded hover:underline">
+                        <div className="truncate font-semibold text-foreground">{l.name}</div>
+                        <div className="ms-code text-xs text-ink-3">{l.code}</div>
                       </Link>
                     </TD>
-                    <TD align="right">
-                      {l.salePrice === null ? <Unknown>Non renseigné</Unknown> : formatMoney(l.salePrice, l.currency)}
-                      {l.salePriceSource === "avg_30d" ? <div className="text-xs text-muted">moyenne 30 j</div> : null}
+                    <TD label="Prix de vente" align="right">
+                      <span className="inline-flex flex-col items-end">
+                        {l.salePrice === null ? <Unknown>Non renseigné</Unknown> : formatMoney(l.salePrice, l.currency)}
+                        {l.salePriceSource === "avg_30d" ? <span className="text-xs text-muted">moyenne 30 j</span> : null}
+                      </span>
                     </TD>
-                    <TD align="right">
+                    <TD label="Prix d'achat" align="right">
                       {l.costPrice === null ? (
-                        <Link href={`/stock/${encodeURIComponent(l.code)}/edit` as never} className="text-xs text-amber-700 underline">
+                        <Link href={`/stock/${encodeURIComponent(l.code)}/edit` as never} className="text-xs font-semibold text-warning underline underline-offset-2 hover:no-underline">
                           Coût inconnu
                         </Link>
                       ) : (
                         formatMoney(l.costPrice, l.currency)
                       )}
                     </TD>
-                    <TD align="right">{m.marketplaceFee === null ? <Unknown>{l.salePrice === null ? "—" : "Inconnus"}</Unknown> : formatMoney(m.marketplaceFee, l.currency)}</TD>
-                    <TD align="right">{m.paymentFee === null ? <Unknown>{l.salePrice === null ? "—" : "Inconnus"}</Unknown> : formatMoney(m.paymentFee, l.currency)}</TD>
-                    <TD align="right">{m.shippingCost === null ? <Unknown>Inconnu</Unknown> : formatMoney(m.shippingCost, l.currency)}</TD>
-                    <TD align="right" className={m.netProfit !== null && m.netProfit < 0 ? "text-danger" : ""} title={m.caveat ?? undefined}>
+                    <TD label="Frais marketplace" align="right">{m.marketplaceFee === null ? <Unknown>{l.salePrice === null ? "—" : "Inconnus"}</Unknown> : formatMoney(m.marketplaceFee, l.currency)}</TD>
+                    <TD label="Frais paiement" align="right">{m.paymentFee === null ? <Unknown>{l.salePrice === null ? "—" : "Inconnus"}</Unknown> : formatMoney(m.paymentFee, l.currency)}</TD>
+                    <TD label="Transport" align="right">{m.shippingCost === null ? <Unknown>Inconnu</Unknown> : formatMoney(m.shippingCost, l.currency)}</TD>
+                    <TD label="Bénéfice / unité" align="right" className={m.netProfit !== null && m.netProfit < 0 ? "text-danger" : ""} title={m.caveat ?? undefined}>
                       {m.netProfit === null ? <Unknown>{m.caveat ?? "Non calculable"}</Unknown> : formatMoney(m.netProfit, l.currency)}
                     </TD>
-                    <TD align="right">{m.grossMarginPercent === null ? <Unknown /> : formatPercent(m.grossMarginPercent, 1)}</TD>
-                    <TD align="right" title={m.caveat ?? undefined}>
+                    <TD label="Marge brute" align="right">{m.grossMarginPercent === null ? <Unknown /> : formatPercent(m.grossMarginPercent, 1)}</TD>
+                    <TD label="Marge nette est." align="right" title={m.caveat ?? undefined}>
                       {m.netMarginPercent === null ? (
                         <Unknown />
                       ) : (
                         <span>
                           {formatPercent(m.netMarginPercent, 1)}
-                          {!m.complete ? <span className="ml-1 text-xs text-amber-700">partielle</span> : null}
+                          {!m.complete ? <span className="ml-1 text-xs font-semibold text-warning">partielle</span> : null}
                         </span>
                       )}
                     </TD>
-                    <TD align="right">{formatNumber(l.units30d)}</TD>
-                    <TD align="right" className={l.profit30d !== null && l.profit30d < 0 ? "font-medium text-danger" : "font-medium"}>
+                    <TD label="Ventes 30 j" align="right">{formatNumber(l.units30d)}</TD>
+                    <TD label="Bénéfice 30 j" align="right" className={l.profit30d !== null && l.profit30d < 0 ? "font-medium text-danger" : "font-medium"}>
                       {l.profit30d === null ? <Unknown>Exclu</Unknown> : formatMoney(l.profit30d, l.currency)}
                     </TD>
                   </TR>
@@ -226,7 +229,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
             </TBody>
           </Table>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} makeHref={makeHref} />
-          {data.truncated ? <p className="text-xs text-muted">Plus de 5 000 SKU actifs : seuls les 5 000 premiers sont analysés.</p> : null}
+          {data.truncated ? <Callout tone="warning">Plus de 5 000 SKU actifs : seuls les 5 000 premiers sont analysés. Les totaux sont des minima.</Callout> : null}
         </div>
       )}
       </Paper>

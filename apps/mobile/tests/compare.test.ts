@@ -44,13 +44,11 @@ describe("comparaison d'offres réelles", () => {
 describe("brouillon de commande fournisseur", () => {
   const input = { organizationId: "org", userId: "u", currency: "EUR", quantity: 10, offer: { id: "o", supplierId: "sup", skuId: "sku", price: 285 } };
 
-  it("crée une commande en BROUILLON puis sa ligne (offre, SKU, coût unitaire)", async () => {
-    const { client, queries } = fakeSupabase({ purchase_orders: { data: { id: "po1" } }, purchase_order_items: { data: null } });
+  it("M-16 : en-tête BROUILLON et ligne créés en UNE transaction (RPC sous RLS), aucune écriture directe", async () => {
+    const { client, queries } = fakeSupabase({ "rpc:create_draft_purchase_order": { data: "po1" } });
     expect(await createDraftPurchaseOrder(client, input)).toEqual({ purchaseOrderId: "po1" });
-    const po = queries.find((q) => q.target === "purchase_orders")!.calls.find((c) => c.method === "insert")!.args[0] as Record<string, unknown>;
-    expect(po).toMatchObject({ organization_id: "org", supplier_id: "sup", status: "draft", currency: "EUR", created_by: "u" });
-    const item = queries.find((q) => q.target === "purchase_order_items")!.calls.find((c) => c.method === "insert")!.args[0] as Record<string, unknown>;
-    expect(item).toMatchObject({ purchase_order_id: "po1", sku_id: "sku", offer_id: "o", quantity_ordered: 10, unit_cost: 285 });
+    expect(queries.map((q) => q.target)).toEqual(["rpc:create_draft_purchase_order"]);
+    expect(queries[0]!.calls[0]!.args[0]).toMatchObject({ p_organization_id: "org", p_supplier_id: "sup", p_currency: "EUR", p_sku_id: "sku", p_offer_id: "o", p_quantity: 10, p_unit_cost: 285 });
   });
 
   it("refuse une offre non associée à un SKU sans rien écrire", async () => {
@@ -59,10 +57,9 @@ describe("brouillon de commande fournisseur", () => {
     expect(queries).toHaveLength(0);
   });
 
-  it("ligne refusée par la base : le brouillon vide est supprimé (pas d'orphelin)", async () => {
-    const { client, queries } = fakeSupabase({ purchase_orders: { data: { id: "po1" } }, purchase_order_items: { error: { code: "42501", message: "permission denied" } } });
+  it("refus de la base : message traduit, rien d'autre n'est tenté (la transaction n'a rien laissé)", async () => {
+    const { client, queries } = fakeSupabase({ "rpc:create_draft_purchase_order": { error: { code: "42501", message: "permission denied" } } });
     await expect(createDraftPurchaseOrder(client, input)).rejects.toThrow(/droits/);
-    const deletes = queries.filter((q) => q.target === "purchase_orders" && q.calls.some((c) => c.method === "delete"));
-    expect(deletes).toHaveLength(1);
+    expect(queries.map((q) => q.target)).toEqual(["rpc:create_draft_purchase_order"]);
   });
 });

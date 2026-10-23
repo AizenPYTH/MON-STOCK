@@ -28,8 +28,8 @@ function Switch({ name, checked, onChange, disabled, label, describedBy }: { nam
         aria-describedby={describedBy}
         className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
       />
-      <span aria-hidden="true" className={cn("pointer-events-none block h-[26px] w-11 rounded-full transition-colors duration-150 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-50", checked ? "bg-night" : "bg-border-strong")}>
-        <span className={cn("block h-5 w-5 translate-y-[3px] rounded-full bg-surface shadow-[0_2px_6px_rgba(16,28,44,.08)] transition-transform duration-[240ms] ease-[cubic-bezier(.22,1,.36,1)]", checked ? "translate-x-[21px]" : "translate-x-[3px]")} />
+      <span aria-hidden="true" className={cn("pointer-events-none block h-[26px] w-11 rounded-full transition-colors duration-150 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-50", checked ? "bg-inverse" : "bg-border-control/60")}>
+        <span className={cn("block h-5 w-5 translate-y-[3px] rounded-full bg-surface shadow-raised transition-transform duration-[240ms] ease-[cubic-bezier(.22,1,.36,1)]", checked ? "translate-x-[21px]" : "translate-x-[3px]")} />
       </span>
     </span>
   );
@@ -54,7 +54,7 @@ export function ConnectionSettingsForm({ connection, disabled }: { connection: P
       <FormError message={err?.error} />
       {state?.ok && !dirty ? <FormSuccess message="Paramètres enregistrés." /> : null}
 
-      <div className="flex items-center gap-3 rounded-xl bg-[#F7F8FA] px-3.5 py-3">
+      <div className="flex items-center gap-3 rounded-xl border border-line-soft bg-surface-2 px-3.5 py-3">
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-bold text-foreground">Envoyer les quantités vers eBay</span>
           <span id={`push-hint-${id}`} className="mt-0.5 block text-[12.5px] font-semibold leading-[17px] text-ink-3">
@@ -64,7 +64,7 @@ export function ConnectionSettingsForm({ connection, disabled }: { connection: P
         <Switch name="push_inventory" checked={push} onChange={setPush} disabled={disabled} label="Envoyer les quantités vers eBay" describedBy={`push-hint-${id}`} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[#F7F8FA] px-3.5 py-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line-soft bg-surface-2 px-3.5 py-3">
         <span className="min-w-0 flex-1 basis-60">
           <span className="block text-[14.5px] font-bold text-foreground">Synchronisation automatique</span>
           <span id={`auto-hint-${id}`} className="mt-0.5 block text-[12.5px] font-semibold leading-[17px] text-ink-3">
@@ -83,7 +83,7 @@ export function ConnectionSettingsForm({ connection, disabled }: { connection: P
         </label>
         <Switch name="auto_sync" checked={auto} onChange={setAuto} disabled={disabled} label="Synchronisation automatique" describedBy={`auto-hint-${id}`} />
       </div>
-      {err?.fieldErrors?.sync_interval_minutes ? <p className="text-xs font-semibold text-danger">{err.fieldErrors.sync_interval_minutes.join(" ")}</p> : null}
+      {err?.fieldErrors?.sync_interval_minutes ? <p role="alert" className="text-xs font-semibold text-danger">{err.fieldErrors.sync_interval_minutes.join(" ")}</p> : null}
 
       {disabled ? (
         <p className="text-xs font-semibold text-ink-3">Modifiables par les administrateurs uniquement.</p>

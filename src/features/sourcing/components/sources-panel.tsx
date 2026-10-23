@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, StatusDot } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
 import { formatRelative } from "@/lib/format";
 import type { SourceStatusItem } from "@/services/sourcing/search";
@@ -11,7 +11,7 @@ export function SourcesPanel({ sources, accountConnectors = 0 }: { sources: Sour
   return (
     <Card>
       <CardHeader title="Sources" description={sources.length === 0 ? "Aucune source configurée." : `${connected} connectée(s) sur ${sources.length}.`} actions={<ButtonLink href="/suppliers" variant="ghost" size="sm">Gérer</ButtonLink>} />
-      <CardContent className="p-0">
+      <div>
         {sources.length === 0 ? (
           <p className="px-5 py-4 text-sm text-muted">Ajoutez un fournisseur, importez un flux CSV/XML/JSON ou déclarez une page publique autorisée pour alimenter le moteur.</p>
         ) : (
@@ -45,7 +45,7 @@ export function SourcesPanel({ sources, accountConnectors = 0 }: { sources: Sour
             </>
           )}
         </p>
-      </CardContent>
+      </div>
     </Card>
   );
 }

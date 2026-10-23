@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink, AlertTriangle } from "lucide-react";
+import { ArrowDownRight, ExternalLink, AlertTriangle } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
-import { DescriptionList, Stat, Callout } from "@/components/ui/page";
+import { DescriptionList, StatTile, Callout } from "@/components/ui/page";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { getOfferDetail } from "@/features/sourcing/queries";
 import { LinkOfferDialog } from "@/features/sourcing/components/link-offer-dialog";
@@ -28,7 +28,7 @@ import type { PriceInsights } from "@/domain/sourcing/price-insights";
 function InsightsBlock({ insights, currency, title }: { insights: PriceInsights; currency: string; title: string }) {
   return (
     <div className="space-y-1 text-sm">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
+      <div className="ms-mono text-[10.5px] leading-[14px] text-ink-3">{title}</div>
       {!insights.reliable ? (
         <p className="text-muted">{insights.reason ?? "Historique insuffisant"}</p>
       ) : (
@@ -39,8 +39,18 @@ function InsightsBlock({ insights, currency, title }: { insights: PriceInsights;
             </p>
           ) : null}
           {insights.trend ? <p className="text-xs text-muted-strong">{insights.trend.label}</p> : null}
-          {insights.opportunity ? <p className="font-medium text-orange-700">{insights.opportunity.message}</p> : null}
-          {insights.abnormalLow ? <p className="font-medium text-amber-700">{insights.abnormalLow.message}</p> : null}
+          {insights.opportunity ? (
+            <p className="flex items-start gap-1.5 font-semibold text-success">
+              <ArrowDownRight aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              {insights.opportunity.message}
+            </p>
+          ) : null}
+          {insights.abnormalLow ? (
+            <p className="flex items-start gap-1.5 font-semibold text-warning">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              {insights.abnormalLow.message}
+            </p>
+          ) : null}
         </>
       )}
       {insights.bestObserved ? <p className="text-xs text-muted">{insights.bestObserved.label}</p> : null}
@@ -63,6 +73,14 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
   const pricePoints = [...d.priceHistory].reverse().map((p) => Number(p.original_price));
   const statusTone = o.status === "active" ? "success" : o.status === "expired" ? "neutral" : o.status === "rejected" ? "danger" : "warning";
   const orderQty = Math.max(1, o.moq ?? 1);
+  // garde d'affichage : une offre sans liste d'anomalies n'en a aucune
+  const anomalies: string[] = o.anomalies ?? [];
+  const marginKnown = Boolean(d.margin && d.margin.netProfit !== null);
+  const marginHint = d.margin
+    ? `${marginKnown ? "" : "Non calculable · "}prix de vente ${d.salePrice === null ? "—" : formatMoney(d.salePrice, currency)}${d.salePriceSource === "average_30d" ? " (moyenne 30 j)" : ""}${d.margin.caveat ? ` · ${d.margin.caveat}` : ""}`
+    : o.sku_id
+      ? "Non calculable : aucun prix de vente connu pour ce SKU"
+      : "Non calculable : associez l'offre à un SKU avec prix de vente";
 
   return (
     <>
@@ -76,7 +94,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
         title={
           <span className="flex flex-wrap items-center gap-2">
             {o.title_original}
-            <Badge variant={statusTone}>{OFFER_STATUS_LABEL[o.status]}</Badge>
+            <StatusBadge tone={statusTone} size="md">{OFFER_STATUS_LABEL[o.status]}</StatusBadge>
           </span>
         }
         description={
@@ -89,13 +107,6 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
             {o.source?.name ? ` · ${o.source.name}` : ""}
             {" · "}
             {retrievalMethodLabel(d.provenance)}
-            {" · "}
-            <ConfidenceBadge confidence={d.confidenceBadge} showReasons />
-            {" · "}
-            <span className={d.freshness.stale ? "text-amber" : ""}>
-              {d.freshness.label}
-              {d.freshness.warning ? ` · ${d.freshness.warning}` : ""}
-            </span>
           </span>
         }
         actions={
@@ -114,12 +125,26 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
       />
       </Scene>
       <Paper>
+      <section aria-label="Fiabilité de la donnée" className="mb-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3 rounded-2xl border border-border bg-surface px-5 py-3.5">
+        <div className="min-w-0 flex-[1_1_420px]">
+          <div className="ms-mono mb-1.5 text-[10.5px] leading-[14px] text-ink-3">Confiance de la donnée</div>
+          <ConfidenceBadge confidence={d.confidenceBadge} showReasons />
+        </div>
+        <div className="min-w-0">
+          <div className="ms-mono mb-1.5 text-[10.5px] leading-[14px] text-ink-3">Fraîcheur</div>
+          <p className={d.freshness.stale ? "flex items-center gap-1.5 text-sm font-semibold text-warning" : "text-sm font-semibold text-muted-strong"}>
+            {d.freshness.stale ? <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0" /> : null}
+            {d.freshness.label}
+            {d.freshness.warning ? ` · ${d.freshness.warning}` : ""}
+          </p>
+        </div>
+      </section>
 
       {o.status === "expired" ? <Callout tone="warning" className="mb-5" title="Offre expirée">Cette offre n'a plus été vue par sa source lors de la dernière synchronisation{o.expired_at ? ` (${formatDateTime(o.expired_at)})` : ""}. Elle est conservée pour l'historique.</Callout> : null}
-      {o.anomalies.length > 0 ? (
+      {anomalies.length > 0 ? (
         <Callout tone="danger" className="mb-5" title="Anomalies détectées">
           <ul className="list-disc pl-4">
-            {o.anomalies.map((a) => (
+            {anomalies.map((a) => (
               <li key={a}>{ANOMALY_LABEL[a as AnomalyCode] ?? a}</li>
             ))}
           </ul>
@@ -137,15 +162,16 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
         </Callout>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Prix unitaire" value={formatMoney(Number(o.original_price), o.original_currency)} hint={`${TAX_LABEL[o.tax_type]}${d.normalizedUnitPrice !== null && o.original_currency !== currency ? ` · ≈ ${formatMoney(d.normalizedUnitPrice, currency)} (taux BCE ${o.fx_rate ?? "—"}${o.fx_rate_date ? `, ${o.fx_rate_date}` : ""})` : o.original_currency !== currency ? " · Conversion indisponible" : ""}`} />
-        <Stat label="Prix comparable (HT si possible)" value={d.comparableUnitPrice === null ? "—" : formatMoney(d.comparableUnitPrice, currency)} hint={d.taxNote ?? undefined} />
-        <Stat label="Historique 30 j" value={d.priceStats.avg30d === null ? "—" : formatMoney(d.priceStats.avg30d, o.original_currency)} hint={d.priceStats.vsAveragePercent === null ? `${d.priceStats.count30d} relevé(s) sur 30 jours` : `prix actuel ${d.priceStats.vsAveragePercent > 0 ? "+" : ""}${d.priceStats.vsAveragePercent} % vs moyenne`} tone={d.priceStats.vsAveragePercent !== null && d.priceStats.vsAveragePercent < -10 ? "success" : undefined} />
-        <Stat
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Prix unitaire" value={formatMoney(Number(o.original_price), o.original_currency)} hint={`${TAX_LABEL[o.tax_type]}${d.normalizedUnitPrice !== null && o.original_currency !== currency ? ` · ≈ ${formatMoney(d.normalizedUnitPrice, currency)} (taux BCE ${o.fx_rate ?? "—"}${o.fx_rate_date ? `, ${o.fx_rate_date}` : ""})` : o.original_currency !== currency ? " · Conversion indisponible" : ""}`} />
+        <StatTile label="Prix comparable (HT si possible)" value={d.comparableUnitPrice === null ? null : formatMoney(d.comparableUnitPrice, currency)} hint={d.taxNote ?? undefined} />
+        <StatTile label="Historique 30 j" value={d.priceStats.avg30d === null ? null : formatMoney(d.priceStats.avg30d, o.original_currency)} hint={d.priceStats.vsAveragePercent === null ? `${d.priceStats.count30d} relevé(s) sur 30 jours` : `prix actuel ${d.priceStats.vsAveragePercent > 0 ? "+" : ""}${d.priceStats.vsAveragePercent} % vs moyenne`} tone={d.priceStats.vsAveragePercent !== null && d.priceStats.vsAveragePercent < -10 ? "success" : undefined} />
+        <StatTile
           label="Marge potentielle / unité"
-          value={d.margin && d.margin.netProfit !== null ? formatMoney(d.margin.netProfit, currency) : "Non calculable"}
-          hint={d.margin ? `prix de vente ${d.salePrice === null ? "—" : formatMoney(d.salePrice, currency)}${d.salePriceSource === "average_30d" ? " (moyenne 30 j)" : ""}${d.margin.caveat ? ` · ${d.margin.caveat}` : ""}` : o.sku_id ? "Aucun prix de vente connu pour ce SKU" : "Associez l'offre à un SKU avec prix de vente"}
-          tone={d.margin && d.margin.netProfit !== null && d.margin.netProfit < 0 ? "danger" : undefined}
+          value={d.margin && d.margin.netProfit !== null ? formatMoney(d.margin.netProfit, currency) : null}
+          approx={marginKnown}
+          hint={marginHint}
+          tone={d.margin && d.margin.netProfit !== null && d.margin.netProfit < 0 ? "danger" : "neutral"}
         />
       </div>
 
@@ -170,7 +196,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   { label: "MOQ", value: o.moq === null ? NOT_PROVIDED : `${formatNumber(o.moq)} unité(s)` },
                   { label: "Minimum de commande", value: o.minimum_order_value === null ? NOT_PROVIDED : formatMoney(o.minimum_order_value, o.original_currency) },
                   { label: "Stock", value: o.available_quantity !== null ? `${formatNumber(o.available_quantity)} unité(s)` : STOCK_STATUS_LABEL[o.stock_status] },
-                  { label: "Délai de livraison", value: deliveryLabel(o.delivery_min_days, o.delivery_max_days) },
+                  { label: "Délai de livraison", value: deliveryLabel(o.delivery_min_days ?? null, o.delivery_max_days ?? null) },
                   { label: "Frais de port", value: o.shipping_cost === null ? NOT_PROVIDED : formatMoney(o.shipping_cost, o.shipping_currency ?? o.original_currency) },
                   { label: "Coût rendu estimé", value: d.landed && d.landed.unitLandedCost !== null ? `${formatMoney(d.landed.unitLandedCost, currency)} / unité (${Math.max(1, o.moq ?? 1)} unité(s))${d.landed.determinable ? "" : " · frais d'import inconnus"}` : "Coût final non déterminable (frais de port non communiqués)" },
                   { label: "Pays", value: o.country ?? o.supplier?.country ?? NOT_PROVIDED },
@@ -186,14 +212,14 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
 
           <Card>
             <CardHeader title="Historique des prix" description={`${d.priceHistory.length} relevé(s)`} actions={pricePoints.length > 1 ? <Sparkline points={pricePoints} label="Évolution du prix" /> : null} />
-            <CardContent className="p-0">
+            <div>
               {d.priceHistory.length === 0 ? (
                 <p className="px-5 py-5 text-sm text-muted">Aucun relevé.</p>
               ) : (
-                <ul className="divide-y divide-border text-sm">
+                <ul className="divide-y divide-line-soft text-sm">
                   {d.priceHistory.map((p) => (
                     <li key={p.id} className="flex items-center justify-between px-5 py-2">
-                      <span className="text-muted">{formatDateTime(p.recorded_at)}</span>
+                      <span className="text-muted tnum">{formatDateTime(p.recorded_at)}</span>
                       <span className="tnum">
                         {formatMoney(Number(p.original_price), p.original_currency)} <span className="text-xs text-muted">{TAX_LABEL[p.tax_type]}</span>
                         {p.normalized_price !== null && p.normalized_currency && p.normalized_currency !== p.original_currency ? <span className="ml-2 text-xs text-muted">≈ {formatMoney(p.normalized_price, p.normalized_currency)}</span> : null}
@@ -202,7 +228,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   ))}
                 </ul>
               )}
-            </CardContent>
+            </div>
           </Card>
 
           <Card>
@@ -215,11 +241,11 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
 
           <Card>
             <CardHeader title="Historique des prix par fournisseur" description="Même produit normalisé, toutes sources confondues (90 jours)." />
-            <CardContent className="p-0">
+            <div>
               {d.priceInsights.supplierHistories.every((h) => h.pointCount === 0) ? (
                 <p className="px-5 py-5 text-sm text-muted">Historique insuffisant : aucun relevé exploitable sur la période.</p>
               ) : (
-                <ul className="divide-y divide-border text-sm">
+                <ul className="divide-y divide-line-soft text-sm">
                   {d.priceInsights.supplierHistories.map((h) => (
                     <li key={h.supplierId} className="flex flex-wrap items-center justify-between gap-3 px-5 py-2">
                       <div className="min-w-0">
@@ -238,16 +264,16 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   ))}
                 </ul>
               )}
-            </CardContent>
+            </div>
           </Card>
 
           <Card>
             <CardHeader title="Historique du stock" description={`${d.stockHistory.length} relevé(s)`} />
-            <CardContent className="p-0">
+            <div>
               {d.stockHistory.length === 0 ? (
                 <p className="px-5 py-5 text-sm text-muted">Stock jamais communiqué par la source.</p>
               ) : (
-                <ul className="divide-y divide-border text-sm">
+                <ul className="divide-y divide-line-soft text-sm">
                   {d.stockHistory.map((s) => (
                     <li key={s.id} className="flex items-center justify-between px-5 py-2">
                       <span className="text-muted">{formatDateTime(s.recorded_at)}</span>
@@ -256,7 +282,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   ))}
                 </ul>
               )}
-            </CardContent>
+            </div>
           </Card>
         </div>
 
@@ -269,8 +295,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   <li key={k} className="flex items-center justify-between gap-3">
                     <span>{CONFIDENCE_LABEL[k] ?? k}</span>
                     <span className="flex items-center gap-2">
-                      <span className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-muted">
-                        <span className="block h-full bg-foreground" style={{ width: `${Math.round(Math.max(0, Math.min(1, Number(v))) * 100)}%` }} />
+                      <span className="h-1.5 w-20 overflow-hidden rounded-full bg-track">
+                        <span className="block h-full rounded-full bg-inverse" style={{ width: `${Math.round(Math.max(0, Math.min(1, Number(v))) * 100)}%` }} />
                       </span>
                       <span className="w-8 text-right text-xs tnum text-muted">{Math.round(Number(v) * 100)} %</span>
                     </span>
@@ -283,16 +309,16 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
 
           <Card>
             <CardHeader title="Correspondances SKU" />
-            <CardContent className="p-0">
+            <div>
               {d.matches.length === 0 ? (
                 <p className="px-5 py-4 text-sm text-muted">Aucune suggestion enregistrée. Utilisez « Associer à un SKU ».</p>
               ) : (
-                <ul className="divide-y divide-border text-sm">
+                <ul className="divide-y divide-line-soft text-sm">
                   {d.matches.map((m) => (
                     <li key={m.id} className="px-5 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono text-xs">{m.sku?.code ?? "—"}</span>
-                        <Badge variant={m.status === "confirmed" ? "success" : m.status === "rejected" ? "danger" : "warning"}>{m.status === "confirmed" ? "Confirmée" : m.status === "rejected" ? "Rejetée" : "À valider"}</Badge>
+                        <StatusBadge tone={m.status === "confirmed" ? "success" : m.status === "rejected" ? "danger" : "warning"}>{m.status === "confirmed" ? "Confirmée" : m.status === "rejected" ? "Rejetée" : "À valider"}</StatusBadge>
                       </div>
                       <div className="text-xs text-muted">
                         {m.sku?.product?.name} · {Math.round(Number(m.confidence) * 100)} % · {MATCH_METHOD_LABEL[m.method as keyof typeof MATCH_METHOD_LABEL] ?? m.method}
@@ -306,7 +332,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   Dissocier du SKU
                 </ActionButtonForm>
               ) : null}
-            </CardContent>
+            </div>
           </Card>
 
           {writable ? (
@@ -322,8 +348,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   {o.status === "rejected" ? "Réactiver" : "Rejeter"}
                 </ActionButtonForm>
                 {d.freshness.stale ? (
-                  <p className="mt-3 flex items-start gap-1 text-xs text-amber-700">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {d.freshness.warning} : synchronisez la source pour actualiser cette offre.
+                  <p className="mt-3 flex items-start gap-1 text-xs font-semibold text-warning">
+                    <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {d.freshness.warning} : synchronisez la source pour actualiser cette offre.
                   </p>
                 ) : null}
               </CardContent>

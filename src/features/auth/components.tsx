@@ -2,20 +2,21 @@
 import { useActionState, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { CircleAlert, CircleCheck, Loader2 } from "lucide-react";
 import type { ActionResult } from "@/lib/result";
 import { cn } from "@/lib/utils";
 import { requestPasswordResetAction, signInAction, signUpAction, updatePasswordAction } from "@/features/auth/actions";
 
 /*
- * Formulaires d'authentification — gabarit unique du handoff v5 (Connexion / Inscription /
- * Mot de passe) : sur-titre mono, titre 30/36, erreur encadrée, carte blanche rayon 24,
- * champs 52 px rayon 12, action menthe 52 px. La logique (Server Actions) est inchangée.
+ * Formulaires d'authentification — gabarit unique « Instrument » (Connexion / Inscription /
+ * Mot de passe / Onboarding / Invitation) : sur-titre mono, titre 30/36, erreur encadrée et
+ * annoncée, carte rayon 24, champs 52 px à contour ≥ 3:1, action menthe 52 px.
+ * La logique (Server Actions, verrous d'envoi) est inchangée : ce fichier ne porte que le visuel.
  */
 
 export function AuthFrame({ eyebrow, title, subtitle, error, errorAction, children, footer }: { eyebrow: string; title: string; subtitle?: ReactNode; error?: string | null; errorAction?: { label: string; href: string }; children: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="flex w-full flex-col gap-[18px]">
+    <div className="ms-fade flex w-full flex-col gap-[18px]">
       <div className="flex flex-col gap-1.5">
         <span className="ms-mono text-[11px] leading-[14px] tracking-[0.07em] text-muted">{eyebrow}</span>
         <h1 className="text-[28px] font-extrabold leading-[34px] tracking-[-0.7px] text-foreground sm:text-[30px] sm:leading-9">{title}</h1>
@@ -28,38 +29,43 @@ export function AuthFrame({ eyebrow, title, subtitle, error, errorAction, childr
   );
 }
 
-/** Erreur encadrée (fond #FBE9E9, filet #F3D2D2) annoncée aux lecteurs d'écran. */
+/** Erreur encadrée (jetons « danger ») annoncée aux lecteurs d'écran ; icône + texte. */
 function AuthError({ message, action }: { message?: string | null; action?: { label: string; href: string } }) {
   if (!message) return null;
   return (
-    <div role="alert" className="rounded-[14px] border border-danger-line bg-danger-soft px-3.5 py-3 text-sm font-semibold leading-5 text-danger">
-      {message}
-      {action ? (
-        <>
-          {" "}
-          <Link href={action.href as never} className="font-extrabold underline underline-offset-2">
-            {action.label}
-          </Link>
-        </>
-      ) : null}
+    <div role="alert" className="flex items-start gap-2.5 rounded-[14px] border border-danger-line bg-danger-soft px-3.5 py-3 text-sm font-semibold leading-5 text-danger-ink">
+      <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+      <span className="min-w-0">
+        {message}
+        {action ? (
+          <>
+            {" "}
+            <Link href={action.href as never} className="font-extrabold underline underline-offset-2">
+              {action.label}
+            </Link>
+          </>
+        ) : null}
+      </span>
     </div>
   );
 }
 
 function AuthSuccess({ message }: { message: string }) {
   return (
-    <div role="status" className="rounded-[14px] border border-[#bfe9d3] bg-success-soft px-3.5 py-3 text-sm font-semibold leading-5 text-success">
-      {message}
+    <div role="status" className="ms-fade flex items-start gap-2.5 rounded-[14px] border border-success-line bg-success-soft px-3.5 py-3 text-sm font-semibold leading-5 text-success-ink">
+      <CircleCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+      <span className="min-w-0">{message}</span>
     </div>
   );
 }
 
 export function AuthCard({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-3.5 rounded-3xl border border-border bg-surface p-5 sm:p-6">{children}</div>;
+  return <div className="flex flex-col gap-4 rounded-3xl border border-border bg-surface p-5 sm:p-6">{children}</div>;
 }
 
+/** Champ 52 px : contour ≥ 3:1 (border-control), focus = contour bleu + halo, erreur = contour rouge. */
 export const authInputClass =
-  "h-[52px] w-full rounded-xl border border-border-strong bg-surface px-3.5 text-base font-semibold text-foreground placeholder:font-semibold placeholder:text-ink-3 aria-invalid:border-[1.5px] aria-invalid:border-red disabled:bg-line-soft";
+  "h-[52px] w-full rounded-xl border border-border-control bg-surface px-3.5 text-base font-semibold text-foreground transition-[border-color,box-shadow] duration-150 ease-standard placeholder:font-medium placeholder:text-ink-3 hover:border-muted focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25 aria-invalid:border-[1.5px] aria-invalid:border-danger aria-invalid:focus:ring-danger/25 disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-muted";
 
 /** Champ étiqueté du gabarit : libellé 13/700, aide ou erreur sous le champ (reliées par aria-describedby). */
 export function AuthField({ id, label, labelAside, hint, error, children }: { id: string; label: string; labelAside?: ReactNode; hint?: string; error?: string[]; children: (describedBy: string | undefined, invalid: boolean) => ReactNode }) {
@@ -80,8 +86,9 @@ export function AuthField({ id, label, labelAside, hint, error, children }: { id
         </p>
       ) : null}
       {errorId ? (
-        <p id={errorId} className="text-[12.5px] font-semibold text-danger">
-          {error!.join(" ")}
+        <p id={errorId} role="alert" className="flex items-start gap-1 text-[12.5px] font-semibold text-danger">
+          <CircleAlert aria-hidden="true" className="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>{error!.join(" ")}</span>
         </p>
       ) : null}
     </div>
@@ -96,9 +103,14 @@ export function TextInput({ invalid, describedBy, ...props }: InputHTMLAttribute
 function PasswordInput({ invalid, describedBy, ...props }: InputHTMLAttributes<HTMLInputElement> & { invalid: boolean; describedBy?: string }) {
   const [shown, setShown] = useState(false);
   return (
-    <span className={cn("flex h-[52px] items-center rounded-xl border bg-surface pl-3.5 pr-1.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring", invalid ? "border-[1.5px] border-red" : "border-border-strong")}>
-      <input {...props} type={shown ? "text" : "password"} aria-invalid={invalid || undefined} aria-describedby={describedBy} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-foreground focus-visible:outline-none" />
-      <button type="button" onClick={() => setShown((v) => !v)} aria-pressed={shown} aria-label={shown ? "Masquer le mot de passe" : "Afficher le mot de passe"} className="h-10 shrink-0 rounded-[9px] px-2.5 text-[13px] font-bold text-muted hover:bg-line-soft">
+    <span
+      className={cn(
+        "flex h-[52px] items-center rounded-xl border bg-surface pl-3.5 pr-1.5 transition-[border-color,box-shadow] duration-150 ease-standard focus-within:ring-[3px]",
+        invalid ? "border-[1.5px] border-danger focus-within:ring-danger/25" : "border-border-control hover:border-muted focus-within:border-ring focus-within:ring-ring/25",
+      )}
+    >
+      <input {...props} type={shown ? "text" : "password"} aria-invalid={invalid || undefined} aria-describedby={describedBy} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-foreground focus:outline-none focus-visible:outline-none" />
+      <button type="button" onClick={() => setShown((v) => !v)} aria-pressed={shown} aria-label={shown ? "Masquer le mot de passe" : "Afficher le mot de passe"} className="h-10 shrink-0 rounded-[9px] px-2.5 text-[13px] font-bold text-muted transition-colors hover:bg-line-soft hover:text-foreground">
         {shown ? "Masquer" : "Afficher"}
       </button>
     </span>
@@ -113,7 +125,7 @@ export function AuthSubmit({ children, pendingText, locked = false, lockedText }
   const { pending } = useFormStatus();
   const busy = pending || locked;
   return (
-    <button type="submit" disabled={busy} aria-busy={busy || undefined} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-mint px-5 text-base font-extrabold text-night transition-colors hover:bg-mint-pressed disabled:opacity-60">
+    <button type="submit" disabled={busy} aria-busy={busy || undefined} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-mint px-5 text-base font-extrabold text-night transition-[background-color,transform] duration-150 ease-standard hover:bg-mint-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px disabled:cursor-progress disabled:opacity-60">
       {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
       {pending ? pendingText : locked ? (lockedText ?? pendingText) : children}
     </button>
@@ -124,7 +136,7 @@ export function SwitchLine({ text, href, link }: { text: string; href: string; l
   return (
     <p className="text-center text-sm font-semibold text-muted">
       {text}{" "}
-      <Link href={href as never} className="font-extrabold text-foreground underline underline-offset-2 hover:text-muted">
+      <Link href={href as never} className="inline-flex min-h-10 items-center font-extrabold text-foreground underline underline-offset-4 hover:text-interactive">
         {link}
       </Link>
     </p>
@@ -164,7 +176,7 @@ export function LoginForm({ next, initialError }: { next?: string; initialError?
             label="Mot de passe"
             error={err?.fieldErrors?.password}
             labelAside={
-              <Link href="/reset-password" className="text-[13px] font-bold text-foreground underline underline-offset-2 hover:text-muted">
+              <Link href="/reset-password" className="text-[13px] font-bold text-interactive underline-offset-4 hover:text-interactive-hover hover:underline">
                 Mot de passe oublié ?
               </Link>
             }
@@ -184,6 +196,18 @@ export function SignupForm({ next }: { next?: string } = {}) {
   if (state?.ok && state.data.needsConfirmation) {
     return (
       <AuthFrame eyebrow="Inscription" title="Vérifiez votre boîte mail" subtitle="Nous vous avons envoyé un lien de confirmation. Cliquez dessus pour activer votre compte, puis créez votre organisation.">
+        <AuthCard>
+          <ol className="flex flex-col gap-3">
+            {["Ouvrez l'e-mail de confirmation (pensez aux indésirables).", "Cliquez sur le lien : il ne sert qu'une fois et expire rapidement.", "Créez votre organisation, ou une organisation de démonstration."].map((step, i) => (
+              <li key={step} className="flex items-start gap-3 text-sm font-semibold leading-5 text-muted-strong">
+                <span aria-hidden="true" className={cn("ms-code flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]", i === 0 ? "bg-inverse text-on-inverse" : "border border-border-control/50 text-ink-3")}>
+                  {i + 1}
+                </span>
+                <span className="pt-0.5">{step}</span>
+              </li>
+            ))}
+          </ol>
+        </AuthCard>
         <SwitchLine text="Compte confirmé ?" href="/login" link="Retour à la connexion" />
       </AuthFrame>
     );

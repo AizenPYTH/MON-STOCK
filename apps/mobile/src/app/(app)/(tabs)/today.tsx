@@ -73,11 +73,14 @@ export default function TodayScreen() {
 function Today({ currency, orgName, isDemo, onAnalysis }: { currency: string; orgName: string; isDemo: boolean; onAnalysis: () => void }) {
   const today = useToday();
   const catalog = useCatalog();
-  const jobs = useImportJobs();
-  const accounts = useProAccounts();
-  const radar = useRadar("score");
+  // M-13 : les appels au serveur (Edge, démarrage à froid possible) ne partent qu'une fois les
+  // chiffres du jour chargés : l'essentiel s'affiche d'abord, la liste « À faire » se complète ensuite.
+  const secondary = !today.isPending;
+  const jobs = useImportJobs(undefined, secondary);
+  const accounts = useProAccounts(secondary);
+  const radar = useRadar("score", secondary);
   const alerts = useOpenAlerts();
-  const integrations = useIntegrations();
+  const integrations = useIntegrations(secondary);
   const refreshing = today.isRefetching || catalog.isRefetching;
   const summary = useMemo(() => (catalog.data ? stockSummary(catalog.data) : null), [catalog.data]);
   const tasks = useMemo(

@@ -61,7 +61,7 @@ export function StockScene({ analytics, currency, archived, exportHref, filterHr
           <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
             <MonoLabel onNight>Chaque barre = une référence · largeur = ventes 30 j</MonoLabel>
             <span className="flex flex-wrap items-center gap-3">
-              <LegendKey color="rgba(247,248,250,.86)" label="En stock" />
+              <LegendKey color="color-mix(in srgb, var(--on-night) 86%, transparent)" label="En stock" />
               <LegendKey color="var(--amber)" label={`Faible · ${weak}`} href={filterHref("faible")} />
               <LegendKey color="var(--danger-on-night)" label={`Rupture · ${analytics.counts.out_of_stock}`} href={filterHref("rupture")} />
             </span>

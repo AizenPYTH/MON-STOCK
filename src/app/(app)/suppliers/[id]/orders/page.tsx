@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/page";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -16,10 +16,10 @@ import { PO_STATUS_LABEL } from "@/features/sourcing/labels";
 
 export const metadata: Metadata = { title: "Commandes fournisseur" };
 
-function statusTone(s: string): "success" | "warning" | "danger" | "neutral" | "info" {
+function statusTone(s: string): StatusTone {
   if (s === "received") return "success";
   if (s === "partially_received" || s === "confirmed") return "info";
-  if (s === "sent") return "warning";
+  if (s === "sent") return "pending";
   if (s === "cancelled") return "danger";
   return "neutral";
 }
@@ -70,7 +70,7 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
             <CardHeader
               title={
                 <span className="flex items-center gap-2">
-                  Commande {selected.reference ?? selected.id.slice(0, 8)} <Badge variant={statusTone(selected.status)}>{PO_STATUS_LABEL[selected.status]}</Badge>
+                  Commande {selected.reference ?? selected.id.slice(0, 8)} <StatusBadge tone={statusTone(selected.status)} size="md">{PO_STATUS_LABEL[selected.status]}</StatusBadge>
                 </span>
               }
               description={`Créée le ${formatDateTime(selected.created_at)}${selected.sent_at ? ` · envoyée le ${formatDate(selected.sent_at)}` : ""}${selected.received_at ? ` · reçue le ${formatDate(selected.received_at)}` : ""}${selected.expected_at ? ` · livraison prévue ${formatDate(selected.expected_at)}` : ""}`}
@@ -172,7 +172,7 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
 
         <Card>
           <CardHeader title="Historique des achats" description={orders.length === 0 ? undefined : `${orders.length} commande(s).`} />
-          <CardContent className="p-0">
+          <div>
             {orders.length === 0 ? (
               <EmptyState className="border-0" title="Aucune commande chez ce fournisseur." description="Créez une commande depuis cette page, depuis une offre du sourcing ou depuis la fiche d'un SKU (réapprovisionnement)." />
             ) : (
@@ -200,7 +200,7 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
                           </Link>
                         </TD>
                         <TD>
-                          <Badge variant={statusTone(po.status)}>{PO_STATUS_LABEL[po.status]}</Badge>
+                          <StatusBadge tone={statusTone(po.status)}>{PO_STATUS_LABEL[po.status]}</StatusBadge>
                         </TD>
                         <TD className="text-xs text-muted">{formatDate(po.created_at)}</TD>
                         <TD className="text-xs text-muted">{formatDate(po.sent_at)}</TD>
@@ -214,7 +214,7 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
                 </TBody>
               </Table>
             )}
-          </CardContent>
+          </div>
         </Card>
       </div>
     </SupplierHeader>

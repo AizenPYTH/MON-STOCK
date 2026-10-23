@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import { DayBars, LegendKey, LevelDot, MarginWaterfall, MarketRuler, StageFigure, StockBarcode } from "@/components/instrument";
 import { LEGAL } from "@/content/legal";
 import { EXAMPLE_BARCODE, EXAMPLE_COVERAGE, EXAMPLE_DAYS, EXAMPLE_IMPORT, EXAMPLE_OFFER, EXAMPLE_TODAY, EXAMPLE_WATERFALL } from "@/components/public/example-data";
@@ -16,7 +16,7 @@ const int = (n: number) => new Intl.NumberFormat("fr-FR").format(n);
 
 /** Étiquette « Exemple » : toute valeur de l'accueil est une illustration, jamais une donnée réelle. */
 function ExampleTag({ onNight = false }: { onNight?: boolean }) {
-  return <span className={onNight ? "ms-code shrink-0 rounded-[5px] bg-[rgba(229,163,77,.14)] px-[7px] py-0.5 text-[10px] font-semibold tracking-[0.08em] text-amber" : "ms-code shrink-0 text-[10px] font-semibold tracking-[0.06em] text-warning"}>EXEMPLE</span>;
+  return <span className={onNight ? "ms-code shrink-0 rounded-[5px] bg-amber/14 px-[7px] py-0.5 text-[10px] font-semibold tracking-[0.08em] text-amber" : "ms-code shrink-0 rounded-[5px] bg-warning-soft px-[7px] py-0.5 text-[10px] font-semibold tracking-[0.06em] text-warning-ink"}>EXEMPLE</span>;
 }
 
 const FAQ = [
@@ -42,7 +42,23 @@ const FAQ = [
   },
 ] as const;
 
-const TOOL_GLYPHS = ["%", "+€", "€", "eB", "−%", "$€", "kg"] as const;
+/** Outils réellement disponibles dans l'application (section Outils). */
+const TOOLS = [
+  { glyph: "%", label: "TVA" },
+  { glyph: "+€", label: "Marge" },
+  { glyph: "€", label: "Prix" },
+  { glyph: "eB", label: "Frais eBay" },
+  { glyph: "−%", label: "Remise" },
+  { glyph: "$€", label: "Devises" },
+  { glyph: "kg", label: "Port" },
+] as const;
+
+/** Mise en route réelle (aucune promesse au-delà de ce que fait le produit aujourd'hui). */
+const START_STEPS = [
+  { title: "Créez votre compte", text: "Un e-mail et un mot de passe. Le même compte servira sur le web et sur iPhone." },
+  { title: "Votre organisation, ou la démo", text: "Créez votre organisation, ou explorez une organisation de démonstration aux données fictives, marquée « DÉMO »." },
+  { title: "Branchez vos sources", text: "Connectez eBay par l'autorisation officielle, importez un catalogue fournisseur ou saisissez vos produits." },
+] as const;
 
 export default function HomePage() {
   return (
@@ -57,10 +73,12 @@ export default function HomePage() {
               Pour les revendeurs de téléphones et de pièces détachées qui vendent sur eBay et en boutique : votre stock, vos ventes, les prix de vos fournisseurs et ce qu&apos;il faut racheter, au même endroit. Aucune fausse donnée : ce qui est estimé est marqué comme tel.
             </p>
             <div className="mt-1.5 flex flex-wrap gap-2.5">
-              <Link href="/signup" className="inline-flex min-h-[52px] items-center rounded-xl bg-mint px-[22px] text-base font-extrabold text-night hover:bg-mint-pressed">
+              {/* prefetch={false} (W-01) : /login et /signup redirigent selon l'état du compte. */}
+              <Link href="/signup" prefetch={false} className="inline-flex min-h-[52px] items-center gap-2 rounded-xl bg-mint px-[22px] text-base font-extrabold text-night transition-colors hover:bg-mint-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint">
                 Créer un compte
+                <ArrowRight aria-hidden="true" className="h-4 w-4" strokeWidth={2.4} />
               </Link>
-              <Link href="/login" className="inline-flex min-h-[52px] items-center rounded-xl bg-night-raised px-5 text-base font-extrabold text-on-night hover:bg-night-hover">
+              <Link href="/login" prefetch={false} className="inline-flex min-h-[52px] items-center rounded-xl bg-night-raised px-5 text-base font-extrabold text-on-night transition-colors hover:bg-night-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-on-night">
                 Se connecter
               </Link>
             </div>
@@ -124,7 +142,7 @@ export default function HomePage() {
             </h2>
           </div>
 
-          <ul className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
+          <ul className="grid gap-4 md:grid-cols-2">
             <FeatureCard title="Stock multicanal" text="Produits, variantes (capacité, couleur, grade) et SKU. Les ventes eBay sont synchronisées et déduites du stock une seule fois ; les ventes en boutique aussi.">
               <ExampleHead label="Couverture en jours" />
               <ul className="flex flex-col gap-2">
@@ -153,9 +171,9 @@ export default function HomePage() {
               </div>
               <MarketRuler cost={EXAMPLE_OFFER.cost} market={EXAMPLE_OFFER.market} caption={EXAMPLE_OFFER.caption} />
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-md bg-success px-[7px] py-0.5 text-[10.5px] font-bold text-white">Très intéressant</span>
+                <span className="rounded-md bg-success-strong px-[7px] py-0.5 text-[10.5px] font-bold text-on-success-strong">Très intéressant</span>
                 <span className="text-[13.5px] font-extrabold text-success">{EXAMPLE_OFFER.profit}</span>
-                <span className="text-[11px] font-bold text-warning">provisoire</span>
+                <span className="text-[11px] font-bold text-warning-ink">provisoire</span>
                 <span className="ml-auto">
                   <ExampleTag />
                 </span>
@@ -191,13 +209,16 @@ export default function HomePage() {
               <h3 className="text-[20px] font-extrabold tracking-[-0.3px] text-foreground">Outils du revendeur</h3>
               <p className="text-[15px] font-medium leading-[22px] text-muted">TVA, marge, prix de vente, remise, frais eBay, devises (taux BCE datés), comparateur de frais de port, suivi de colis.</p>
             </div>
-            <div aria-hidden="true" className="flex flex-[2_1_420px] flex-wrap gap-2">
-              {TOOL_GLYPHS.map((g, i) => (
-                <span key={g} className={i === 0 ? "flex h-14 w-14 items-center justify-center rounded-[14px] bg-night text-lg font-extrabold text-on-night" : "flex h-14 w-14 items-center justify-center rounded-[14px] border border-border text-lg font-extrabold text-night"}>
-                  {g}
-                </span>
+            <ul aria-label="Outils disponibles" className="flex flex-[2_1_420px] flex-wrap gap-2">
+              {TOOLS.map((t, i) => (
+                <li key={t.glyph} title={t.label} className="flex flex-col items-center gap-1.5">
+                  <span aria-hidden="true" className={i === 0 ? "flex h-14 w-14 items-center justify-center rounded-[14px] bg-inverse text-lg font-extrabold text-on-inverse" : "flex h-14 w-14 items-center justify-center rounded-[14px] border border-border-strong bg-surface-2 text-lg font-extrabold text-foreground"}>
+                    {t.glyph}
+                  </span>
+                  <span className="ms-mono text-[9.5px] leading-3 text-ink-3">{t.label}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </section>
 
@@ -222,6 +243,33 @@ export default function HomePage() {
           </dl>
         </section>
 
+        {/* Mise en route */}
+        <section id="demarrer" aria-labelledby="demarrer-titre" className="mx-auto flex w-full max-w-[1280px] scroll-mt-6 flex-col gap-6 px-4 pb-10 pt-4 sm:px-6 lg:px-12">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="flex max-w-[640px] flex-col gap-2">
+              <p className="ms-mono text-[11px] leading-[14px] tracking-[0.07em] text-muted">Mise en route</p>
+              <h2 id="demarrer-titre" className="text-balance text-[26px] font-extrabold leading-8 tracking-[-0.8px] text-foreground sm:text-[32px] sm:leading-[38px]">
+                Trois étapes, sans carte bancaire.
+              </h2>
+            </div>
+            <Link href="/signup" prefetch={false} className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-inverse px-5 text-[15px] font-extrabold text-on-inverse transition-colors hover:bg-inverse-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+              Commencer
+              <ArrowRight aria-hidden="true" className="h-4 w-4" strokeWidth={2.4} />
+            </Link>
+          </div>
+          <ol className="grid gap-4 md:grid-cols-3">
+            {START_STEPS.map((step, i) => (
+              <li key={step.title} className="relative flex flex-col gap-2 rounded-3xl border border-border bg-surface p-5 sm:p-6">
+                <span aria-hidden="true" className="ms-code text-[13px] font-semibold text-ink-3 tnum">
+                  0{i + 1}
+                </span>
+                <h3 className="text-[18px] font-extrabold leading-6 tracking-[-0.2px] text-foreground">{step.title}</h3>
+                <p className="text-[15px] font-medium leading-[22px] text-muted">{step.text}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
         {/* Sur iPhone */}
         <section id="iphone" aria-labelledby="iphone-titre" className="mx-auto w-full max-w-[1280px] scroll-mt-6 px-4 py-6 sm:px-6 lg:px-12">
           <div className="flex flex-wrap items-center gap-x-12 gap-y-8 rounded-3xl bg-night p-6 text-on-night sm:p-10">
@@ -233,7 +281,7 @@ export default function HomePage() {
               <p className="text-base font-medium leading-6 text-on-night-muted">Même compte, mêmes données, même organisation. Ajustez un stock depuis la réserve, cherchez un prix chez vos fournisseurs, posez une question au conseiller à la voix.</p>
               <div className="mt-1.5 flex flex-wrap gap-2.5">
                 <span className="whitespace-nowrap rounded-[10px] border border-night-stroke px-3 py-2 text-sm font-bold text-on-night">Bêta TestFlight · sur invitation</span>
-                <span className="whitespace-nowrap rounded-[10px] border border-dashed border-[rgba(247,248,250,.22)] px-3 py-2 text-sm font-bold text-on-night-muted">App Store · à venir</span>
+                <span className="whitespace-nowrap rounded-[10px] border border-dashed border-night-stroke px-3 py-2 text-sm font-bold text-on-night-muted">App Store · à venir</span>
               </div>
               {LEGAL.contactEmail ? (
                 <a href={`mailto:${LEGAL.contactEmail}?subject=${encodeURIComponent("Accès à l'application iPhone MON STOCK")}`} className="mt-1 inline-flex min-h-10 items-center self-start rounded-[10px] text-sm font-bold text-mint underline underline-offset-2 hover:text-on-night">
@@ -253,7 +301,7 @@ export default function HomePage() {
           <div className="overflow-hidden rounded-3xl border border-border bg-surface">
             {FAQ.map((item, i) => (
               <details key={item.q} open={i === 0} className="group border-b border-line-soft last:border-b-0">
-                <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-5 py-4 hover:bg-[#F7F8FA] sm:px-[22px] [&::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-5 py-4 transition-colors hover:bg-surface-2 focus-visible:-outline-offset-2 sm:px-[22px] [&::-webkit-details-marker]:hidden">
                   <span className="flex-1 text-base font-bold leading-[22px] text-foreground">{item.q}</span>
                   <ChevronDown aria-hidden="true" className="h-[18px] w-[18px] shrink-0 text-ink-3 transition-transform duration-150 group-open:rotate-180" strokeWidth={2.2} />
                 </summary>

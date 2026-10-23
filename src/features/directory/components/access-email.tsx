@@ -16,7 +16,7 @@ export function AccessEmail({ email, lang, idPrefix }: { email: { subject: strin
         id={`${idPrefix}-${lang}-message`}
         tabIndex={0}
         aria-label={fr ? "E-mail de demande d'accès" : "Access request e-mail"}
-        className="max-h-[260px] overflow-auto whitespace-pre-wrap border-b border-line-soft bg-[#F7F8FA] px-4 py-3.5 font-sans text-[13px] font-medium leading-[19px] text-foreground"
+        className="max-h-[260px] overflow-auto whitespace-pre-wrap border-b border-line-soft bg-surface-2 px-4 py-3.5 font-sans text-[13px] font-medium leading-[19px] text-foreground"
       >
         {`${fr ? "Objet" : "Subject"} : ${email.subject}\n\n${email.body}`}
       </pre>

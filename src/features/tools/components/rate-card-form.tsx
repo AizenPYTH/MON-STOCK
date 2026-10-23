@@ -61,7 +61,7 @@ export function RateCardEditor({ card, readOnly }: { card: RateCard | null; read
       <FormError message={error} />
       <fieldset disabled={readOnly} className="space-y-5">
         <FormBlock>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Transporteur" htmlFor="rc-carrier" required>
               <Input id="rc-carrier" value={f.carrier} onChange={(e) => set("carrier", e.target.value)} placeholder="Ex. Colissimo" maxLength={80} />
             </Field>
@@ -102,7 +102,7 @@ export function RateCardEditor({ card, readOnly }: { card: RateCard | null; read
         </FormBlock>
 
         <FormBlock title="Limites et service">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <AmountField label="Plus grand côté max" value={f.maxLength} onChange={(v) => set("maxLength", v)} suffix="cm" placeholder="—" disabled={readOnly} />
             <AmountField label="L + l + h max" value={f.maxSum} onChange={(v) => set("maxSum", v)} suffix="cm" placeholder="—" disabled={readOnly} />
             <AmountField label="Diviseur du poids volumétrique" value={f.divisor} onChange={(v) => set("divisor", v)} placeholder="Ex. 5000 (vide = poids réel seul)" hint="L × l × h (cm) ÷ diviseur = poids volumétrique (kg), si votre transporteur l'applique." disabled={readOnly} />
@@ -121,7 +121,7 @@ export function RateCardEditor({ card, readOnly }: { card: RateCard | null; read
             value={f.tracking}
             onChange={(v) => set("tracking", v)}
           />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Mode de remise / livraison" htmlFor="rc-mode">
               <Input id="rc-mode" value={f.deliveryMode} onChange={(e) => set("deliveryMode", e.target.value)} placeholder="Ex. dépôt bureau de poste, livraison domicile" maxLength={80} />
             </Field>

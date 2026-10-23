@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Check, ChevronLeft, CircleAlert, ExternalLink, FileUp, KeyRound, Link2, Lock, Plug, Rss, TriangleAlert, Wrench, X, Ban, Globe } from "lucide-react";
 import { requireOrgContext, canWrite, isAdmin } from "@/features/auth/dal";
 import { ButtonLink } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { MonoTitle, Panel, Paper, Scene, Segmented, StageStats, ToneIcon } from "@/components/instrument";
 import { directoryForOrg } from "@/services/sourcing/supplier-directory";
 import { supplierOffers } from "@/services/sourcing/pro-accounts";
@@ -109,12 +110,12 @@ function Timeline({ steps }: { steps: ReturnType<typeof progressSteps> }) {
             <span
               className={cn(
                 "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full",
-                s.state === "done" ? "bg-night text-on-night" : s.state === "error" ? "bg-red text-white" : s.state === "current" ? "border-2 border-amber" : "border-[1.5px] border-border-strong",
+                s.state === "done" ? "bg-inverse text-on-inverse" : s.state === "error" ? "bg-danger-strong text-on-danger-strong" : s.state === "current" ? "border-2 border-amber" : "border-[1.5px] border-border-strong",
               )}
             >
               {s.state === "done" ? <Check className="h-3 w-3" strokeWidth={3} /> : s.state === "error" ? <X className="h-3 w-3" strokeWidth={3} /> : null}
             </span>
-            {i < steps.length - 1 ? <span className={cn("my-0.5 min-h-3 w-0.5 flex-1", s.state === "done" ? "bg-night" : "bg-border")} /> : null}
+            {i < steps.length - 1 ? <span className={cn("my-0.5 min-h-3 w-0.5 flex-1", s.state === "done" ? "bg-inverse" : "bg-border")} /> : null}
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-px pb-3 pt-px">
             <span className={cn("text-[14.5px] font-bold leading-5", s.state === "todo" ? "text-ink-3" : "text-foreground")}>
@@ -207,7 +208,7 @@ export default async function DirectoryEntryPage({ params, searchParams }: { par
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="inline-flex items-center gap-[7px]">
-                <span aria-hidden="true" className={cn("h-2 w-2 rounded-full shadow-[0_0_0_3px_rgba(255,255,255,.08)]", DOT_ON_NIGHT[tone])} />
+                <span aria-hidden="true" className={cn("h-2 w-2 rounded-full ring-[3px] ring-night-line", DOT_ON_NIGHT[tone])} />
                 <span className={cn("text-[13px] font-bold", TEXT_ON_NIGHT[tone])}>{status.label}</span>
               </span>
               <span className="ms-mono rounded-md border border-night-stroke px-1.5 py-0.5 text-[10px] leading-[13px] text-on-night-muted" title="Priorité d'intégration">
@@ -245,7 +246,7 @@ export default async function DirectoryEntryPage({ params, searchParams }: { par
       </Scene>
       <Paper>
         {e.org.lastError ? (
-          <div role="alert" className="mb-4 flex gap-2.5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-danger">
+          <div role="alert" className="mb-4 flex gap-2.5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-danger-ink">
             <CircleAlert aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
             <span className="flex flex-1 flex-col gap-0.5">
               <span className="text-[15px] font-bold">Connexion en erreur</span>
@@ -376,6 +377,29 @@ export default async function DirectoryEntryPage({ params, searchParams }: { par
                     <Panel className="flex flex-col gap-3 p-4">
                       <p className="text-[13.5px] font-semibold text-muted">{r.primaryAction.outcome}</p>
                       <PrimaryAction entry={e} canWrite={writer} library={library} />
+                    </Panel>
+                  </section>
+                ) : null}
+                {library ? (
+                  <section className="flex flex-col gap-2.5">
+                    <MonoTitle title="Conditions d'utilisation (CGU / CGV)" />
+                    <Panel className="flex flex-col gap-2.5 p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge tone={library.termsStatus === "confirmed" ? "success" : "warning"} size="md">
+                          {library.termsStatus === "confirmed" ? "Page des conditions confirmée" : "Page des conditions non vérifiée"}
+                        </StatusBadge>
+                        {library.sourceId ? <StatusBadge tone="success" size="md">Catalogue public activé</StatusBadge> : null}
+                      </div>
+                      <p className="text-[13px] font-semibold leading-[18px] text-muted">{library.termsLabel}</p>
+                      {library.requiresTermsUrl && !library.sourceId ? (
+                        <p className="text-[12.5px] font-semibold leading-[17px] text-ink-3">L&apos;activation exige l&apos;adresse exacte de la page des conditions que vous avez lue, puis votre attestation.</p>
+                      ) : null}
+                      {safeExternalUrl(library.termsUrl) ? (
+                        <ButtonLink href={safeExternalUrl(library.termsUrl) ?? ""} variant="link" className="min-h-10 self-start">
+                          <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                          {library.termsStatus === "confirmed" ? "Lire les conditions d’utilisation" : "Ouvrir le site du fournisseur"}
+                        </ButtonLink>
+                      ) : null}
                     </Panel>
                   </section>
                 ) : null}
@@ -521,7 +545,7 @@ export default async function DirectoryEntryPage({ params, searchParams }: { par
               <MonoTitle title="Demande d'accès · e-mail prêt" />
               <AccessEmail email={e.email.fr} lang="fr" idPrefix={`email-${e.key}`} />
               <details className="text-sm">
-                <summary className="min-h-10 cursor-pointer py-2 font-bold">Version anglaise (English)</summary>
+                <summary className="flex min-h-10 cursor-pointer items-center font-bold text-muted-strong hover:text-foreground">Version anglaise (English)</summary>
                 <AccessEmail email={e.email.en} lang="en" idPrefix={`email-${e.key}`} />
               </details>
               <p className="text-xs font-semibold leading-[17px] text-ink-3">Rédigé avec le nom de votre organisation. Aucun message n&apos;est envoyé automatiquement : vous choisissez le destinataire.</p>

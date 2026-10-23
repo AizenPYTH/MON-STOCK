@@ -8,6 +8,7 @@ import { SupplierBadge } from "@/features/directory/components/supplier-badge";
 import { frenchTitle, OFFER_CATEGORIES, OFFER_CATEGORY_LABEL, shortSupplierName, type OfferCategory } from "@/domain/sourcing/offer-display";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { cn, safeExternalUrl } from "@/lib/utils";
+import { buttonClasses } from "@/components/ui/button";
 import {
   SORT_HINT,
   SORT_LABEL,
@@ -91,7 +92,7 @@ export function SupplierSearchView({ data, notice }: { data: SimpleSearchDTO; no
                   setSort(s);
                   setShown(PAGE);
                 }}
-                className={cn("h-[34px] flex-1 rounded-[10px] text-[13px] font-bold transition-colors", sort === s ? "bg-surface text-foreground shadow-[0_2px_6px_rgba(16,28,44,.08)]" : "text-muted hover:text-foreground")}
+                className={cn("h-[34px] flex-1 rounded-[10px] text-[13px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring pointer-coarse:h-10", sort === s ? "bg-surface text-foreground shadow-raised" : "text-muted hover:text-foreground")}
               >
                 {SORT_LABEL[s]}
               </button>
@@ -148,7 +149,7 @@ export function SupplierSearchView({ data, notice }: { data: SimpleSearchDTO; no
         )}
         {offers.length > shown ? (
           <div className="mt-4 flex justify-center">
-            <button type="button" onClick={() => setShown((n) => n + PAGE)} className="h-10 rounded-xl border border-border bg-surface px-4 text-sm font-bold hover:bg-line-soft">
+            <button type="button" onClick={() => setShown((n) => n + PAGE)} className={buttonClasses("secondary", "md")}>
               Afficher {Math.min(PAGE, offers.length - shown)} de plus ({offers.length - shown} restante{offers.length - shown > 1 ? "s" : ""})
             </button>
           </div>
@@ -163,7 +164,7 @@ export function SupplierSearchView({ data, notice }: { data: SimpleSearchDTO; no
 
 function Chip({ label, count, selected, onClick }: { label: string; count: number; selected: boolean; onClick: () => void }) {
   return (
-    <button type="button" aria-pressed={selected} onClick={onClick} className={cn("inline-flex h-9 items-center whitespace-nowrap rounded-full border px-3 text-[13px] font-bold transition-colors", selected ? "border-night bg-night text-on-night" : "border-border bg-surface text-foreground hover:bg-line-soft")}>
+    <button type="button" aria-pressed={selected} onClick={onClick} className={cn("inline-flex h-9 items-center whitespace-nowrap rounded-full border px-3 text-[13px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-10", selected ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2")}>
       {label} · <span className="ml-1 tnum">{count}</span>
     </button>
   );
@@ -296,7 +297,7 @@ function OfferTable({ groups, sort, currency, selectedId, onOpen }: { groups: Of
         </thead>
         {groups.map((g) => (
           <tbody key={g.key}>
-            <tr className="bg-[#f7f8fa]">
+            <tr className="bg-surface-2">
               <th scope="colgroup" colSpan={2} className="h-[34px] border-b border-line-soft px-4 text-left font-normal">
                 <span className="ms-mono text-[11px] leading-[14px] tracking-[0.08em] text-muted">{g.label}</span>
                 <span className="ms-code ml-2 text-[11px] leading-[14px] text-foreground">{sort === "supplier" ? `${g.rows.length} résultat${g.rows.length > 1 ? "s" : ""}` : g.rows.length}</span>
@@ -324,7 +325,7 @@ function OfferRow({ offer: o, currency, selected, onOpen }: { offer: SimpleRanke
   const d = o.deal ?? null;
   const td = "border-b border-line-soft px-1 py-2 align-middle";
   return (
-    <tr onClick={onOpen} className={cn("cursor-pointer", selected ? "bg-selection shadow-[inset_3px_0_0_var(--night)]" : "hover:bg-[#f7f8fa]")}>
+    <tr onClick={onOpen} className={cn("cursor-pointer", selected ? "bg-selection shadow-[inset_3px_0_0_var(--inverse)]" : "hover:bg-surface-2")}>
       <td className={cn(td, "pl-4")}>
         <span className="flex min-w-0 items-center gap-2.5">
           <SupplierBadge name={o.supplierName} domain={o.domain} className="h-[30px] w-[30px] rounded-[9px]" />
@@ -380,7 +381,7 @@ function OfferCard({ offer: o, currency, selected, onOpen }: { offer: SimpleRank
   const f = rowFacts(o, currency);
   const d = o.deal ?? null;
   return (
-    <button type="button" onClick={onOpen} aria-label={`Analyse de l'offre ${f.title} chez ${f.name}`} className={cn("flex min-w-0 flex-col gap-2.5 rounded-2xl border p-3.5 pb-3 text-left hover:bg-line-soft", selected ? "border-night bg-selection" : "border-border bg-surface")}>
+    <button type="button" onClick={onOpen} aria-label={`Analyse de l'offre ${f.title} chez ${f.name}`} className={cn("flex min-w-0 flex-col gap-2.5 rounded-2xl border p-3.5 pb-3 text-left hover:bg-line-soft", selected ? "border-inverse bg-selection" : "border-border bg-surface")}>
       <span className="flex min-h-6 w-full items-center gap-2">
         <SupplierBadge name={o.supplierName} domain={o.domain} size="sm" className="h-6 w-6 rounded-[7px]" />
         <span className="min-w-0 truncate text-[13px] font-bold leading-[18px]">{f.name}</span>

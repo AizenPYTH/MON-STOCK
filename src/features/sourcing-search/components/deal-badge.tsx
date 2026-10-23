@@ -3,10 +3,10 @@ import type { SimpleDealDTO } from "@/features/mobile-api/contract";
 import { cn } from "@/lib/utils";
 
 const STYLE: Record<SimpleDealDTO["level"], { cls: string; Icon: typeof TrendingUp }> = {
-  very_good: { cls: "border-success bg-success text-white", Icon: TrendingUp },
-  good: { cls: "border-success-soft bg-success-soft text-success", Icon: ArrowUpRight },
-  average: { cls: "border-background bg-background text-muted", Icon: Minus },
-  not_competitive: { cls: "border-danger-soft bg-danger-soft text-danger", Icon: ArrowDownRight },
+  very_good: { cls: "border-success-strong bg-success-strong text-on-success-strong", Icon: TrendingUp },
+  good: { cls: "border-success-line bg-success-soft text-success-ink", Icon: ArrowUpRight },
+  average: { cls: "border-border bg-line-soft text-muted-strong", Icon: Minus },
+  not_competitive: { cls: "border-danger-line bg-danger-soft text-danger-ink", Icon: ArrowDownRight },
   insufficient_data: { cls: "border-dashed border-border-strong bg-transparent text-ink-3", Icon: CircleHelp },
 };
 
@@ -21,9 +21,9 @@ export function DealBadge({ level, label, size = "sm" }: { level: SimpleDealDTO[
   );
 }
 
-/** Étiquette d'accès : « Votre compte » (nuit) / « Source publique » (bleu) / « Place de marché ». */
+/** Étiquette d'accès : « Votre compte » (aplat contrasté) / « Source publique » (bleu) / « Place de marché ». */
 export function AccessTag({ access }: { access: "account" | "public" | "marketplace" | undefined }) {
   if (!access) return null;
   const label = access === "account" ? "Votre compte" : access === "public" ? "Source publique" : "Place de marché";
-  return <span className={cn("inline-block whitespace-nowrap rounded-[5px] px-[5px] py-px text-[9.5px] font-bold leading-[13px]", access === "account" ? "bg-night text-on-night" : access === "public" ? "bg-info-soft text-info" : "bg-background text-muted")}>{label}</span>;
+  return <span className={cn("inline-block whitespace-nowrap rounded-[5px] px-[5px] py-px text-[9.5px] font-bold leading-[13px]", access === "account" ? "bg-inverse text-on-inverse" : access === "public" ? "bg-info-soft text-info-ink" : "bg-line-soft text-muted-strong")}>{label}</span>;
 }

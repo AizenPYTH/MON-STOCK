@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { CreditCard } from "lucide-react";
+import { EmptyState } from "@/components/ui/page";
 import { SettingsSectionHeader } from "@/features/organizations/components/settings-section-header";
 
 export const metadata: Metadata = { title: "Facturation" };
@@ -8,10 +10,12 @@ export default function BillingPage() {
   return (
     <>
       <SettingsSectionHeader title="Facturation" description="Abonnement et factures de votre organisation." />
-      <div className="flex max-w-[620px] flex-col gap-1.5 rounded-2xl border-[1.5px] border-dashed border-border-strong bg-surface p-5">
-        <h3 className="text-[17px] font-bold text-foreground">Bientôt disponible</h3>
-        <p className="text-sm font-medium leading-5 text-muted">La facturation n&apos;est pas encore ouverte. Aucune carte bancaire n&apos;est demandée et aucun paiement n&apos;est simulé.</p>
-      </div>
+      <EmptyState
+        className="max-w-[680px] items-start text-left [&>p]:max-w-none"
+        icon={<CreditCard />}
+        title="Bientôt disponible"
+        description="La facturation n'est pas encore ouverte. Aucune carte bancaire n'est demandée, aucun plan payant n'est proposé et aucun paiement n'est simulé."
+      />
     </>
   );
 }

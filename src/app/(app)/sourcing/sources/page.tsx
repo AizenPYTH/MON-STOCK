@@ -3,19 +3,23 @@ import Link from "next/link";
 import { requireOrgContext, canWrite, isAdmin } from "@/features/auth/dal";
 import { EmptyState, Callout } from "@/components/ui/page";
 import { MonoTitle, Panel, Paper, Scene, SceneHeader, StageStats } from "@/components/instrument";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
+
 import { ButtonLink } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import type { SourceOverviewDTO } from "@/features/mobile-api/contract";
 import { listSourcesForOrg } from "@/services/sourcing/source-sync";
 import { sourceLibrary } from "@/services/sourcing/source-library";
 import { formatDateTime, formatNumber } from "@/lib/format";
-import { ageText, groupLibrary, groupSources, isFailing, PRIMARY_ACTION_LABEL, SOURCE_STATUS_VARIANT, sourcesStats } from "@/features/sources/labels";
+import { ageText, groupLibrary, groupSources, isFailing, PRIMARY_ACTION_LABEL, sourcesStats } from "@/features/sources/labels";
 import { ScheduleSourceForm, SyncSourceForm, ToggleSourceForm } from "@/features/sources/components/source-forms";
 import { LibraryCard } from "@/features/sources/components/library-list";
 import { SupplierBadge } from "@/features/directory/components/supplier-badge";
 
 export const metadata: Metadata = { title: "Mes sources" };
+
+/** Statut d'une source → ton du statut (icône + texte). */
+const SOURCE_STATUS_TONE: Record<SourceOverviewDTO["status"], StatusTone> = { connected: "success", to_configure: "warning", manual_import: "neutral", running: "pending", error: "danger", disabled: "neutral" };
 
 function SourcesTable({ sources, caption, writer, admin }: { sources: SourceOverviewDTO[]; caption: string; writer: boolean; admin: boolean }) {
   return (
@@ -38,7 +42,7 @@ function SourcesTable({ sources, caption, writer, admin }: { sources: SourceOver
         {sources.map((s) => {
           const failing = isFailing(s);
           return (
-            <TR key={s.id} className={failing ? "bg-danger-soft/30" : undefined}>
+            <TR key={s.id} className={failing ? "shadow-[inset_3px_0_0_var(--danger-strong)]" : undefined}>
               <TD className="max-w-[300px]">
                 <div className="flex items-center gap-2.5">
                   <SupplierBadge name={s.supplierName ?? s.name} size="sm" />
@@ -54,9 +58,9 @@ function SourcesTable({ sources, caption, writer, admin }: { sources: SourceOver
                 </div>
               </TD>
               <TD>
-                <Badge variant={failing ? "danger" : SOURCE_STATUS_VARIANT[s.status]}>{s.statusLabel}</Badge>
+                <StatusBadge tone={failing ? "danger" : SOURCE_STATUS_TONE[s.status]}>{s.statusLabel}</StatusBadge>
                 {s.consecutiveFailures > 0 || s.lastError ? (
-                  <p className="mt-1 max-w-[260px] text-xs text-danger">
+                  <p className="mt-1 max-w-[260px] text-xs font-semibold text-danger">
                     {s.consecutiveFailures > 0 ? `${s.consecutiveFailures} échec(s) consécutif(s). ` : ""}
                     {s.lastError ?? ""}
                   </p>

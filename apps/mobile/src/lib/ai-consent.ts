@@ -54,14 +54,11 @@ export async function forgetAiConsent(userId: string): Promise<void> {
 }
 
 export function useAiConsent(userId: string | null | undefined): { status: AiConsentStatus; grant: () => Promise<void>; revoke: () => Promise<void> } {
-  const [status, setStatus] = useState<AiConsentStatus>(() => (userId && cache.has(userId) ? (cache.get(userId) ? "granted" : "missing") : "loading"));
+  const [read, setRead] = useState<{ userId: string; ok: boolean } | null>(() => (userId && cache.has(userId) ? { userId, ok: cache.get(userId)! } : null));
   useEffect(() => {
-    if (!userId) {
-      setStatus("missing");
-      return;
-    }
+    if (!userId) return;
     let alive = true;
-    const refresh = () => void readAiConsent(userId).then((ok) => alive && setStatus(ok ? "granted" : "missing"));
+    const refresh = () => void readAiConsent(userId).then((ok) => alive && setRead({ userId, ok }));
     refresh();
     listeners.add(refresh);
     return () => {
@@ -69,6 +66,7 @@ export function useAiConsent(userId: string | null | undefined): { status: AiCon
       listeners.delete(refresh);
     };
   }, [userId]);
+  const status: AiConsentStatus = !userId ? "missing" : read && read.userId === userId ? (read.ok ? "granted" : "missing") : "loading";
   const grant = useCallback(async () => {
     if (userId) await setAiConsent(userId, true);
   }, [userId]);

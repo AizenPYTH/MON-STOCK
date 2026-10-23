@@ -1539,6 +1539,9 @@ isOneToOne: false
 "delete_account_data":
 { Args: { "p_user_id": string }; Returns: Json
                            },
+"create_draft_purchase_order":
+{ Args: { "p_organization_id": string,"p_supplier_id": string,"p_currency": string,"p_sku_id": string,"p_offer_id": string | null,"p_quantity": number,"p_unit_cost": number | null,"p_notes"?: string | null }; Returns: string
+                           },
 "purge_retention":
 { Args: { "p_dry_run"?: boolean,"p_sync_runs_days"?: number | null,"p_webhook_events_days"?: number | null,"p_oauth_states_grace_hours"?: number | null,"p_cron_run_details_days"?: number | null,"p_supplier_history_days"?: number | null,"p_resolved_alerts_days"?: number | null,"p_buyer_username_days"?: number | null }; Returns: Json
                            },

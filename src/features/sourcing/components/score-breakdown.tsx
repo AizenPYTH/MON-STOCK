@@ -5,7 +5,7 @@ export function ScoreBreakdown({ score, compact = false }: { score: OfferScore; 
   const tone = score.total >= 70 ? "success" : score.total >= 45 ? "info" : "neutral";
   return (
     <details className="group text-sm">
-      <summary className="flex cursor-pointer list-none items-center gap-2">
+      <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <Badge variant={tone}>Score {score.total}/100</Badge>
         <span className="text-xs text-muted underline-offset-2 group-open:underline">{score.coverageLabel}</span>
       </summary>
@@ -23,7 +23,7 @@ export function ScoreBreakdown({ score, compact = false }: { score: OfferScore; 
             </li>
           );
         })}
-        {score.unknownFactors.length > 0 ? <li className="pt-1 text-amber-700">Données inconnues (0 point) : {score.unknownFactors.join(", ")}.</li> : null}
+        {score.unknownFactors.length > 0 ? <li className="pt-1 font-semibold text-warning">Données inconnues (0 point) : {score.unknownFactors.join(", ")}.</li> : null}
       </ul>
     </details>
   );

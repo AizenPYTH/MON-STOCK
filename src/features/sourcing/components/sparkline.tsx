@@ -10,7 +10,7 @@ export function Sparkline({ points, width = 200, height = 44, label }: { points:
   const path = coords.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const last = coords[coords.length - 1]!;
   const falling = points.length > 1 && points[points.length - 1]! < points[0]!;
-  const stroke = falling ? "#16a34a" : points.length > 1 && points[points.length - 1]! > points[0]! ? "#dc2626" : "#71717a";
+  const stroke = falling ? "var(--success-strong)" : points.length > 1 && points[points.length - 1]! > points[0]! ? "var(--red)" : "var(--ink-3)";
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label ?? "Évolution du prix"} className="overflow-visible">
       <path d={path} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />

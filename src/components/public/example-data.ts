@@ -45,7 +45,7 @@ export const EXAMPLE_WATERFALL: WaterfallLine[] = [
 
 export const EXAMPLE_IMPORT = [
   { label: "Nouvelles", value: 186, color: "var(--success)" },
-  { label: "Mises à jour", value: 1640, color: "var(--night)" },
+  { label: "Mises à jour", value: 1640, color: "var(--inverse)" },
   { label: "Inchangées", value: 312, color: "var(--border-strong)" },
   { label: "Ignorées", value: 21, color: "var(--red)" },
 ];

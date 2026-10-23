@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, TriangleAlert } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { EmptyState } from "@/components/ui/page";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { FilterChip } from "@/components/instrument";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { ButtonLink } from "@/components/ui/button";
@@ -35,21 +36,21 @@ export default async function SupplierOffersPage({ params, searchParams }: { par
   return (
     <SupplierHeader supplier={supplier} tab="offers" counts={counts}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm">
-          <ButtonLink href={`/suppliers/${supplier.id}/offers`} variant={status === "active" ? "secondary" : "ghost"} size="sm">
+        <nav aria-label="Offres affichées" className="flex flex-wrap items-center gap-1.5">
+          <FilterChip href={`/suppliers/${supplier.id}/offers`} selected={status === "active"}>
             Actives
-          </ButtonLink>
-          <ButtonLink href={`/suppliers/${supplier.id}/offers?status=all`} variant={status === "all" ? "secondary" : "ghost"} size="sm">
+          </FilterChip>
+          <FilterChip href={`/suppliers/${supplier.id}/offers?status=all`} selected={status === "all"}>
             Toutes (expirées, rejetées…)
-          </ButtonLink>
-        </div>
+          </FilterChip>
+        </nav>
         {writable ? <ManualOfferButton supplierId={supplier.id} defaultCurrency={supplier.currency} skus={skuOptions} /> : null}
       </div>
       {offers.rows.length === 0 ? (
         <EmptyState title="Aucune offre pour ce fournisseur." description="Saisissez une offre manuellement, importez un flux ou déclarez une page publique autorisée dans l'onglet « Sources & flux »." action={<ButtonLink href={`/suppliers/${supplier.id}/sources`} variant="secondary">Sources & flux</ButtonLink>} />
       ) : (
         <div className="space-y-3">
-          <Table className="min-w-[960px]">
+          <Table className="min-w-[960px]" stackOnMobile caption="Offres du fournisseur">
             <THead>
               <tr>
                 <TH>Offre</TH>
@@ -68,35 +69,36 @@ export default async function SupplierOffersPage({ params, searchParams }: { par
                 const f = freshness(o.last_seen_at);
                 return (
                   <TR key={o.id}>
-                    <TD>
-                      <Link href={`/sourcing/offers/${o.id}` as never} className="font-medium hover:underline">
+                    <TD primary>
+                      <Link href={`/sourcing/offers/${o.id}` as never} className="font-bold hover:underline">
                         <span className="block max-w-[320px] truncate">{o.title_original}</span>
                       </Link>
                       <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
-                        {o.status !== "active" ? <Badge variant={o.status === "expired" ? "neutral" : o.status === "rejected" ? "danger" : "warning"}>{OFFER_STATUS_LABEL[o.status]}</Badge> : null}
+                        {o.status !== "active" ? <StatusBadge tone={o.status === "expired" ? "neutral" : o.status === "rejected" ? "danger" : "warning"}>{OFFER_STATUS_LABEL[o.status]}</StatusBadge> : null}
                         {o.external_product_id ? <span className="font-mono">{o.external_product_id}</span> : null}
                         {safeExternalUrl(o.source_url) ? (
                           <a href={safeExternalUrl(o.source_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:text-foreground">
-                            <ExternalLink className="h-3 w-3" /> source
+                            <ExternalLink aria-hidden="true" className="h-3 w-3" /> source
                           </a>
                         ) : null}
                       </div>
                     </TD>
-                    <TD align="right">
-                      <div className="font-medium tnum">
+                    <TD label="Prix" align="right">
+                      <div className="font-bold tnum">
                         {formatMoney(Number(o.original_price), o.original_currency)} <span className="text-xs font-normal text-muted">{TAX_LABEL[o.tax_type]}</span>
                       </div>
                       {o.normalized_price !== null && o.normalized_currency && o.normalized_currency !== o.original_currency ? <div className="text-xs text-muted">≈ {formatMoney(o.normalized_price, o.normalized_currency)}</div> : null}
                     </TD>
-                    <TD align="right">{o.moq ?? NOT_PROVIDED}</TD>
-                    <TD align="right">{o.available_quantity !== null ? formatNumber(o.available_quantity) : <span className="text-xs text-muted">{STOCK_STATUS_LABEL[o.stock_status]}</span>}</TD>
-                    <TD>{o.grade ?? "—"}</TD>
-                    <TD className="text-xs">{SOURCE_TYPE_LABEL[o.source_type] ?? o.source_type}</TD>
-                    <TD className={`text-xs ${f.stale ? "text-amber-700" : "text-muted"}`}>
+                    <TD label="MOQ" align="right">{o.moq ?? NOT_PROVIDED}</TD>
+                    <TD label="Stock" align="right">{o.available_quantity !== null ? formatNumber(o.available_quantity) : <span className="text-xs text-muted">{STOCK_STATUS_LABEL[o.stock_status]}</span>}</TD>
+                    <TD label="Grade">{o.grade ?? "—"}</TD>
+                    <TD label="Source" className="text-xs">{SOURCE_TYPE_LABEL[o.source_type] ?? o.source_type}</TD>
+                    <TD label="Vérifiée" className={`text-xs ${f.stale ? "font-semibold text-warning" : "text-muted"}`}>
+                      {f.stale ? <TriangleAlert aria-hidden="true" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> : null}
                       {f.label}
                       {f.warning ? ` · ${f.warning}` : ""}
                     </TD>
-                    <TD>
+                    <TD label="SKU">
                       {o.sku ? (
                         <Link href={`/stock/${encodeURIComponent(o.sku.code)}` as never} className="font-mono text-xs hover:underline">
                           {o.sku.code}

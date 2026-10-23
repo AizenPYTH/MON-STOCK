@@ -46,6 +46,9 @@ jest.mock("~/data/advisor", () => ({
 jest.mock("~/org/org-provider", () => ({ useActiveOrg: () => ({ active: { organization: { id: "org-1", name: "Boutique", currency: "EUR" } }, permissions: { canWrite: true } }) }));
 jest.mock("expo-router", () => ({ router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), setParams: jest.fn(), canGoBack: () => true }, useLocalSearchParams: () => ({}) }));
 jest.mock("~/lib/supabase", () => ({ requireSupabase: () => ({}) }));
+const mockGrant = jest.fn(async () => undefined);
+let mockConsentStatus: "granted" | "missing" | "loading" = "granted";
+jest.mock("~/lib/ai-consent", () => ({ useAiConsent: () => ({ status: mockConsentStatus, grant: () => mockGrant(), revoke: jest.fn() }) }));
 let mockNetListener: ((s: { isConnected: boolean; isInternetReachable: boolean }) => void) | null = null;
 jest.mock("@react-native-community/netinfo", () => ({ addEventListener: (fn: never) => ((mockNetListener = fn), () => undefined) }));
 
@@ -248,5 +251,26 @@ describe("actions : confirmation obligatoire", () => {
     fireEvent.press(screen.getByTestId("advisor-confirm-a-1"));
     await waitFor(() => expect(screen.getByText(/lecture seule/)).toBeTruthy());
     expect(screen.getByText("À confirmer")).toBeTruthy();
+  });
+});
+
+
+describe("consentement IA (M-07)", () => {
+  afterEach(() => {
+    mockConsentStatus = "granted";
+  });
+  it("sans accord : explication affichée, aucune requête au conseiller ; « J'accepte » enregistre l'accord", async () => {
+    mockConsentStatus = "missing";
+    mockStatus.mockClear();
+    mockStream.mockClear();
+    const AdvisorScreen = jest.requireActual("~/app/(app)/advisor/index").default;
+    render(wrap(<AdvisorScreen />));
+    expect(screen.getByTestId("ai-consent")).toBeTruthy();
+    expect(screen.getByText(/OpenAI \(États-Unis\)/)).toBeTruthy();
+    expect(screen.queryByTestId("advisor-input")).toBeNull();
+    expect(mockStatus).not.toHaveBeenCalled();
+    expect(mockStream).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByTestId("ai-consent-accept"));
+    await waitFor(() => expect(mockGrant).toHaveBeenCalledTimes(1));
   });
 });

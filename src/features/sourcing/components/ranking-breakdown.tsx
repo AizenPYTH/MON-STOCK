@@ -7,7 +7,7 @@ export function RankingBreakdown({ ranking }: { ranking: OfferRankingView }) {
   const tone = ranking.score >= 70 ? "success" : ranking.score >= 45 ? "info" : "neutral";
   return (
     <details className="group text-sm">
-      <summary className="flex cursor-pointer list-none items-center gap-2">
+      <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <Badge variant={tone}>Score {ranking.score}/100</Badge>
         <span className="text-xs text-muted underline-offset-2 group-open:underline">{ranking.unknownFactors.length === 0 ? "Comparaison complète" : `Comparaison partielle (${ranking.unknownFactors.length} donnée(s) inconnue(s))`}</span>
       </summary>
@@ -25,7 +25,7 @@ export function RankingBreakdown({ ranking }: { ranking: OfferRankingView }) {
             </li>
           );
         })}
-        {ranking.unknownFactors.length > 0 ? <li className="pt-1 text-amber-700">Données inconnues (0 point) : {ranking.unknownFactors.join(", ")}.</li> : null}
+        {ranking.unknownFactors.length > 0 ? <li className="pt-1 font-semibold text-warning">Données inconnues (0 point) : {ranking.unknownFactors.join(", ")}.</li> : null}
         {ranking.procurement.notes.length > 0 ? <li className="pt-1 text-muted">Plan d&apos;achat : {ranking.procurement.notes.join(" · ")}.</li> : null}
       </ul>
     </details>

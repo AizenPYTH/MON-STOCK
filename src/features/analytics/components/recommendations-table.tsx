@@ -42,7 +42,7 @@ export function RecommendationsTable({ recommendations, writable }: { recommenda
                 </div>
                 <p className="mt-1.5 max-w-xl text-xs text-muted-strong">{r.explanation}</p>
                 {r.warnings.map((w) => (
-                  <p key={w} className="mt-0.5 max-w-xl text-xs text-amber-700">
+                  <p key={w} className="mt-0.5 max-w-xl text-xs text-warning">
                     {w}
                   </p>
                 ))}

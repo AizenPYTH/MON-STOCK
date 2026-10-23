@@ -1,7 +1,6 @@
 "use client";
 import { useId, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Select } from "@/components/ui/form";
@@ -95,7 +94,7 @@ export function AdjustDialog({ open, onClose, targets, onDone }: { open: boolean
               role="radio"
               aria-checked={mode === m}
               onClick={() => pickMode(m)}
-              className={cn("min-h-[38px] flex-1 rounded-[10px] text-[13px] font-bold transition-colors", mode === m ? "bg-surface text-foreground shadow-[0_2px_6px_rgba(16,28,44,.08)]" : "text-muted hover:text-foreground")}
+              className={cn("min-h-[38px] flex-1 rounded-[10px] text-[13px] font-bold transition-colors", mode === m ? "bg-surface text-foreground shadow-raised" : "text-muted hover:text-foreground")}
             >
               {ADJUST_MODE_LABEL[m]}
             </button>
@@ -126,12 +125,12 @@ export function AdjustDialog({ open, onClose, targets, onDone }: { open: boolean
           Chaque référence reçoit un mouvement daté dans son historique (non supprimable). Le stock ne passe jamais sous zéro.
         </p>
         {formError ? (
-          <p role="alert" className="rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+          <p role="alert" className="rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm font-semibold text-danger-ink">
             {formError}
           </p>
         ) : null}
         {errors.length > 0 ? (
-          <ul role="alert" className="space-y-1 rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
+          <ul role="alert" className="space-y-1 rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm font-semibold text-danger-ink">
             {errors.map((e) => (
               <li key={e.code}>
                 <span className="ms-code text-[12px]">{e.code}</span> : {e.error}
@@ -143,8 +142,7 @@ export function AdjustDialog({ open, onClose, targets, onDone }: { open: boolean
           <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>
             Annuler
           </Button>
-          <Button type="submit" size="lg" className="flex-1" disabled={pending} aria-busy={pending || undefined}>
-            {pending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
+          <Button type="submit" size="lg" className="flex-1" loading={pending}>
             {mode === "set" ? "Définir le stock" : mode === "add" ? "Ajouter au stock" : "Retirer du stock"}
           </Button>
         </div>

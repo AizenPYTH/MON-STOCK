@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, StatusDot } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { formatDuration } from "@/features/integrations/format";
 import { formatNumber, formatRelative } from "@/lib/format";
 import type { LiveSearchSummary, LiveSourceReport } from "@/services/sourcing/live-search.types";
@@ -51,7 +51,7 @@ export function LiveSourcesPanel({ summary, liveEnabled, toggleHref, hasQuery }:
           ) : null
         }
       />
-      <CardContent className="p-0">
+      <div>
         {!summary || summary.sources.length === 0 ? (
           <p className="px-5 py-4 text-sm text-muted">{summary && liveEnabled ? "Aucune source connectée n'a pu être interrogée." : "Aucune source interrogée."}</p>
         ) : (
@@ -86,7 +86,7 @@ export function LiveSourcesPanel({ summary, liveEnabled, toggleHref, hasQuery }:
             ))}
           </ul>
         )}
-      </CardContent>
+      </div>
     </Card>
   );
 }

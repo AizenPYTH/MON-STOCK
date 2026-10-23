@@ -48,7 +48,7 @@ export function AmountField({
       <label htmlFor={id} className="block text-[12.5px] font-bold leading-[17px] text-foreground">
         {label}
       </label>
-      <div className={cn("flex items-center rounded-[10px] border bg-surface pr-2 focus-within:ring-2 focus-within:ring-ring", error ? "border-danger-line bg-danger-soft" : "border-border")}>
+      <div className={cn("flex items-center rounded-xl border bg-surface pr-2 transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/25", error ? "border-danger bg-danger-soft" : "border-border-control hover:border-muted")}>
         <input
           id={id}
           type="text"
@@ -108,7 +108,7 @@ export function ChoiceChips<T extends string | number | boolean | null>({ option
               className={cn(
                 "relative whitespace-nowrap rounded-full border font-bold transition-colors after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                 size === "lg" ? "h-10 px-4 text-[13.5px]" : "h-8 px-3 text-[12.5px]",
-                selected ? "border-night bg-night text-on-night" : "border-border-strong bg-surface text-foreground hover:bg-line-soft",
+                selected ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2",
               )}
             >
               {o.label}
@@ -134,13 +134,13 @@ function ResultRow({ line }: { line: ResultLine }) {
   const kind = line.kind ?? "estimate";
   const total = kind === "total";
   return (
-    <div className="py-[9px]">
+    <div className={total ? "-mx-4 bg-surface-2 px-4 py-3" : "py-[9px]"}>
       <div className="flex items-center justify-between gap-3">
         <dt className={cn("flex min-w-0 flex-wrap items-center gap-2 text-[13.5px] leading-[19px]", total ? "font-extrabold text-foreground" : kind === "muted" ? "font-medium text-ink-3" : "font-medium text-muted")}>
           {line.label}
           {kind === "input" ? <span className="rounded-md bg-line-soft px-1.5 py-px text-[10.5px] font-bold leading-[15px] text-muted">saisi</span> : null}
         </dt>
-        <dd className={cn("shrink-0 text-right tnum", total ? "text-[17px] font-extrabold text-foreground" : kind === "muted" ? "text-[13.5px] font-semibold text-ink-3" : "text-[13.5px] font-semibold text-muted")}>{line.value}</dd>
+        <dd className={cn("shrink-0 text-right tnum", total ? "text-[22px] font-extrabold leading-7 tracking-[-0.3px] text-foreground" : kind === "muted" ? "text-[13.5px] font-semibold text-ink-3" : "text-[13.5px] font-semibold text-muted")}>{line.value}</dd>
       </div>
       {line.note ? <p className="mt-0.5 text-xs font-semibold text-ink-3">{line.note}</p> : null}
     </div>
@@ -149,19 +149,19 @@ function ResultRow({ line }: { line: ResultLine }) {
 
 export function ResultCard({ title, lines, copyText, children }: { title?: string; lines: ResultLine[]; copyText?: string; children?: ReactNode }) {
   return (
-    <Card className="px-4 py-3">
+    <Card className="overflow-hidden px-4 pt-3">
       {title || copyText ? (
         <div className="mb-1.5 flex min-h-8 items-center justify-between gap-2">
           {title ? <h3 className="ms-mono text-[11px] leading-[14px] tracking-[0.08em] text-muted">{title}</h3> : <span />}
           {copyText ? <CopyButton text={copyText} /> : null}
         </div>
       ) : null}
-      <dl className="divide-y divide-line-soft border-t border-line-soft">
+      <dl aria-live="polite" className="divide-y divide-line-soft border-t border-line-soft">
         {lines.map((l, i) => (
           <ResultRow key={`${l.label}-${i}`} line={l} />
         ))}
       </dl>
-      {children}
+      {children ? <div className="pb-3">{children}</div> : <div className="pb-1" />}
     </Card>
   );
 }
@@ -214,7 +214,15 @@ export function EstimateNote({ children }: { children: ReactNode }) {
 
 /** Message tant qu'aucun résultat n'est calculable. */
 export function Waiting({ children }: { children: ReactNode }) {
-  return <Card className="px-4 py-4 text-[13.5px] font-semibold text-muted">{children}</Card>;
+  return (
+    <div className="rounded-2xl border border-dashed border-border-strong bg-surface px-5 py-5">
+      <p className="ms-mono text-[10.5px] leading-[14px] text-ink-3">Résultat</p>
+      <p className="mt-2 text-[22px] font-light leading-7 text-ink-4" aria-hidden="true">
+        —
+      </p>
+      <p className="mt-1 text-[13.5px] font-semibold text-muted">{children}</p>
+    </div>
+  );
 }
 
 /** Bloc titré d'un formulaire d'outil. */

@@ -31,7 +31,7 @@ export function PublicWebSourceButton({ supplierId, adapters }: { supplierId: st
             <input type="hidden" name="supplier_id" value={supplierId} />
             <FormError message={err?.error} />
             {state?.ok ? <FormSuccess message={`Source créée. ${state.data.robots} Utilisez « Tester » pour vérifier la configuration.`} /> : null}
-            <div className="rounded-lg border border-amber-200 bg-warning-soft p-3 text-xs text-amber-900">
+            <div className="rounded-xl border border-warning-line bg-warning-soft p-3 text-xs font-medium leading-[17px] text-warning-ink">
               Lecture de données publiques uniquement : sans connexion, sans cookie, sans contournement de protection, en respectant robots.txt (délai minimum 2 s, 1 requête à la fois) et avec un User-Agent identifiable. Vérifiez vous-même les conditions d&apos;utilisation du site avant d&apos;ajouter une source.
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

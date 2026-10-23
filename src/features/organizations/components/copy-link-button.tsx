@@ -20,14 +20,14 @@ export function CopyLinkButton({ value, label = "Copier le lien", className }: {
   };
   return (
     <span className={cn("inline-flex flex-col items-end gap-1", className)}>
-      <button type="button" onClick={copy} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-border-strong bg-surface px-2.5 text-[13px] font-bold text-foreground hover:bg-line-soft">
+      <button type="button" onClick={copy} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-border-strong bg-surface px-3 text-[13px] font-bold text-foreground transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         {state === "copied" ? <Check aria-hidden="true" className="h-4 w-4 text-success" /> : <Copy aria-hidden="true" className="h-4 w-4" />}
         {state === "copied" ? "Lien copié" : label}
       </button>
       <span role="status" aria-live="polite" className="sr-only">
         {state === "copied" ? "Lien copié dans le presse-papiers." : ""}
       </span>
-      {state === "failed" ? <span className="max-w-[260px] text-right text-xs font-semibold text-warning">Copie refusée par le navigateur : sélectionnez le lien et copiez-le.</span> : null}
+      {state === "failed" ? <span className="max-w-[260px] text-right text-xs font-semibold text-warning-ink">Copie refusée par le navigateur : sélectionnez le lien et copiez-le.</span> : null}
     </span>
   );
 }

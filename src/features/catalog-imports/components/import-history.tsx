@@ -5,6 +5,7 @@ import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { fileSizeLabel, historyLine, IMPORT_MODE_LABEL, IMPORT_STATUS_SHORT, IMPORT_STATUS_TONE, importSegments } from "@/features/catalog-imports/labels";
 import { StatusPill } from "@/features/catalog-imports/components/status-pill";
+import { ImportProgress } from "@/features/catalog-imports/components/import-progress";
 import { SupplierBadge } from "@/features/directory/components/supplier-badge";
 
 /**
@@ -17,12 +18,13 @@ export function ImportHistory({ jobs, currentId, className, wide = false }: { jo
       {jobs.map((j, i) => {
         const line = historyLine(j);
         const empty = j.status === "failed" || j.status === "quarantined" || j.status === "skipped_duplicate";
+        const running = j.status === "running" && Boolean(j.progress);
         return (
           <li key={j.id} className={cn(i > 0 && "border-t border-line-soft")}>
             <Link
               href={`/sourcing/imports/${j.id}` as never}
               aria-current={j.id === currentId ? "page" : undefined}
-              className={cn("flex flex-col gap-2 px-3.5 py-3 transition-colors hover:bg-line-soft", wide && "lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_150px] lg:items-center lg:gap-6 lg:px-5 lg:py-3.5", j.id === currentId && "bg-selection")}
+              className={cn("flex flex-col gap-2 px-3.5 py-3 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", wide && "lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_150px] lg:items-center lg:gap-6 lg:px-5 lg:py-3.5", j.id === currentId && "bg-selection")}
             >
               <span className="flex w-full min-w-0 items-center gap-2.5">
                 <SupplierBadge name={j.supplierName ?? "Fournisseur"} size={wide ? "md" : "sm"} />
@@ -38,8 +40,14 @@ export function ImportHistory({ jobs, currentId, className, wide = false }: { jo
                 </StatusPill>
               </span>
               <span className="flex min-w-0 flex-col gap-2">
-                {empty ? <span aria-hidden="true" className="block h-2 w-full rounded-full bg-track" /> : <SplitBar segments={importSegments(j.counts)} height={8} legend={false} />}
-                <span className={cn("text-[12.5px] font-semibold leading-[17px]", line.tone === "danger" ? "text-danger" : line.tone === "warning" ? "text-warning" : "text-muted")}>{line.text}</span>
+                {running ? (
+                  <ImportProgress progress={j.progress} resumable={j.resumable} compact />
+                ) : (
+                  <>
+                    {empty ? <span aria-hidden="true" className="block h-2 w-full rounded-full bg-track" /> : <SplitBar segments={importSegments(j.counts)} height={8} legend={false} />}
+                    <span className={cn("text-[12.5px] font-semibold leading-[17px]", line.tone === "danger" ? "text-danger" : line.tone === "warning" ? "text-warning" : "text-muted")}>{line.text}</span>
+                  </>
+                )}
               </span>
               {wide ? (
                 <span className="hidden flex-col items-end gap-1 lg:flex">

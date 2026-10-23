@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { EmptyState } from "@/components/ui/page";
 import { Paper, Scene, SceneHeader } from "@/components/instrument";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { listSourcingAlerts, getSourcingAlert, parseCriteria } from "@/features/sourcing/queries";
@@ -118,7 +118,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
                     ) : null
                   }
                 />
-                <CardContent className="p-0">
+                <div>
                   {a.events.length === 0 ? (
                     <p className="px-5 py-4 text-sm text-muted">Aucune opportunité détectée pour l'instant.</p>
                   ) : (
@@ -142,7 +142,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
                       ))}
                     </ul>
                   )}
-                </CardContent>
+                </div>
               </Card>
             );
           })

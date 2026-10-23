@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
  * 2 px, à venir = contour clair. `onNight` pour la scène, sinon sur papier. Étape courante annoncée.
  */
 export function Steps({ steps, current, label = "Étapes", onNight = false, onSelect, className }: { steps: string[]; current: number; label?: string; onNight?: boolean; onSelect?: (index: number) => void; className?: string }) {
-  const done = onNight ? "var(--mint)" : "var(--success)";
+  const done = onNight ? "var(--mint)" : "var(--success-strong)";
   const todo = onNight ? "var(--night-stroke)" : "var(--border-strong)";
   return (
     <nav aria-label={label} className={className}>
@@ -20,7 +20,7 @@ export function Steps({ steps, current, label = "Étapes", onNight = false, onSe
               <span
                 className={cn(
                   "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full transition-colors",
-                  isDone ? (onNight ? "bg-mint text-night" : "bg-success text-white") : active ? (onNight ? "border-2 border-mint" : "border-2 border-success") : onNight ? "border-[1.5px] border-night-stroke" : "border-[1.5px] border-border-strong",
+                  isDone ? (onNight ? "bg-mint text-night" : "bg-success-strong text-on-success-strong") : active ? (onNight ? "border-2 border-mint" : "border-2 border-success") : onNight ? "border-[1.5px] border-night-stroke" : "border-[1.5px] border-border-strong",
                 )}
               >
                 {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> : <span className={cn("ms-code text-[11px]", active ? (onNight ? "text-on-night" : "text-foreground") : onNight ? "text-on-night-subtle" : "text-ink-3")}>{i + 1}</span>}
@@ -32,7 +32,7 @@ export function Steps({ steps, current, label = "Étapes", onNight = false, onSe
           return (
             <li key={s} aria-current={active ? "step" : undefined} className="min-w-0 flex-1">
               {isDone && onSelect ? (
-                <button type="button" onClick={() => onSelect(i)} className="flex min-h-11 w-full flex-col items-center gap-1.5 rounded-lg hover:opacity-80">
+                <button type="button" onClick={() => onSelect(i)} className="flex min-h-11 w-full flex-col items-center gap-1.5 rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                   {circle}
                   {text}
                   <span className="sr-only"> (terminé, revenir à cette étape)</span>

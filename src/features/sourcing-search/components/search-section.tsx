@@ -1,10 +1,11 @@
 import "server-only";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { RotateCw, SearchX, WifiOff } from "lucide-react";
+import { RotateCw, SearchX, TriangleAlert, WifiOff } from "lucide-react";
 import type { OrgContext } from "@/features/auth/dal";
 import type { SimpleSearchDTO } from "@/features/mobile-api/contract";
 import { Paper } from "@/components/instrument";
+import { buttonClasses } from "@/components/ui/button";
 import { callEdgeApi } from "@/lib/edge-api";
 import { toUserMessage } from "@/lib/errors";
 import { simplerQuery } from "@/features/sourcing-search/display";
@@ -56,10 +57,10 @@ export async function SearchSection({ ctx, query }: { ctx: OrgContext; query: st
             text={`${toUserMessage(e)} Aucune offre n'est affichée tant que vos fournisseurs n'ont pas été consultés.`}
             actions={
               <>
-                <Link href={`/sourcing?q=${encodeURIComponent(query)}` as never} className="inline-flex h-10 items-center gap-2 rounded-xl bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed">
+                <Link href={`/sourcing?q=${encodeURIComponent(query)}` as never} className={buttonClasses("primary", "md")}>
                   <RotateCw aria-hidden="true" className="h-4 w-4" /> Réessayer
                 </Link>
-                <Link href={`/sourcing/catalog?q=${encodeURIComponent(query)}` as never} className="inline-flex h-10 items-center rounded-xl border border-border bg-surface px-4 text-sm font-bold hover:bg-line-soft">
+                <Link href={`/sourcing/catalog?q=${encodeURIComponent(query)}` as never} className={buttonClasses("secondary", "md")}>
                   Chercher dans les offres collectées
                 </Link>
               </>
@@ -70,8 +71,8 @@ export async function SearchSection({ ctx, query }: { ctx: OrgContext; query: st
     );
   }
   const partial = data.partial ? (
-    <p role="status" className="mb-4 flex items-start gap-2.5 rounded-2xl bg-warning-soft px-3.5 py-3 text-sm font-semibold leading-5 text-warning">
-      <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber" />
+    <p role="status" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-warning-line bg-warning-soft px-3.5 py-3 text-sm font-semibold leading-5 text-warning-ink">
+      <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
       La recherche en direct n&apos;a pas abouti dans le délai (~35 s) : les résultats affichés sont les offres déjà enregistrées. Relancez la recherche dans un instant pour des prix plus frais.
     </p>
   ) : null;
@@ -94,14 +95,14 @@ function NoResult({ data, notice }: { data: SimpleSearchDTO; notice: ReactNode }
           actions={
             <>
               {simpler ? (
-                <Link href={`/sourcing?q=${encodeURIComponent(simpler)}` as never} className="inline-flex h-10 items-center rounded-xl bg-mint px-4 text-sm font-extrabold text-night hover:bg-mint-pressed">
+                <Link href={`/sourcing?q=${encodeURIComponent(simpler)}` as never} className={buttonClasses("primary", "md")}>
                   Chercher « {simpler} »
                 </Link>
               ) : null}
-              <Link href={`/sourcing/catalog?q=${encodeURIComponent(data.query)}` as never} className="inline-flex h-10 items-center rounded-xl border border-border bg-surface px-4 text-sm font-bold hover:bg-line-soft">
+              <Link href={`/sourcing/catalog?q=${encodeURIComponent(data.query)}` as never} className={buttonClasses("secondary", "md")}>
                 Chercher dans les offres collectées
               </Link>
-              <Link href="/suppliers" className="inline-flex h-10 items-center rounded-xl px-4 text-sm font-bold text-muted-strong hover:bg-line-soft">
+              <Link href="/suppliers" className={buttonClasses("ghost", "md")}>
                 Ajouter une source
               </Link>
             </>
@@ -116,7 +117,7 @@ function NoResult({ data, notice }: { data: SimpleSearchDTO; notice: ReactNode }
 function StateCard({ icon, title, text, actions, tone = "neutral" }: { icon: ReactNode; title: string; text: string; actions: ReactNode; tone?: "neutral" | "danger" }) {
   return (
     <div className="ms-fade mx-auto flex max-w-[640px] flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-6 py-7 text-center">
-      <span className={tone === "danger" ? "flex h-12 w-12 items-center justify-center rounded-[15px] bg-danger-soft text-danger" : "flex h-12 w-12 items-center justify-center rounded-[15px] bg-background text-muted"}>{icon}</span>
+      <span className={tone === "danger" ? "flex h-12 w-12 items-center justify-center rounded-[15px] bg-danger-soft text-danger-ink" : "flex h-12 w-12 items-center justify-center rounded-[15px] bg-line-soft text-muted"}>{icon}</span>
       <h2 className="text-[17px] font-bold leading-[22px]">{title}</h2>
       <p className="text-sm font-medium leading-5 text-muted">{text}</p>
       <div className="mt-1 flex flex-wrap justify-center gap-2">{actions}</div>

@@ -14,17 +14,17 @@ export function SourcingStatusCard({ items, offerCountsIncomplete }: { items: So
       <CardContent className="space-y-3">
         {groups.map((g) => (
           <div key={g.scope}>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">{g.title}</div>
-            <dl className="mt-1 space-y-1.5">
+            <div className="ms-mono text-[10.5px] leading-[14px] text-ink-3">{g.title}</div>
+            <dl className="mt-1.5 divide-y divide-line-soft">
               {items
                 .filter((i) => i.scope === g.scope)
                 .map((i) => (
-                  <div key={i.key}>
+                  <div key={i.key} className="py-1.5">
                     <div className="flex items-baseline justify-between gap-2 text-sm">
                       <dt className="font-medium">{i.label}</dt>
                       <dd className="tnum font-semibold">{formatNumber(i.value)}</dd>
                     </div>
-                    <p className="text-[11px] leading-snug text-muted">
+                    <p className="mt-0.5 text-xs leading-[16px] text-muted">
                       {i.definition}
                       {i.detail ? ` (${i.detail})` : ""}
                     </p>
@@ -33,7 +33,7 @@ export function SourcingStatusCard({ items, offerCountsIncomplete }: { items: So
             </dl>
           </div>
         ))}
-        {offerCountsIncomplete ? <p className="text-[11px] text-amber-700">Comptage des offres incomplet : certaines sources n&apos;ont pas pu être comptées (base momentanément indisponible). « Avec prix » et « Avec stock » peuvent être sous-estimés.</p> : null}
+        {offerCountsIncomplete ? <p className="text-xs font-semibold text-warning">Comptage des offres incomplet : certaines sources n&apos;ont pas pu être comptées (base momentanément indisponible). « Avec prix » et « Avec stock » peuvent être sous-estimés.</p> : null}
       </CardContent>
     </Card>
   );
