@@ -441,3 +441,75 @@ Reste à faire, hors de portée de cet environnement :
    de l'indicateur d'onglets, feuilles (Modal natif), clavier dans l'assistant d'import.
 3. Fiche App Store (captures, confidentialité, compte de démonstration pour la revue Apple).
 4. Choix de l'environnement Supabase de production (actuellement TEST).
+
+## 10. Remédiation de l'audit du 22/10/2026 (volet mobile, M-01 à M-31) — 23 octobre 2026
+
+### 10.1 Suppression de compte (M-01, App Store 5.1.1(v))
+
+- **Route serveur** `POST /account/delete` (Edge Function `api`, `server/edge/api.ts`) : jeton
+  revérifié (`getUser`), corps `{ "confirmation": "SUPPRIMER" }` obligatoire, aucune organisation
+  requise. Service réutilisable : `src/services/account/` (`deleteAccountForUser(userClient, userId, confirmation)`,
+  orchestration pure `deleteAccount(ports, …)` + adaptateur Supabase).
+- **Ordre** : plan → refus si l'utilisateur est le SEUL propriétaire d'une organisation qui a
+  d'autres membres (rien n'est modifié) → organisations dont il est le seul membre : RPC
+  `delete_organization` sous son jeton ; si ses garde-fous bloquent (commandes, connexion active),
+  tentative de révocation distante des connexions eBay puis procédure dédiée
+  `delete_account_organization` (déconnexion locale : secrets supprimés, puis suppression en
+  cascade) → `delete_account_data` (conversations du conseiller, adhésions, profil) → utilisateur
+  Auth supprimé par l'API d'administration. Chaque étape est idempotente (reprise possible).
+  Journal : compteurs uniquement.
+- **Migration** `20261023000600_account_deletion.sql` (3 fonctions, `service_role` uniquement) ;
+  retour arrière `supabase/ops/rollback/20261023000600_account_deletion_down.sql`.
+- **Écran** `src/app/account-delete.tsx` (Réglages → « Supprimer mon compte… », et accueil sans
+  organisation) : ce qui est supprimé / conservé, saisie de SUPPRIMER, chargement, erreur lisible,
+  puis `signOutAndPurge` (cache TanStack, mutations, cache audio, favoris, trousseau, session).
+- **À brancher côté web** : une Server Action qui appelle `getUser()` puis
+  `deleteAccountForUser(supabase, user.id, formData.get("confirmation"))`, déconnecte et redirige ;
+  remplacer le texte « écrivez à … » de `/support` par un lien vers cette page.
+
+### 10.2 Autres correctifs
+
+| ID | Correctif | Preuve |
+| --- | --- | --- |
+| M-02 / M-27 / M-24 | eBay : « Autoriser l'analyse complète » (connexion et mise à niveau), niveau affiché, reconnexion au niveau déjà accordé, « Reconnecter » aussi pour `pending`, session d'autorisation éphémère | `tests/account-and-compliance.test.tsx` |
+| M-03 | Mutations `networkMode: "always"` : hors ligne, échec immédiat, jamais de mise en pause puis rejeu | `tests/stepper-offline.test.ts` |
+| M-04 | Stepper : file sérialisée (`hooks/stepper-queue.ts`), taps pendant l'envoi ni perdus ni doublés, envoi à la fermeture, « en cours d'enregistrement » affiché, quantité inconnue = « — » | `tests/stepper-offline.test.ts` |
+| M-05 / M-26 | Avatar → feuille Compte (e-mail, organisation active, changement) ; changement écrit aussi dans le profil (site web) ; divergence signalée dans Réglages ; accueil sans organisation : adresse affichée, « déjà client sur le site ? », invitation ; inscription : avertissement « même adresse » ; choix mémorisé lié à l'utilisateur ; conseiller remis à zéro par organisation | `tests/account-and-compliance.test.tsx` |
+| M-06 | Confidentialité, Conditions, Mentions légales, Aide (site public, `EXPO_PUBLIC_SITE_URL`, défaut `https://mon-stock-chi.vercel.app`) dans Réglages, connexion, inscription, accueil | idem |
+| M-07 (Q-09) | Accord explicite et révocable avant le conseiller, le brouillon IA et la voix (rien n'est envoyé sans accord) | `tests/advisor-screen.test.tsx` |
+| M-11 | Action « Racheter » exposée à VoiceOver (`accessibilityActions`) ; « Écouter » hors de la ligne pressable (`ListRow.trailing`) | code |
+| M-12 | `ink3` #5F6B7C ; jetons alignés sur `globals.css` ; contrastes mesurés | `tests/design-tokens.test.ts` |
+| M-13 | Accueil : appels serveur secondaires après les chiffres du jour | code (non mesuré sur appareil) |
+| M-14 | Pas de nouvel essai sur une erreur métier ou un délai | `tests/stepper-offline.test.ts` |
+| M-15 | Plafond « Texte plus grand » ×2 pour le texte courant (×1,2 à ×1,6 pour titres et grands chiffres) | code (à vérifier sur iPhone) |
+| M-16 | Brouillon de commande en une RPC (`create_draft_purchase_order`, migration `20261023000610`) | `tests/compare.test.ts`, `tests/integration/account-deletion.test.ts` |
+| M-17 | `openExternalUrl` (validation http/https sans identifiants) pour le suivi et les comptes pro | `tests/account-and-compliance.test.tsx` |
+| M-18 | `+not-found` et `ebay/callback` explicites | captures |
+| M-19 | `signOutAndPurge` unique | `tests/account-and-compliance.test.tsx` |
+| M-20 | Comptes secondaires en échec → « — », jamais 0 ; historique de mouvements signalé s'il est partiel | code |
+| M-21 | Code mort retiré (`askAssistant`, `fetchStockPage`, `fetchOrdersPage`, `isSessionExpired`, `fetchSourcingOverview`, `EXPO_PUBLIC_API_URL`) | typecheck |
+| M-22 | `npm run check` lance aussi `scan:bundle` | `npm run check` |
+| M-23 | Annulation exécutée hors de l'écran fermé ; notification avec action 6 s, ×3 avec VoiceOver, annoncée | `tests/account-and-compliance.test.tsx` |
+| M-25 | Commandes par curseur (`placed_at`, `id`), plus de comptage exact par page | `tests/sales-cursor.test.ts` |
+| M-28 | Garde-fou : chaque table / vue / RPC appelée directement par l'app a la RLS (ou `security_invoker`), aucune RPC ouverte à `anon` | `tests/integration/mobile-direct-access.test.ts` |
+| M-29 | Plus aucun nom de secret ni hôte Supabase dans l'interface | code |
+
+Hors périmètre ou externe : M-08 (profil EAS de production → Supabase PROD, `eas.json`), M-09
+(workflow TestFlight), M-30 (EAS Update / crash reporting : `app.json` + build), M-31 (nom
+« Mon Stock Pro » dans App Store Connect), M-10 (E2E sur appareil).
+
+### 10.3 Refonte visuelle
+
+- Jetons (`src/theme/tokens.ts`) alignés sur le design system commun : rôles `surface2/3`,
+  `selection`, `borderControl` (≥ 3:1), `interactive`, `ring`, états `-Ink` / `-Soft` / `-Line` /
+  `-Strong` ; ADN conservé (bleu nuit, papier, menthe, ambre, rouge).
+- Composants : boutons compacts 44 pt, puces 36 pt (+ marge tactile), action des notifications
+  44 pt, champs à contour contrasté et touche Retour « Terminé » par défaut, défilement adapté au
+  clavier dans tous les écrans (`automaticallyAdjustKeyboardInsets`), boutons-icônes lisibles sur
+  la scène nuit, bandeau compact sans titre, titres des écrans de détail dans la scène (SKU,
+  commande, ajustement, eBay, nouveau produit, diagnostic, suppression de compte), bannière hors
+  ligne en bas (ne masque plus le retour) et annoncée, raccourcis de l'accueil en 2 × 2 sans
+  libellé tronqué, plus aucun bouton factice (« bientôt »).
+- **Thème sombre : préparé, non branché.** `colorDark` (mêmes clés, contrastes testés). Le
+  brancher demande `userInterfaceStyle: "automatic"` dans `app.json` (nouvelle build) et le
+  passage des ~2 000 lectures de `color.*` figées au chargement à un hook de thème.
