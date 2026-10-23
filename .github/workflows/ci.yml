@@ -1,0 +1,176 @@
+# Intégration continue (Q-01 / S-12) : chaque push de branche et chaque pull request.
+# Aucun secret : seules des valeurs publiques FACTICES sont utilisées (rien ne pointe vers la production).
+# Actions épinglées par SHA complet (version en commentaire) ; mises à jour proposées par Dependabot.
+#
+# À activer côté GitHub par le titulaire (non fait par ce fichier) : protection de la branche de
+# production avec les contrôles requis ci-dessous (web, edge-bundle, integration, mobile, secrets).
+name: CI
+
+on:
+  push:
+    branches: ["**"] # les tags (ex. testflight-*) relèvent du workflow iOS
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22.22.0"
+  NEXT_TELEMETRY_DISABLED: "1"
+  EXPO_NO_TELEMETRY: "1"
+
+jobs:
+  web:
+    name: Web — typecheck, lint, tests unitaires, build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Tests unitaires
+        run: npm test
+      - name: Build web
+        # Le build n'exige aucune variable (validation paresseuse dans src/lib/env.ts) ; valeurs
+        # publiques factices pour exercer le même chemin que Vercel (CSP, origines Supabase).
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+        run: npm run build
+
+  edge-bundle:
+    name: Bundle Edge à jour
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Reconstruire supabase/functions/api/bundle.js
+        run: node scripts/build-edge.mjs
+      - name: Le bundle commité doit être identique
+        run: |
+          if ! git diff --exit-code --stat -- supabase/functions/api/ || [ -n "$(git status --porcelain -- supabase/functions/api/)" ]; then
+            echo "::error::supabase/functions/api/ n'est pas à jour : lancez « npm run edge:build » et commitez le résultat."
+            exit 1
+          fi
+
+  integration:
+    name: Migrations sur base vierge + tests d'intégration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres # base jetable du conteneur de CI, pas un secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: mon_stock_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mon_stock_test
+      # Q-06 : base injoignable = ÉCHEC (et non tests ignorés en silence).
+      REQUIRE_DB: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Nommage et unicité des migrations
+        run: |
+          bad=$(ls supabase/migrations | grep -vE '^[0-9]{14}_[a-z0-9_]+\.sql$' || true)
+          dup=$(ls supabase/migrations | cut -c1-14 | sort | uniq -d)
+          if [ -n "$bad" ] || [ -n "$dup" ]; then
+            echo "::error::migrations mal nommées : ${bad:-aucune} ; versions en double : ${dup:-aucune}"
+            exit 1
+          fi
+      - name: Client PostgreSQL
+        run: psql --version
+      - name: Application complète des migrations (shim Supabase + supabase/migrations, base vierge)
+        run: bash scripts/db-local-reset.sh
+      - name: Tests d'intégration
+        run: npm run test:integration
+
+  mobile:
+    name: Mobile — typecheck, lint, Jest, scan du bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/mobile/package-lock.json
+      # Le code mobile importe src/ (alias @/) : les dépendances racine sont nécessaires.
+      - name: Dépendances racine
+        run: npm ci
+      - name: Dépendances mobiles
+        run: npm ci --prefix apps/mobile
+      - name: Typecheck, lint, Jest
+        run: npm --prefix apps/mobile run check
+      - name: Export iOS (JavaScript) et recherche de secrets dans le bundle
+        env:
+          CI: "1"
+          EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+          EXPO_PUBLIC_APP_ENV: CI
+        run: npm --prefix apps/mobile run scan:bundle
+
+  secrets:
+    name: Détection de secrets (gitleaks, historique complet)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      # SHA-256 de gitleaks_8.30.1_linux_x64.tar.gz (fichier checksums.txt de la version officielle).
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Installer gitleaks (version et empreinte épinglées)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tar.gz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Analyse de l'historique git
+        run: '"$RUNNER_TEMP/gitleaks" git --no-banner --redact --config .gitleaks.toml --exit-code 1 .'

@@ -1,0 +1,57 @@
+# Mises à jour des dépendances (Q-27 / Q-21) : hebdomadaires, groupées, toujours soumises à la CI.
+# Les montées de version majeures arrivent en PR séparées (non groupées) pour être relues une à une.
+# SDK Expo : les paquets expo* / react-native* suivent la version du SDK ; ne fusionner qu'une
+# montée cohérente avec `npx expo install --check`.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    groups:
+      web-securite:
+        applies-to: security-updates
+        patterns: ["*"]
+      web-mineures:
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /apps/mobile
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    groups:
+      mobile-securite:
+        applies-to: security-updates
+        patterns: ["*"]
+      expo-sdk:
+        update-types: [minor, patch]
+        patterns: ["expo", "expo-*", "@expo/*", "jest-expo", "babel-preset-expo", "eslint-config-expo", "react-native", "react-native-*", "@react-native*"]
+      mobile-mineures:
+        update-types: [minor, patch]
+        patterns: ["*"]
+    ignore:
+      # Le SDK Expo fixe la version majeure de React Native et des modules expo-* : montée manuelle.
+      - dependency-name: "expo*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    groups:
+      actions:
+        patterns: ["*"]

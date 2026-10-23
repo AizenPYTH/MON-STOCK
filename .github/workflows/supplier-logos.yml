@@ -1,30 +1,55 @@
 name: Logos fournisseurs (sites officiels)
 
 # Récupère le logo officiel de chaque fournisseur de l'annuaire depuis SON site (icônes déclarées,
-# apple-touch-icon, favicon), le convertit en PNG 128×128 et commite le registre embarqué dans
-# l'application. Lancement manuel uniquement.
+# apple-touch-icon, favicon), le convertit en PNG 128×128 et PROPOSE le registre embarqué dans
+# l'application par une pull request (branche dédiée `bot/supplier-logos`). Lancement manuel uniquement.
+#
+# Durcissement (Q-14) : plus de push direct sur la branche de production ; actions épinglées par SHA ;
+# sharp et sharp-ico en versions exactes, installés SANS scripts d'installation (binaires précompilés).
+# Réglage GitHub requis pour l'ouverture automatique de la PR : Settings → Actions → General →
+# « Allow GitHub Actions to create and approve pull requests ». Sans lui, la branche est poussée et la PR
+# s'ouvre à la main. Une PR créée par GITHUB_TOKEN ne déclenche pas la CI : la fermer/rouvrir ou pousser
+# un commit pour lancer les contrôles avant fusion.
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: supplier-logos
+  cancel-in-progress: false
 
 jobs:
   logos:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: write # pousser la branche dédiée bot/supplier-logos (jamais la branche de production)
+      pull-requests: write # ouvrir la PR
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          node-version: 22
-      - name: Dépendances d'image (sans modifier package.json ni le lockfile)
-        run: npm install --no-save --no-audit --no-fund --ignore-scripts=false "sharp@^0.34" "sharp-ico@^0.1"
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22.22.0"
+      - name: Dépendances d'image (versions exactes, sans scripts, sans modifier package.json ni le lockfile)
+        run: npm install --no-save --no-audit --no-fund --ignore-scripts "sharp@0.34.5" "sharp-ico@0.1.5"
       - name: Récupération des logos
         run: node scripts/fetch-supplier-logos.mjs
-      - name: Commit
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/mobile/assets/suppliers apps/mobile/src/data/supplier-logos.generated.ts docs/sourcing/supplier-logos-manifest.json
-          git diff --cached --quiet && echo "Aucun changement" || (git commit -m "Logos fournisseurs : récupération depuis les sites officiels" && git push)
+      - name: Proposer les changements par pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: bot/supplier-logos
+          delete-branch: true
+          add-paths: |
+            apps/mobile/assets/suppliers
+            apps/mobile/src/data/supplier-logos.generated.ts
+            docs/sourcing/supplier-logos-manifest.json
+          commit-message: "Logos fournisseurs : récupération depuis les sites officiels"
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          title: "Logos fournisseurs : récupération depuis les sites officiels"
+          body: |
+            Mise à jour générée par le workflow « Logos fournisseurs » (lancement manuel).
+            Vérifier visuellement les logos et laisser passer la CI avant de fusionner.
