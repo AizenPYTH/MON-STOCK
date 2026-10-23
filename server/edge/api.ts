@@ -2,63 +2,101 @@
  * =============================================================================
  * MON STOCK — API serveur déployée en Supabase Edge Function (`api`).
  *
- * L'application web (Next.js) n'est pas déployée ; les traitements qui exigent des secrets ou
- * des privilèges serveur (tokens eBay, clé service_role, réseau sortant vers les fournisseurs)
- * ne peuvent PAS tourner dans le téléphone. Ce point d'entrée expose, pour l'application mobile,
- * les MÊMES services que le web (aucune logique dupliquée) :
+ * Traitements qui exigent des secrets ou des privilèges serveur (jetons eBay, clé service_role,
+ * réseau sortant vers les fournisseurs et transporteurs, OpenAI) : ils ne peuvent PAS tourner dans
+ * le téléphone. Ce point d'entrée expose, pour l'application iPhone et pour le site web (appels
+ * serveur à serveur, src/lib/edge-api.ts), les MÊMES services que le web (aucune logique dupliquée).
  *
- *   GET  /api/health                      état de configuration (aucun secret)
- *   GET  /api/suppliers/search?q=…        recherche simple « Fournisseurs » : offres par fournisseur, du moins cher au plus cher
- *   GET  /api/sourcing/search?q=…         recherche d'offres (sources connectées en direct + offres stockées)
- *   GET  /api/sourcing/status             état des sources de l'organisation
- *   GET  /api/sourcing/library            bibliothèque de sources (catalogue + état d'activation)
- *   POST /api/sourcing/library/activate   activer une source de la bibliothèque (validation tracée de l'utilisateur ; page des conditions lue si non confirmée)
- *   GET  /api/radar?sort=…                radar d'opportunités d'achat (offres réelles × ventes réelles × coûts)
- *   GET  /api/radar/offer?id=&quantity=   détail d'une offre : appréciation, scénarios de quantité, offres concurrentes
- *   POST /api/radar/settings              paramètres de coûts (TVA, frais, emballage, retours, douane) — administrateur
- *   GET  /api/sourcing/directory          annuaire de fournisseurs qualifiés (statuts prouvés, e-mails de demande d'accès)
- *   GET  /api/sourcing/accounts           « Connectez vos comptes » : comptes pro prioritaires (statut réel) + sources publiques
- *   POST /api/sourcing/accounts/connect   connexion API d'un compte (identifiants chiffrés côté serveur, test réel) — rédacteur
- *   POST /api/sourcing/accounts/sync      synchronisation du catalogue d'un compte connecté — rédacteur
- *   POST /api/sourcing/accounts/disconnect déconnexion (identifiants supprimés) — administrateur
- *   GET  /api/sourcing/supplier-offers?supplierId= produits récupérés pour un fournisseur (fiche fournisseur)
- *   POST /api/sourcing/import/preview     aperçu d'un catalogue fournisseur (CSV, XLSX, XML, JSON) — rien n'est enregistré
- *   POST /api/sourcing/import             import réel du catalogue dans un flux du fournisseur (rédacteur)
- *   GET  /api/sourcing/sources            sources : statut affiché, offres exploitables, dernier succès, prochain passage
- *   POST /api/sourcing/sources/sync       « Synchroniser maintenant » (rédacteur ; verrou et délai de 2 min)
- *   POST /api/sourcing/sources/schedule   fréquence et activation d'une source (administrateur)
- *   POST /api/sourcing/feeds/preview      aperçu d'un flux distant autorisé (CSV / XML / JSON en HTTPS) — rien n'est enregistré
- *   POST /api/sourcing/feeds              ajout du flux (attestation d'accord du fournisseur, identifiants chiffrés)
- *   GET  /api/sourcing/imports            historique des imports (fichier, empreinte, compteurs, utilisateur)
- *   GET  /api/sourcing/imports/detail?id= détail d'un import et lignes ignorées avec leur raison
- *   POST /api/sourcing/imports/resume     reprise d'un import par lots en cours (rédacteur)
- *   GET  /api/integrations                connexions eBay, dernière synchronisation, erreurs
- *   POST /api/ebay/connect                URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur) ; { extended: true } = analyse complète
- *   GET|POST /api/ebay/webhook            notifications eBay (suppression de compte, commandes) — signées par eBay
- *   GET  /api/ebay/callback               retour d'eBay → redirection vers l'application (monstock://)
- *   POST /api/ebay/finalize               échange du code (utilisateur qui a démarré le flux uniquement)
- *   POST /api/ebay/disconnect             déconnexion (administrateur) : tokens supprimés
- *   GET  /api/ebay/listings/prefill       brouillon d'annonce depuis un SKU · GET /api/ebay/account-setup politiques/emplacements
- *   POST /api/ebay/listings/check         contrôle + simulation (rien n'est envoyé à eBay)
- *   POST /api/ebay/listings/publish       publication — verrouillée (EBAY_LISTING_ENABLED, administrateur, confirmation)
- *   POST /api/ebay/sync                   synchronisation immédiate d'une connexion
- *   POST /api/ai/product-draft            phrase dictée → brouillon du formulaire produit (OpenAI ; rien n'est créé)
- *   POST /api/ai/assistant                questions sur les ventes / le stock / eBay (OpenAI + lecture seule sous RLS)
- *   GET  /api/advisor/status              conseiller IA : configuré ?, limites
- *   GET  /api/advisor/speech?messageId=   voix du conseiller (OpenAI) : lecture d'une réponse déjà reçue (audio/mpeg ; voice=marin|cedar)
- *   GET  /api/advisor/voice-sample?voice= même texte de démonstration, pour comparer les voix (quota IA)
- *   POST /api/advisor/chat                conseiller IA (texte / voix) : flux NDJSON si Accept: application/x-ndjson
- *   POST /api/advisor/actions/confirm     exécute UNE action préparée, après revérification des droits (bouton de l'app)
- *   POST /api/advisor/actions/cancel      annule une action préparée
- *   POST /api/account/delete              suppression DÉFINITIVE du compte (jeton revérifié, { confirmation: "SUPPRIMER" }) — sans organisation
- *   POST /api/cron/sync | /api/cron/sourcing | /api/cron/library-checks | /api/cron/sourcing-imports
- *        | /api/cron/library-review-report (lecture seule ; /api/cron/library-activate : supprimée, 410)
- *                                         tâches planifiées (Authorization: Bearer CRON_SECRET)
+ * TABLE DES ROUTES — tenue à jour avec le code : tests/unit/edge-hardening.test.ts vérifie que
+ * chaque route du routeur figure ici. Rôle : membre (lecture), rédacteur (≠ lecture seule),
+ * admin (propriétaire / administrateur). `X-Organization-Id` obligatoire pour rédacteur et admin (S-29).
+ *
+ *   Santé
+ *   GET  /api/health                       public, minimal : oui/non (eBay, cron, IA, chiffrement) et heure
+ *   GET  /api/health/details               CRON_SECRET : secrets chargés (noms), configuration, ping de la base
+ *
+ *   Fournisseurs et sourcing (membre sauf mention)
+ *   GET  /api/suppliers/search?q=          recherche simple « Fournisseurs » (en direct : rédacteur ; lecture seule : offres stockées)
+ *   GET  /api/sourcing/search?q=           recherche d'offres (sources en direct pour un rédacteur, offres stockées)
+ *   GET  /api/sourcing/status              état des sources de l'organisation
+ *   GET  /api/sourcing/library             bibliothèque de sources (catalogue + activation)
+ *   POST /api/sourcing/library/activate    activer une source (validation tracée) — rédacteur
+ *   GET  /api/sourcing/matches             suggestions de rapprochement offre ↔ SKU
+ *   POST /api/sourcing/matches/decide      confirmer / refuser une suggestion — rédacteur
+ *   GET  /api/sourcing/directory           annuaire de fournisseurs qualifiés
+ *   GET  /api/sourcing/accounts            « Connectez vos comptes » : comptes pro + sources publiques
+ *   POST /api/sourcing/accounts/connect    connexion API d'un compte (identifiants chiffrés, test réel) — rédacteur
+ *   POST /api/sourcing/accounts/sync       synchronisation du catalogue d'un compte — rédacteur
+ *   POST /api/sourcing/accounts/disconnect déconnexion (identifiants supprimés) — admin
+ *   GET  /api/sourcing/supplier-offers?supplierId=  produits récupérés pour un fournisseur
+ *   POST /api/sourcing/import/preview      aperçu d'un catalogue (CSV, XLSX, XML, JSON), rien enregistré — rédacteur
+ *   POST /api/sourcing/import              import réel du catalogue (par lots) — rédacteur
+ *   GET  /api/sourcing/imports             historique des imports
+ *   GET  /api/sourcing/imports/detail?id=  détail d'un import et lignes ignorées
+ *   POST /api/sourcing/imports/resume      reprise d'un import par lots — rédacteur
+ *   GET  /api/sourcing/sources             sources : statut, offres exploitables, dernier succès, prochain passage
+ *   POST /api/sourcing/sources/sync        « Synchroniser maintenant » (verrou, délai de 2 min) — rédacteur
+ *   POST /api/sourcing/sources/schedule    fréquence et activation d'une source — admin
+ *   POST /api/sourcing/feeds/preview       aperçu d'un flux distant autorisé — rédacteur
+ *   POST /api/sourcing/feeds               ajout du flux (attestation, identifiants chiffrés) — rédacteur
+ *   GET  /api/radar?sort=                  radar d'opportunités d'achat
+ *   GET  /api/radar/offer?id=&quantity=    détail d'une offre du radar
+ *   POST /api/radar/settings               paramètres de coûts — admin
+ *
+ *   Outils
+ *   GET  /api/tools/status                 transporteurs configurés ; suivi utilisable (disjoncteur La Poste, I-17)
+ *   POST /api/shipping/quotes              devis d'expédition (consultation seule) — limite de débit (S-15, I-29)
+ *   POST /api/tracking/refresh             actualisation d'un colis — rédacteur, 1 fois/min par colis (S-15)
+ *
+ *   eBay
+ *   GET  /api/integrations                 connexions eBay, dernière synchronisation, erreurs
+ *   POST /api/ebay/connect                 URL d'autorisation (état anti-CSRF lié à l'utilisateur) ; { extended } — admin
+ *   GET  /api/ebay/callback                retour d'eBay → redirection vers l'application (monstock://)
+ *   POST /api/ebay/finalize                échange du code (état de CET utilisateur et CETTE organisation, S-24) — admin
+ *   POST /api/ebay/disconnect              déconnexion (jetons supprimés) — admin
+ *   GET|POST /api/ebay/webhook             notifications eBay signées (suppression de compte ; voir docs/ebay-setup.md, I-22)
+ *   GET  /api/ebay/listings/prefill?skuId= brouillon d'annonce depuis un SKU — rédacteur
+ *   GET  /api/ebay/account-setup[?connectionId=]  politiques et emplacements du compte — rédacteur
+ *   POST /api/ebay/listings/check          contrôle + simulation (rien n'est envoyé) — rédacteur
+ *   POST /api/ebay/listings/publish        publication verrouillée (EBAY_LISTING_ENABLED, confirmation,
+ *                                          compte explicite si plusieurs, SKU libre — I-31) — admin
+ *   POST /api/ebay/sync                    synchronisation immédiate — rédacteur, 1 fois/2 min par connexion (S-15)
+ *
+ *   IA
+ *   POST /api/ai/product-draft             phrase dictée → brouillon de produit (quota IA) — rédacteur
+ *   POST /api/ai/assistant                 questions sur ventes / stock / eBay (quota IA)
+ *   GET  /api/advisor/status               conseiller IA : configuré, limites
+ *   GET  /api/advisor/speech?messageId=    voix d'une réponse reçue (audio/mpeg)
+ *   GET  /api/advisor/voice-sample?voice=  échantillon de voix (quota IA)
+ *   POST /api/advisor/chat                 conseiller IA (NDJSON si Accept: application/x-ndjson)
+ *   POST /api/advisor/actions/confirm      exécute UNE action préparée (droits revérifiés)
+ *   POST /api/advisor/actions/cancel       annule une action préparée
+ *
+ *   Compte
+ *   POST /api/account/delete               suppression DÉFINITIVE du compte ({ confirmation: "SUPPRIMER" }), sans organisation
+ *
+ *   Tâches planifiées (POST, Authorization: Bearer CRON_SECRET ; planifiées : sync, sourcing,
+ *   library-checks, directory-checks, tracking — voir supabase/migrations/20261023000700)
+ *   /api/cron/sync                 synchro eBay des connexions dues + reprise des notifications abandonnées (I-22)
+ *   /api/cron/sourcing             sources fournisseurs ; { phase } facultatif
+ *   /api/cron/sourcing-imports     reprise des imports par lots
+ *   /api/cron/library-checks       vérification de la bibliothèque de sources (lot borné)
+ *   /api/cron/library-review-report  rapport en lecture seule (sources à faire revalider)
+ *   /api/cron/library-activate     SUPPRIMÉE (410) : activation réservée à un utilisateur
+ *   /api/cron/sourcing-weekly      collecte hebdomadaire — DÉSACTIVÉE (503) tant que la migration
+ *                                  supabase/pending/20261014000100 n'est pas appliquée (S-27)
+ *   /api/cron/collect-source       collecte d'une source précise
+ *   /api/cron/directory-checks     vérification de l'annuaire
+ *   /api/cron/tracking             suivi des colis dus (budget de temps, disjoncteur La Poste, I-17)
+ *   /api/cron/e2e-search | chain-selftest | import-selftest | readonly-check | deal-check
+ *     | ai-tools-check | adapter-probe | scout | connectors-probe   autotests et sondes (exploitation)
  *
  * Authentification : `Authorization: Bearer <jeton d'accès Supabase de l'utilisateur>` validé par
  * Supabase Auth (getUser), organisation dans `X-Organization-Id` (appartenance vérifiée), puis
  * requêtes sous RLS avec le client de l'utilisateur. Le service_role n'est utilisé que par les
- * services serveur existants (moteur de synchronisation, stockage chiffré des tokens).
+ * services serveur (moteur de synchronisation, stockage chiffré des jetons, limites de débit).
+ * Chaque réponse porte `X-Request-Id`, repris dans les journaux JSON (S-17). CORS : origines
+ * connues seulement (server/edge/cors.ts, Q-22).
  * =============================================================================
  */
 import { z } from "zod";
@@ -67,8 +105,7 @@ import { createLogger } from "@/lib/logger";
 import { randomToken } from "@/lib/crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { runSourceCrawl } from "@/services/sourcing/crawler/crawler-manager";
-import { runWeeklyCollection, weeklyRunSchema } from "@/services/sourcing/weekly-collection";
-import { ebayEnv } from "@/lib/env";
+import { runWeeklyCollection, WEEKLY_COLLECTION_DISABLED_MESSAGE, weeklyCollectionSchemaReady, weeklyRunSchema } from "@/services/sourcing/weekly-collection";
 import { authorizeCron } from "@/lib/cron-auth";
 import { errorResponse, handle, parseBody, parseQuery, uuidParam } from "@/features/mobile-api/http";
 import { requireMobileOrgContext, requireMobileUser } from "@/features/mobile-api/context";
@@ -76,6 +113,7 @@ import { accountDeleteInputSchema, ADVISOR_MESSAGE_MAX_CHARS, advisorActionDecis
 import { integrations, sourcingSearch, sourcingStatus } from "@/features/mobile-api/service";
 import { syncConnectionNow } from "@/features/integrations/sync-service";
 import { buildOAuthState, isExtendedOAuthState, OAUTH_STATE_TTL_SECONDS, oauthErrorCodeFor } from "@/features/integrations/oauth-flow";
+import { reserveApiRate } from "@/services/rate-limit";
 import { getEbayConnector } from "@/integrations/core/registry";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
@@ -110,20 +148,17 @@ import { decideAdvisorAction } from "@/services/ai/advisor-actions";
 import { AI_LIMITS } from "@/services/ai/quota";
 import { checkAssistantTools, checkDealAnalysis, checkReadOnlyRoutes } from "@/services/ai/tools-check";
 import { EBAY_APP_CALLBACK, ebayCallbackRedirect } from "./ebay-callback";
-import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets";
+import { createRuntimeSecretsLoader, type RuntimeSecretsState, type RuntimeSecretsStatus } from "./runtime-secrets";
+import { corsHeaders } from "./cors";
+import { healthDetails, pingDatabase, publicHealth } from "./health";
+import { consumeEbayOAuthState } from "./ebay-oauth-state";
+import { REQUEST_ID_HEADER, requestIdFrom, withRequestContext } from "./request-context";
 import { quoteShipping, shippingProvidersStatus } from "@/services/shipping/quotes";
-import { refreshParcelForOrg, runDueTracking, trackingProviders } from "@/services/tracking/tracking";
+import { refreshParcelForOrg, runDueTracking, usableTrackingProviders } from "@/services/tracking/tracking";
 import { probeToolConnectors } from "@/services/tools/connectors-probe";
 import { deleteAccountForUser } from "@/services/account";
 
 const log = createLogger("EDGE_API");
-
-/** L'application mobile appelle depuis un client natif : pas de CORS navigateur nécessaire, sauf pour les outils de test. */
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-organization-id",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-};
 
 const ebayConnectSchema = z.object({ extended: z.boolean().optional() });
 const ebayFinalizeSchema = z.object({ code: z.string().min(1).max(2048), state: z.string().min(16).max(200) });
@@ -136,9 +171,11 @@ const IMPORT_EDGE_CPU_BUDGET_MS = 1_200;
 const CATALOG_BODY_LIMIT = 21_000_000;
 const productDraftSchema = z.object({ text: z.string().trim().min(3, "Dites ou écrivez le produit à ajouter.").max(2000, "Texte trop long (2000 caractères maximum).") });
 
-function withCors(res: Response): Response {
+/** En-têtes CORS (origines connues seulement, Q-22) et identifiant de requête (S-17) ajoutés à la réponse. */
+function finalize(res: Response, origin: string | null, requestId: string): Response {
   const headers = new Headers(res.headers);
-  for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
+  for (const [k, v] of Object.entries(corsHeaders(origin))) headers.set(k, v);
+  headers.set(REQUEST_ID_HEADER, requestId);
   return new Response(res.body, { status: res.status, headers });
 }
 
@@ -183,14 +220,8 @@ async function startEbayConnect(request: Request) {
 async function finalizeEbayConnect(request: Request) {
   const ctx = await requireMobileOrgContext(request, { admin: true });
   const { code, state } = await parseBody(request, ebayFinalizeSchema);
-  const admin = createAdminSupabaseClient();
-  const { data: row, error } = await admin.from("oauth_states").delete().eq("state", state).eq("provider", "ebay").select("*").maybeSingle();
-  if (error) throw new AppError("INTERNAL", "Vérification de la demande de connexion impossible. Réessayez.");
-  if (!row) throw new AppError("VALIDATION", "Demande de connexion inconnue ou déjà utilisée : relancez la connexion eBay.");
-  if (row.created_by !== ctx.user.id || row.organization_id !== ctx.organization.id) {
-    log.warn("finalisation eBay refusée : état créé par un autre utilisateur ou une autre organisation", { orgId: ctx.organization.id });
-    throw new AppError("FORBIDDEN", "Cette autorisation eBay n'a pas été demandée depuis votre session : relancez la connexion.");
-  }
+  // S-24 : seul l'état de CET utilisateur pour CETTE organisation est consommé (filtre dans le DELETE).
+  const row = await consumeEbayOAuthState(createAdminSupabaseClient(), { state, userId: ctx.user.id, organizationId: ctx.organization.id });
   if (new Date(row.expires_at).getTime() < Date.now()) throw new AppError("VALIDATION", "La demande de connexion a expiré (15 min) : relancez la connexion eBay.");
   const connector = getEbayConnector();
   const config = connector.config();
@@ -255,29 +286,18 @@ async function ebayWebhook(request: Request, url: URL): Promise<Response> {
 }
 
 export async function route(request: Request): Promise<Response> {
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   const url = new URL(request.url);
   const path = routeOf(url);
   const m = request.method;
   try {
-    if (m === "GET" && path === "/health") {
-      return handle(async () => {
-        const ebay = ebayEnv();
-        const secrets = await ensureRuntimeSecrets();
-        return {
-          ok: true,
-          ebayConfigured: Boolean(ebay),
-          ebayEnvironment: ebay?.EBAY_ENV ?? null,
-          cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16),
-          aiConfigured: aiConfigured(),
-          shippingProviders: shippingProvidersStatus().filter((p) => p.configured).map((p) => p.id),
-          trackingProviders: trackingProviders(),
-          encryptionConfigured: Boolean(process.env.TOKEN_ENCRYPTION_KEY && process.env.TOKEN_ENCRYPTION_KEY.length >= 32),
-          // Noms uniquement (jamais les valeurs).
-          secrets: { fromEnv: secrets.fromEnv, fromVault: secrets.fromVault, error: secrets.error },
-          time: new Date().toISOString(),
-        };
-      });
+    // Public et minimal (S-16, I-23) : aucun nom de secret, aucune configuration détaillée.
+    if (m === "GET" && path === "/health") return handle(async () => publicHealth());
+    // Diagnostic d'exploitation : CRON_SECRET exigé ; ping réel de la base.
+    if (m === "GET" && path === "/health/details") {
+      const auth = authorizeCron(request);
+      if (!auth.ok) return auth.response;
+      return handle(() => healthDetails({ secrets: runtimeSecretsStatus, ping: () => pingDatabase(createAdminSupabaseClient()), admin: createAdminSupabaseClient }));
     }
     if (m === "GET" && path === "/ebay/callback") return ebayCallbackRedirect(url);
     if (path === "/ebay/webhook") return ebayWebhook(request, url);
@@ -304,7 +324,11 @@ export async function route(request: Request): Promise<Response> {
       }
       // Rapport en lecture seule : sources de la bibliothèque actives à faire revalider par le titulaire (rien n'est désactivé).
       if (m === "POST" && path === "/cron/library-review-report") return handle(() => librarySourcesToRevalidate());
-      if (m === "POST" && path === "/cron/sourcing-weekly") return handle(async () => runWeeklyCollection(await parseBody(request, weeklyRunSchema)));
+      if (m === "POST" && path === "/cron/sourcing-weekly") {
+        // S-27 : désactivée tant que la migration supabase/pending/20261014000100 n'est pas appliquée.
+        if (!(await weeklyCollectionSchemaReady())) return errorResponse(new AppError("NOT_CONFIGURED", WEEKLY_COLLECTION_DISABLED_MESSAGE, { status: 503 }));
+        return handle(async () => runWeeklyCollection(await parseBody(request, weeklyRunSchema)));
+      }
       if (m === "POST" && path === "/cron/collect-source") {
         return handle(async () => {
           const body = await parseBody(request, z.object({ sourceId: uuidParam, budgetMs: z.number().int().min(10_000).max(110_000).optional() }));
@@ -324,7 +348,7 @@ export async function route(request: Request): Promise<Response> {
         });
       }
       if (m === "POST" && path === "/cron/chain-selftest") return handle(() => runChainSelfTest());
-      if (m === "POST" && path === "/cron/tracking") return handle(() => runDueTracking());
+      if (m === "POST" && path === "/cron/tracking") return handle(() => runDueTracking()); // budget de temps et disjoncteur La Poste (I-17)
       if (m === "POST" && path === "/cron/connectors-probe") return handle(() => probeToolConnectors());
       if (m === "POST" && path === "/cron/import-selftest") return handle(() => runImportSelfTest());
       if (m === "POST" && path === "/cron/readonly-check") {
@@ -368,19 +392,24 @@ export async function route(request: Request): Promise<Response> {
     if (m === "GET" && path === "/tools/status") {
       return handle(async () => {
         await requireMobileOrgContext(request);
-        return { shipping: shippingProvidersStatus(), tracking: trackingProviders() };
+        // Suivi : « configuré » seulement si la clé n'est pas coupée par le disjoncteur (I-17).
+        return { shipping: shippingProvidersStatus(), tracking: await usableTrackingProviders() };
       });
     }
     if (m === "POST" && path === "/shipping/quotes") {
       return handle(async () => {
-        await requireMobileOrgContext(request);
-        return quoteShipping(await parseBody(request, shippingQuoteRequestSchema));
+        const ctx = await requireMobileOrgContext(request);
+        const body = await parseBody(request, shippingQuoteRequestSchema);
+        await reserveApiRate(ctx, "shipping_quotes", null); // S-15 / I-29
+        return quoteShipping(body);
       });
     }
     if (m === "POST" && path === "/tracking/refresh") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
-        return refreshParcelForOrg(ctx, (await parseBody(request, trackingRefreshSchema)).parcelId);
+        const { parcelId } = await parseBody(request, trackingRefreshSchema);
+        await reserveApiRate(ctx, "tracking_refresh", parcelId); // S-15
+        return refreshParcelForOrg(ctx, parcelId);
       });
     }
     if (m === "GET" && path === "/radar/offer") {
@@ -581,7 +610,12 @@ export async function route(request: Request): Promise<Response> {
         return prefillListing(ctx, parseQuery(request, z.object({ skuId: uuidParam })).skuId);
       });
     }
-    if (m === "GET" && path === "/ebay/account-setup") return handle(async () => ebayAccountSetup(await requireMobileOrgContext(request, { write: true })));
+    if (m === "GET" && path === "/ebay/account-setup") {
+      return handle(async () => {
+        const ctx = await requireMobileOrgContext(request, { write: true });
+        return ebayAccountSetup(ctx, parseQuery(request, z.object({ connectionId: uuidParam.optional() })).connectionId ?? null);
+      });
+    }
     if (m === "POST" && path === "/ebay/listings/check") {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
@@ -598,6 +632,7 @@ export async function route(request: Request): Promise<Response> {
       return handle(async () => {
         const ctx = await requireMobileOrgContext(request, { write: true });
         const body = await parseBody(request, syncSchema);
+        await reserveApiRate(ctx, "ebay_sync", body.connectionId); // S-15 : délai minimal par connexion
         const r = await syncConnectionNow(ctx, body.connectionId, { trigger: "manual", scope: body.scope });
         return { runId: r.result.runId, status: r.result.status, durationMs: r.result.durationMs, summary: r.summary, errorSummary: r.result.errorSummary };
       });
@@ -608,18 +643,24 @@ export async function route(request: Request): Promise<Response> {
   }
 }
 
-let secretsLoad: Promise<RuntimeSecretsState> | null = null;
+/**
+ * Secrets du Vault (S-07, W-15) : chargement paresseux au premier besoin ; seul un SUCCÈS est gardé
+ * pour la vie de l'instance, un échec est retenté au besoin suivant (backoff), jamais figé.
+ */
+const runtimeSecrets = createRuntimeSecretsLoader(process.env as Record<string, string | undefined>);
 
-/** Chargement unique (par instance) des secrets du Vault avant la première requête. */
 export function ensureRuntimeSecrets(): Promise<RuntimeSecretsState> {
-  secretsLoad ??= loadRuntimeSecrets(process.env as Record<string, string | undefined>).then((s) => {
-    if (s.error) log.warn("secrets d'exécution incomplets", { error: s.error });
-    return s;
-  });
-  return secretsLoad;
+  return runtimeSecrets.ensure();
+}
+
+export function runtimeSecretsStatus(): RuntimeSecretsStatus {
+  return runtimeSecrets.status();
 }
 
 export async function serve(request: Request): Promise<Response> {
-  await ensureRuntimeSecrets();
-  return withCors(await route(request));
+  const requestId = requestIdFrom(request);
+  return withRequestContext(requestId, async () => {
+    await ensureRuntimeSecrets();
+    return finalize(await route(request), request.headers.get("origin"), requestId);
+  });
 }

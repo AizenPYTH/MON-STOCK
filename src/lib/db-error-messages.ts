@@ -91,6 +91,12 @@ export const SQL_ERROR_MESSAGES: Record<string, { code: AppErrorCode; message: s
   // Migrations 20261023000500 à 20261023000530 (conseiller IA : quotas, actions, conservation).
   AI_USAGE_KIND_INVALID: { code: "INTERNAL", message: "Contrôle du quota IA impossible : réessayez dans un instant." },
   AI_USAGE_SUBJECT_REQUIRED: { code: "INTERNAL", message: "Contrôle du quota IA impossible : réessayez dans un instant." },
+  // Migrations 20261023000800 à 20261023000820 (limites de débit, supervision, compteur d'appels eBay).
+  API_RATE_BUCKET_INVALID: { code: "INTERNAL", message: "Contrôle de la limite d'utilisation impossible : réessayez dans un instant." },
+  API_RATE_SUBJECT_REQUIRED: { code: "INTERNAL", message: "Contrôle de la limite d'utilisation impossible : réessayez dans un instant." },
+  API_RATE_SUBJECT_INVALID: { code: "INTERNAL", message: "Contrôle de la limite d'utilisation impossible : réessayez dans un instant." },
+  OPS_SUPERVISE_INTERVAL_INVALID: { code: "VALIDATION", message: "Intervalle de supervision invalide (15 minutes au minimum)." },
+  EBAY_API_USAGE_INVALID: { code: "INTERNAL", message: "Compteur d'appels eBay : valeur invalide." },
   ADVISOR_ACTION_NOT_FOUND: { code: "NOT_FOUND", message: "Action introuvable (ou préparée par un autre utilisateur)." },
   ADVISOR_ACTION_NOT_CLAIMED: { code: "CONFLICT", message: "Cette action n'est plus en attente de confirmation : rien n'a été modifié." },
   ADVISOR_ACTION_INVALID: { code: "VALIDATION", message: "Action du conseiller invalide : rien n'a été modifié." },

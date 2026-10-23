@@ -12,6 +12,16 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }],
     },
   },
+  {
+    // Q-20 : les shims de l'Edge reproduisent la SIGNATURE des modules qu'ils remplacent
+    // (`NextResponse<Body>` générique de next/server, export par défaut objet de `react`) : le
+    // paramètre de type inutilisé et l'export par défaut anonyme y sont voulus.
+    files: ["server/edge/shims/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
+      "import/no-anonymous-default-export": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

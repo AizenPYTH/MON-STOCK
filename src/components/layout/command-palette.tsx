@@ -1,11 +1,12 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CornerDownLeft, FileText, Plus, Search, type LucideIcon } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { NAV } from "@/components/layout/sidebar";
 import { ADD_ITEMS } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
+import { paletteKeyAction, paletteOptionId } from "@/components/layout/keyboard-nav";
 
 type Entry = { group: string; label: string; hint?: string; href: string };
 
@@ -32,12 +33,29 @@ function pageEntries(): Entry[] {
 /**
  * Recherche globale ⌘K : actions, pages, et — dès qu'un texte est saisi — recherche dans le
  * stock, chez les fournisseurs (en direct) et dans l'annuaire. ↑↓ pour choisir, ↵ pour ouvrir.
+ * Clavier (W-25) : motif WAI-ARIA « combobox » — le focus reste dans le champ, l'option active est
+ * annoncée par `aria-activedescendant` ; les options sont groupées (`role="group"`) ; à la fermeture,
+ * le focus revient là où il était avant l'ouverture.
  */
 export function CommandPalette({ onClose, readOnly }: { onClose: () => void; readOnly: boolean }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [index, setIndex] = useState(0);
   const pages = useMemo(() => pageEntries(), []);
+  const listId = useId();
+
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus rendu à l'élément actif avant l'ouverture (bouton de recherche, page…). Vérifié après coup :
+  // le double montage du mode strict (développement) ne doit pas retirer le focus du champ.
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement && document.activeElement !== inputRef.current ? document.activeElement : null;
+    return () => {
+      queueMicrotask(() => {
+        if (!inputRef.current?.isConnected && previous?.isConnected) previous.focus();
+      });
+    };
+  }, []);
 
   const entries = useMemo<Entry[]>(() => {
     const t = q.trim();
@@ -58,7 +76,22 @@ export function CommandPalette({ onClose, readOnly }: { onClose: () => void; rea
     onClose();
     router.push(e.href as never);
   };
-  let lastGroup = "";
+  const active = entries.length > 0 ? Math.min(index, entries.length - 1) : -1;
+
+  // L'option active reste visible quand on la déplace au clavier.
+  useEffect(() => {
+    if (active < 0) return;
+    const el = document.getElementById(paletteOptionId(listId, active));
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
+  }, [active, listId]);
+
+  // Options regroupées par groupe consécutif, index global conservé (aria-activedescendant).
+  const groups: Array<{ name: string; items: Array<{ entry: Entry; i: number }> }> = [];
+  entries.forEach((entry, i) => {
+    const last = groups[groups.length - 1];
+    if (last && last.name === entry.group) last.items.push({ entry, i });
+    else groups.push({ name: entry.group, items: [{ entry, i }] });
+  });
   return (
     <div className="fixed inset-0 z-[70]">
       <button type="button" aria-label="Fermer la recherche" className="absolute inset-0 cursor-default bg-overlay transition-opacity duration-200 ease-standard starting:opacity-0" onClick={onClose} />
@@ -66,23 +99,25 @@ export function CommandPalette({ onClose, readOnly }: { onClose: () => void; rea
         <div className="flex h-[58px] items-center gap-3 border-b border-border px-4">
           <Search aria-hidden="true" className="h-5 w-5 shrink-0 text-ink-3" />
           <input
+            ref={inputRef}
             autoFocus
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={active >= 0 ? paletteOptionId(listId, active) : undefined}
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
               setIndex(0);
             }}
             onKeyDown={(e) => {
-              if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setIndex((i) => Math.min(entries.length - 1, i + 1));
-              } else if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setIndex((i) => Math.max(0, i - 1));
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                go(entries[index]);
-              } else if (e.key === "Escape") onClose();
+              const action = paletteKeyAction(e.key, active, entries.length);
+              if (!action) return;
+              e.preventDefault();
+              if (action.type === "move") setIndex(action.index);
+              else if (action.type === "open") go(entries[action.index]);
+              else onClose();
             }}
             aria-label="Rechercher un produit, un SKU, un fournisseur, une offre ou une page"
             placeholder="Produit, SKU, fournisseur, offre, page…"
@@ -92,32 +127,43 @@ export function CommandPalette({ onClose, readOnly }: { onClose: () => void; rea
             <Kbd>Échap</Kbd>
           </span>
         </div>
-        <ul className="max-h-[min(420px,60vh)] overflow-y-auto p-1.5" role="listbox" aria-label="Résultats">
-          {entries.map((e, i) => {
-            const header = e.group !== lastGroup ? e.group : null;
-            lastGroup = e.group;
+        <ul id={listId} className="max-h-[min(420px,60vh)] overflow-y-auto p-1.5" role="listbox" aria-label="Résultats">
+          {groups.map((g) => {
+            const headerId = `${listId}-grp-${g.items[0]?.i ?? 0}`;
             return (
-              <li key={`${e.group}-${e.href}-${e.label}`}>
-                {header ? <div className="ms-mono px-2.5 pb-1 pt-2.5 text-[10px] leading-[13px] text-ink-3">{header}</div> : null}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={i === index}
-                  onMouseEnter={() => setIndex(i)}
-                  onClick={() => go(e)}
-                  className={cn("flex min-h-11 w-full items-center gap-3 rounded-[10px] px-2.5 py-1.5 text-left transition-colors duration-100", i === index ? "bg-selection" : "")}
-                >
-                  <GroupIcon group={e.group} active={i === index} />
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-semibold">{e.label}</span>
-                    {e.hint ? <span className="truncate text-xs font-semibold text-ink-3">{e.hint}</span> : null}
-                  </span>
-                  {i === index ? <ArrowRight aria-hidden="true" className="h-4 w-4 text-ink-3" /> : null}
-                </button>
+              <li key={`${g.name}-${g.items[0]?.i ?? 0}`} role="group" aria-labelledby={headerId}>
+                <div id={headerId} className="ms-mono px-2.5 pb-1 pt-2.5 text-[10px] leading-[13px] text-ink-3">
+                  {g.name}
+                </div>
+                <ul role="none">
+                  {g.items.map(({ entry: e, i }) => (
+                    <li
+                      key={`${e.group}-${e.href}-${e.label}`}
+                      id={paletteOptionId(listId, i)}
+                      role="option"
+                      aria-selected={i === active}
+                      onMouseEnter={() => setIndex(i)}
+                      // La souris ne retire pas le focus du champ (motif combobox).
+                      onMouseDown={(ev) => ev.preventDefault()}
+                      onClick={() => go(e)}
+                      className={cn("flex min-h-11 w-full cursor-default items-center gap-3 rounded-[10px] px-2.5 py-1.5 text-left transition-colors duration-100", i === active ? "bg-selection" : "")}
+                    >
+                      <GroupIcon group={e.group} active={i === active} />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-semibold">{e.label}</span>
+                        {e.hint ? <span className="truncate text-xs font-semibold text-ink-3">{e.hint}</span> : null}
+                      </span>
+                      {i === active ? <ArrowRight aria-hidden="true" className="h-4 w-4 text-ink-3" /> : null}
+                    </li>
+                  ))}
+                </ul>
               </li>
             );
           })}
         </ul>
+        <p className="sr-only" role="status" aria-live="polite">
+          {entries.length === 0 ? "Aucun résultat" : `${entries.length} résultat${entries.length > 1 ? "s" : ""}`}
+        </p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border bg-surface-2 px-4 py-2.5 text-xs font-semibold text-muted max-sm:hidden">
           <span className="inline-flex items-center gap-1.5">
             <Kbd>↑</Kbd>

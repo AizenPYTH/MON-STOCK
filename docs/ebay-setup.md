@@ -17,40 +17,54 @@ Rien n'est simulé : tant que les variables d'environnement ne sont pas renseign
    - **App ID (Client ID)** → `EBAY_CLIENT_ID`
    - **Cert ID (Client Secret)** → `EBAY_CLIENT_SECRET` (secret : ne jamais le committer ni l'exposer au navigateur)
 
-## 2. RuName et URL de retour (« Your auth accepted URL »)
+## 2. RuName et URL de retour
 
-eBay n'utilise pas directement une URL de callback dans `redirect_uri` mais un identifiant appelé **RuName**.
+eBay n'utilise pas directement une URL de callback dans `redirect_uri`, mais un identifiant appelé **RuName**. Chaque RuName n'a **qu'une** URL de retour (« Your auth accepted URL »). MON STOCK en utilise donc deux :
+
+| RuName | Variable | URL de retour à déclarer chez eBay | Lue par |
+| --- | --- | --- | --- |
+| iPhone | `EBAY_RU_NAME` | `https://<ref>.supabase.co/functions/v1/api/ebay/callback` (relais vers `monstock://`) | Edge Function, et web pour les appels API |
+| Site web | `EBAY_WEB_RU_NAME` | `${NEXT_PUBLIC_APP_URL}/api/integrations/ebay/callback`, par exemple `https://mon-stock-chi.vercel.app/api/integrations/ebay/callback` | serveur web (Vercel) uniquement |
+
+**Sans `EBAY_WEB_RU_NAME`, la connexion eBay depuis le site est désactivée** : le site affiche « Connectez eBay depuis l'app iPhone ». Le site n'utilise jamais le RuName de l'iPhone, qui renverrait vers `monstock://`, une impasse sur ordinateur (W-06, I-21).
+
+Le flux web doit démarrer sur le domaine canonique (`NEXT_PUBLIC_APP_URL`) : un démarrage depuis un aperçu Vercel ou un alias est refusé (`wrong_host`). Ce comportement est celui de la branche `claude/remediation-audit`, pas encore déployée au 23/10/2026.
+
+Créer un RuName :
 
 1. Sur la page *Application Keys*, cliquez sur **User Tokens** du keyset concerné.
 2. Section **Get a Token from eBay via Your Application** → **Add eBay Redirect URL**.
 3. Renseignez :
-   - *Display Title* : « MON STOCK »
-   - *Privacy Policy URL* : l'URL de votre politique de confidentialité (obligatoire en production)
-   - **Your auth accepted URL** : `${NEXT_PUBLIC_APP_URL}/api/integrations/ebay/callback`
-     (par exemple `https://app.mon-stock.fr/api/integrations/ebay/callback`)
-   - *Your auth declined URL* : `${NEXT_PUBLIC_APP_URL}/settings/integrations?error=refus`
-   - Cochez **OAuth** (et non *Auth'n'Auth*).
-4. Enregistrez : eBay affiche le **RuName** (forme `Votre_Nom-Votre_App-xxxx-xxxxxxxx`). Copiez-le dans `EBAY_RU_NAME`.
+   - *Display Title* : « MON STOCK » ;
+   - *Privacy Policy URL* : l'URL de votre politique de confidentialité, obligatoire en production (par exemple `https://mon-stock-chi.vercel.app/confidentialite`) ;
+   - **Your auth accepted URL** : l'URL du tableau ci-dessus ;
+   - *Your auth declined URL* : pour l'iPhone, la même URL ; pour le web, `${NEXT_PUBLIC_APP_URL}/settings/integrations?error=access_denied` ;
+   - cochez **OAuth** (et non *Auth'n'Auth*).
+4. Enregistrez : eBay affiche le **RuName** (forme `Votre_Nom-Votre_App-xxxx-xxxxxxxx`). Copiez-le dans la variable correspondante.
 
-> Sandbox et production ont chacun leur RuName et leurs clés : ne les mélangez pas.
+> Sandbox et production ont chacun leurs RuName et leurs clés : ne les mélangez pas.
 > `EBAY_ENV` doit correspondre au keyset utilisé (`production` ou `sandbox`).
 > En local, eBay exige une URL HTTPS publique pour « auth accepted URL » : utilisez un tunnel
 > (ngrok, Cloudflare Tunnel…) et mettez cette URL dans `NEXT_PUBLIC_APP_URL`.
 
 ## 3. Variables d'environnement
 
-Copiez `.env.example` vers `.env.local` (jamais commité) :
+En local, copiez `.env.example` vers `.env.local` (jamais commité). En production :
+
+- l'Edge lit ces variables dans ses secrets ou dans le Vault ([`SERVER.md` § 3](SERVER.md#3-secrets)) ;
+- le web les lit dans Vercel, puis dans le Vault au démarrage ([`WEB-DEPLOY.md` § 2](WEB-DEPLOY.md#2-variables-denvironnement-settings--environment-variables)).
 
 | Variable | Rôle |
 | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | URL publique de l'application, sans slash final. Sert à construire l'URL de callback et l'URL du webhook. |
+| `NEXT_PUBLIC_APP_URL` | URL publique du site, sans slash final. Sert à construire l'URL de retour web et l'URL du webhook web. |
 | `EBAY_ENV` | `production` ou `sandbox`. |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | App ID / Cert ID du keyset. |
-| `EBAY_RU_NAME` | RuName (voir §2). |
-| `EBAY_WEBHOOK_VERIFICATION_TOKEN` | Jeton de 32 à 80 caractères alphanumériques (`openssl rand -hex 24`), saisi aussi dans le portail eBay (§5). |
-| `TOKEN_ENCRYPTION_KEY` | Clé AES-256-GCM (`openssl rand -base64 32`) chiffrant les tokens OAuth en base. **Si elle change, toutes les connexions doivent être refaites.** |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clé service_role (serveur uniquement) : moteur de sync, webhooks, cron, secrets OAuth. |
-| `CRON_SECRET` | Secret du cron (`openssl rand -hex 32`), ≥ 16 caractères. |
+| `EBAY_RU_NAME` | RuName de l'iPhone (§ 2). |
+| `EBAY_WEB_RU_NAME` | RuName du site web (§ 2). Sans lui, pas de connexion eBay depuis le site. |
+| `EBAY_WEBHOOK_VERIFICATION_TOKEN` | Jeton de 32 à 80 caractères alphanumériques, saisi aussi dans le portail eBay (§ 5). En production, il est généré dans le Vault. En local : `openssl rand -hex 24`. |
+| `TOKEN_ENCRYPTION_KEY` | Clé AES-256-GCM qui chiffre les jetons OAuth en base : 32 octets en base64 (`openssl rand -base64 32`). **Ne jamais la remplacer sans suivre la rotation** ([`SERVER.md`](SERVER.md#rotation-de-la-clé-de-chiffrement)), sinon toutes les connexions doivent être refaites. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clé service_role, serveur uniquement : moteur de synchro, webhooks, cron, secrets OAuth. |
+| `CRON_SECRET` | Secret du cron, d'au moins 16 caractères (`openssl rand -hex 32`). |
 
 Sans `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` et `EBAY_RU_NAME`, l'intégration est désactivée et la liste des variables manquantes
 est affichée aux administrateurs.
@@ -126,7 +140,32 @@ commandes importées restent, sans donnée personnelle du compte supprimé. Pour
 Les autres sujets (si vous vous y abonnez via la Commerce Notification API) déclenchent une synchronisation de la connexion
 identifiée par `data.userId` / `data.username` ; les sujets inconnus sont enregistrés en `ignored`.
 
+**Notifications « commandes » (I-22) : non abonnées à ce jour.** Le code les traite (sujets contenant `ORDER`, `ITEM`, `LISTING`,
+`OFFER`, `INVENTORY` → synchronisation `orders` ou `listings` de la connexion), mais MON STOCK ne crée **aucun** abonnement : en
+pratique seul `MARKETPLACE_ACCOUNT_DELETION` arrive, et les ventes sont importées par le cron (toutes les 15 min). Pour s'abonner
+(décision du titulaire, à faire sur un compte réel, rien n'est automatisé) :
+
+1. Vérifier les sujets disponibles pour l'application : `GET https://api.ebay.com/commerce/notification/v1/topic` (jeton
+   d'application, scope `https://api.ebay.com/oauth/api_scope`) ; repérer un sujet de commande (par exemple un sujet
+   `ORDER_…` ou `ITEM_SOLD` selon la liste renvoyée : ne pas supposer le nom).
+2. Créer (ou réutiliser) la destination : `POST /commerce/notification/v1/destination` avec l'URL
+   `…/functions/v1/api/ebay/webhook` et le jeton `EBAY_WEBHOOK_VERIFICATION_TOKEN` (le challenge est le même que ci-dessus).
+3. Créer l'abonnement **avec le jeton de l'utilisateur vendeur** (sujets « user ») :
+   `POST /commerce/notification/v1/subscription` `{ topicId, status: "ENABLED", destinationId, payload: { format: "JSON",
+   schemaVersion: "1.0", deliveryProtocol: "HTTPS" } }`. Le scope `sell.fulfillment` (déjà demandé) est requis pour les sujets
+   de commande.
+4. Tester : `POST /commerce/notification/v1/subscription/{id}/test` ; l'événement doit apparaître dans `webhook_events`
+   (`processed`).
+
+Une notification dont le traitement a été interrompu (événement resté `received`) est reprise par le cron Edge `/cron/sync`
+(`recoverAbandonedWebhookEvents`, service commun `src/services/sync/cron.ts`) : eBay ne la redélivrera pas, la connexion est
+resynchronisée.
+
 ## 6. Synchronisation planifiée (cron)
+
+> W-18 : sur le site web, `/api/cron/*` et `/api/webhooks/ebay` sont **désactivées par défaut** (404) : l'Edge
+> Function est la seule implémentation planifiée et enregistrée chez eBay. `MONSTOCK_WEB_LEGACY_ROUTES=1`
+> les réactive (secours, autre hébergeur, développement local), avec leurs protections d'origine.
 
 La route `GET|POST /api/cron/sync` exécute, séquentiellement, les connexions `connected`/`error` dont `auto_sync` est actif et dont
 `last_sync_at` est plus ancien que `sync_interval_minutes` (réglable par connexion, minimum 15 min). Elle est protégée par
@@ -226,7 +265,12 @@ synchronisation complète planifiée.
   (« This listing was created with the Inventory API… »). L'erreur eBay est affichée telle quelle ; l'Inventory API n'est pas
   encore implémentée pour l'envoi de quantités.
 - **Variations sans SKU** : impossibles à cibler pour l'envoi de quantité (eBay exige le SKU de variation).
-- **Quotas** : Trading API ~5 000 appels/jour par application par défaut ; Fulfillment API 50 000–100 000/jour. Les appels sont
+- **Quotas** : Trading API ~5 000 appels/jour par application par défaut ; Fulfillment API 50 000–100 000/jour. Compteur
+  (I-12, branche, migration `20261023000820`) : chaque synchronisation compte ses appels HTTP eBay et les ajoute à
+  `ebay_api_usage_daily` (par connexion et par jour UTC, `api_calls` aussi dans `sync_runs.stats`). Au-delà de 80 % de
+  `EBAY_DAILY_CALL_BUDGET` (5 000 par défaut) pour l'ensemble des connexions, un avertissement est journalisé et une alerte
+  « Quota d'appels eBay bientôt atteint » est créée (une par organisation et par jour). Le compteur ne bloque rien ; les lectures
+  du conseiller et la publication d'annonces ne sont pas comptées. Les appels sont
   réessayés sur 429/5xx avec attente bornée ; au-delà, le run est marqué partiel/échoué avec « Quota API eBay atteint ».
 - **Fenêtre de commandes** : eBay ne renvoie pas plus de 90 jours d'historique lors du premier import ; 200 pages (20 000
   commandes) maximum par run, au-delà le run est « partiel » (`ORDERS_TRUNCATED`) et le curseur reprend au run suivant.

@@ -4,7 +4,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { randomToken } from "@/lib/crypto";
 import { createLogger } from "@/lib/logger";
-import { getEbayConnector } from "@/integrations/core/registry";
+import { ebayWebConnect, isCanonicalOrigin } from "@/features/integrations/ebay-web";
 import { buildOAuthState, isCrossSiteRequest, OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, OAUTH_STATE_TTL_SECONDS, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
 
 const log = createLogger("EBAY_OAUTH");
@@ -16,6 +16,8 @@ const log = createLogger("EBAY_OAUTH");
  * vers la page d'autorisation eBay : il saisit ses identifiants CHEZ eBay, jamais ici.
  * Champ de formulaire facultatif `extended=1` : « Autoriser l'analyse complète » (autorisations en
  * lecture supplémentaires : finances, trafic, marketing), mémorisé dans l'état OAuth.
+ * W-06 : RuName web dédié (EBAY_WEB_RU_NAME) exigé, jamais celui du relais iPhone.
+ * W-29 : démarrage refusé hors du domaine canonique (NEXT_PUBLIC_APP_URL), renvoi vers celui-ci.
  */
 async function wantsExtended(request: NextRequest): Promise<boolean> {
   try {
@@ -36,14 +38,21 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     return back("cross_site");
   }
 
+  // Le retour eBay arrive sur le domaine canonique : un flux lancé ailleurs perdrait son cookie d'état.
+  if (!isCanonicalOrigin(request.nextUrl.origin, origin)) {
+    log.warn("démarrage OAuth refusé : domaine non canonique", { host: request.nextUrl.host });
+    return back("wrong_host");
+  }
+
   const ctx = await getOrgContext();
   if (!ctx) {
     return NextResponse.redirect(`${origin}/login?next=${encodeURIComponent("/settings/integrations")}`, { status: 303 });
   }
   if (!isAdmin(ctx.role)) return back("not_admin");
 
-  const connector = getEbayConnector();
-  if (!connector.isConfigured()) return back("not_configured");
+  const web = ebayWebConnect();
+  if (web.status !== "ready") return back(web.status);
+  const connector = web.connector;
 
   const extended = await wantsExtended(request);
   const state = buildOAuthState(randomToken(32), extended);

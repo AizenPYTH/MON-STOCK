@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, ExternalLink, Link2, Loader2, RotateCw, Store } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Link2, Loader2, RotateCw, Smartphone, Store } from "lucide-react";
 import { requireOrgContext, isAdmin, canWrite, type OrgContext } from "@/features/auth/dal";
 import { Alert, Callout } from "@/components/ui/page";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,12 @@ import { RUNNING_STALE_MINUTES } from "@/services/sync/engine";
 import { hasExtendedEbayScopes } from "@/integrations/ebay/config";
 
 export const metadata: Metadata = { title: "Intégrations" };
+
+/**
+ * W-10 : durée maximale (s) des Server Actions de la page, dont « Synchroniser maintenant ». Valeur
+ * littérale exigée par Next.js : DOIT rester égale à WEB_SYNC_ACTION_MAX_DURATION_S (test unitaire).
+ */
+export const maxDuration = 120;
 
 /** Nombre d'annonces actives par connexion (compte exact, aucune estimation). */
 async function activeListingCounts(ctx: OrgContext, ids: string[]): Promise<Map<string, number | null>> {
@@ -139,7 +145,14 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
                     Une précédente connexion ({ebayConnections.map((c) => c.connection.external_username ?? "compte inconnu").join(", ")}) a été déconnectée. Reconnecter le même compte restaure ses annonces et associations.
                   </Callout>
                 ) : null}
-                {admin ? (
+                {admin && overview.ebay.webConnect === "web_runame_missing" ? (
+                  <Callout tone="info" title="Connectez eBay depuis l'app iPhone" icon={<Smartphone />}>
+                    <p>La connexion eBay depuis le site n&apos;est pas activée sur ce serveur : connectez eBay depuis l&apos;app iPhone MON STOCK (Intégration eBay → « Connecter mon compte eBay »), ou configurez le RuName web.</p>
+                    <p className="mt-1 text-xs">
+                      RuName web : variable <code className="ms-code">EBAY_WEB_RU_NAME</code>, dont l&apos;URL de retour chez eBay est <code className="ms-code break-all">/api/integrations/ebay/callback</code> sur l&apos;adresse principale du site (guide : <code className="ms-code">docs/ebay-setup.md</code>).
+                    </p>
+                  </Callout>
+                ) : admin ? (
                   <div className="flex flex-wrap gap-2.5">
                     <ConnectEbayButton />
                     <ConnectEbayButton extended variant="secondary" label="Connecter avec l'analyse complète" />

@@ -1,131 +1,231 @@
-# Serveur MON STOCK — Edge Function Supabase `api`
+# Serveur MON STOCK : Edge Function Supabase `api`
 
-L'application web Next.js n'est pas déployée. Tout ce qui ne doit **pas** s'exécuter dans le
-téléphone (secrets, tokens eBay, réseau sortant vers les fournisseurs, tâches planifiées) tourne
-dans une **Supabase Edge Function** nommée `api`, construite à partir des **mêmes modules `src/`**
-que le web : aucune logique n'est dupliquée.
+État au **23/10/2026**. La fonction `api` (Deno) exécute tout ce qui ne doit pas tourner dans le téléphone : secrets, jetons eBay, réseau sortant vers les fournisseurs, tâches planifiées. Elle est construite à partir des **mêmes modules `src/`** que le site web Next.js (déployé sur Vercel) : aucune logique n'est dupliquée.
 
 ```
 apps/mobile ──(jeton utilisateur, X-Organization-Id)──▶ /functions/v1/api/*  ──▶ services src/
              ──(lectures / écritures sous RLS)────────▶ PostgREST (Supabase)
-pg_cron ──(CRON_SECRET lu dans Vault)──▶ /api/cron/*
-eBay ──▶ /api/ebay/callback (relais vers monstock://) · /api/ebay/webhook (notifications signées)
+pg_cron ──(call_monstock_cron : CRON_SECRET lu dans le Vault)──▶ /functions/v1/api/cron/*
+eBay ──▶ /functions/v1/api/ebay/callback (relais vers monstock://) · /functions/v1/api/ebay/webhook (notifications signées)
 ```
 
-Mise en service pas à pas, vérifications, retour arrière et checklist : [OPERATIONS.md](OPERATIONS.md).
+Le site web a ses propres routes (`src/app/api/*`) pour l'OAuth eBay web, le webhook web, `/api/cron/sync` et `/api/cron/sourcing`. Les tâches planifiées de production appellent **l'Edge**, pas Vercel.
+
+Déploiement, retour arrière, supervision et incidents : [`OPERATIONS.md`](OPERATIONS.md). Architecture d'ensemble : [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## 1. Construction et déploiement
 
 | Étape | Commande / action |
 | --- | --- |
-| Construire | `npm run edge:build` → `supabase/functions/api/bundle.js` (dépendances npm en `npm:` résolues par Deno ; shims Next/React dans `server/edge/shims`) |
-| Déployer (CLI) | `supabase functions deploy api --no-verify-jwt` (le point d'entrée `index.ts` importe `./bundle.js`) |
-| Déploiement effectué ici | le dépôt étant public, l'entrée déployée importe le bundle **figé sur un commit** (`raw.githubusercontent.com/…/<sha>/supabase/functions/api/bundle.js`) : contenu immuable, résolu au déploiement |
+| Construire | `npm run edge:build`, qui produit `supabase/functions/api/bundle.js`. Les dépendances npm sont chargées par Deno en `npm:` ; les shims Next et React sont dans `server/edge/shims`. Le bundle est **versionné** ; le job CI `edge-bundle` vérifie qu'il correspond au code. |
+| Point d'entrée | `server/edge/main.ts` lance `Deno.serve`, et `server/edge/api.ts` contient le routeur. Dans le dépôt, `supabase/functions/api/index.ts` importe `./bundle.js`. |
+| Déployer en production | `index.ts` importe le bundle **figé sur un SHA complet** (`raw.githubusercontent.com/AizenPYTH/MON-STOCK/<sha>/supabase/functions/api/bundle.js`), ou bien la CLI est lancée depuis une copie de travail de ce SHA. Forme exacte et procédure : [`OPERATIONS.md` § 4](OPERATIONS.md#4-déployer-ledge-function). |
+| En production le 23/10/2026 | v65, bundle du commit `43f55c9` (correctif de la synchro eBay) |
 
-`verify_jwt` est désactivé car le retour OAuth et les notifications eBay n'ont pas de JWT Supabase ;
-**chaque route authentifie elle-même** : jeton utilisateur validé par Supabase Auth (`getUser`) +
-appartenance à l'organisation, `CRON_SECRET` (comparaison en temps constant) pour `/cron/*`,
-signature eBay pour `/ebay/webhook`.
+`verify_jwt` est désactivé, car le retour OAuth et les notifications eBay n'ont pas de JWT Supabase. **Chaque route authentifie donc elle-même** :
+
+- jeton utilisateur validé par Supabase Auth (`getUser`) et appartenance à l'organisation de l'en-tête `X-Organization-Id` ;
+- `CRON_SECRET`, comparé en temps constant, pour `/cron/*` ;
+- signature eBay pour `/ebay/webhook`.
 
 ## 2. Routes
 
-Accès : *membre* = tout membre de l'organisation (`X-Organization-Id`), *rédacteur* = rôle
-d'écriture, *administrateur* = owner/admin. Chaque corps JSON est validé par Zod avec une taille
-maximale (64 Ko par défaut ; fichier catalogue : 15 Mo, soit 21 Mo une fois encodé).
+Chemins relatifs à `https://<ref>.supabase.co/functions/v1/api`, où `<ref>` est la référence du projet (Dashboard → Project Settings).
+
+Niveaux d'accès :
+
+- *membre* : tout membre de l'organisation ;
+- *rédacteur* : rôle d'écriture (`owner`, `admin` ou `member`) ;
+- *administrateur* : `owner` ou `admin`.
+
+Chaque corps JSON est validé par Zod, avec une taille maximale : 64 Ko par défaut ; 21 Mo pour l'import de catalogue (fichier de 15 Mo encodé en base64).
+
+La mention **(branche)** signale une route présente sur `claude/remediation-audit` mais absente de la version en production (v65).
+
+Règles communes sur la branche :
+
+- **Organisation explicite** (S-29) : toute route « rédacteur » ou « administrateur » exige l'en-tête `X-Organization-Id` (400 sinon). L'application iPhone (`apps/mobile/src/lib/api.ts`) et le site (`src/lib/edge-api.ts`) l'envoient toujours ; les lectures gardent le repli sur l'organisation par défaut.
+- **Lecture seule et recherche en direct** (S-15) : pour un rôle `viewer`, `/sourcing/search` et `/suppliers/search` ne lancent pas la recherche en direct (qui enregistre des offres) : seules les offres déjà enregistrées sont renvoyées.
+- **Limites de débit** (S-15, I-29) : `src/services/rate-limit.ts`, fonction SQL `api_rate_reserve` (migration `20261023000800`). Refus : 429 `RATE_LIMITED`, message rédigé. Fonction absente (Edge déployée avant la migration) : la demande passe, avec un avertissement dans les journaux.
+- **CORS** (Q-22) : plus de `Access-Control-Allow-Origin: *`. Seules les origines connues reçoivent les en-têtes CORS : `APP_URL` (ou `NEXT_PUBLIC_APP_URL`), la liste `EDGE_CORS_ORIGINS` (https, séparées par des virgules), et `http://localhost:*` en développement (pile Supabase locale ou `EDGE_CORS_ALLOW_LOCALHOST=1`). L'application native n'envoie pas d'`Origin` et n'est pas concernée.
+- **Journaux** (S-17) : une ligne JSON par événement (`ts`, `level`, `scope`, `message`, `requestId`, métadonnées). L'identifiant vient de l'en-tête `X-Request-Id` de l'appelant s'il est sûr, sinon un UUID ; il est renvoyé dans l'en-tête de réponse `X-Request-Id`.
+- La table des routes est aussi en tête de `server/edge/api.ts` ; un test vérifie qu'elle contient chaque route du routeur (S-26).
 
 | Route | Accès | Rôle |
 | --- | --- | --- |
-| `GET /api/health` | public | configuration (noms des secrets chargés, jamais les valeurs ; `ebayConfigured`, `aiConfigured`, `cronConfigured`) |
-| `GET /api/sourcing/search?q=…&sku=…` | membre | recherche d'offres : sources activées en direct + offres stockées |
-| `GET /api/sourcing/status` · `GET /api/sourcing/library` | membre | état des sources, bibliothèque vérifiée |
-| `POST /api/sourcing/library/activate` | rédacteur | activer une source vérifiée (attestation CGU obligatoire) |
-| `GET /api/sourcing/directory` | membre | annuaire de 120 fournisseurs professionnels : fiche, niveau d'accès réel, prochaine action, dernier contrôle du site, e-mails de demande d'accès FR/EN |
-| `POST /api/sourcing/import/preview` | rédacteur | fichier catalogue (CSV, TSV, XLSX, XML, JSON ; UTF-8 / Windows-1252) → colonnes détectées, correspondance proposée, 20 premières lignes, erreurs par ligne ; rien n'est enregistré |
-| `POST /api/sourcing/import` | rédacteur | import réel avec la correspondance validée : fournisseur et source « Import de fichier » créés au besoin, offres horodatées (origine du prix « catalogue importé »), historique des prix, lignes illisibles comptées |
-| `GET /api/sourcing/matches` · `POST /api/sourcing/matches/decide` | membre · rédacteur | suggestions de rapprochement offre ↔ SKU (EAN/MPN exacts confirmés automatiquement, le reste à valider) |
-| `GET /api/radar?sort=…` | membre | radar d'opportunités (modèle de coût complet, voir §6) |
-| `POST /api/radar/settings` | administrateur | paramètres de coût (TVA, commissions, port, emballage, retours, douane) |
-| `GET /api/integrations` | membre | connexions eBay, dernière synchro, erreurs, annonces non associées |
-| `POST /api/ebay/connect` | administrateur | URL d'autorisation eBay (état anti-CSRF lié à l'utilisateur et à l'organisation, 15 min, usage unique) |
-| `GET /api/ebay/callback` | public | relaie `code`/`state` vers `monstock://ebay/callback` (n'échange rien) |
-| `POST /api/ebay/finalize` | administrateur | échange du code — **refusé si l'état n'a pas été créé par ce même utilisateur** |
-| `POST /api/ebay/disconnect` | administrateur | déconnexion : tokens supprimés |
-| `POST /api/ebay/sync` | rédacteur | synchronisation immédiate (annonces, commandes, stock) |
-| `GET /api/ebay/listings/prefill?skuId=…` | rédacteur | brouillon d'annonce depuis les vraies données du SKU (champs inconnus laissés vides) |
-| `GET /api/ebay/account-setup` | rédacteur | politiques métier et emplacements du compte eBay connecté (lecture) |
-| `POST /api/ebay/listings/check` | rédacteur | contrôle + **simulation** : contenu exact qui serait envoyé à eBay, erreurs, verrous restants — aucun appel d'écriture |
-| `POST /api/ebay/listings/publish` | administrateur | publication réelle, **uniquement** si les 4 verrous sont levés (§7) |
-| `GET/POST /api/ebay/webhook` | eBay (signé) | challenge + notifications (suppression de compte, commandes) |
-| `POST /api/ai/product-draft` | rédacteur | phrase dictée → brouillon du formulaire produit (OpenAI, sortie structurée) ; rien n'est créé |
-| `POST /api/ai/assistant` | membre | questions sur les ventes, le stock, eBay : le modèle appelle des outils de LECTURE exécutés avec la session de l'utilisateur (RLS) |
-| `GET /api/advisor/status` | membre | conseiller IA : configuré ?, limites |
-| `POST /api/advisor/chat` | membre | conseiller IA (texte / voix) : flux NDJSON (`Accept: application/x-ndjson`), outils de lecture et de préparation, conversations enregistrées (voir docs/ADVISOR.md) |
-| `POST /api/advisor/actions/confirm` · `/cancel` | membre (rédacteur pour exécuter) | exécute ou annule UNE action préparée, après revérification (propriétaire, rôle, expiration, objet inchangé) |
-| `GET /api/tools/status` | membre | plateformes d'expédition et API de suivi configurées (noms uniquement) |
-| `POST /api/shipping/quotes` | membre | devis réels Packlink PRO / Boxtal / Sendcloud pour un colis (poids, dimensions, codes postaux) ; consultation seulement, aucune étiquette ; aucune plateforme = aucun prix |
-| `POST /api/tracking/refresh` | rédacteur | actualise un colis suivi (La Poste Suivi v2 ou Ship24) ; seul le numéro est transmis |
-| `POST /api/cron/sync` · `/sourcing` · `/library-checks` · `/directory-checks` · `/scout` · `/tracking` | `CRON_SECRET` | tâches planifiées |
-| `POST /api/cron/connectors-probe` | `CRON_SECRET` | contrôle sans identifiants des API d'expédition et de suivi (le point d'accès doit répondre et exiger une authentification) |
-| `POST /api/cron/ai-tools-check` · `/readonly-check` · `/import-selftest` · `/chain-selftest` · `/e2e-search` | `CRON_SECRET` | contrôles serveur sur le schéma réel (organisations temporaires supprimées ensuite) |
+| `GET /health` | public | réponse **minimale** (S-16) : `ok`, `ebayConfigured`, `cronConfigured`, `aiConfigured`, `encryptionConfigured` (clé conforme), `time`. Plus aucun nom de secret, ni environnement eBay (`ebayEnvironment: null`), ni message d'erreur |
+| `GET /health/details` **(branche)** | `Authorization: Bearer <CRON_SECRET>` | diagnostic d'exploitation : **ping réel de la base** (durée), état du chargement des secrets (noms seulement, tentatives, prochain essai), environnement eBay, état de la clé de chiffrement (format, versions), transporteurs, suivi utilisable (disjoncteur La Poste) |
+| `GET /suppliers/search?q=…` | membre | recherche « Fournisseurs » : offres par fournisseur, de la moins chère à la plus chère |
+| `GET /sourcing/search?q=…&sku=…` | membre | recherche d'offres : sources activées en direct et offres stockées |
+| `GET /sourcing/status` · `GET /sourcing/library` | membre | état des sources ; bibliothèque vérifiée |
+| `POST /sourcing/library/activate` | rédacteur | activer une source vérifiée (attestation des conditions d'utilisation tracée) |
+| `GET /sourcing/directory` | membre | annuaire de fournisseurs professionnels (§ 5) |
+| `GET /sourcing/accounts` · `GET /sourcing/supplier-offers?supplierId=` | membre | comptes pro prioritaires et produits récupérés par fournisseur |
+| `POST /sourcing/accounts/connect` · `/sync` | rédacteur | connexion API d'un compte fournisseur (identifiants chiffrés, test réel) ; synchronisation |
+| `POST /sourcing/accounts/disconnect` | administrateur | déconnexion : identifiants supprimés |
+| `POST /sourcing/import/preview` | rédacteur | aperçu d'un catalogue (CSV, TSV, XLSX, XML, JSON) : rien n'est enregistré |
+| `POST /sourcing/import` | rédacteur | import réel, par lots dans le budget de la requête |
+| `GET /sourcing/imports` · `/sourcing/imports/detail?id=` | membre | historique des imports, lignes ignorées et raison |
+| `POST /sourcing/imports/resume` **(branche)** | rédacteur | reprise d'un import par lots |
+| `GET /sourcing/sources` | membre | sources : statut, offres exploitables, prochain passage |
+| `POST /sourcing/sources/sync` | rédacteur | « Synchroniser maintenant » (verrou et délai de 2 min) |
+| `POST /sourcing/sources/schedule` | administrateur | fréquence et activation d'une source |
+| `POST /sourcing/feeds/preview` · `POST /sourcing/feeds` | rédacteur | aperçu, puis ajout d'un flux distant HTTPS (accord du fournisseur attesté, identifiants chiffrés) |
+| `GET /sourcing/matches` · `POST /sourcing/matches/decide` | membre · rédacteur | rapprochements offre ↔ SKU |
+| `GET /radar?sort=…` · `GET /radar/offer?id=&quantity=` | membre | radar d'opportunités (§ 6) et détail d'une offre |
+| `POST /radar/settings` | administrateur | paramètres de coût (TVA, commissions, port, emballage, retours, douane) |
+| `GET /tools/status` | membre | plateformes d'expédition et API de suivi utilisables (noms uniquement ; La Poste affichée « non configurée » quand sa clé est refusée, I-17) |
+| `POST /shipping/quotes` | membre | devis Packlink PRO / Boxtal / Sendcloud (consultation, aucune étiquette). **Limite de débit (branche)** : 20 / min par utilisateur, 40 / min par organisation |
+| `POST /tracking/refresh` | rédacteur | actualise un colis suivi. **Limite (branche)** : un même colis au plus une fois par minute ; 60 / h par utilisateur, 200 / jour par organisation |
+| `GET /integrations` | membre | connexions eBay, dernière synchro, erreurs, annonces non associées |
+| `POST /ebay/connect` | administrateur | URL d'autorisation eBay : état anti-CSRF lié à l'utilisateur et à l'organisation, 15 min, usage unique. Corps `{ "extended": true }` pour l'analyse complète. |
+| `GET /ebay/callback` | public | relaie `code`/`state` vers `monstock://ebay/callback` (n'échange rien) |
+| `POST /ebay/finalize` | administrateur | échange du code, **refusé si l'état n'a pas été créé par ce même utilisateur** pour cette organisation. Sur la branche, l'état n'est consommé que s'il appartient à l'appelant (S-24) : un autre administrateur ne peut plus invalider un flux en cours |
+| `POST /ebay/disconnect` | administrateur | déconnexion : jetons supprimés |
+| `POST /ebay/sync` | rédacteur | synchronisation immédiate d'une connexion (`scope` : `full`, `listings` ou `orders`). **Limite (branche)** : une même connexion au plus une fois toutes les 2 min ; 20 / h par utilisateur |
+| `GET /ebay/listings/prefill?skuId=…` · `GET /ebay/account-setup[?connectionId=]` | rédacteur | brouillon d'annonce ; politiques et emplacements du compte eBay (compte à préciser s'il y en a plusieurs) |
+| `POST /ebay/listings/check` | rédacteur | contrôle et **simulation** : aucun appel d'écriture chez eBay |
+| `POST /ebay/listings/publish` | administrateur | publication réelle, **uniquement** si les 4 verrous sont levés (§ 7). Corps : `{ draft, confirm, connectionId? }` ; `connectionId` obligatoire quand plusieurs comptes eBay sont connectés (I-31) |
+| `GET/POST /ebay/webhook` | eBay (signé) | challenge, puis notifications (suppression de compte, commandes) |
+| `POST /ai/product-draft` | rédacteur | phrase dictée → brouillon de produit (rien n'est créé) |
+| `POST /ai/assistant` | membre | questions sur les ventes et le stock : outils de lecture sous RLS |
+| `GET /advisor/status` | membre | conseiller IA : configuré ?, modèle, voix, limites |
+| `POST /advisor/chat` | membre | conseiller IA (flux NDJSON si `Accept: application/x-ndjson`), voir [`ADVISOR.md`](ADVISOR.md) |
+| `GET /advisor/speech?messageId=` · `GET /advisor/voice-sample?voice=` | membre | voix d'une réponse ; échantillon de voix (quota IA) |
+| `POST /advisor/actions/confirm` · `/cancel` | membre (rédacteur pour exécuter) | exécute ou annule UNE action préparée, après revérification |
+| `POST /account/delete` **(branche)** | utilisateur connecté | suppression définitive du compte (`{ "confirmation": "SUPPRIMER" }`), sans organisation requise ; nécessite la migration `20261023000600` |
+
+Tâches et contrôles serveur : tous en `POST`, avec `Authorization: Bearer <CRON_SECRET>`.
+
+| Route | Rôle |
+| --- | --- |
+| `/cron/sync` | synchro eBay des connexions dues, dans un budget partagé. Libère aussi les runs abandonnés (plus de 10 min) et reprend les notifications abandonnées. |
+| `/cron/sourcing` | taux BCE, flux fournisseurs, crawls, alertes de prix (corps facultatif `{ "phase": … }`) |
+| `/cron/sourcing-imports` **(branche)** | reprise des imports par lots |
+| `/cron/library-checks` | vérification d'un lot de sources de la bibliothèque |
+| `/cron/library-review-report` **(branche)** | rapport en lecture seule des sources à faire revalider |
+| `/cron/library-activate` | en production : activation planifiée ; sur la branche : **supprimée** (réponse 410) |
+| `/cron/directory-checks` | contrôle réel des sites de l'annuaire |
+| `/cron/tracking` | actualisation des colis dont l'échéance est passée |
+| `/cron/collect-source` | collecte d'une source précise (budget borné) |
+| `/cron/sourcing-weekly` | collecte hebdomadaire. Elle dépend de `supabase/pending/20261014000100_sourcing_weekly_collection.sql`, **non appliquée** : ne pas planifier. Sur la branche, la route répond **503 `NOT_CONFIGURED`** (« collecte hebdomadaire désactivée ») tant que les colonnes de cette migration sont absentes, sans rien exécuter (S-27). |
+| `/cron/connectors-probe` · `/cron/adapter-probe` · `/cron/scout` | sondes sans identifiants (API d'expédition et de suivi, adaptateurs, sites candidats) |
+| `/cron/readonly-check` · `/cron/ai-tools-check` · `/cron/deal-check` | contrôles en lecture sur le schéma réel |
+| `/cron/import-selftest` · `/cron/chain-selftest` · `/cron/e2e-search` | autotests qui créent puis suppriment des organisations temporaires. **À réserver à la préproduction.** |
 
 ## 3. Secrets
 
-Lus dans l'ordre : variables de la fonction (Dashboard → Edge Functions → Secrets), puis **Supabase
-Vault** via `server_runtime_secrets()` (exécutable par `service_role` uniquement, liste fermée).
+Ordre de lecture : d'abord les **secrets de la fonction** (Dashboard → Edge Functions → Secrets), puis le **Vault Supabase** via `server_runtime_secrets()` (exécutable par `service_role` uniquement, liste fermée). Une variable de la fonction a priorité sur le Vault. Les valeurs ne sont jamais journalisées.
 
 | Secret | Origine |
 | --- | --- |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | fournis automatiquement par Supabase |
-| `TOKEN_ENCRYPTION_KEY` | **généré dans la base** (Vault, migration `20261009000400`) — ne jamais le changer (tokens eBay illisibles sinon) |
-| `CRON_SECRET` | généré dans la base (Vault) ; lu par `call_monstock_cron()` à chaque exécution |
-| `EBAY_WEBHOOK_VERIFICATION_TOKEN` | généré dans la base (Vault, migration `20261009000500`) — à recopier chez eBay |
-| `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | **à fournir** (voir §4) |
-| `OPENAI_API_KEY` | **à fournir** : clé de l'API OpenAI (platform.openai.com → API keys) dans Edge Functions → Secrets. `OPENAI_MODEL` facultatif (défaut `gpt-5.4-mini`). Sans elle, `/api/ai/*` répond « non configuré » (jamais de réponse simulée) ; `/api/health` → `aiConfigured` |
-| `EBAY_LISTING_ENABLED` | facultatif, `true` pour autoriser la publication d'annonces (désactivée par défaut) |
-| `PACKLINK_API_KEY` | facultatif : devis d'expédition Packlink PRO (Packlink PRO → Paramètres → clé API) |
-| `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY` | facultatif : devis d'expédition Sendcloud, consultation uniquement (Sendcloud → Paramètres → Intégrations → Sendcloud API) |
-| `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE` (`BOXTAL_API_URL` facultatif) | facultatif : cotation Boxtal (identifiants API v1 ; code de catégorie de contenu de vos envois, liste fournie par Boxtal) |
-| `LAPOSTE_OKAPI_KEY` | facultatif : suivi La Poste / Colissimo / Chronopost (developer.laposte.fr → application → abonnement « Suivi v2 ») |
-| `SHIP24_API_KEY` | facultatif : suivi multi-transporteurs (dashboard.ship24.com → API keys) |
-| `DHL_API_KEY` | facultatif, gratuit : suivi officiel DHL (developer.dhl.com → application → API « Shipment Tracking - Unified » ; 250 appels / jour) |
+| `TOKEN_ENCRYPTION_KEY` | **généré dans le Vault** par la migration `20261009000400`. Ne jamais le remplacer sans suivre la [rotation](#rotation-de-la-clé-de-chiffrement), sinon les jetons eBay deviennent illisibles. Copie hors ligne obligatoire ([`OPERATIONS.md` § 9.4](OPERATIONS.md#94-clé-token_encryption_key--copie-hors-ligne-q-08-d-05)). |
+| `CRON_SECRET` | généré dans le Vault ; lu par `call_monstock_cron()` à chaque exécution |
+| `EBAY_WEBHOOK_VERIFICATION_TOKEN` | généré dans le Vault (migration `20261009000500`), à recopier chez eBay |
+| `PROJECT_URL` | Vault, **à créer** avant la migration `20261023000700` (URL de ce projet, lue par `call_monstock_cron`) |
+| `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | **à fournir** (§ 4), dans les secrets de la fonction ou dans le Vault |
+| `SOURCING_DISCOVERY_PROVIDER`, `BRAVE_SEARCH_API_KEY` | facultatif : découverte de fournisseurs par l'API Brave Search (`none` par défaut) |
+| `OPENAI_API_KEY` | **à fournir** dans les secrets de la fonction. Sans elle, `/ai/*` et `/advisor/*` répondent « non configuré », sans jamais simuler de réponse. |
+| `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `ADVISOR_AUDIO_MAX_AGE_SECONDS` | facultatif : modèle de texte, modèle et voix de synthèse, durée du cache audio |
+| `EBAY_LISTING_ENABLED` | facultatif ; `true` autorise la publication d'annonces (désactivée par défaut) |
+| `PACKLINK_API_KEY` ; `SENDCLOUD_PUBLIC_KEY`, `SENDCLOUD_SECRET_KEY` ; `BOXTAL_V1_LOGIN`, `BOXTAL_V1_PASSWORD`, `BOXTAL_CONTENT_CODE`, `BOXTAL_API_URL` | facultatif : devis d'expédition (§ 10) |
+| `LAPOSTE_OKAPI_KEY`, `SHIP24_API_KEY`, `DHL_API_KEY` | facultatif : suivi de colis (§ 10) |
+| `SYNC_RUN_BUDGET_MS` | facultatif : budget d'un run de synchro (100 000 ms par défaut, borné à 8 min) |
+| `SOURCING_USER_AGENT`, `SOURCING_BOT_CONTACT` | facultatif : identité du robot de collecte et contact réel (aucun contact n'est inventé) |
+| `TOKEN_ENCRYPTION_KEY_VERSION`, `TOKEN_ENCRYPTION_KEY_PREVIOUS`, `TOKEN_ENCRYPTION_KEY_FORMAT` | **(branche)** rotation de la clé, ci-dessous |
+| `APP_URL`, `EDGE_CORS_ORIGINS`, `EDGE_CORS_ALLOW_LOCALHOST` | **(branche)** facultatif : origines de navigateur autorisées par CORS (voir § 2). Sans elles, aucune origine de navigateur n'est autorisée, ce qui ne gêne ni l'iPhone ni le site |
+| `EBAY_DAILY_CALL_BUDGET` | **(branche)** facultatif : budget quotidien d'appels eBay de l'application (5 000 par défaut, valeur réelle dans le portail développeur) ; alerte à 80 % (I-12) |
 
-Tâches planifiées (pg_cron, `supabase/ops/schedule-edge-cron.sql`) :
+`server_runtime_secrets()`, dans sa version versionnée, ne renvoie que 9 noms : `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`, `EBAY_*` (5) et la découverte de sources (2). Les autres secrets doivent être déclarés **dans les secrets de la fonction**. Dans le code (S-25), `server/edge/runtime-secrets.ts` sépare `VAULT_SECRET_NAMES` (ces 9 noms, comparés à la migration par un test) et `ENV_ONLY_SECRET_NAMES` ; un nom « env seulement » renvoyé par une version modifiée de la fonction reste accepté.
 
-| Tâche | Fréquence (UTC) | Rôle |
-| --- | --- | --- |
-| `monstock-ebay-sync` | toutes les 15 min | synchronisation des connexions eBay dues |
-| `monstock-sourcing` | toutes les 6 h (h:07) | taux BCE, flux fournisseurs, alertes de prix |
-| `monstock-library-checks` | 04:23 | vérification de la bibliothèque de sources |
-| `monstock-directory-checks` | 05:41 | contrôle réel des sites de l'annuaire (16 par passage, les plus anciens d'abord) |
-| `monstock-tracking` | h:17 et h:47 | actualisation des colis dont l'échéance est passée (30 par passage ; rien si aucune clé de suivi) |
+Chargement (S-07, W-15, branche) : chaque lecture du Vault a un délai de 5 s et jusqu'à 2 nouvelles tentatives (300 ms puis 900 ms) sur erreur passagère (réseau, délai, HTTP 5xx ou 429). Seul un **succès** est gardé pour la vie de l'instance : après un échec, le chargement est retenté au besoin suivant (au plus tôt après 2 s, puis 4 s… jusqu'à 60 s). L'état est visible dans `GET /health/details`. Une clé de chiffrement absente ou non conforme ne fait plus jamais passer une connexion eBay en « Expirée » : la route répond « chiffrement indisponible (configuration) » et la connexion reste intacte. Un nouveau secret est pris en compte sans redéploiement, au démarrage d'une nouvelle instance (quelques minutes).
 
-## 4. eBay — seule configuration manuelle restante
+### Rotation de la clé de chiffrement
 
-1. <https://developer.ebay.com> → **Application Keys** → keyset **Production** : notez *App ID* et
-   *Cert ID*.
+> **Statut** : préparée par le code de la branche `claude/remediation-audit` (`src/lib/crypto.ts`), **non déployée** au 23/10/2026, **jamais exercée**. À essayer d'abord en préproduction.
+
+Principe :
+
+- chaque texte chiffré porte la version de sa clé : `v1:…` pour la clé 1, `v1k<N>:…` pour une clé de version N ≥ 2 ;
+- la colonne `key_version` des tables de secrets n'est qu'indicative ;
+- le chiffrement utilise toujours la clé **courante** ;
+- le déchiffrement utilise la clé de la version indiquée dans le texte.
+
+| Variable | Rôle |
+| --- | --- |
+| `TOKEN_ENCRYPTION_KEY` | clé courante : 32 octets encodés en base64 (`openssl rand -base64 32`). Une valeur non conforme est refusée. |
+| `TOKEN_ENCRYPTION_KEY_VERSION` | version de la clé courante (1 par défaut) |
+| `TOKEN_ENCRYPTION_KEY_PREVIOUS` | anciennes clés, encore utilisées pour **déchiffrer** : `<version>:<clé base64>`, séparées par des virgules |
+| `TOKEN_ENCRYPTION_KEY_FORMAT` | `passphrase-sha256` seulement si la clé courante historique n'est pas du base64 de 32 octets (compatibilité). La sortir par une rotation. |
+
+Procédure, avec l'accord du titulaire :
+
+1. Le code de rotation doit être déployé sur l'Edge **et** sur le web : les deux déchiffrent.
+2. Générer la nouvelle clé hors ligne et la ranger d'abord dans le coffre ([`OPERATIONS.md` § 9.4](OPERATIONS.md#94-clé-token_encryption_key--copie-hors-ligne-q-08-d-05)).
+3. Définir à l'identique dans les secrets de l'Edge **et** dans les variables Vercel :
+   - `TOKEN_ENCRYPTION_KEY` = nouvelle clé ;
+   - `TOKEN_ENCRYPTION_KEY_VERSION` = 2 (ou la version suivante) ;
+   - `TOKEN_ENCRYPTION_KEY_PREVIOUS` = `1:<ancienne clé>`, à compléter avec les versions encore utilisées.
+
+   Ces variables ont priorité sur le Vault.
+4. Vérifier :
+   - une connexion eBay se synchronise sans passer en « Expirée » ;
+   - les nouveaux secrets écrits commencent par `v1k2:`.
+5. **Garder l'ancienne clé dans `TOKEN_ENCRYPTION_KEY_PREVIOUS`** tant que des secrets chiffrés avec elle existent. Le jeton d'accès eBay est rechiffré à chaque rafraîchissement, mais le jeton de renouvellement et les identifiants fournisseurs ne le sont qu'à leur prochaine écriture : reconnexion ou nouvel enregistrement. Il n'existe pas encore de script de rechiffrement en masse. La fonction `reencryptSecret` existe, mais aucun outil ne l'appelle.
+6. Ensuite seulement, retirer l'ancienne clé, puis aligner le Vault sur la clé courante pour les restaurations et la préproduction.
+
+### Tâches planifiées
+
+Elles reposent sur `pg_cron`, qui appelle `public.call_monstock_cron('<chemin>')`. Cette fonction lance un appel `net.http_post` asynchrone vers `/functions/v1/api/cron/<chemin>`, avec `CRON_SECRET` lu dans le Vault au moment de l'appel.
+
+- **En production**, la fonction et les 5 tâches de base ont été créées à la main (`supabase/ops/schedule-edge-cron.sql`, URL du projet écrite en dur).
+- La migration `20261023000700` (non appliquée) les **versionne** : l'URL est lue dans le secret Vault `PROJECT_URL`, et une base restaurée ou une préproduction appelle donc sa propre Edge.
+
+| Tâche | Fréquence (UTC) | Route | Source |
+| --- | --- | --- | --- |
+| `monstock-ebay-sync` | toutes les 15 min | `/cron/sync` | ops / `0700` |
+| `monstock-sourcing` | toutes les 6 h (h:07) | `/cron/sourcing` | ops / `0700` |
+| `monstock-library-checks` | 04:23 | `/cron/library-checks` | ops / `0700` |
+| `monstock-directory-checks` | 05:41 | `/cron/directory-checks` | ops / `0700` |
+| `monstock-tracking` | h:17 et h:47 | `/cron/tracking` | ops / `0700` |
+| `monstock-library-checks-rotation` | toutes les 3 h (h:53, de 01 h à 22 h) | `/cron/library-checks` | migration `20261023000230`, **non appliquée** |
+| `monstock-sourcing-imports` | toutes les 5 min | `/cron/sourcing-imports` | migration `20261023000230`, **non appliquée**. Exige une Edge qui connaît la route. |
+
+`cron.job_run_details` dit seulement que l'appel a été **émis**. Le résultat réel est dans `sync_runs` et `net._http_response` ([`OPERATIONS.md` § 7.2](OPERATIONS.md#72-diagnostic-sql-en-lecture-seule)).
+
+Supervision (D-06, migration `20261023000810`, **non appliquée**) : la tâche `monstock-supervision` (toutes les 15 min, créée seulement si `pg_cron` est présent, sans appel HTTP ni secret) exécute `public.ops_supervise()`. Elle recopie dans `ops_supervision_events` les réponses non 2xx (ou en délai dépassé) de `net._http_response`, gardées 30 jours au lieu de ~6 h, et crée une alerte `sync_stale` dans `alerts` pour chaque connexion active sans synchronisation **réussie** depuis plus de 2 h (ou 2 × son intervalle s'il est plus long) ; l'alerte est résolue au retour d'une synchronisation réussie. Requêtes de lecture : [`OPERATIONS.md` § 8](OPERATIONS.md#8-supervision).
+
+## 4. eBay : configuration
+
+Guide détaillé, côté web compris : [`ebay-setup.md`](ebay-setup.md). Pour l'application iPhone et l'Edge :
+
+1. <https://developer.ebay.com> → **Application Keys** → keyset **Production** : noter *App ID* et *Cert ID*.
 2. **User Tokens → Get a Token from eBay via Your Application → Add eBay Redirect URL** :
-   - *Your auth accepted URL* : `https://ccywsegdowikeirbsfae.supabase.co/functions/v1/api/ebay/callback`
-   - *Your auth declined URL* : la même URL
-   - *Privacy Policy URL* : obligatoire en production (une page publique de votre politique de confidentialité)
-   - type **OAuth** → eBay affiche le **RuName**.
-3. **Alerts & Notifications → Marketplace account deletion** :
-   - endpoint : `https://ccywsegdowikeirbsfae.supabase.co/functions/v1/api/ebay/webhook`
-   - jeton de vérification : copiez `EBAY_WEBHOOK_VERIFICATION_TOKEN` depuis Supabase → Project
-     Settings → Vault (généré pour vous), puis « Send test notification ».
-4. Supabase → **Edge Functions → Secrets** : ajoutez `EBAY_ENV=production`, `EBAY_CLIENT_ID`,
-   `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` (jamais dans le dépôt ni dans l'application).
-5. Vérification : `GET /api/health` → `ebayConfigured: true` ; la source « eBay France » de la
-   bibliothèque passe « vérifiée » au prochain contrôle (ou immédiatement via `/cron/library-checks`).
-6. **Comptes déjà connectés avant le 10 octobre 2026** : le scope `sell.account.readonly` (lecture
-   des politiques métier pour préparer une annonce) a été ajouté ; reconnectez le compte une fois
-   (Réglages → Intégrations → eBay → Déconnecter, puis Connecter).
+   - *Your auth accepted URL* : `https://<ref>.supabase.co/functions/v1/api/ebay/callback` ;
+   - *Your auth declined URL* : la même URL ;
+   - *Privacy Policy URL* : obligatoire en production, par exemple `https://mon-stock-chi.vercel.app/confidentialite` ;
+   - type **OAuth**. eBay affiche alors le **RuName**, qui va dans `EBAY_RU_NAME`.
 
-Flux mobile : `connect` (admin) → page eBay dans une session d'authentification système → eBay
-redirige vers `/ebay/callback` → `monstock://ebay/callback?code&state` → `finalize` (même
-utilisateur, même organisation, état à usage unique) → tokens chiffrés (AES-256-GCM) en base,
-jamais renvoyés → première synchronisation. Les ventes déduisent le stock une seule fois
-(`ingest_external_order`, verrous et unicité en base) ; les annonces non associées à un SKU ne
-touchent pas le stock.
+   eBay n'accepte qu'une URL de retour par RuName. Celui-ci sert **l'iPhone**. La connexion depuis le site web demande un second RuName, `EBAY_WEB_RU_NAME` (côté Vercel, [`ebay-setup.md` § 2](ebay-setup.md#2-runame-et-url-de-retour)).
+3. **Alerts & Notifications → Marketplace account deletion** :
+   - endpoint : `https://<ref>.supabase.co/functions/v1/api/ebay/webhook` ;
+   - jeton de vérification : `EBAY_WEBHOOK_VERIFICATION_TOKEN`, à copier depuis Supabase → Project Settings → Vault ;
+   - puis « Send test notification ».
+4. Supabase → **Edge Functions → Secrets** : ajouter `EBAY_ENV=production`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME`. Jamais dans le dépôt ni dans l'application.
+5. Vérifier : `GET /health` doit renvoyer `ebayConfigured: true`.
+6. **Comptes connectés avant le 10/10/2026** : il faut les reconnecter une fois (scope `sell.account.readonly` ajouté).
+
+Flux mobile :
+
+1. `connect` (administrateur) ouvre la page eBay dans une session d'authentification système.
+2. eBay redirige vers `/ebay/callback`, qui renvoie vers `monstock://ebay/callback?code&state`.
+3. `finalize` échange le code : même utilisateur, même organisation, état à usage unique.
+4. Les jetons sont chiffrés (AES-256-GCM) en base et jamais renvoyés, puis la première synchronisation démarre.
+
+Un même compte eBay ne peut être relié qu'à une seule organisation (migration `20261023000110`). Les ventes déduisent le stock une seule fois (`ingest_external_order`, verrous et unicité en base, migration `20261023000120`). Les ventes antérieures à la première connexion sont importées sans mouvement de stock (`20261023000130`). Les annonces non associées à un SKU ne touchent pas le stock.
+
+Synchronisation bornée et reprenable : échéance interne de 100 s, progression dans `channel_connections.sync_state`, curseur des commandes, runs abandonnés libérés après 10 min. Détail dans [`ebay-setup.md` § 6](ebay-setup.md#6-synchronisation-planifiée-cron). Runbook d'incident : [`OPERATIONS.md` § 7](OPERATIONS.md#7-runbook--incident-de-synchronisation-ebay).
 
 Règles de stock des commandes synchronisées (testées en intégration) :
 
@@ -134,15 +234,18 @@ Règles de stock des commandes synchronisées (testées en intégration) :
 | Nouvelle commande (ligne associée à un SKU) | −quantité, **une seule fois** (`order_items.inventory_applied`, index unique sur le mouvement) |
 | Même commande resynchronisée / webhook rejoué | aucun effet |
 | Annulation, ou remboursement **avant** expédition | +quantité, une seule fois |
-| Remboursement **après** expédition (`shipped`/`delivered` ou `fulfillment_status` FULFILLED/IN_PROGRESS) | **aucun recrédit automatique** (l'article n'est pas forcément revenu) + alerte « Remboursement après expédition » : enregistrer un « Retour client » si l'article revient |
+| Remboursement **après** expédition | **aucun recrédit automatique**, car l'article n'est pas forcément revenu. Une alerte « Remboursement après expédition » est créée : enregistrer un « Retour client » si l'article revient. |
 | Ligne associée à un SKU après coup | jamais déduite automatiquement : action explicite « Déduire les ventes en attente » |
+| Vente antérieure à la première connexion du compte | importée pour l'analyse, sans mouvement de stock |
 
-Déconnexion (`POST /api/ebay/disconnect`, administrateur) : révocation demandée à eBay (si
-impossible, c'est indiqué), tokens supprimés de la base, connexion marquée « déconnectée », alertes
-de connexion résolues ; les annonces et commandes déjà importées restent (historique).
-Limites de débit eBay : réponses 429 / `Retry-After` respectées par le client REST (nouvel essai
-borné pour les lectures ; **jamais** pour une écriture POST, afin d'éviter un doublon).
+Déconnexion (`POST /ebay/disconnect`, administrateur) :
 
+- les jetons sont supprimés de la base ;
+- la connexion est marquée « déconnectée » ;
+- les alertes de connexion sont résolues ;
+- les annonces et commandes déjà importées restent (historique).
+
+Limites de débit eBay : les réponses 429 / `Retry-After` sont respectées, avec un nouvel essai borné pour les lectures. **Jamais** de nouvel essai pour une écriture, afin d'éviter un doublon.
 
 ## 5. Fournisseurs professionnels
 
@@ -209,7 +312,7 @@ Pour toutes ces sources, le canal reste un compte pro avec un fichier ou une API
 
 | Mode | Connecteur | État |
 | --- | --- | --- |
-| Fichier envoyé par le fournisseur (CSV/TSV/XLSX/XML/JSON) | Import de catalogue (§2) | **fonctionnel, testé sur TEST** (`/cron/import-selftest` : 6 offres + 1 ligne illisible ; fichier défectueux suspendu sans rien modifier ; mise à jour avec doublon ignoré) |
+| Fichier envoyé par le fournisseur (CSV/TSV/XLSX/XML/JSON) | Import de catalogue (`POST /sourcing/import`, § 2) | **fonctionnel, testé le 10/10/2026 sur la base de production, alors appelée « TEST »** (`/cron/import-selftest` : 6 offres + 1 ligne illisible ; fichier défectueux suspendu sans rien modifier ; mise à jour avec doublon ignoré) |
 | Flux URL (CSV/XML/JSON) | `supplier_feeds` + moteur de sourcing (toutes les 6 h) | fonctionnel (tests d'intégration) ; à configurer avec l'URL du fournisseur |
 | API officielle | eBay Browse, BigBuy, Ingram Micro (adaptateurs existants) | eBay : en attente des clés ; BigBuy / Ingram : identifiants du compte revendeur |
 | Catalogue public | Sitemap + données structurées, WooCommerce Store API | vérifiés : Brico-phone, Refreshed Apples, Fixje, Servisní díly (prix publics) |
@@ -265,7 +368,7 @@ bénéfice net = marge brute − commission marketplace − frais de paiement �
 - Paramètres (administrateur) : régime de TVA, taux, TVA récupérable oui/non, commission, frais de
   paiement, port client, emballage, provision retours, droits de douane. Commission, paiement et
   port sont repris du canal eBay s'ils manquent.
-- Vérifié sur TEST (`/cron/chain-selftest`) : SKU créé → fichier importé → offre rapprochée par EAN
+- Vérifié le 10/10/2026 sur la base de production (alors appelée « TEST ») (`/cron/chain-selftest`) : SKU créé → fichier importé → offre rapprochée par EAN
   → radar « estimé », bénéfice calculé, coût manquant « transport fournisseur » signalé, origine
   « catalogue importé » → contrôle d'annonce eBay (2 erreurs : politiques et emplacement) →
   publication refusée → organisation temporaire supprimée.
@@ -285,6 +388,12 @@ Implémenté (`src/integrations/ebay/listing.ts`, `src/services/channels/ebay-li
   nouvel essai automatique d'un POST.
 - **4 verrous**, tous obligatoires : `EBAY_LISTING_ENABLED=true` sur le serveur, administrateur,
   confirmation explicite dans l'application, compte eBay connecté.
+- **Compte et SKU (I-31, branche)** : avec plusieurs comptes eBay connectés, le compte de
+  publication doit être choisi (`connectionId`), sinon refus sans aucun appel à eBay. Avant tout
+  appel, le SKU est comparé aux annonces **actives** de ce compte connues par la synchronisation
+  (`channel_listings`, y compris les annonces Trading) : s'il est déjà utilisé, refus (409) avec le
+  numéro de l'annonce existante, à modifier sur eBay. Le contrôle (`/ebay/listings/check`) affiche
+  les mêmes blocages.
 - Mise à jour prix/quantité groupée (`bulk_update_price_quantity`) : construite et testée, non
   exposée.
 
@@ -306,27 +415,14 @@ compte réel, avec votre autorisation, sur une annonce de test.
   atteinte » (429).
 - **Délais** : 55 s par appel, 1 nouvel essai, 110 s pour toute la boucle (limite Edge ≈ 150 s).
 - **Sans clé** : « non configuré » (aucune réponse simulée) ; le reste de l'application fonctionne.
-- Vérifié sur TEST (`/cron/ai-tools-check`) : les 6 outils s'exécutent sur le schéma réel. Appel au
+- Vérifié sur la base de production (alors appelée « TEST ») (`/cron/ai-tools-check`) : les 6 outils s'exécutent sur le schéma réel. Appel au
   modèle non exécuté : clé non configurée.
 
-## 9. Audit de sécurité Supabase (10 octobre 2026, projet TEST)
+## 9. Sécurité de la base
 
-| Point | Avant | Après |
-| --- | --- | --- |
-| Fonctions SECURITY DEFINER exécutables par `authenticated` | 18 | 12 (toutes des RPC métier qui vérifient l'organisation et le rôle) ; fonctions de déclencheur révoquées |
-| `search_path` modifiable (avertissements) | 13 | 0 |
-| Tables avec `organization_id` sans garde « même organisation » | — | 0 (test de catalogue de sécurité) |
-| RLS | activée sur toutes les tables exposées | inchangé ; matrice d'isolation entre organisations testée sur chaque table |
-| `ingest_external_order` | service_role | service_role uniquement (vérifié après la migration `20261010000300`) |
-
-Restent (documentés, sans risque immédiat) : extensions `pg_trgm` / `unaccent` dans `public`
-(déplacement risqué pour les index existants) ; **protection des mots de passe divulgués à
-activer** (Dashboard → Authentication → Policies) ; 3 tables serveur sans politique (accès
-`service_role` uniquement, voulu).
-
-Migrations de cet audit, appliquées sur TEST : `20261010000100` (durcissement, offres enregistrées,
-quotas IA), `20261010000200` (contrôles de l'annuaire), `20261010000300` (remboursement après
-expédition).
+- Revue à jour des fonctions SECURITY DEFINER, durcissements et contrôles avant production : [`MIGRATIONS.md` § 7 et § 8](MIGRATIONS.md#8-revue-des-fonctions-security-definer-q-17).
+- Ancien audit du 10/10/2026 : [`archive/SERVER-audit-securite-2026-10-10.md`](archive/SERVER-audit-securite-2026-10-10.md).
+- Tests qui énumèrent automatiquement tables, vues et fonctions : `tests/integration/security-catalog.test.ts`, `security-tenant-matrix.test.ts`, `security-roles.test.ts`.
 
 ## 10. « Mes outils » : expédition et suivi de colis
 
@@ -390,12 +486,24 @@ Migration `20261012000100_tracking_dhl_provider.sql` (additive : élargit `track
   - retard, uniquement si l'API a fourni une date estimée désormais dépassée.
 - **Données transmises :** le numéro de suivi et, s'il est connu, le pays de destination. Aucune
   donnée client.
+- **Clé refusée (I-17, branche)** : au premier refus de la clé La Poste (HTTP 401 / 403), le
+  fournisseur est coupé pour le reste du passage (une seule requête avec la clé refusée), une
+  **alerte unique** par organisation concernée est créée (`alerts`, clé
+  `tracking_provider_auth:laposte`) et une ligne d'erreur est écrite dans les journaux. Le colis
+  bascule aussitôt vers Ship24 (ou DHL selon le transporteur) si ces clés sont configurées ; sinon
+  il est replanifié 6 h plus tard sans nouvel appel. L'alerte ouverte sert d'état partagé entre
+  instances : tant qu'elle date de moins de 6 h, La Poste n'est plus appelée ; ensuite un essai est
+  refait, et un succès résout l'alerte. `/tools/status` n'affiche plus La Poste comme utilisable
+  pendant ce temps.
+- **Budget de temps (I-17, branche)** : `/cron/tracking` s'arrête de commencer des colis après
+  90 s (marge de 20 s par colis) ; les suivants restent dus et passent au passage suivant
+  (`deferred` dans la réponse). Les appels Ship24 sont bornés par cette échéance.
 
 ### 10.4 Activer une plateforme ou une API (aucune clé dans le dépôt)
 
 1. Créer le compte chez le fournisseur et générer la clé (voir §3).
 2. Supabase → Edge Functions → **Secrets** : ajouter la variable.
 3. Vérifier :
-   - `GET /api/health` → `shippingProviders` / `trackingProviders` ;
+   - `GET /health` → `shippingProviders` / `trackingProviders` ;
    - application → Outils → Frais de port ou Suivi de colis.
 4. Contrôle des points d'accès : `select public.call_monstock_cron('connectors-probe');`.

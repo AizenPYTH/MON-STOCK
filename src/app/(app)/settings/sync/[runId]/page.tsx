@@ -18,6 +18,12 @@ import { SettingsSectionHeader } from "@/features/organizations/components/setti
 
 export const metadata: Metadata = { title: "Détail de la synchronisation" };
 
+/**
+ * W-10 : durée maximale (s) des Server Actions de la page, dont « Synchroniser maintenant ». Valeur
+ * littérale exigée par Next.js : DOIT rester égale à WEB_SYNC_ACTION_MAX_DURATION_S (test unitaire).
+ */
+export const maxDuration = 120;
+
 export default async function SyncRunPage({ params }: { params: Promise<{ runId: string }> }) {
   const ctx = await requireOrgContext();
   const { runId } = await params;

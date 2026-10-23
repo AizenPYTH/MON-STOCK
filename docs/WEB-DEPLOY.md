@@ -45,10 +45,13 @@ Supabase → **Authentication → URL Configuration** :
 - **Tâches planifiées** : synchro eBay (15 min), sourcing (6 h), suivi de colis, contrôles de
   l'annuaire tournent déjà dans Supabase (`pg_cron` → Edge Function). `vercel.json` ne déclare donc
   aucun cron (le plan Hobby refuse les crons de plus d'une fois par jour, et ils feraient doublon).
-  Les routes `/api/cron/*` restent appelables manuellement avec `Authorization: Bearer $CRON_SECRET`.
+  Les routes web `/api/cron/*` et `/api/webhooks/ebay` sont désactivées par défaut (404, W-18) ;
+  `MONSTOCK_WEB_LEGACY_ROUTES=1` les réactive (puis `Authorization: Bearer $CRON_SECRET`).
 - **eBay** : l'adresse de retour OAuth et les notifications enregistrées chez eBay pointent vers
-  l'Edge Function Supabase. La connexion eBay se fait depuis l'application iPhone ; la reprendre
-  sur le web demande de déclarer une nouvelle adresse chez eBay (`docs/ebay-setup.md`).
+  l'Edge Function Supabase. La connexion eBay se fait depuis l'application iPhone ; pour la proposer
+  aussi sur le web, créer chez eBay un second RuName dont l'URL de retour est
+  `https://<domaine>/api/integrations/ebay/callback` et le renseigner dans `EBAY_WEB_RU_NAME` (Vercel).
+  Sans lui, le site affiche « connectez eBay depuis l'app iPhone » à la place des boutons (W-06).
 
 ## 5. Vérifier après le premier déploiement
 

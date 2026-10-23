@@ -3,7 +3,8 @@
  * Construit l'Edge Function Supabase `api` (supabase/functions/api/bundle.js, importé par index.ts) à partir des
  * services serveur existants (src/), sans dupliquer de logique.
  *
- *  - alias `@/` → src/ ; Next.js / React / @supabase/ssr / server-only → shims (server/edge/shims)
+ *  - alias `@/` → src/ ; Next.js / React / @supabase/ssr / server-only → shims (server/edge/shims) ;
+ *    l'aperçu de démonstration du site (`@/lib/supabase/preview`) → shim inerte (rien de la base de démo)
  *  - dépendances npm laissées EXTERNES et importées via des spécificateurs `npm:` (résolus par
  *    Deno côté Supabase) : le bundle ne contient que notre code
  *  - `process.env` (Node) → variables Deno ; NEXT_PUBLIC_SUPABASE_* dérivées de SUPABASE_URL /
@@ -34,6 +35,8 @@ const shims = {
   "next/cache": "server/edge/shims/next-other.ts",
   react: "server/edge/shims/react.ts",
   "@supabase/ssr": "server/edge/shims/supabase-ssr.ts",
+  // Aperçu de démonstration du site (base en mémoire) : exclu du bundle de l'Edge (Q-22).
+  "@/lib/supabase/preview": "server/edge/shims/supabase-preview.ts",
 };
 
 const plugin = {

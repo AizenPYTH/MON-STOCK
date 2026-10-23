@@ -1557,6 +1557,15 @@ isOneToOne: false
 "ai_record_usage_tokens":
 { Args: { "p_event_id": string,"p_input_tokens": number,"p_output_tokens": number }; Returns: boolean
                            },
+"api_rate_reserve":
+{ Args: { "p_organization_id": string,"p_user_id": string,"p_bucket": string,"p_subject": string | null,"p_subject_min_interval_seconds": number | null,"p_user_limit": number | null,"p_user_window_seconds": number | null,"p_org_limit": number | null,"p_org_window_seconds": number | null }; Returns: Json
+                           },
+"ebay_api_usage_add":
+{ Args: { "p_connection_id": string,"p_calls": number }; Returns: Json
+                           },
+"ops_supervise":
+{ Args: { "p_stale_after"?: string }; Returns: Json
+                           },
 "advisor_execute_action":
 { Args: { "p_action_id": string }; Returns: Json
                            },

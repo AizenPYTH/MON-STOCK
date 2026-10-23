@@ -4,6 +4,7 @@ import type { ChannelConnection, SyncError, SyncRun, UnmappedListingRow, Channel
 import { listConnectorCatalog, type ConnectorCatalogEntry } from "@/integrations/core/registry";
 import { getEbayConnector } from "@/integrations/core/registry";
 import { EBAY_EXTENDED_SCOPES } from "@/integrations/ebay/config";
+import { ebayWebConnect, type EbayWebConnectStatus } from "@/features/integrations/ebay-web";
 import type { MappingParams } from "@/features/integrations/schemas";
 import { toUserMessage } from "@/lib/errors";
 import { orIlikeAny } from "@/lib/postgrest";
@@ -18,6 +19,8 @@ export interface IntegrationsOverview {
   catalog: ConnectorCatalogEntry[];
   ebay: {
     configured: boolean;
+    /** W-06 : connexion possible DEPUIS LE SITE (RuName web dédié), indépendamment de l'iPhone. */
+    webConnect: EbayWebConnectStatus;
     issues: string[];
     environment: "production" | "sandbox" | null;
     scopes: ReadonlyArray<{ scope: string; reason: string }>;
@@ -34,7 +37,7 @@ export async function getIntegrationsOverview(ctx: OrgContext): Promise<Integrat
   const config = ebay.config();
   const base: IntegrationsOverview = {
     catalog: listConnectorCatalog(),
-    ebay: { configured: ebay.isConfigured(), issues: ebay.configurationIssues(), environment: config?.environment ?? null, scopes: ebay.scopes, extendedScopes: EBAY_EXTENDED_SCOPES },
+    ebay: { configured: ebay.isConfigured(), webConnect: ebayWebConnect().status, issues: ebay.configurationIssues(), environment: config?.environment ?? null, scopes: ebay.scopes, extendedScopes: EBAY_EXTENDED_SCOPES },
     connections: [],
     unmappedCount: 0,
     queryError: null,

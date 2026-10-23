@@ -522,6 +522,14 @@ export async function listLiveSearchableSources(ctx: LiveSearchContext): Promise
 }
 
 export async function runLiveSearch(ctx: LiveSearchContext, input: LiveSearchInput, overrides: Partial<Pick<LiveSearchRuntime, "fetchImpl" | "resolver" | "sleep" | "now" | "cache">> = {}): Promise<LiveSearchSummary> {
+  // S-15 : la recherche en direct ENREGISTRE les offres trouvées (écritures service_role, robots.txt,
+  // historique de synchronisation). Un rôle « lecture seule » ne déclenche aucune écriture : il ne
+  // voit que les offres déjà enregistrées.
+  if ("organization" in ctx && ctx.role === "viewer") {
+    const at = (overrides.now ?? (() => new Date()))().toISOString();
+    log.info("recherche en direct non lancée : rôle lecture seule", { orgId: ctx.organization.id });
+    return { query: input.rawQuery, startedAt: at, finishedAt: at, durationMs: 0, sources: [], queried: 0, found: 0, stored: 0, offerIds: [] };
+  }
   const { admin, organizationId, userId } = resolveContext(ctx);
   const userAgent = serverEnv().SOURCING_USER_AGENT;
   const now = overrides.now ?? (() => new Date());

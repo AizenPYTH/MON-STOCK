@@ -14,12 +14,17 @@ import { ORGANIZATION_HEADER } from "@/features/mobile-api/contract";
  *   jamais dans l'URL) ; il est VALIDÉ auprès de Supabase Auth (`getUser`), pas seulement décodé.
  * - Toutes les requêtes utilisent ensuite le client de l'utilisateur : la RLS s'applique.
  * - L'organisation active vient de l'en-tête `X-Organization-Id` ; l'appartenance est vérifiée.
+ *   Pour une ÉCRITURE ou une action d'ADMINISTRATION (`write` / `admin`), l'en-tête est OBLIGATOIRE
+ *   (S-29) : une écriture ne vise jamais une organisation implicite (organisation par défaut du
+ *   profil). L'application iPhone et le site l'envoient toujours (vérifié : apps/mobile/src/lib/api.ts,
+ *   src/lib/edge-api.ts). Les lectures gardent le repli sur l'organisation par défaut.
  */
 
 /** Taille maximale acceptée pour un JWT (protection contre les en-têtes démesurés). */
 const MAX_TOKEN_LENGTH = 8192;
 
 export const MOBILE_SESSION_EXPIRED = "Votre session a expiré. Reconnectez-vous pour continuer.";
+export const MOBILE_ORGANIZATION_REQUIRED = "Organisation active manquante (en-tête X-Organization-Id) : rouvrez l'application ou choisissez votre organisation, puis réessayez.";
 
 export function bearerTokenOf(request: Pick<Request, "headers">): string | null {
   const header = request.headers.get("authorization");
@@ -67,6 +72,9 @@ export async function requireMobileOrgContext(
     orgId = parsed.data;
   }
   const { supabase, user } = await requireMobileUser(request, factory);
+  if (orgId === null && (options.write || options.admin)) {
+    throw new AppError("VALIDATION", MOBILE_ORGANIZATION_REQUIRED);
+  }
   const ctx = await resolveOrgContext(supabase, user, orgId);
   if (!ctx) {
     throw new AppError(

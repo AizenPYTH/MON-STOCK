@@ -1,6 +1,6 @@
 import "server-only";
 import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
-import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { currentKeyVersion, decryptSecret, encryptSecret } from "@/lib/crypto";
 import { serverEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
@@ -49,7 +49,7 @@ export async function createSupplierConnection(input: { organizationId: string; 
 
 export async function storeConnectionCredentials(connectionId: string, credentials: SupplierCredentials): Promise<void> {
   const admin = createAdminSupabaseClient();
-  const { error } = await admin.from("supplier_connection_secrets").upsert({ connection_id: connectionId, credentials_enc: encryptSecret(JSON.stringify(credentials)), key_version: 1, updated_at: new Date().toISOString() });
+  const { error } = await admin.from("supplier_connection_secrets").upsert({ connection_id: connectionId, credentials_enc: encryptSecret(JSON.stringify(credentials)), key_version: currentKeyVersion(), updated_at: new Date().toISOString() });
   if (error) throw new AppError("INTERNAL", `Identifiants non enregistrés : ${error.message}`);
 }
 

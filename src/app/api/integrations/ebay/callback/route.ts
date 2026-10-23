@@ -3,7 +3,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { createLogger } from "@/lib/logger";
 import { toUserMessage } from "@/lib/errors";
-import { getEbayConnector } from "@/integrations/core/registry";
+import { ebayWebConnect } from "@/features/integrations/ebay-web";
 import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
 import { upsertOAuthConnection } from "@/services/channels/connection-store";
@@ -57,7 +57,10 @@ export async function GET(request: NextRequest) {
   if (!stateRow) return fail("state_unknown");
   if (new Date(stateRow.expires_at).getTime() < Date.now()) return fail("state_expired");
 
-  const connector = getEbayConnector();
+  // Même RuName qu'au démarrage (eBay exige un redirect_uri identique pour l'échange du code).
+  const web = ebayWebConnect();
+  if (web.status !== "ready") return fail(web.status);
+  const connector = web.connector;
   const config = connector.config();
   if (!config) return fail("not_configured");
 

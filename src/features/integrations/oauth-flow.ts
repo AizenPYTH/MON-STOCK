@@ -6,6 +6,8 @@
 export const OAUTH_ERROR_MESSAGES = {
   not_admin: "Seuls les administrateurs de l'organisation peuvent connecter eBay.",
   not_configured: "Intégration eBay non configurée sur ce serveur (EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_RU_NAME). Voir docs/ebay-setup.md.",
+  web_runame_missing: "Connexion eBay indisponible depuis le site : connectez eBay depuis l'app iPhone, ou configurez le RuName web (EBAY_WEB_RU_NAME, voir docs/ebay-setup.md).",
+  wrong_host: "La connexion eBay doit être lancée depuis l'adresse principale de MON STOCK : relancez-la depuis cette page.",
   cross_site: "Demande de connexion refusée : elle ne provient pas de MON STOCK. Relancez la connexion depuis cette page.",
   state_failed: "Impossible de démarrer la connexion eBay (état OAuth non enregistré). Réessayez.",
   access_denied: "Vous avez refusé l'autorisation sur eBay : aucune connexion n'a été créée.",

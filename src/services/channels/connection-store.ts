@@ -1,7 +1,7 @@
 import "server-only";
 import type { ChannelConnection, ChannelProvider } from "@/db/types";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { currentKeyVersion, decryptSecret, EncryptionConfigError, encryptSecret } from "@/lib/crypto";
 import { AppError, fromPostgrestError } from "@/lib/errors";
 import { createLogger } from "@/lib/logger";
 import { ConnectorError, isConnectorError, RECONNECT_ACTION } from "@/integrations/core/errors";
@@ -99,7 +99,7 @@ export async function saveConnectionTokens(connectionId: string, tokens: TokenSe
       connection_id: connectionId,
       access_token_enc: encryptSecret(tokens.accessToken),
       ...(tokens.refreshToken ? { refresh_token_enc: encryptSecret(tokens.refreshToken) } : {}),
-      key_version: 1,
+      key_version: currentKeyVersion(),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "connection_id" },
@@ -382,11 +382,20 @@ async function refreshAndStore(connection: ChannelConnection, refreshEnc: string
   return tokens.accessToken;
 }
 
-/** Déchiffre un secret ; en cas d'échec (clé TOKEN_ENCRYPTION_KEY changée, donnée corrompue) la connexion passe en 'expired'. */
+/**
+ * Déchiffre un secret ; en cas d'échec (clé TOKEN_ENCRYPTION_KEY changée, donnée corrompue) la connexion passe en 'expired'.
+ * Une erreur de CONFIGURATION du serveur (clé absente parce que le Vault n'a pas répondu, clé non
+ * conforme, ancienne version de clé non déclarée) ne touche JAMAIS à la connexion : les jetons sont
+ * intacts, c'est le serveur qu'il faut corriger (S-07, S-28).
+ */
 async function safeDecrypt(connectionId: string, payload: string): Promise<string> {
   try {
     return decryptSecret(payload);
-  } catch {
+  } catch (e) {
+    if (e instanceof EncryptionConfigError || (e instanceof Error && e.name === "EnvError")) {
+      log.error("déchiffrement impossible : configuration du serveur (connexion inchangée)", { connectionId, error: e.message });
+      throw new ConnectorError("NOT_CONFIGURED", "ebay", "Chiffrement des jetons indisponible sur le serveur (configuration). Réessayez dans quelques minutes ; votre connexion n'est pas affectée.", { details: { connectionId, reason: "encryption_config" }, retryable: true });
+    }
     const message = "Les tokens eBay enregistrés ne peuvent pas être déchiffrés (la clé TOKEN_ENCRYPTION_KEY du serveur a probablement changé). Reconnectez votre compte eBay.";
     await markConnectionExpired(connectionId, message);
     throw new ConnectorError("AUTH_EXPIRED", "ebay", message, { details: { connectionId, reason: "decrypt_failed" }, retryable: false });

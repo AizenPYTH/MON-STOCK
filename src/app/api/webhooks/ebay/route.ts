@@ -9,6 +9,7 @@ import { EbayNotificationKeyStore } from "@/integrations/ebay/notification-keys"
 import { findConnectionsByExternalAccount } from "@/services/channels/connection-store";
 import { runChannelSync } from "@/services/sync/engine";
 import { handleEbayNotification } from "@/services/sync/ebay-webhook";
+import { legacyWebRouteDisabled } from "@/lib/legacy-web-routes";
 
 const log = createLogger("EBAY_WEBHOOK");
 const WEBHOOK_PATH = "/api/webhooks/ebay";
@@ -33,6 +34,9 @@ function endpointUrl(): string {
  * Réponse attendue : { challengeResponse: sha256(challengeCode + verificationToken + endpointUrl) }.
  */
 export async function GET(request: NextRequest) {
+  // W-18 : doublon de l'Edge (endpoint enregistré chez eBay), désactivé sauf MONSTOCK_WEB_LEGACY_ROUTES=1.
+  const disabled = legacyWebRouteDisabled();
+  if (disabled) return disabled;
   const challenge = request.nextUrl.searchParams.get("challenge_code");
   if (!challenge) {
     return NextResponse.json({ ok: true, endpoint: WEBHOOK_PATH, usage: "eBay envoie GET ?challenge_code=… pour valider l'endpoint, puis des POST signés." });
@@ -51,6 +55,8 @@ export async function GET(request: NextRequest) {
  * compte, synchronisation) est dans services/sync/ebay-webhook.ts (testée unitairement).
  */
 export async function POST(request: NextRequest) {
+  const disabled = legacyWebRouteDisabled();
+  if (disabled) return disabled;
   return handleEbayNotification(request, {
     admin: createAdminSupabaseClient(),
     isConfigured: () => getEbayConnector().isConfigured(),

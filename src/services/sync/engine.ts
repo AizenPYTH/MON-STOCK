@@ -10,6 +10,7 @@ import { isDeadlineExceeded } from "@/integrations/core/deadline";
 import { getConnector } from "@/integrations/core/registry";
 import { computeOrdersWindow, ORDERS_SLICE_HOURS, resolveOrdersCursor } from "@/integrations/ebay/cursor";
 import { connectorAuthFor, markConnectionExpired } from "@/services/channels/connection-store";
+import { countingAuth, recordEbayApiUsage } from "@/services/channels/ebay-api-usage";
 import { connectionExpiredKey, ordersBlockedKey, resolveAlerts, syncFailedKey, upsertAlert } from "@/services/sync/alerts";
 import { chunk, sanitizeDetails, sanitizeMessage, timeLeftMs, type SyncContext, type SyncErrorInput } from "@/services/sync/context";
 import { emptyListingsResult, listingsPassStateSchema, syncListings, type ListingsPassState } from "@/services/sync/listings";
@@ -204,13 +205,15 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
   const progress: Record<string, Json> = {};
   let syncState = readSyncState(connection.sync_state);
 
+  // I-12 : appels HTTP eBay de ce run comptés (une demande de jeton = un appel), enregistrés en fin de run.
+  const apiCounter = countingAuth(connectorAuthFor(connection.id));
   const ctx: SyncContext = {
     admin,
     connection,
     organizationId: connection.organization_id,
     salesChannelId: connection.sales_channel_id,
     connector,
-    auth: connectorAuthFor(connection.id),
+    auth: apiCounter.auth,
     log,
     recordError: (e) => {
       errors.push(e);
@@ -422,7 +425,7 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
       records_processed: stats.listings_fetched + stats.orders_fetched,
       error_count: errors.length,
       error_summary: errorSummary,
-      stats: { ...stats, budget_reached: state.budgetStopped, pass_complete: state.passComplete, progress } as unknown as NonNullable<Json>,
+      stats: { ...stats, budget_reached: state.budgetStopped, pass_complete: state.passComplete, progress, api_calls: apiCounter.calls() } as unknown as NonNullable<Json>,
     })
     .eq("id", runId);
   if (finishError) log.error("impossible de finaliser le run", { runId, error: finishError.message });
@@ -468,7 +471,9 @@ export async function runChannelSync(connectionId: string, options: RunChannelSy
     });
   }
 
-  log.info(`${label} sync finished`, { runId, status, durationMs, budgetReached: state.budgetStopped, passComplete: state.passComplete, ...stats });
+  if (connection.provider === "ebay") await recordEbayApiUsage(admin, connection, apiCounter.calls());
+
+  log.info(`${label} sync finished`, { runId, status, durationMs, budgetReached: state.budgetStopped, passComplete: state.passComplete, apiCalls: apiCounter.calls(), ...stats });
   return { runId, status, stats, durationMs, errorSummary, connectionId: connection.id, stoppedByBudget: state.budgetStopped };
 }
 

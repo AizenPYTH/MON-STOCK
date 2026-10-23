@@ -22,6 +22,12 @@ vi.mock("@/integrations/core/registry", async () => {
   const h = await import("./sync-harness");
   return { getConnector: () => h.fakeConnector(), getEbayConnector: () => h.fakeConnector(), listConnectorCatalog: () => [] };
 });
+// W-06 : le flux web passe par le connecteur à RuName web dédié (ici, le connecteur simulé).
+vi.mock("@/features/integrations/ebay-web", async (importOriginal) => {
+  const h = await import("./sync-harness");
+  const actual = await importOriginal<typeof import("@/features/integrations/ebay-web")>();
+  return { ...actual, ebayWebConnect: () => ({ status: "ready", connector: h.fakeConnector() }) };
+});
 vi.mock("@/features/auth/dal", () => ({
   getOrgContext: async () => auth.ctx,
   isAdmin: (role: string) => role === "owner" || role === "admin",

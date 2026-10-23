@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { switchOrganizationAction } from "@/features/organizations/actions";
 import { DemoBadge } from "@/components/instrument/figure";
 import { initials } from "@/components/instrument/pure";
 import { cn } from "@/lib/utils";
+import { useMenuKeyboard } from "@/components/layout/use-menu-keyboard";
 
 type Option = { id: string; name: string; isDemo: boolean };
 
@@ -13,29 +14,18 @@ type Option = { id: string; name: string; isDemo: boolean };
  * Sélecteur d'organisation (barre latérale nuit) : carré d'initiales, nom, badge DÉMO, rôle ·
  * devise ; menu blanc des organisations, le choix est envoyé au serveur (formulaire), et entrée
  * « Nouvelle organisation » (W-28 : /onboarding sait créer une organisation supplémentaire).
+ * Clavier (W-25) : motif « menu button » (flèches, Début/Fin, première lettre, Échap → retour au bouton).
  */
 export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed = false }: { options: Option[]; currentId: string; roleLabel: string; currency: string; collapsed?: boolean }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const { rootRef, triggerProps, menuProps } = useMenuKeyboard(open, setOpen);
   const current = options.find((o) => o.id === currentId) ?? options[0];
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
   if (!current) return null;
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
+        {...triggerProps}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
@@ -60,12 +50,12 @@ export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed
         )}
       </button>
       {open ? (
-        <div role="menu" className="ms-fade absolute left-0 top-[58px] z-[60] w-[272px] max-w-[calc(100vw-24px)] rounded-[14px] border border-border bg-surface p-1.5 text-foreground shadow-floating">
-          <div className="ms-mono px-2.5 pb-1.5 pt-2 text-[10px] leading-[13px] text-ink-3">Mes organisations</div>
+        <div role="menu" aria-label="Mes organisations" {...menuProps} className="ms-fade absolute left-0 top-[58px] z-[60] w-[272px] max-w-[calc(100vw-24px)] rounded-[14px] border border-border bg-surface p-1.5 text-foreground shadow-floating">
+          <div aria-hidden="true" className="ms-mono px-2.5 pb-1.5 pt-2 text-[10px] leading-[13px] text-ink-3">Mes organisations</div>
           {options.map((o) => (
-            <form key={o.id} action={switchOrganizationAction}>
+            <form key={o.id} role="none" action={switchOrganizationAction}>
               <input type="hidden" name="organization_id" value={o.id} />
-              <button type="submit" role="menuitem" aria-current={o.id === currentId ? "true" : undefined} className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left hover:bg-line-soft">
+              <button type="submit" role="menuitem" tabIndex={-1} aria-current={o.id === currentId ? "true" : undefined} className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left hover:bg-line-soft">
                 <span aria-hidden="true" className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold", o.id === currentId ? "bg-inverse text-on-inverse" : "bg-selection")}>{initials(o.name)}</span>
                 <span className={cn("flex-1 truncate text-sm", o.id === currentId ? "font-bold" : "font-semibold")}>{o.name}</span>
                 {o.isDemo ? <DemoBadge onNight={false} /> : null}
@@ -73,9 +63,9 @@ export function OrgSwitcher({ options, currentId, roleLabel, currency, collapsed
               </button>
             </form>
           ))}
-          <div className="my-1 border-t border-line-soft" />
+          <div role="separator" className="my-1 border-t border-line-soft" />
           {/* prefetch={false} : /onboarding dépend de l'état du compte (voir W-01). */}
-          <Link href="/onboarding" prefetch={false} role="menuitem" onClick={() => setOpen(false)} className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left text-sm font-semibold hover:bg-line-soft">
+          <Link href="/onboarding" prefetch={false} role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className="flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left text-sm font-semibold hover:bg-line-soft">
             <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-lg bg-selection">
               <Plus aria-hidden="true" className="h-4 w-4" />
             </span>

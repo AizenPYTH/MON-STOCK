@@ -209,6 +209,27 @@ d("tokens eBay : cycle de vie", () => {
     expect((await openAlerts(f.orgId))[0]).toMatchObject({ type: "connection_expired", severity: "critical" });
   });
 
+  it("S-07 / S-28 : erreur de CONFIGURATION du chiffrement (clé absente, ancienne version non déclarée) : connexion INCHANGÉE", async () => {
+    const f = await createFixture({ secrets: { access: "a", refresh: "r" }, tokenExpiresAt: new Date(Date.now() + 3_600_000) });
+    // Texte chiffré avec une clé de version 7, non déclarée sur ce serveur (TOKEN_ENCRYPTION_KEY_PREVIOUS).
+    await q("update public.channel_connection_secrets set access_token_enc = $2 where connection_id = $1", [f.connectionId, "v1k7:AAAAAAAAAAAAAAAA:QUJDREVGRw==:AAAAAAAAAAAAAAAAAAAAAA=="]);
+    const err = await getValidAccessToken(f.connectionId).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "NOT_CONFIGURED" });
+    expect((await stored(f.connectionId)).status).toBe("connected");
+    expect(await openAlerts(f.orgId)).toEqual([]);
+    // Clé absente (Vault momentanément injoignable) : même chose, rien n'est marqué expiré.
+    await q("update public.channel_connection_secrets set access_token_enc = $2 where connection_id = $1", [f.connectionId, encryptSecret("a")]);
+    const key = process.env.TOKEN_ENCRYPTION_KEY;
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    try {
+      await expect(getValidAccessToken(f.connectionId)).rejects.toMatchObject({ code: "NOT_CONFIGURED" });
+    } finally {
+      process.env.TOKEN_ENCRYPTION_KEY = key;
+    }
+    expect((await stored(f.connectionId)).status).toBe("connected");
+    expect(await getValidAccessToken(f.connectionId)).toBe("a");
+  });
+
   it("store_refreshed_access_token est réservée au service_role", async () => {
     const f = await createFixture({ secrets: { access: "a", refresh: "r" } });
     const { connect, asUser } = await import("./helpers");

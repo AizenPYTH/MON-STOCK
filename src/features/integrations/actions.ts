@@ -11,7 +11,7 @@ import type { SyncRunResult } from "@/services/sync/engine";
 import { pushQuantityToChannel } from "@/services/sync/inventory-push";
 import { connectorAuthFor, disconnectConnection } from "@/services/channels/connection-store";
 import { searchSkus } from "@/features/stock/queries";
-import { syncConnectionNow } from "@/features/integrations/sync-service";
+import { syncConnectionNow, webSyncActionDeadline } from "@/features/integrations/sync-service";
 import {
   checkboxOn,
   connectionSettingsSchema,
@@ -41,13 +41,17 @@ function failFrom(e: unknown): ActionResult<never> {
 
 export type SyncActionData = { runId: string; status: SyncRunResult["status"]; summary: string; durationMs: number; errorSummary: string | null; stats: SyncRunResult["stats"] };
 
-/** [Synchroniser maintenant] : exécute réellement le moteur et renvoie le résultat du run. */
+/**
+ * [Synchroniser maintenant] : exécute réellement le moteur et renvoie le résultat du run.
+ * W-10 : échéance comptée dès l'entrée dans l'action, sous le `maxDuration` des pages hôtes.
+ */
 export async function syncNowAction(_prev: ActionResult<SyncActionData> | null, formData: FormData): Promise<ActionResult<SyncActionData>> {
+  const deadlineAt = webSyncActionDeadline(Date.now());
   try {
     const ctx = await requireOrgContextForAction({ write: true });
     const parsed = syncNowSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return fail("Paramètres invalides.", { fieldErrors: fieldErrorsOf(parsed.error.issues) });
-    const { result, summary } = await syncConnectionNow(ctx, parsed.data.connection_id, { trigger: parsed.data.trigger, scope: parsed.data.scope });
+    const { result, summary } = await syncConnectionNow(ctx, parsed.data.connection_id, { trigger: parsed.data.trigger, scope: parsed.data.scope, deadlineAt });
     revalidateAll();
     if (result.status === "failed") {
       return fail(result.errorSummary ?? "La synchronisation a échoué.", { code: "SYNC_FAILED", action: { label: "Voir le détail", href: `/settings/sync/${result.runId}` } });

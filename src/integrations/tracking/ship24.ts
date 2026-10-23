@@ -76,12 +76,12 @@ export function mapShip24Response(body: unknown): TrackingSnapshot {
   };
 }
 
-export async function ship24Track(trackingNumber: string, opts: { destinationCountry?: string | null } = {}, env: Record<string, string | undefined> = process.env): Promise<TrackingSnapshot> {
+export async function ship24Track(trackingNumber: string, opts: { destinationCountry?: string | null; deadline?: number | null } = {}, env: Record<string, string | undefined> = process.env): Promise<TrackingSnapshot> {
   const key = env.SHIP24_API_KEY?.trim();
   if (!key) throw new ConnectorError("NOT_CONFIGURED", "ship24", "Clé Ship24 absente (secret SHIP24_API_KEY).");
   const body: Record<string, string> = { trackingNumber };
   if (opts.destinationCountry && /^[A-Z]{2}$/.test(opts.destinationCountry)) body.destinationCountryCode = opts.destinationCountry;
-  const res = await fetchWithRetry(SHIP24_TRACK_URL, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify(body) }, { provider: "ship24", timeoutMs: 60_000, retries: 0, label: "trackers/track" });
+  const res = await fetchWithRetry(SHIP24_TRACK_URL, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json; charset=utf-8", Accept: "application/json" }, body: JSON.stringify(body) }, { provider: "ship24", timeoutMs: 60_000, retries: 0, label: "trackers/track", deadline: opts.deadline ?? null });
   if (res.status === 401 || res.status === 403) throw new ConnectorError("AUTH_EXPIRED", "ship24", "Clé Ship24 refusée ou abonnement inactif (SHIP24_API_KEY).", { httpStatus: res.status });
   const json = await readJson(res, "ship24");
   if (res.status === 400 || res.status === 422) return { status: "not_found", statusDetail: "Numéro refusé par Ship24 (format invalide).", estimatedDelivery: null, deliveredAt: null, events: [], carrierLabel: null, providerUrl: null };

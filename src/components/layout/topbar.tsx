@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Bell, Boxes, FileSpreadsheet, Info, Menu, Plus, Search, Sparkles, Truck, UserPlus } from "lucide-react";
@@ -8,6 +8,7 @@ import { initials } from "@/components/instrument/pure";
 import type { ShellAlert } from "@/features/shell/queries";
 import { formatRelativeShort } from "@/components/layout/relative-time";
 import { cn } from "@/lib/utils";
+import { useMenuKeyboard } from "@/components/layout/use-menu-keyboard";
 
 export const ADD_ITEMS = [
   { href: "/stock/new", label: "Produit", sub: "Variantes, saisie ou dictée", icon: Boxes, kbd: "P" },
@@ -16,39 +17,25 @@ export const ADD_ITEMS = [
   { href: "/tools/tracking/new", label: "Suivi de colis", sub: "Numéro ou étiquette collée", icon: Truck, kbd: "S" },
 ] as const;
 
-/** Menu flottant blanc (rayon 14, ombre de ce qui flotte) refermé au clic extérieur / Échap. */
-function useDismiss(open: boolean, close: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open, close]);
-  return ref;
-}
-
+/**
+ * Menus flottants blancs (rayon 14, ombre de ce qui flotte) : motif WAI-ARIA « menu button » (W-25),
+ * refermés au clic extérieur, à Échap (focus rendu au bouton) ou à Tab — voir use-menu-keyboard.ts.
+ */
 const FLOAT = "ms-fade absolute right-0 top-[48px] z-[60] max-sm:fixed max-sm:inset-x-3 max-sm:top-[60px] max-sm:w-auto! rounded-[14px] border border-border bg-surface text-foreground shadow-floating";
 
 function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number | null }) {
   const [open, setOpen] = useState(false);
-  const ref = useDismiss(open, () => setOpen(false));
+  const { rootRef, triggerProps, menuProps } = useMenuKeyboard(open, setOpen);
+  const summary = total === null ? "nombre inconnu" : `${total} à traiter`;
   return (
-    <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={total === null ? "Alertes : nombre inconnu" : `Alertes : ${total} à traiter`} className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-night-raised text-on-night transition-colors duration-150 ease-standard hover:bg-night-hover">
+    <div ref={rootRef} className="relative">
+      <button type="button" {...triggerProps} onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" aria-label={`Alertes : ${summary}`} className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-night-raised text-on-night transition-colors duration-150 ease-standard hover:bg-night-hover">
         <Bell aria-hidden="true" className="h-[18px] w-[18px]" />
         {total !== null && total > 0 ? <span aria-hidden="true" className="absolute right-[9px] top-2 h-2 w-2 rounded-full bg-amber ring-2 ring-night-raised" /> : null}
       </button>
       {open ? (
-        <div role="dialog" aria-label="Alertes" className={cn(FLOAT, "w-[400px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl")}>
-          <div className="flex items-center justify-between px-4 pb-2.5 pt-3.5">
+        <div role="menu" aria-label={alerts.length === 0 ? `Alertes : ${summary}, aucune alerte ouverte` : `Alertes : ${summary}, par gravité`} {...menuProps} className={cn(FLOAT, "w-[400px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl")}>
+          <div aria-hidden="true" className="flex items-center justify-between px-4 pb-2.5 pt-3.5">
             <span className="flex items-center gap-2">
               <span className="ms-mono text-[11px] leading-[14px] text-muted">Alertes</span>
               <span className="ms-code text-[11px]">{total ?? "—"}</span>
@@ -56,10 +43,10 @@ function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number | n
             <span className="ms-code text-[11px] text-ink-3">par gravité</span>
           </div>
           {alerts.length === 0 ? (
-            <p className="border-t border-line-soft px-4 py-5 text-sm font-semibold text-muted">Aucune alerte ouverte.</p>
+            <p aria-hidden="true" className="border-t border-line-soft px-4 py-5 text-sm font-semibold text-muted">Aucune alerte ouverte.</p>
           ) : (
             alerts.map((a) => (
-              <Link key={a.id} href={(a.href ?? "/stock/alerts") as never} onClick={() => setOpen(false)} className="flex min-h-14 items-center gap-3 border-t border-line-soft px-4 py-2.5 hover:bg-line-soft">
+              <Link key={a.id} role="menuitem" tabIndex={-1} href={(a.href ?? "/stock/alerts") as never} onClick={() => setOpen(false)} className="flex min-h-14 items-center gap-3 border-t border-line-soft px-4 py-2.5 hover:bg-line-soft">
                 <ToneIcon tone={a.severity === "critical" ? "danger" : a.severity === "warning" ? "warning" : "info"}>{a.severity === "info" ? <Info /> : <AlertTriangle />}</ToneIcon>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-semibold">{a.title}</span>
@@ -69,7 +56,7 @@ function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number | n
               </Link>
             ))
           )}
-          <Link href="/stock/alerts" onClick={() => setOpen(false)} className="block border-t border-line-soft px-4 py-3 text-[13px] font-bold hover:bg-line-soft">
+          <Link href="/stock/alerts" role="menuitem" tabIndex={-1} onClick={() => setOpen(false)} className="block border-t border-line-soft px-4 py-3 text-[13px] font-bold hover:bg-line-soft">
             Toutes les alertes
           </Link>
         </div>
@@ -79,11 +66,12 @@ function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number | n
 }
 
 function AddMenu({ readOnly, open, setOpen }: { readOnly: boolean; open: boolean; setOpen: (v: boolean) => void }) {
-  const ref = useDismiss(open, () => setOpen(false));
+  const { rootRef, triggerProps, menuProps } = useMenuKeyboard(open, setOpen);
   return (
-    <div ref={ref} className="relative">
+    <div ref={rootRef} className="relative">
       <button
         type="button"
+        {...triggerProps}
         onClick={() => setOpen(!open)}
         disabled={readOnly}
         aria-expanded={open}
@@ -99,9 +87,9 @@ function AddMenu({ readOnly, open, setOpen }: { readOnly: boolean; open: boolean
         </kbd>
       </button>
       {open ? (
-        <div role="menu" className={cn(FLOAT, "w-[280px] p-1.5")}>
+        <div role="menu" aria-label="Ajouter" {...menuProps} className={cn(FLOAT, "w-[280px] p-1.5")}>
           {ADD_ITEMS.map((a) => (
-            <Link key={a.href} role="menuitem" href={a.href as never} onClick={() => setOpen(false)} className="flex min-h-11 items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 hover:bg-line-soft">
+            <Link key={a.href} role="menuitem" tabIndex={-1} href={a.href as never} onClick={() => setOpen(false)} className="flex min-h-11 items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 hover:bg-line-soft">
               <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-background">
                 <a.icon aria-hidden="true" className="h-4 w-4" />
               </span>

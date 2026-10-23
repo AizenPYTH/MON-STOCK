@@ -7,7 +7,7 @@ import type { Client } from "pg";
 import { asService, asSuperuser, asUser, createOrgAs, createUser } from "./helpers";
 
 /** Tables accessibles au seul service_role (aucune policy, aucun privilège client). */
-export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states", "supplier_feed_secrets", "advisor_retention_policy", "sourcing_import_chunks", "sourcing_host_policies"] as const;
+export const SERVICE_ROLE_ONLY_TABLES = ["channel_connection_secrets", "supplier_connection_secrets", "oauth_states", "supplier_feed_secrets", "advisor_retention_policy", "sourcing_import_chunks", "sourcing_host_policies", "api_rate_events", "ops_supervision_events"] as const;
 
 /** Tables globales (sans organisation), lisibles par tout utilisateur authentifié. */
 export const GLOBAL_READ_TABLES = ["fx_rates"] as const;
@@ -200,6 +200,10 @@ export async function seedFullOrg(c: Client, ownerEmail: string, name: string, s
   );
   await one("sourcing_saved_offers", "insert into public.sourcing_saved_offers (organization_id, offer_id, price_at_save, currency_at_save) values ($1, $2, 180, 'EUR') returning id", [orgId, offer]);
   await one("ai_usage_events", "insert into public.ai_usage_events (organization_id, user_id, kind) values ($1, $2, 'assistant') returning id", [orgId, ownerId]);
+  // Migrations 20261023000800 → 0820 : limites de débit, supervision, compteur d'appels eBay.
+  await one("api_rate_events", "insert into public.api_rate_events (organization_id, user_id, bucket, subject) values ($1, $2, 'ebay_sync', $3) returning id", [orgId, ownerId, connection]);
+  await one("ops_supervision_events", "insert into public.ops_supervision_events (kind, source_ref, organization_id, message) values ('sync_stale', $1, $2, 'Aucune synchronisation réussie') returning id", [connection, orgId]);
+  await one("ebay_api_usage_daily", "insert into public.ebay_api_usage_daily (connection_id, organization_id, usage_date, calls) values ($1, $2, current_date, 17) returning id", [connection, orgId]);
   await one("shipping_rate_cards", "insert into public.shipping_rate_cards (organization_id, carrier, service, bands) values ($1, 'Colissimo', 'Domicile', '[{\"maxWeightKg\":1,\"price\":\"7.35\"}]'::jsonb) returning id", [orgId]);
   await one("tracked_parcels", "insert into public.tracked_parcels (organization_id, tracking_number, carrier_code, label) values ($1, $2, 'colissimo', 'Fixture') returning id", [orgId, `6A${slug.replace(/[^0-9]/g, "").padEnd(11, "0").slice(0, 11)}`]);
   const conv = await one("advisor_conversations", "insert into public.advisor_conversations (organization_id, user_id, title) values ($1, $2, 'Bilan') returning id", [orgId, ownerId]);

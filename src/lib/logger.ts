@@ -1,6 +1,11 @@
 /**
  * Logger structuré. Les clés sensibles sont masquées : aucun token ne doit
  * jamais apparaître dans les logs.
+ *
+ * Format (S-17) : UNE ligne JSON par événement — `{ ts, level, scope, message, requestId?, ...meta }` —
+ * lisible par les journaux Supabase / Vercel et filtrable par champ. L'identifiant de requête vient
+ * du fournisseur de contexte enregistré par le point d'entrée (Edge : server/edge/request-context.ts) ;
+ * ce module n'importe rien (utilisable partout côté serveur).
  */
 type Level = "debug" | "info" | "warn" | "error";
 
@@ -19,21 +24,57 @@ export function redact<T>(value: T, depth = 0): T {
   return value;
 }
 
-function emit(level: Level, scope: string, message: string, meta?: Record<string, unknown>) {
-  const line = {
-    ts: new Date().toISOString(),
-    level,
-    scope,
-    message,
-    ...(meta ? redact(meta) : {}),
-  };
-  const text = `[${scope}] ${message}`;
-  const payload = meta ? JSON.stringify(redact(meta)) : "";
-  if (level === "error") console.error(text, payload);
-  else if (level === "warn") console.warn(text, payload);
+/** Contexte de corrélation (ex. `{ requestId }`) ajouté à chaque ligne. */
+export type LogContext = { requestId?: string } & Record<string, string | number | boolean | null | undefined>;
+type LogContextProvider = () => LogContext | undefined;
+
+let contextProvider: LogContextProvider | null = null;
+
+/** Enregistré une fois par le point d'entrée (Edge, instrumentation web). `null` le retire. */
+export function setLogContextProvider(provider: LogContextProvider | null): void {
+  contextProvider = provider;
+}
+
+function currentContext(): LogContext | undefined {
+  try {
+    return contextProvider?.() ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface LogLine {
+  ts: string;
+  level: Level;
+  scope: string;
+  message: string;
+  requestId?: string;
+  [key: string]: unknown;
+}
+
+function serialize(line: LogLine): string {
+  try {
+    return JSON.stringify(line, (_k, v: unknown) => (v instanceof Error ? { name: v.name, message: v.message } : typeof v === "bigint" ? v.toString() : v));
+  } catch {
+    // Référence circulaire, etc. : la ligne reste émise, sans les métadonnées.
+    return JSON.stringify({ ts: line.ts, level: line.level, scope: line.scope, message: line.message, requestId: line.requestId, meta: "[non sérialisable]" });
+  }
+}
+
+const BASE_FIELDS = new Set(["ts", "level", "scope", "message", "requestId"]);
+
+function emit(level: Level, scope: string, message: string, meta?: Record<string, unknown>): LogLine {
+  const ctx = currentContext();
+  const line: LogLine = { ts: new Date().toISOString(), level, scope, message };
+  if (ctx?.requestId) line.requestId = ctx.requestId;
+  // Une métadonnée homonyme d'un champ de base (ex. `message` d'une erreur) est conservée sous « meta.<nom> ».
+  for (const [k, v] of Object.entries(meta ? redact(meta) : {})) line[BASE_FIELDS.has(k) ? `meta.${k}` : k] = v;
+  const text = serialize(line);
+  if (level === "error") console.error(text);
+  else if (level === "warn") console.warn(text);
   else if (level === "debug") {
-    if (process.env.NODE_ENV !== "production") console.debug(text, payload);
-  } else console.info(text, payload);
+    if (process.env.NODE_ENV !== "production") console.debug(text);
+  } else console.info(text);
   return line;
 }
 

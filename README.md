@@ -137,7 +137,7 @@ Guide complet : [`docs/ebay-setup.md`](docs/ebay-setup.md). En résumé :
 2. Dans *User Tokens → Get a Token from eBay via Your Application*, créez un **RuName** (Redirect URL name) et renseignez :
    - *Your auth accepted URL* : `${NEXT_PUBLIC_APP_URL}/api/integrations/ebay/callback`
    - *Your auth declined URL* : `${NEXT_PUBLIC_APP_URL}/settings/integrations?error=declined`
-3. Copiez `App ID (Client ID)`, `Cert ID (Client Secret)` et le RuName dans `.env.local` (`EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME`), choisissez `EBAY_ENV=sandbox` ou `production`.
+3. Copiez `App ID (Client ID)`, `Cert ID (Client Secret)` et ce RuName web dans `.env.local` (`EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_WEB_RU_NAME`), choisissez `EBAY_ENV=sandbox` ou `production`. `EBAY_RU_NAME` est le RuName du relais de l'application iPhone (Edge Function, `docs/SERVER.md` §4) : eBay n'accepte qu'une URL de retour par RuName. Sans `EBAY_WEB_RU_NAME`, le site invite à connecter eBay depuis l'iPhone.
 4. Scopes OAuth demandés (user token) : `https://api.ebay.com/oauth/api_scope`, `…/sell.fulfillment` (commandes), `…/sell.inventory` (annonces, quantités), `…/commerce.identity.readonly` (identité du compte).
 5. Pour recevoir les notifications eBay (obligatoire en production : *Marketplace Account Deletion*), déclarez l'endpoint `${NEXT_PUBLIC_APP_URL}/api/webhooks/ebay` et le jeton `EBAY_WEBHOOK_VERIFICATION_TOKEN` dans *Alerts & Notifications*.
 
@@ -154,8 +154,9 @@ En cas de refus ou d'erreur, l'utilisateur est renvoyé vers `/settings/integrat
 Le moteur (`src/services/sync/`) est appelé de trois façons :
 
 - **Manuelle** : bouton *Synchroniser maintenant* (`/settings/integrations`).
-- **Automatique / périodique** : `GET /api/cron/sync` avec l'en-tête `Authorization: Bearer ${CRON_SECRET}` (Vercel Cron via `vercel.json`, ou tout scheduler). Chaque connexion a son intervalle (`sync_interval_minutes`) et peut être désactivée (`auto_sync`).
-- **Webhook** : `POST /api/webhooks/ebay` (signature vérifiée, événements dédoublonnés dans `webhook_events`).
+- **Automatique / périodique** : `pg_cron` → Edge Function `/api/cron/sync` toutes les 15 min (`docs/SERVER.md`). Chaque connexion a son intervalle (`sync_interval_minutes`) et peut être désactivée (`auto_sync`).
+- **Webhook** : notifications eBay reçues par l'Edge Function (signature vérifiée, événements dédoublonnés dans `webhook_events`).
+- Les routes web équivalentes (`/api/cron/*`, `/api/webhooks/ebay`) sont désactivées par défaut (404) ; `MONSTOCK_WEB_LEGACY_ROUTES=1` les réactive (W-18).
 
 Chaque exécution crée une ligne `sync_runs` (`started_at`, `finished_at`, `status`, `trigger`, `records_processed`, `error_count`, `stats`) et des lignes `sync_errors` détaillées, visibles sur `/settings/sync`. Rien n'est supposé réussi : les compteurs reflètent ce qui a réellement été traité.
 

@@ -36,6 +36,24 @@ import { sourcingUserAgent } from "@/lib/env";
  */
 const log = createLogger("WEEKLY_COLLECTION");
 
+/**
+ * S-27 : la collecte hebdomadaire dépend de la migration supabase/pending/20261014000100 (colonnes
+ * de reprise de supplier_sources, fonction sourcing_close_full_collection), PAS ENCORE APPLIQUÉE.
+ * Tant qu'elle ne l'est pas, la route planifiée répond « désactivée » sans rien exécuter. Vrai dès que
+ * les colonnes existent (aucun redéploiement nécessaire après l'application de la migration).
+ */
+export const WEEKLY_COLLECTION_DISABLED_MESSAGE =
+  "Collecte hebdomadaire désactivée : la migration supabase/pending/20261014000100_sourcing_weekly_collection.sql n'est pas appliquée sur cette base. Aucune collecte n'a été lancée.";
+
+const MISSING_SCHEMA_CODES = new Set(["42703", "42P01", "PGRST204", "PGRST205"]);
+
+export async function weeklyCollectionSchemaReady(admin: AdminSupabaseClient = createAdminSupabaseClient()): Promise<boolean> {
+  const { error } = await admin.from("supplier_sources").select("id, collection_started_at, collect_cursor").limit(1);
+  if (!error) return true;
+  if (MISSING_SCHEMA_CODES.has(error.code ?? "")) return false;
+  throw new Error(`contrôle du schéma de la collecte hebdomadaire impossible : ${error.message}`);
+}
+
 export const WEEKLY_PASS_BUDGET_MS = 100_000;
 export const WEEKLY_MAX_SOURCES_PER_PASS = 5;
 export const WEEKLY_MAX_SITEMAP_SOURCES_PER_PASS = 2;

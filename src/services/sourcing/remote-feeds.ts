@@ -4,7 +4,7 @@ import type { Json } from "@/db/database.types";
 import type { OrgContext } from "@/features/auth/dal";
 import type { CatalogPreviewDTO } from "@/features/mobile-api/contract";
 import { createAdminSupabaseClient, type AdminSupabaseClient } from "@/lib/supabase/admin";
-import { encryptSecret } from "@/lib/crypto";
+import { currentKeyVersion, encryptSecret } from "@/lib/crypto";
 import { authHeaders, feedAuthSchema as authSchema } from "@/services/sourcing/feed-secrets";
 import { serverEnv } from "@/lib/env";
 import { AppError, fromPostgrestError } from "@/lib/errors";
@@ -171,7 +171,7 @@ export async function createRemoteFeed(ctx: OrgContext, input: z.infer<typeof re
     .single();
   if (feedErr || !feed) throw fromPostgrestError(feedErr ?? { message: "Flux non créé" });
   if (input.auth.kind !== "none") {
-    const { error } = await admin.from("supplier_feed_secrets").upsert({ feed_id: feed.id, organization_id: orgId, credentials_enc: encryptSecret(JSON.stringify(input.auth)), key_version: 1, updated_at: now.toISOString() });
+    const { error } = await admin.from("supplier_feed_secrets").upsert({ feed_id: feed.id, organization_id: orgId, credentials_enc: encryptSecret(JSON.stringify(input.auth)), key_version: currentKeyVersion(), updated_at: now.toISOString() });
     if (error) throw new AppError("INTERNAL", "Identifiants du flux non enregistrés.");
   }
   return { supplierId: supplierId!, sourceId: source.id, feedId: feed.id };

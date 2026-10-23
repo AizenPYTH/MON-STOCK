@@ -3,6 +3,8 @@ import { memoryDb, type MemoryDb } from "./helpers/memory-db";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/env", () => ({ serverEnv: () => ({ TOKEN_ENCRYPTION_KEY: "k".repeat(44), SOURCING_USER_AGENT: "MonStockBot/1.0 (+https://monstock.example)" }) }));
+// Le chiffrement lit sa clé dans l'environnement et exige 32 octets en base64 (S-28).
+process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
 let db: MemoryDb;
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient: () => db.client }));
 
