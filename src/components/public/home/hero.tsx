@@ -38,7 +38,7 @@ export function Hero() {
         <h1 id="hero-titre" className="mt-4 text-[56px] font-extrabold leading-[0.94] tracking-[-0.05em] text-on-night min-[760px]:mt-5 min-[760px]:text-[min(148px,9.8vw)]">
           <span className="mk-rise block" style={ENTER(100)}>
             Un seul stock.
-          </span>
+          </span>{" "}
           <span className="mk-rise block" style={ENTER(240)}>
             Tous vos <Accent className="text-mint">canaux.</Accent>
           </span>

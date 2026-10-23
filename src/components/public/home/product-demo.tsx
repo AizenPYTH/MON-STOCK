@@ -168,9 +168,9 @@ export function ProductDemo() {
                   <span className="text-[14px] font-semibold text-on-night-muted">références · 3 ruptures · 5 faibles</span>
                 </p>
               </div>
-              <div className="text-right">
+              <div className="min-[560px]:text-right">
                 <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-on-night-muted">CA du jour</span>
-                <p className="mt-1.5 flex items-baseline justify-end gap-2">
+                <p className="mt-1.5 flex flex-row-reverse items-baseline justify-end gap-2 min-[560px]:flex-row">
                   <span className={cn("text-[13px] font-extrabold text-mint transition-opacity duration-500", s >= 4 ? "opacity-100" : "opacity-0")}>+479&nbsp;€</span>
                   <span ref={caRef} className="text-[26px] font-light leading-none tracking-[-0.03em] tabular-nums min-[760px]:text-[30px]">
                     {euro0(BEFORE.revenue)}

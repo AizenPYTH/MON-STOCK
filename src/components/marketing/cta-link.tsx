@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Bouton-lien du site public (handoff v2 §E `Button`) : 56 px de haut (`lg`), rayon 14.
- * Variantes : `primary` (menthe, sur nuit) · `glass` (voile clair, sur nuit, sans backdrop-filter) ·
+ * Variantes : `primary` (menthe, sur nuit) · `glass` (voile opaque à 78 %, sur nuit, sans flou d’arrière-plan) ·
  * `ink` (encre, sur menthe) · `outline` (contour encre, sur menthe ou papier).
  * Survol (souris) : y −2 et fond « pressed », 300 ms ; sous « réduire les animations » : couleur seule.
  * Les liens vers /signup et /login n'ont jamais de préchargement (redirections selon la session).

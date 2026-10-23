@@ -102,14 +102,17 @@ export function ScrollScenes() {
           c.fiche.style.opacity = f.toFixed(3);
           c.fiche.style.transform = `scale(${lerp(0.94, 1, f).toFixed(3)})`;
         }
+        // Texte A → B entre .38 et .66 : A sort d'abord, B entre ensuite (jamais superposés lisiblement).
         const t = range(p, 0.38, 0.66);
+        const ta = range(t, 0, 0.5);
+        const tb = range(t, 0.5, 1);
         if (c.a) {
-          c.a.style.opacity = (1 - t).toFixed(3);
-          c.a.style.transform = `translateY(${(-24 * t).toFixed(1)}px)`;
+          c.a.style.opacity = (1 - ta).toFixed(3);
+          c.a.style.transform = `translateY(${(-24 * ta).toFixed(1)}px)`;
         }
         if (c.b) {
-          c.b.style.opacity = t.toFixed(3);
-          c.b.style.transform = `translateY(${(24 * (1 - t)).toFixed(1)}px)`;
+          c.b.style.opacity = tb.toFixed(3);
+          c.b.style.transform = `translateY(${(24 * (1 - tb)).toFixed(1)}px)`;
         }
         if (c.bar) c.bar.style.transform = `scaleX(${p.toFixed(4)})`;
       });

@@ -18,7 +18,7 @@ export function useSaleSequence({ auto, targetRef }: { auto: boolean; targetRef?
   const [step, setStep] = useState(0);
   const [run, setRun] = useState(0);
   const timers = useRef<number[]>([]);
-  const lastPlay = useRef(0);
+  const lastPlay = useRef(Number.NEGATIVE_INFINITY);
   const visible = useRef(false);
   const reduced = useRef(false);
 
