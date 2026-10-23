@@ -149,6 +149,18 @@ async function cachedAudio(path: string, cacheName: string, organizationId: stri
   return downloaded.uri;
 }
 
+/** M-19 : purge du cache audio des réponses du conseiller (déconnexion, suppression de compte). */
+export async function clearVoiceCache(): Promise<void> {
+  const fs = fsModule();
+  if (!fs) return;
+  try {
+    const dir = new fs.Directory(fs.Paths.cache, "advisor-voice");
+    if (dir.exists) dir.delete();
+  } catch {
+    // purge best effort : le système vide aussi ce cache
+  }
+}
+
 /** Lecture d'un fichier local ; `true` quand la lecture a démarré, `false` sinon. */
 async function playFile(uri: string, gen: number, handlers: SpeakHandlers): Promise<boolean> {
   const mod = audioModule();

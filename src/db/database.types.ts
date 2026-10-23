@@ -1530,6 +1530,15 @@ isOneToOne: false
 "delete_organization":
 { Args: { "p_organization_id": string,"p_confirmation": string }; Returns: Json
                            },
+"account_deletion_plan":
+{ Args: { "p_user_id": string }; Returns: { "organization_id": string,"organization_name": string,"role": Database["public"]["Enums"]["org_role"],"is_demo": boolean,"other_members": number,"other_owners": number,"has_orders": boolean,"active_channel_connection_ids": string[],"active_supplier_connections": number }[]
+                           },
+"delete_account_organization":
+{ Args: { "p_user_id": string,"p_organization_id": string }; Returns: Json
+                           },
+"delete_account_data":
+{ Args: { "p_user_id": string }; Returns: Json
+                           },
 "purge_retention":
 { Args: { "p_dry_run"?: boolean,"p_sync_runs_days"?: number | null,"p_webhook_events_days"?: number | null,"p_oauth_states_grace_hours"?: number | null,"p_cron_run_details_days"?: number | null,"p_supplier_history_days"?: number | null,"p_resolved_alerts_days"?: number | null,"p_buyer_username_days"?: number | null }; Returns: Json
                            },

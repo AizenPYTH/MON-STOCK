@@ -9,5 +9,5 @@ MODULES="${1:?dossier node_modules contenant react-native-web}"
 OUT="${2:?dossier de sortie}"
 MONSTOCK_PREVIEW=1 MONSTOCK_PREVIEW_MODULES="$MODULES" \
   EXPO_PUBLIC_SUPABASE_URL=https://preview.invalid EXPO_PUBLIC_SUPABASE_ANON_KEY=preview \
-  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_preview EXPO_PUBLIC_API_URL=https://preview.invalid \
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_preview \
   node node_modules/expo/bin/cli export --clear --platform web --output-dir "$OUT"

@@ -188,11 +188,20 @@ function ProductRow({ product: p, first, last, restock, currency }: { product: P
   const coverText = p.level === "out" ? "rupture" : cover === null ? "—" : `≈ ${formatNumber(cover)} j`;
   const coverFg = p.level === "out" ? color.dangerInk : p.level === "low" ? color.accentInkOnSoft : color.ink3;
   const meta = [p.code, `${p.skus.length} var.`, units30 > 0 ? `${formatNumber(units30)} v./30 j` : null, p.activeListings === 0 ? "sans annonce" : null].filter(Boolean).join(" · ");
+  const restockLabel = restock?.bestOfferId ? `Racheter dès ${formatMoney(restock.bestPrice, currency)} chez ${restock.bestSupplier ?? "le fournisseur"}` : null;
+  const openRestock = () => restock?.bestOfferId && router.push({ pathname: "/radar/[offerId]", params: { offerId: restock.bestOfferId } });
   return (
     <RowFrame first={first} last={last}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${p.name}, ${formatNumber(p.totalAvailable)} en stock${p.level === "out" ? ", rupture" : p.level === "low" ? ", stock faible" : ""}${cover !== null && p.level !== "out" ? `, environ ${cover} jours de ventes` : ""}`}
+        accessibilityLabel={`${p.name}, ${formatNumber(p.totalAvailable)} en stock${p.level === "out" ? ", rupture" : p.level === "low" ? ", stock faible" : ""}${cover !== null && p.level !== "out" ? `, environ ${cover} jours de ventes` : ""}${restockLabel ? `. ${restockLabel}` : ""}`}
+        accessibilityHint={restockLabel ? "Balayez vers le haut ou le bas pour l'action « Racheter »." : undefined}
+        // M-11 : un Pressable masque ses enfants à VoiceOver → l'action « Racheter » est exposée
+        // comme action personnalisée de la ligne (le bouton visible reste pour le toucher).
+        accessibilityActions={restockLabel ? [{ name: "restock", label: restockLabel }] : undefined}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === "restock") openRestock();
+        }}
         onPress={() => router.push({ pathname: "/product/[productId]", params: { productId: p.productId } })}
         style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: space[3], minHeight: 68, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: pressed ? color.surfacePressed : "transparent", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft })}
       >
@@ -210,12 +219,12 @@ function ProductRow({ product: p, first, last, restock, currency }: { product: P
           <Txt variant="code" numberOfLines={1} style={{ fontSize: 10.5 }}>
             {meta}
           </Txt>
-          {restock ? (
+          {restock && restockLabel ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Racheter dès ${formatMoney(restock.bestPrice, currency)} chez ${restock.bestSupplier ?? "le fournisseur"}`}
-              onPress={() => router.push({ pathname: "/radar/[offerId]", params: { offerId: restock.bestOfferId! } })}
-              hitSlop={6}
+              accessibilityLabel={restockLabel}
+              onPress={openRestock}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", maxWidth: "100%", marginTop: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radius.xs, backgroundColor: pressed ? color.mintSoft : color.successSoft })}
             >
               <PackagePlus size={13} color={color.success} strokeWidth={2.2} />

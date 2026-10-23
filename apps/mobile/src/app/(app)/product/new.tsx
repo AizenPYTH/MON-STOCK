@@ -13,6 +13,9 @@ import { AlertBanner, BottomSheet, Button, Card, DetailHeader, ErrorState, Filte
 import { draftToInput, newVariantDraft, VariantCard, withSuggestedCode, type VariantDraft } from "~/components/product-form";
 import { VoiceInput } from "~/components/voice-input";
 import { draftProduct, draftToForm } from "~/data/ai";
+import { AiConsentSheet } from "~/components/ai-consent";
+import { useUser } from "~/auth/session-provider";
+import { useAiConsent } from "~/lib/ai-consent";
 import { color, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 
@@ -37,6 +40,10 @@ export default function NewProductScreen() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNotes, setAiNotes] = useState<string[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
+  const user = useUser();
+  const consent = useAiConsent(user?.id);
+  /** phrase en attente de l'accord IA (M-07) : rien n'est envoyé avant « J'accepte » */
+  const [consentFor, setConsentFor] = useState<string | null>(null);
 
   const identity = { brand, model, name };
   const displayName = productDisplayName(identity);
@@ -70,6 +77,16 @@ export default function NewProductScreen() {
 
   /** Phrase dictée ou écrite → compréhension par l'IA (serveur) → formulaire pré-rempli, à vérifier. */
   async function analyze(text: string) {
+    if (consent.status !== "granted") {
+      setAiText(text);
+      setConsentFor(text);
+      return;
+    }
+    await runDraft(text);
+  }
+
+  /** Envoi au serveur (accord IA déjà donné). */
+  async function runDraft(text: string) {
     setAiText(text);
     setAiBusy(true);
     setAiError(null);
@@ -222,6 +239,17 @@ export default function NewProductScreen() {
         <Button label="Confirmer la création" loading={create.isPending} onPress={submit} testID="product-create-confirm" />
         <Button label="Revenir au formulaire" variant="ghost" onPress={() => setConfirming(false)} />
       </BottomSheet>
+      <AiConsentSheet
+        visible={consentFor !== null}
+        onClose={() => setConsentFor(null)}
+        onAccept={() => {
+          const pending = consentFor;
+          setConsentFor(null);
+          void consent.grant().then(() => {
+            if (pending) void runDraft(pending);
+          });
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }

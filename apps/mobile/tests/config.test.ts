@@ -6,7 +6,7 @@ describe("configuration publique", () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.config.appEnv).toBe("TEST");
-      expect(r.config.apiUrl).toBeUndefined();
+      expect(r.config.siteUrl).toBe("https://mon-stock-chi.vercel.app");
     }
   });
 
@@ -21,8 +21,10 @@ describe("configuration publique", () => {
     expect(http.ok).toBe(false);
   });
 
-  it("refuse une URL d'API non https", () => {
-    const r = parseConfig({ EXPO_PUBLIC_SUPABASE_URL: "https://abc.supabase.co", EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_xxxxxxxxxxxxxxxxxxxx", EXPO_PUBLIC_API_URL: "http://monstock.example" });
-    expect(r.ok).toBe(false);
+  it("site web public : surcharge https acceptée (sans / final), http refusé", () => {
+    const base = { EXPO_PUBLIC_SUPABASE_URL: "https://abc.supabase.co", EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_xxxxxxxxxxxxxxxxxxxx" };
+    const ok = parseConfig({ ...base, EXPO_PUBLIC_SITE_URL: "https://monstock.example/" });
+    expect(ok.ok && ok.config.siteUrl).toBe("https://monstock.example");
+    expect(parseConfig({ ...base, EXPO_PUBLIC_SITE_URL: "http://monstock.example" }).ok).toBe(false);
   });
 });

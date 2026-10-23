@@ -50,6 +50,7 @@
  *   POST /api/advisor/chat                conseiller IA (texte / voix) : flux NDJSON si Accept: application/x-ndjson
  *   POST /api/advisor/actions/confirm     exécute UNE action préparée, après revérification des droits (bouton de l'app)
  *   POST /api/advisor/actions/cancel      annule une action préparée
+ *   POST /api/account/delete              suppression DÉFINITIVE du compte (jeton revérifié, { confirmation: "SUPPRIMER" }) — sans organisation
  *   POST /api/cron/sync | /api/cron/sourcing | /api/cron/library-checks | /api/cron/sourcing-imports
  *        | /api/cron/library-review-report (lecture seule ; /api/cron/library-activate : supprimée, 410)
  *                                         tâches planifiées (Authorization: Bearer CRON_SECRET)
@@ -70,8 +71,8 @@ import { runWeeklyCollection, weeklyRunSchema } from "@/services/sourcing/weekly
 import { ebayEnv } from "@/lib/env";
 import { authorizeCron } from "@/lib/cron-auth";
 import { errorResponse, handle, parseBody, parseQuery, uuidParam } from "@/features/mobile-api/http";
-import { requireMobileOrgContext } from "@/features/mobile-api/context";
-import { ADVISOR_MESSAGE_MAX_CHARS, advisorActionDecisionSchema, advisorChatSchema, shippingQuoteRequestSchema, sourcingSearchQuerySchema, trackingRefreshSchema } from "@/features/mobile-api/contract";
+import { requireMobileOrgContext, requireMobileUser } from "@/features/mobile-api/context";
+import { accountDeleteInputSchema, ADVISOR_MESSAGE_MAX_CHARS, advisorActionDecisionSchema, advisorChatSchema, shippingQuoteRequestSchema, sourcingSearchQuerySchema, trackingRefreshSchema } from "@/features/mobile-api/contract";
 import { integrations, sourcingSearch, sourcingStatus } from "@/features/mobile-api/service";
 import { syncConnectionNow } from "@/features/integrations/sync-service";
 import { buildOAuthState, isExtendedOAuthState, OAUTH_STATE_TTL_SECONDS, oauthErrorCodeFor } from "@/features/integrations/oauth-flow";
@@ -113,6 +114,7 @@ import { loadRuntimeSecrets, type RuntimeSecretsState } from "./runtime-secrets"
 import { quoteShipping, shippingProvidersStatus } from "@/services/shipping/quotes";
 import { refreshParcelForOrg, runDueTracking, trackingProviders } from "@/services/tracking/tracking";
 import { probeToolConnectors } from "@/services/tools/connectors-probe";
+import { deleteAccountForUser } from "@/services/account";
 
 const log = createLogger("EDGE_API");
 
@@ -553,6 +555,15 @@ export async function route(request: Request): Promise<Response> {
         const ctx = await requireMobileOrgContext(request);
         const { actionId } = await parseBody(request, advisorActionDecisionSchema);
         return decideAdvisorAction(ctx, actionId, path.endsWith("/confirm") ? "confirm" : "cancel");
+      });
+    }
+    if (m === "POST" && path === "/account/delete") {
+      // M-01 : aucune organisation requise (compte sans organisation inclus). Jeton revalidé auprès
+      // de Supabase Auth (getUser) ; l'identifiant supprimé est TOUJOURS celui du jeton vérifié.
+      return handle(async () => {
+        const { supabase, user } = await requireMobileUser(request);
+        const body = await parseBody(request, accountDeleteInputSchema);
+        return deleteAccountForUser(supabase, user.id, body.confirmation);
       });
     }
     if (m === "GET" && path === "/integrations") return handle(async () => integrations(await requireMobileOrgContext(request)));

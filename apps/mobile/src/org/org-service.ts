@@ -52,6 +52,20 @@ export function pickActiveOrganization(memberships: readonly Membership[], store
   return memberships.find((m) => m.organization.id === storedId) ?? memberships.find((m) => m.organization.id === profileOrgId) ?? memberships[0] ?? null;
 }
 
+/**
+ * Écrit l'organisation choisie sur le téléphone dans le profil (comme le site web). La base
+ * vérifie l'appartenance (trigger user_profiles_enforce_current_org). Échec (hors ligne…) :
+ * `false`, le choix reste valable sur cet appareil.
+ */
+export async function syncProfileOrganization(supabase: MobileSupabase, userId: string, organizationId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from("user_profiles").update({ current_organization_id: organizationId }).eq("user_id", userId);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 export async function createOrganization(supabase: MobileSupabase, input: { name: string }): Promise<string> {
   const parsed = createOrganizationSchema.safeParse({ name: input.name });
   if (!parsed.success) throw new UserFacingError(parsed.error.issues[0]?.message ?? "Nom invalide.", "VALIDATION");

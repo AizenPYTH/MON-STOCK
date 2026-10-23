@@ -67,7 +67,7 @@ export async function runDiagnostics(supabase: MobileSupabase, ctx: { organizati
     key: "ai",
     label: "Assistant IA",
     state: h?.aiConfigured ? "ok" : "warning",
-    detail: h?.aiConfigured ? "Clé configurée sur le serveur." : "Non activé : clé OPENAI_API_KEY à ajouter dans les secrets de l'Edge Function. La dictée et le reste de l'application fonctionnent sans.",
+    detail: h?.aiConfigured ? "Clé configurée sur le serveur." : "Non activé sur le serveur MON STOCK. La dictée et le reste de l'application fonctionnent sans.",
     durationMs: null,
   });
 

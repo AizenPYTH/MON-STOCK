@@ -1,4 +1,6 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { onlineManager, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { OFFLINE_MESSAGE, UserFacingError } from "~/lib/errors";
 import type { CatalogMapping, ShippingQuoteRequest, StockMovementInput } from "@/features/mobile-api/contract";
 import { requireSupabase } from "~/lib/supabase";
 import { useActiveOrg } from "~/org/org-provider";
@@ -77,6 +79,33 @@ export function useApplyMovement() {
       ]);
     },
   });
+}
+
+/**
+ * Mouvement de stock exécuté HORS cycle de vie d'un écran (M-04 / M-23) : l'« Annuler » d'une
+ * notification ou l'envoi des derniers taps du stepper doivent aboutir même si l'écran qui les a
+ * déclenchés a été fermé. La fonction ne dépend que d'objets globaux (client, cache) ; elle
+ * refuse immédiatement hors ligne (aucune écriture mise en file) et relit les données touchées.
+ */
+export function useMovementRunner() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (input: StockMovementInput) => {
+      if (!onlineManager.isOnline()) throw new UserFacingError(OFFLINE_MESSAGE, "OFFLINE");
+      try {
+        return await applyMovement(requireSupabase(), orgId, input);
+      } finally {
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: [orgId, "sku", input.sku_id] }),
+          queryClient.invalidateQueries({ queryKey: [orgId, "catalog"] }),
+          queryClient.invalidateQueries({ queryKey: [orgId, "today"] }),
+          queryClient.invalidateQueries({ queryKey: [orgId, "analysis"] }),
+        ]);
+      }
+    },
+    [orgId, queryClient],
+  );
 }
 
 export function useToday() {

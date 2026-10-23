@@ -9,6 +9,19 @@ const KEY = (orgId: string) => `monstock:supplier-favorites:${orgId}`;
 const cache = new Map<string, Set<string>>();
 const listeners = new Set<() => void>();
 
+/** M-19 : efface tous les favoris de l'appareil (déconnexion, suppression de compte). */
+export async function clearAllFavorites(): Promise<void> {
+  cache.clear();
+  listeners.forEach((l) => l());
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const ours = keys.filter((k) => k.startsWith("monstock:supplier-favorites:"));
+    if (ours.length) await AsyncStorage.multiRemove(ours);
+  } catch {
+    // stockage indisponible : rien à effacer
+  }
+}
+
 async function load(orgId: string): Promise<Set<string>> {
   const hit = cache.get(orgId);
   if (hit) return hit;

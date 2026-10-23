@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, View } from "react-native";
+import { AccessibilityInfo, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ReAnimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { Check, X } from "lucide-react-native";
@@ -7,7 +7,7 @@ import { color, motion, radius, shadow, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { Button } from "~/components/ui/controls";
 import { useLayout } from "~/theme/layout";
-import { curve, useReduceMotion } from "~/components/ui/motion";
+import { curve, useReduceMotion, useScreenReader } from "~/components/ui/motion";
 
 export function EmptyState({ icon, title, description, actions = [] }: { icon?: ReactNode; title: string; description: string; actions?: { label: string; onPress: () => void; variant?: "primary" | "secondary"; disabled?: boolean }[] }) {
   return (
@@ -80,6 +80,12 @@ export function SkeletonList({ rows = 8, thumb = true }: { rows?: number; thumb?
 // ---------------------------------------------------------------------------------------------
 // Toast (file d'un seul message, disparition après 4 s, action « Annuler » optionnelle)
 // ---------------------------------------------------------------------------------------------
+/** Durée d'affichage d'une notification (ms) : avec action « Annuler », plus longue ; ×3 avec VoiceOver. */
+export function toastDuration(hasAction: boolean, screenReader: boolean): number {
+  const base = hasAction ? motion.toastAutoDismiss : 3000;
+  return screenReader ? base * 3 : base;
+}
+
 type ToastInput = { text: string; tone?: "success" | "error"; action?: { label: string; onPress: () => void } };
 const ToastContext = createContext<(t: ToastInput) => void>(() => {});
 
@@ -93,16 +99,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const p = useSharedValue(0);
   const show = useCallback((t: ToastInput) => setToast({ ...t, id: Date.now() }), []);
   const reduce = useReduceMotion();
+  const screenReader = useScreenReader();
 
   useEffect(() => {
     if (!toast) return;
     p.value = reduce ? 1 : withTiming(1, { duration: motion.toast, easing: curve.instrument });
-    const timer = setTimeout(() => setToast(null), toast.action ? motion.toastAutoDismiss : 3000);
+    // iOS n'annonce pas les régions « live » : lecture explicite par VoiceOver.
+    if (screenReader) AccessibilityInfo.announceForAccessibility?.(toast.action ? `${toast.text}. Action disponible : ${toast.action.label}.` : toast.text);
+    // M-23 : délai d'action allongé, très largement avec un lecteur d'écran (WCAG 2.2.1).
+    const timer = setTimeout(() => setToast(null), toastDuration(Boolean(toast.action), screenReader));
     return () => {
       clearTimeout(timer);
       p.value = 0;
     };
-  }, [toast, p, reduce]);
+  }, [toast, p, reduce, screenReader]);
   const a = useAnimatedStyle(() => ({ opacity: Math.min(1, p.value * 1.4), transform: [{ translateY: (1 - p.value) * -150 }] }));
 
   return (

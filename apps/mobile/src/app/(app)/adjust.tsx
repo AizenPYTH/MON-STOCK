@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import type { MovementType } from "@/features/mobile-api/contract";
 import { useActiveOrg } from "~/org/org-provider";
-import { useApplyMovement, useSkuDetail } from "~/data/hooks";
+import { useApplyMovement, useMovementRunner, useSkuDetail } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
 import { formatNumber } from "~/lib/format";
 import { BottomSheet, Button, Card, DetailHeader, ErrorState, FilterChip, Screen, Skeleton, StickyActions, TextField, Txt, useToast } from "~/components/ui";
@@ -25,15 +25,18 @@ export default function AdjustScreen() {
   const { permissions } = useActiveOrg();
   const detail = useSkuDetail(skuId ?? "");
   const movement = useApplyMovement();
+  const runMovement = useMovementRunner();
   const toast = useToast();
   const [raw, setRaw] = useState("");
   const [reasonKey, setReasonKey] = useState("count");
   const [note, setNote] = useState("");
   const [confirming, setConfirming] = useState(false);
 
+  const known = detail.data ? detail.data.view.row.quantity_on_hand !== null && detail.data.view.row.quantity_on_hand !== undefined : false;
   const current = detail.data?.view.row.quantity_on_hand ?? 0;
   const reason = REASONS.find((r) => r.key === reasonKey) ?? REASONS[0]!;
   const validation = useMemo(() => {
+    if (!known) return { error: "Stock actuel inconnu : rechargez la fiche avant d'ajuster.", delta: null as number | null };
     if (raw.trim() === "") return { error: undefined, delta: null as number | null };
     if (!/^-?\d+$/.test(raw.trim())) return { error: "Nombre entier attendu.", delta: null };
     const next = Number.parseInt(raw, 10);
@@ -45,7 +48,7 @@ export default function AdjustScreen() {
     if (reason.sign === "out" && delta > 0) return { error: `${reason.label} : la quantité doit diminuer.`, delta: null };
     if (Math.abs(delta) > 1_000_000) return { error: "Un mouvement est limité à 1 000 000 d'unités.", delta: null };
     return { error: undefined, delta };
-  }, [raw, current, reason]);
+  }, [raw, current, reason, known]);
 
   if (detail.isPending)
     return (
@@ -64,18 +67,24 @@ export default function AdjustScreen() {
 
   const v = detail.data.view;
 
-  function apply(delta: number, undo = false) {
+  /**
+   * Annulation (M-23) : exécutée par une fonction indépendante de cet écran (déjà fermé quand
+   * l'utilisateur touche « Annuler ») ; le résultat — réussite ou refus — est toujours annoncé.
+   */
+  function undo(delta: number) {
+    void runMovement({ sku_id: skuId ?? "", type: "correction", direction: delta > 0 ? "in" : "out", quantity: Math.abs(delta), note: "Annulation d'un ajustement (application mobile)" })
+      .then((r) => toast({ text: `Ajustement annulé : stock ${r.quantityAfter ?? "—"}` }))
+      .catch((e) => toast({ text: `Annulation non enregistrée : ${userMessage(e)}`, tone: "error" }));
+  }
+
+  function apply(delta: number) {
     movement.mutate(
-      { sku_id: skuId ?? "", type: undo ? "correction" : reason.type, direction: delta > 0 ? "in" : "out", quantity: Math.abs(delta), note: undo ? "Annulation d'un ajustement (application mobile)" : note.trim() || `${reason.label} (application mobile)` },
+      { sku_id: skuId ?? "", type: reason.type, direction: delta > 0 ? "in" : "out", quantity: Math.abs(delta), note: note.trim() || `${reason.label} (application mobile)` },
       {
         onSuccess: (r) => {
           setConfirming(false);
-          if (undo) {
-            toast({ text: `Ajustement annulé : stock ${r.quantityAfter ?? "—"}` });
-            return;
-          }
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          toast({ text: `Stock mis à jour : ${r.quantityAfter ?? "—"}`, action: { label: "Annuler", onPress: () => apply(-delta, true) } });
+          toast({ text: `Stock enregistré : ${r.quantityAfter ?? "—"}`, action: { label: "Annuler", onPress: () => undo(-delta) } });
           router.back();
         },
         onError: (e) => {
@@ -110,7 +119,7 @@ export default function AdjustScreen() {
         ) : (
           <Card padded style={{ gap: space[4] }}>
             <Txt variant="bodyRegular">
-              Stock actuel : <Txt variant="body" num>{formatNumber(current)}</Txt>
+              Stock actuel : <Txt variant="body" num>{known ? formatNumber(current) : "—"}</Txt>
             </Txt>
             <View style={{ gap: 6 }}>
               <Txt variant="label" color={color.ink} style={{ fontFamily: "Manrope_700Bold" }}>

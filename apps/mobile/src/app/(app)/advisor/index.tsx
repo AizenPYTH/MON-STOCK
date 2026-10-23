@@ -8,7 +8,10 @@ import { useQuery } from "@tanstack/react-query";
 import type { AdvisorActionDTO, AdvisorCardDTO } from "@/features/mobile-api/contract";
 import { ADVISOR_MESSAGE_MAX_CHARS } from "@/features/mobile-api/contract";
 import { AdvisorCardView, MessageBubble, VoiceStatus, type VoicePhase } from "~/components/advisor";
-import { AlertBanner, DetailHeader, Screen, StickyActions, Txt, useToast } from "~/components/ui";
+import { AlertBanner, DetailHeader, Screen, SkeletonList, StickyActions, Txt, useToast } from "~/components/ui";
+import { AiConsentCard } from "~/components/ai-consent";
+import { useUser } from "~/auth/session-provider";
+import { useAiConsent } from "~/lib/ai-consent";
 import { cancelAdvisorAction, confirmAdvisorAction, fetchAdvisorStatus, fetchConversationMessages, streamAdvisorChat } from "~/data/advisor";
 import { useActiveOrg } from "~/org/org-provider";
 import { requireSupabase } from "~/lib/supabase";
@@ -55,7 +58,24 @@ const SUGGESTIONS = [
 let seq = 0;
 const nextKey = () => `k${++seq}`;
 
+/**
+ * M-07 : rien n'est envoyé au fournisseur d'IA avant l'accord explicite de l'utilisateur.
+ * M-26 : la conversation repart de zéro à chaque changement d'organisation (clé = organisation).
+ */
 export default function AdvisorScreen() {
+  const user = useUser();
+  const consent = useAiConsent(user?.id);
+  const { active } = useActiveOrg();
+  if (consent.status === "granted") return <AdvisorChat key={active.organization.id} />;
+  return (
+    <Screen>
+      <DetailHeader parentLabel="Aujourd'hui" title="Conseiller" />
+      {consent.status === "loading" ? <SkeletonList rows={3} thumb={false} /> : <AiConsentCard onAccept={() => void consent.grant()} onDecline={() => (router.canGoBack() ? router.back() : router.replace("/today"))} />}
+    </Screen>
+  );
+}
+
+function AdvisorChat() {
   const params = useLocalSearchParams<{ conversationId?: string }>();
   const { active } = useActiveOrg();
   const orgId = active.organization.id;
@@ -303,7 +323,7 @@ export default function AdvisorScreen() {
           }
         />
         {offline ? <AlertBanner tone="dark" text="Hors ligne : le conseiller est indisponible. Vos conversations restent consultables." /> : null}
-        {notConfigured ? <AlertBanner tone="accent" text="Le conseiller n'est pas encore activé sur le serveur (clé OPENAI_API_KEY à ajouter par l'administrateur)." /> : null}
+        {notConfigured ? <AlertBanner tone="accent" text="Le conseiller n'est pas encore activé sur le serveur MON STOCK. Réessayez plus tard ou écrivez au support." /> : null}
         <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ gap: space[3], paddingBottom: space[4] }} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
           {items.length === 0 ? (
             <View style={{ gap: space[3] }}>
@@ -340,7 +360,7 @@ export default function AdvisorScreen() {
             ))
           )}
           {lastAssistant && ttsAvailable() && shownPhase === "idle" ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Écouter la dernière réponse" onPress={() => { setPhase("speaking"); void speak(lastAssistant.content, { onDone: () => setPhase("idle"), onStopped: () => setPhase("idle"), onError: () => setPhase("idle") }, voiceOptions(lastAssistant.messageId)); }} style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: color.line }} testID="advisor-replay">
+            <Pressable accessibilityRole="button" accessibilityLabel="Écouter la dernière réponse" onPress={() => { setPhase("speaking"); void speak(lastAssistant.content, { onDone: () => setPhase("idle"), onStopped: () => setPhase("idle"), onError: () => setPhase("idle") }, voiceOptions(lastAssistant.messageId)); }} style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", minHeight: size.touchMin, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: color.line, backgroundColor: color.surface }} testID="advisor-replay">
               <Volume2 size={14} color={color.ink2} />
               <Txt variant="label">Écouter la réponse</Txt>
             </Pressable>

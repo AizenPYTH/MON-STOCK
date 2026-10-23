@@ -98,7 +98,7 @@ function ListingForm({ orgId, prefill }: { orgId: string; prefill: EbayListingPr
         <Txt variant="title2" accessibilityRole="header">
           Annonce eBay
         </Txt>
-        <AlertBanner text="Préparation et contrôle uniquement : la publication reste désactivée tant que vous ne l'avez pas explicitement activée sur le serveur (EBAY_LISTING_ENABLED) et confirmée." tone="dark" />
+        <AlertBanner text="Préparation et contrôle uniquement : la publication reste désactivée tant que vous ne l'avez pas explicitement activée par l'administrateur du serveur MON STOCK, puis confirmée ici." tone="dark" />
         {prefill.notes.map((n) => (
           <Txt key={n} variant="label">
             {n}

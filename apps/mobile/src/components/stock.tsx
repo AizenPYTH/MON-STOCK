@@ -15,6 +15,8 @@ export function variantTitle(v: StockRowView): string {
 
 /** Quantité en stock + seuil d'alerte, avec stepper qui persiste chaque ajustement (mouvement réel). */
 export function QuantityCard({ view, canWrite }: { view: StockRowView; canWrite: boolean }) {
+  // Quantité inconnue (vue incomplète) : affichée « — », jamais 0, et le stepper est retiré.
+  const known = view.row.quantity_on_hand !== null && view.row.quantity_on_hand !== undefined;
   const onHand = view.row.quantity_on_hand ?? 0;
   const stepper = useStockStepper(view.row.sku_id ?? "", onHand);
   const reserved = view.row.quantity_reserved ?? 0;
@@ -30,14 +32,20 @@ export function QuantityCard({ view, canWrite }: { view: StockRowView; canWrite:
             {reserved > 0 ? ` · ${formatNumber(reserved)} réservée${reserved > 1 ? "s" : ""}` : ""}
           </Txt>
         </View>
-        {canWrite ? (
+        {canWrite && known ? (
           <Stepper value={stepper.value} onChange={stepper.onChange} busy={stepper.busy} />
         ) : (
           <Txt variant="title2" num style={{ fontSize: 24 }}>
-            {formatNumber(onHand)}
+            {known ? formatNumber(onHand) : "—"}
           </Txt>
         )}
       </View>
+      {stepper.unsaved !== 0 ? (
+        <Txt variant="label" accessibilityLiveRegion="polite" style={{ marginTop: space[2] }}>
+          {stepper.unsaved > 0 ? "+" : ""}
+          {stepper.unsaved} en cours d'enregistrement…
+        </Txt>
+      ) : null}
       {!canWrite ? <Txt variant="label" style={{ marginTop: space[2] }}>Lecture seule : votre rôle ne permet pas de modifier le stock.</Txt> : null}
     </Card>
   );

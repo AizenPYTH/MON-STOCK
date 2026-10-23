@@ -178,49 +178,50 @@ export function Card({ children, padded = false, style, accessibilityLabel, test
   );
 }
 
-/** Ligne de liste v3 : 60 pt, filet blanc de 2 pt entre les lignes, fond `surfacePressed` à l'appui. */
+/**
+ * Ligne de liste : 60 pt mini, filet fin entre les lignes, fond `surfacePressed` à l'appui.
+ * `right` = contenu NON interactif (statut, chiffre) dans la zone touchable ; `trailing` = contrôle
+ * interactif (bouton « Écouter »…) placé À CÔTÉ de la zone touchable, jamais dedans : un Pressable
+ * imbriqué serait inatteignable avec VoiceOver (M-11).
+ */
 export function ListRow({
   title,
   subtitle,
   left,
   right,
+  trailing,
   onPress,
   chevron = false,
   last = false,
   accessibilityLabel,
+  accessibilityState,
   testID,
+  titleLines = 1,
+  subtitleLines = 1,
 }: {
   title: string;
   subtitle?: string;
   left?: ReactNode;
   right?: ReactNode;
+  trailing?: ReactNode;
   onPress?: () => void;
   chevron?: boolean;
   last?: boolean;
   accessibilityLabel?: string;
+  accessibilityState?: { selected?: boolean; checked?: boolean; disabled?: boolean };
   testID?: string;
+  titleLines?: number;
+  subtitleLines?: number;
 }) {
   const content = (pressed: boolean) => (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: space[3],
-        paddingVertical: space[3],
-        paddingHorizontal: space[4],
-        minHeight: 60,
-        backgroundColor: pressed ? color.surfacePressed : "transparent",
-        borderBottomWidth: last ? 0 : 1,
-        borderBottomColor: color.lineSoft,
-      }}
-    >
+    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[3], paddingLeft: space[4], paddingRight: trailing ? space[2] : space[4], minHeight: 60, backgroundColor: pressed ? color.surfacePressed : "transparent" }}>
       {left}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Txt variant="body" numberOfLines={1}>
+        <Txt variant="body" numberOfLines={titleLines}>
           {title}
         </Txt>
         {subtitle ? (
-          <Txt variant="label" numberOfLines={1}>
+          <Txt variant="label" numberOfLines={subtitleLines}>
             {subtitle}
           </Txt>
         ) : null}
@@ -229,11 +230,20 @@ export function ListRow({
       {chevron ? <ChevronRight size={18} color={color.ink3} strokeWidth={2} /> : null}
     </View>
   );
-  if (!onPress) return <View accessible accessibilityLabel={accessibilityLabel}>{content(false)}</View>;
-  return (
-    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? `${title}${subtitle ? `, ${subtitle}` : ""}`} onPress={onPress}>
+  const main = !onPress ? (
+    <View style={{ flex: 1 }} accessible accessibilityLabel={accessibilityLabel}>
+      {content(false)}
+    </View>
+  ) : (
+    <Pressable style={{ flex: 1 }} testID={testID} accessibilityRole="button" accessibilityState={accessibilityState} accessibilityLabel={accessibilityLabel ?? `${title}${subtitle ? `, ${subtitle}` : ""}`} onPress={onPress}>
       {({ pressed }) => content(pressed)}
     </Pressable>
+  );
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: last ? 0 : 1, borderBottomColor: color.lineSoft }}>
+      {main}
+      {trailing ? <View style={{ paddingRight: space[3] }}>{trailing}</View> : null}
+    </View>
   );
 }
 

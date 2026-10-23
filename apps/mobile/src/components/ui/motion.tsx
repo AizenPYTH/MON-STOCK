@@ -54,6 +54,34 @@ export function useReduceMotion(): boolean {
   return useSyncExternalStore(subscribe, () => reduceMotion, () => false);
 }
 
+let screenReader = false;
+const srListeners = new Set<() => void>();
+let srSubscribed = false;
+
+function subscribeScreenReader(l: () => void) {
+  if (!srSubscribed) {
+    srSubscribed = true;
+    const set = (v: boolean) => {
+      if (v === screenReader) return;
+      screenReader = v;
+      for (const x of srListeners) x();
+    };
+    void AccessibilityInfo.isScreenReaderEnabled?.()
+      .then(set)
+      .catch(() => {});
+    AccessibilityInfo.addEventListener?.("screenReaderChanged", set);
+  }
+  srListeners.add(l);
+  return () => {
+    srListeners.delete(l);
+  };
+}
+
+/** Vrai si VoiceOver (ou TalkBack) est actif : délais d'action allongés, annonces vocales. */
+export function useScreenReader(): boolean {
+  return useSyncExternalStore(subscribeScreenReader, () => screenReader, () => false);
+}
+
 /** Décalage par élément, plafonné à 8 éléments. */
 export const staggerOf = (index: number, step: number = motion.stagger) => Math.min(Math.max(index, 0), 8) * step;
 

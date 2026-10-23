@@ -60,6 +60,37 @@ export const createOrganizationInputSchema = z.object({
 export type CreateOrganizationInput = z.infer<typeof createOrganizationInputSchema>;
 
 // ---------------------------------------------------------------------------------------------
+// Compte : suppression initiée par l'utilisateur (App Store 5.1.1(v), audit M-01)
+// POST /account/delete — jeton revérifié par le serveur ; confirmation explicite obligatoire.
+// ---------------------------------------------------------------------------------------------
+/** Mot à saisir pour confirmer (comparaison exacte, après suppression des espaces autour). */
+export const ACCOUNT_DELETE_CONFIRMATION = "SUPPRIMER";
+
+export const accountDeleteInputSchema = z.object({
+  confirmation: z
+    .string()
+    .max(40, `Saisissez ${ACCOUNT_DELETE_CONFIRMATION} pour confirmer.`)
+    .transform((v) => v.trim())
+    .refine((v) => v === ACCOUNT_DELETE_CONFIRMATION, `Saisissez ${ACCOUNT_DELETE_CONFIRMATION} pour confirmer la suppression définitive.`),
+});
+export type AccountDeleteInput = z.input<typeof accountDeleteInputSchema>;
+
+export interface AccountDeletionResultDTO {
+  deleted: true;
+  /** organisations dont vous étiez le seul membre : supprimées avec toutes leurs données */
+  organizationsDeleted: number;
+  /** organisations partagées que vous avez quittées (elles restent aux autres membres) */
+  organizationsLeft: number;
+  /** connexions de vente (eBay) déconnectées pendant la suppression */
+  channelConnectionsDisconnected: number;
+  /**
+   * vrai si la révocation chez la place de marché n'a pas pu être confirmée : les jetons ont été
+   * supprimés de MON STOCK, l'accès doit aussi être retiré depuis le compte eBay
+   */
+  remoteRevocationIncomplete: boolean;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Tableau de bord
 // ---------------------------------------------------------------------------------------------
 export interface WindowTotalsDTO {

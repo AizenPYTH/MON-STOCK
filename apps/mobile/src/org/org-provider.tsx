@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "~/auth/session-provider";
 import { requireSupabase } from "~/lib/supabase";
 import { securePreferences } from "~/lib/secure-store";
-import { loadMemberships, permissionsFor, pickActiveOrganization, type Membership, type OrgPermissions } from "~/org/org-service";
+import { loadMemberships, permissionsFor, pickActiveOrganization, syncProfileOrganization, type Membership, type OrgPermissions } from "~/org/org-service";
 
 export type OrgState =
   | { status: "loading" }
@@ -14,7 +14,10 @@ export type OrgState =
       active: Membership;
       permissions: OrgPermissions;
       memberships: Membership[];
-      setActive: (organizationId: string) => Promise<void>;
+      /** organisation active du compte côté site web (profil) ; null si aucune */
+      profileOrgId: string | null;
+      /** change l'organisation de cet appareil ET celle du profil (site web) ; `synced` = profil mis à jour */
+      setActive: (organizationId: string) => Promise<{ synced: boolean }>;
       refresh: () => Promise<void>;
     };
 
@@ -23,26 +26,31 @@ const OrgContext = createContext<OrgState>({ status: "loading" });
 const storageKey = (userId: string) => `monstock.activeOrg.${userId}`;
 
 /**
- * Organisation active de l'application mobile. Mémorisée sur l'appareil (par utilisateur),
- * sans modifier l'organisation active de l'application web. Chaque requête filtre en plus
- * par organization_id ; la RLS garantit qu'aucune autre organisation n'est lisible.
+ * Organisation active de l'application mobile (M-05). Mémorisée sur l'appareil (par utilisateur) ;
+ * un changement fait sur le téléphone est AUSSI écrit dans le profil (user_profiles.
+ * current_organization_id, même règle que le site web, vérifiée par la base) pour que le téléphone
+ * et le site affichent la même organisation. Chaque requête filtre en plus par organization_id ;
+ * la RLS garantit qu'aucune autre organisation n'est lisible.
  */
 export function OrgProvider({ children }: { children: ReactNode }) {
   const user = useUser();
   const queryClient = useQueryClient();
   const [storedId, setStoredId] = useState<string | null | undefined>(undefined);
 
+  const userId = user?.id ?? null;
   useEffect(() => {
-    if (!user) return;
+    // M-26 : changement d'utilisateur → le choix mémorisé du précédent n'est jamais réutilisé.
+    setStoredId(undefined);
+    if (!userId) return;
     let alive = true;
     securePreferences
-      .getItem(storageKey(user.id))
+      .getItem(storageKey(userId))
       .then((v) => alive && setStoredId(v))
       .catch(() => alive && setStoredId(null));
     return () => {
       alive = false;
     };
-  }, [user]);
+  }, [userId]);
 
   const query = useQuery({
     queryKey: ["memberships", user?.id],
@@ -52,11 +60,14 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const setActive = useCallback(
     async (organizationId: string) => {
-      if (!user) return;
-      await securePreferences.setItem(storageKey(user.id), organizationId);
+      if (!user) return { synced: false };
+      await securePreferences.setItem(storageKey(user.id), organizationId).catch(() => undefined);
       setStoredId(organizationId);
       // Les données de l'organisation précédente ne doivent jamais s'afficher dans la nouvelle.
       queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "memberships" });
+      const synced = await syncProfileOrganization(requireSupabase(), user.id, organizationId);
+      if (synced) void queryClient.invalidateQueries({ queryKey: ["memberships", user.id] });
+      return { synced };
     },
     [user, queryClient],
   );
@@ -71,7 +82,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     const { memberships, profileOrgId } = query.data;
     const active = pickActiveOrganization(memberships, storedId, profileOrgId);
     if (!active) return { status: "none", refresh };
-    return { status: "ready", active, permissions: permissionsFor(active.role), memberships, setActive, refresh };
+    return { status: "ready", active, permissions: permissionsFor(active.role), memberships, profileOrgId, setActive, refresh };
   }, [user, storedId, query, setActive, refresh]);
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
