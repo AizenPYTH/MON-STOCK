@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { formatDateTime, formatRelative, formatTime } from "@/lib/format";
 import { Callout } from "@/components/ui/callout";
 import { ChannelStatus, type ChannelState } from "@/components/marketing/channel-status";
-import motion from "@/components/auth-shell/parcours.module.css";
+import { growStyle, parcoursMotion as motion, traceStyle } from "@/components/auth-shell/motion";
 import { PENDING_STEPS, type EbayConnectionFact, type PlatformState } from "@/features/onboarding/platform-state";
 import { ConnectEbayForm } from "@/features/onboarding/components/connect-ebay-form";
 
@@ -18,7 +18,7 @@ const BENEFITS = [
 ] as const;
 
 const TITLES: Record<PlatformState["ebay"], string> = {
-  none: "Connectez votre compte eBay",
+  none: "Connectez eBay",
   pending: "Connexion eBay en cours",
   success: "eBay est connecté",
   error: "La connexion n'a pas abouti",
@@ -106,7 +106,7 @@ function SuccessMark() {
         <path d="M5 12.5l4.5 4.5L19 7.5" />
       </svg>
       {/* « Tracé » : un cache de la couleur de la pastille se retire (scaleX), uniquement transform. */}
-      <span className={cn(motion.trace, "absolute inset-y-2 left-2 right-2 bg-success-strong")} />
+      <span className="absolute inset-y-2 left-2 right-2 bg-success-strong" style={traceStyle} />
     </span>
   );
 }
@@ -306,14 +306,14 @@ function AfterAuthorization({ lit }: { lit: boolean }) {
     { label: "Stock central", detail: "une seule quantité" },
   ];
   return (
-    <div className="flex flex-col justify-center gap-0 bg-night px-6 py-7 text-on-night min-[860px]:px-7">
+    <div className="flex flex-col gap-0 bg-night px-6 py-7 text-on-night min-[860px]:px-7 min-[860px]:pt-9">
       <p className="ms-mono text-[10px] leading-[13px] tracking-[0.08em] text-on-night-muted">{lit ? "Relié · après autorisation" : "Après autorisation"}</p>
       <ol className="mt-5 flex flex-col">
         {nodes.map((n, i) => (
           <li key={n.label} className="flex flex-col">
             {i > 0 ? (
               <span aria-hidden="true" className="ml-[13px] flex h-7 w-[2px] items-stretch">
-                <span className={cn("block w-full", lit ? cn("bg-mint", motion.grow) : "border-l-2 border-dashed border-on-night/30")} style={lit ? { animationDelay: `${250 + i * 120}ms` } : undefined} />
+                <span className={cn("block w-full", lit ? "bg-mint" : "border-l-2 border-dashed border-on-night/30")} style={lit ? growStyle(250 + i * 120) : undefined} />
               </span>
             ) : null}
             <span className="flex items-center gap-3">
@@ -328,6 +328,9 @@ function AfterAuthorization({ lit }: { lit: boolean }) {
           </li>
         ))}
       </ol>
+      <p className="mt-6 text-[12.5px] font-semibold leading-[18px] text-on-night-subtle min-[860px]:mt-auto min-[860px]:pt-6">
+        {lit ? "Câbles pleins : connexion confirmée par le serveur." : "Câbles ouverts : rien n'est relié tant que le serveur n'a pas confirmé la connexion."}
+      </p>
     </div>
   );
 }

@@ -14,7 +14,7 @@ export type CtaVariant = "primary" | "glass" | "ink" | "outline";
 
 const VARIANT: Record<CtaVariant, string> = {
   primary: "bg-mint text-night hover:bg-mint-pressed focus-visible:outline-mint",
-  glass: "border border-on-night/16 bg-on-night/8 text-on-night hover:bg-on-night/14 focus-visible:outline-mint",
+  glass: "border border-on-night/18 bg-[rgba(34,50,74,.78)] text-on-night hover:bg-[rgba(42,60,87,.92)] focus-visible:outline-mint",
   ink: "bg-night text-on-night hover:bg-[#22324A] focus-visible:outline-night",
   outline: "border-[1.5px] border-night/80 text-night hover:bg-night/6 focus-visible:outline-night",
 };

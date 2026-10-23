@@ -26,11 +26,11 @@ export function PortsPanel() {
         </h2>
         <p className="mt-2 max-w-[440px] text-[15px] font-medium leading-[22px] text-on-night-muted">Un seul stock, un port par canal. eBay est branché aujourd&apos;hui ; les autres arrivent, sans date annoncée.</p>
       </div>
-      <div className="relative px-7 pr-[64px]">
+      <div className="relative px-7 pr-[56px]">
         <ul className="divide-y divide-night-line">
           <PortRow name="eBay" state="lit" size="sm" status={<ChannelStatus state="available" size="sm" />} />
           {FUTURE.map((name) => (
-            <PortRow key={name} name={name} state="open" size="sm" status={<ChannelStatus state="soon" size="sm" />} cableLabel="Pas encore" />
+            <PortRow key={name} name={name} state="open" size="sm" status={<ChannelStatus state="soon" size="sm" />} cableLabel="" />
           ))}
         </ul>
         {/* Bus vertical (décoratif) : la prise eBay est la seule reliée. */}

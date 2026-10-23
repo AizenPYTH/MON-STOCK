@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { requestPasswordResetAction, signInAction, signUpAction, updatePasswordAction } from "@/features/auth/actions";
 import { internalRoute } from "@/lib/routes";
 import { PASSWORD_MIN_LENGTH, passwordStrength } from "@/features/auth/password-strength";
-import motion from "@/components/auth-shell/parcours.module.css";
+import { parcoursMotion as motion } from "@/components/auth-shell/motion";
 
 /*
  * Formulaires d'authentification — gabarit unique (Connexion / Inscription / Mot de passe /

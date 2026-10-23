@@ -24,7 +24,7 @@ export function Hero() {
   const dockCenter = barcodeFieldCenter(FIELD, 58, 62);
   return (
     <section aria-labelledby="hero-titre" className="relative overflow-hidden bg-night text-on-night">
-      <div className="relative z-10 mx-auto w-full max-w-[1432px] px-[18px] pt-[104px] min-[760px]:px-8 min-[760px]:pt-[112px] min-[1100px]:px-14 min-[1100px]:pt-[116px]">
+      <div className="relative z-10 mx-auto w-full max-w-[1432px] px-[18px] pt-[96px] min-[760px]:px-8 min-[760px]:pt-[104px] min-[1100px]:px-14 min-[1100px]:pt-[100px]">
         <div className="mk-fade-in flex flex-wrap items-center justify-between gap-x-6 gap-y-2" style={ENTER(0)}>
           <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-on-night-muted">Stock multicanal · téléphones et pièces détachées</p>
           <p className="hidden items-center gap-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-on-night-muted min-[760px]:flex">
@@ -35,7 +35,7 @@ export function Hero() {
           </p>
         </div>
 
-        <h1 id="hero-titre" className="mt-5 text-[56px] font-extrabold leading-[0.94] tracking-[-0.05em] text-on-night min-[760px]:mt-6 min-[760px]:text-[min(148px,9.8vw)]">
+        <h1 id="hero-titre" className="mt-4 text-[56px] font-extrabold leading-[0.94] tracking-[-0.05em] text-on-night min-[760px]:mt-5 min-[760px]:text-[min(148px,9.8vw)]">
           <span className="mk-rise block" style={ENTER(100)}>
             Un seul stock.
           </span>
@@ -44,9 +44,9 @@ export function Hero() {
           </span>
         </h1>
 
-        <div className="mt-7 flex flex-col gap-6 min-[1100px]:mt-9 min-[1100px]:flex-row min-[1100px]:items-end min-[1100px]:justify-between">
+        <div className="mt-7 flex flex-col gap-6 min-[1100px]:mt-8 min-[1100px]:flex-row min-[1100px]:items-end min-[1100px]:justify-between">
           <p className="mk-rise max-w-[520px] text-[17px] font-medium leading-[1.55] text-[#B4BECB] min-[760px]:text-[19px]" style={ENTER(500)}>
-            Pour les revendeurs de téléphones et de pièces détachées&nbsp;: vos références, vos quantités et vos ventes eBay au même endroit. Chaque vente est déduite du stock une seule fois.
+            Vos références, vos quantités et vos ventes eBay au même endroit. Chaque vente est déduite du stock une seule fois.
           </p>
           <div className="mk-rise flex flex-col gap-2.5 min-[480px]:flex-row" style={ENTER(620)}>
             <CtaLink href="/signup">
@@ -61,7 +61,7 @@ export function Hero() {
       </div>
 
       {/* Scène : champ de barres (fond), dock et fenêtre produit. Le bas de la fenêtre est rogné par la section. */}
-      <div className="relative mt-20 -mb-[30px] min-[760px]:mt-12 min-[760px]:-mb-[150px] min-[1100px]:mt-10">
+      <div className="relative mt-20 -mb-[30px] min-[760px]:mt-12 min-[760px]:-mb-[150px] min-[1100px]:mt-6">
         <div className="absolute inset-x-0 bottom-[calc(100%-74px)] z-0">
           <BarcodeField {...FIELD} height={460} mobileHeight={300} parallax growFrom={60} className="min-[760px]:max-[1099px]:!h-[220px]" />
         </div>

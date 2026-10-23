@@ -10,6 +10,7 @@ import { choosePlatformState, FUTURE_CHANNELS, futureChannel, type EbayConnectio
 import { DEFAULT_OAUTH_RETURN, oauthErrorTarget, oauthSuccessTarget, OAUTH_RETURN_PATHS, resolveOAuthReturn, returnFromState, stateRedirectFor } from "@/features/integrations/oauth-return";
 import { OAUTH_ERROR_MESSAGES, OAUTH_GENERIC_ERROR } from "@/features/integrations/oauth-flow";
 import { isPublicPath } from "@/lib/supabase/proxy";
+import { checklistProgress, firstStepsChecklist } from "@/features/onboarding/checklist";
 
 const CONN = "0b8a3d1e-5f62-4c1a-9a7e-3f0c2b1d4e5f";
 const OTHER = "9c7e2b10-1111-4a2b-8c3d-4e5f60718293";
@@ -150,8 +151,7 @@ describe("protection de la route", () => {
   });
 });
 
-describe("checklist du tableau de bord (premiers pas)", async () => {
-  const { firstStepsChecklist, checklistProgress } = await import("@/features/onboarding/checklist");
+describe("checklist du tableau de bord (premiers pas)", () => {
   it("organisation toujours faite ; eBay, import, premier produit selon les faits réels", () => {
     const items = firstStepsChecklist({ organizationName: "Ma Boutique", ebayConnected: false, catalogImported: false, hasProducts: false });
     expect(items.map((i) => [i.key, i.state])).toEqual([

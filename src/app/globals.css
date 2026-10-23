@@ -709,3 +709,19 @@ html[data-scroll-locked] {
   .mk-loop { animation: none !important; }
   .mk-loop-hide { display: none !important; }
 }
+
+/* Avant/après (handoff v2 §C.4) : version statique par défaut ; scène collante (piste 300 vh,
+   contenu collant 100 vh) seulement ≥ 1000 px et si le mouvement est autorisé. */
+.mk-chaos-sticky-only { display: none; }
+.mk-chaos-cards { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; }
+@media (min-width: 1000px) and (prefers-reduced-motion: no-preference) {
+  .mk-chaos-cards { display: contents; }
+  .mk-chaos-track { height: 300vh; }
+  .mk-chaos-pin { position: sticky; top: 0; height: 100vh; display: flex; align-items: center; }
+  .mk-chaos-stage { position: relative; height: min(560px, 70vh); }
+  .mk-chaos-card { position: absolute; inset: 0; margin: auto; height: fit-content; }
+  .mk-chaos-fiche { position: absolute; inset: 0; margin: auto; height: fit-content; opacity: 0; transform: scale(0.94); }
+  .mk-chaos-b { position: absolute; inset: 0 0 auto 0; margin-top: 0; opacity: 0; }
+  .mk-chaos-static-only { display: none; }
+  .mk-chaos-sticky-only { display: block; }
+}

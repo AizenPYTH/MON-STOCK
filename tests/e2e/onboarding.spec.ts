@@ -38,7 +38,7 @@ async function signUp(page: Page): Promise<void> {
 test.describe("onboarding authentifié (W-01)", () => {
   test.skip(!enabled, "E2E_ONBOARDING=1 requis (projet Supabase de test, build de production).");
 
-  test("créer l'organisation mène au tableau de bord, une seule fois", async ({ page }, info) => {
+  test("créer l'organisation mène au choix de plateforme puis au tableau de bord, une seule fois", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop-1280", "Un seul gabarit suffit pour ce parcours.");
     await signUp(page);
 
@@ -54,9 +54,12 @@ test.describe("onboarding authentifié (W-01)", () => {
     await page.getByRole("button", { name: "Créer l'organisation" }).click();
     const res = await actionResponse;
     // Next 16.4 : redirection ET revalidation annoncées au client (sinon cache client réutilisé).
-    expect(res.headers()["x-action-redirect"]).toContain("/dashboard");
+    // Parcours v2 : étape « plateforme » après la création d'une organisation réelle.
+    expect(res.headers()["x-action-redirect"]).toContain("/onboarding/plateforme");
     expect(res.headers()["x-action-revalidated"]).toBeTruthy();
 
+    await expect(page).toHaveURL(/\/onboarding\/plateforme$/, { timeout: 30_000 });
+    await page.getByRole("link", { name: "Continuer sans connecter de plateforme" }).click();
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
     await expect(page.getByRole("heading", { level: 1, name: "Aujourd'hui" })).toBeAttached();
     // L'onboarding ne doit pas réapparaître après stabilisation.
@@ -67,7 +70,8 @@ test.describe("onboarding authentifié (W-01)", () => {
     await page.goto("/onboarding");
     await page.getByLabel("Nom de l'organisation").fill(name);
     await page.getByRole("button", { name: "Créer l'organisation" }).click();
-    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/onboarding\/plateforme$/, { timeout: 30_000 });
+    await page.goto("/dashboard");
     await page.getByRole("button", { name: /Organisation active/ }).first().click();
     await expect(page.getByRole("menuitem", { name: new RegExp(name) })).toHaveCount(1);
   });

@@ -10,7 +10,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
   return (
     <AuthShell
       ports
-      step="Étape 1 sur 3 · Compte"
+      step="Création du compte"
       eyebrow="Inscription"
       headerAction={<ShellHeaderLink href="/login">Se connecter</ShellHeaderLink>}
       title={

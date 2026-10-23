@@ -2,7 +2,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChannelStatus } from "@/components/marketing/channel-status";
-import motion from "@/components/auth-shell/parcours.module.css";
+import { parcoursMotion as motion } from "@/components/auth-shell/motion";
 import { FUTURE_CHANNELS, type FutureChannelKey } from "@/features/onboarding/platform-state";
 
 /**

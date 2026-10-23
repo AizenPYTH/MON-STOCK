@@ -148,7 +148,7 @@ export function HeroStage({ dockCenter }: { dockCenter: number }) {
 
             <figure aria-label="Aperçu illustratif de MON STOCK : une vente eBay d'exemple met à jour le stock et le chiffre du jour." className="relative overflow-hidden rounded-[22px] border border-on-night/12 bg-night-deep shadow-[0_50px_100px_-40px_rgba(0,0,0,.8),0_-30px_120px_-30px_rgba(139,232,190,.18)] min-[760px]:rounded-[24px]">
               {/* Barre de fenêtre (42 px). */}
-              <div className="flex h-[42px] items-center gap-3 border-b border-on-night/8 bg-night px-3.5">
+              <div className="flex h-[42px] items-center gap-3 border-b border-on-night/8 bg-night px-[30px] min-[760px]:px-3.5">
                 <span aria-hidden="true" className="flex gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-on-night/15" />
                   <span className="h-2.5 w-2.5 rounded-full bg-on-night/15" />
@@ -234,7 +234,7 @@ export function HeroStage({ dockCenter }: { dockCenter: number }) {
                   </div>
 
                   {/* Scène : CA du jour, 14 jours, ventes / à expédier / marge. */}
-                  <div className="relative bg-night px-4 pb-5 pt-4 min-[760px]:px-6 min-[760px]:pb-6 min-[760px]:pt-5">
+                  <div className="relative bg-night px-[30px] pb-5 pt-4 min-[760px]:px-6 min-[760px]:pb-6 min-[760px]:pt-5">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-on-night-muted">Aujourd&apos;hui · chiffre d&apos;affaires</span>
                       <ExampleTag surface="night" />
@@ -275,12 +275,12 @@ export function HeroStage({ dockCenter }: { dockCenter: number }) {
                   </div>
 
                   {/* Mobile : la notification se place sous la scène (emplacement réservé). */}
-                  <div className="bg-night px-3 pb-3 min-[760px]:hidden">
+                  <div className="bg-night px-[26px] pb-3 min-[760px]:hidden">
                     <Notification show={s >= 5} run={run} />
                   </div>
 
                   {/* Papier (rayon 20). */}
-                  <div className="relative -mt-px rounded-t-[20px] bg-[#F2F4F7] p-3 min-[760px]:p-4">
+                  <div className="relative -mt-px rounded-t-[20px] bg-[#F2F4F7] px-[24px] py-3 min-[760px]:p-4">
                     <div className="grid gap-3 min-[1000px]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
                       <StockCard s={s} run={run} />
                       <div className="flex flex-col gap-3">
@@ -343,7 +343,7 @@ function Notification({ show, run }: { show: boolean; run: number }) {
 }
 
 /** Colonnes de la liste de stock (grille : les colonnes masquées n'occupent pas de piste). */
-const STOCK_GRID = "grid grid-cols-[minmax(0,1fr)_44px_62px_68px] min-[560px]:grid-cols-[minmax(0,1fr)_44px_62px_46px_68px] min-[1280px]:grid-cols-[minmax(0,1fr)_44px_60px_62px_46px_68px] items-center gap-x-2";
+const STOCK_GRID = "grid grid-cols-[minmax(0,1fr)_44px_62px_68px] min-[560px]:grid-cols-[minmax(0,1fr)_44px_62px_46px_68px] min-[1280px]:grid-cols-[minmax(0,1fr)_44px_66px_62px_46px_68px] items-center gap-x-2";
 
 function StockCard({ s, run }: { s: number; run: number }) {
   return (
@@ -369,7 +369,7 @@ function StockCard({ s, run }: { s: number; run: number }) {
         <div className={cn(STOCK_GRID, "pb-1.5 font-mono text-[9px] uppercase tracking-[0.08em] text-[#778292]")}>
           <span>Référence</span>
           <span className="text-right">Qté</span>
-          <span className="hidden min-[1280px]:block">Ventes 14 j</span>
+          <span className="hidden whitespace-nowrap min-[1280px]:block">Ventes 14 j</span>
           <span>Couv.</span>
           <span className="hidden min-[560px]:block">Canal</span>
           <span className="text-right">Prix</span>

@@ -35,7 +35,7 @@ export default async function PlatformPage({ searchParams }: { searchParams: Pro
   return (
     <AuthShell
       width="wide"
-      step="Étape 3 sur 3 · Plateforme"
+      step="Configuration · étape 2 sur 2"
       eyebrow={`Canal de vente · ${ctx.organization.name}`}
       title={
         done ? (

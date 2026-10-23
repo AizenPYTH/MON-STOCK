@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Wordmark } from "@/components/public/wordmark";
 import { BarcodeField } from "@/components/marketing/barcode-field";
 import { PortsPanel } from "@/components/auth-shell/ports-panel";
-import motion from "@/components/auth-shell/parcours.module.css";
+import { parcoursMotion as motion } from "@/components/auth-shell/motion";
 
 /**
  * Cadre commun du parcours (handoff v2 §D, §E `AuthShell`) : scène nuit (mot-symbole, étape,

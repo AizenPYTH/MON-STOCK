@@ -21,7 +21,7 @@ export default async function OnboardingPage() {
   const ctx = await getOrgContext();
   return (
     <AuthShell
-      step="Étape 2 sur 3 · Organisation"
+      step="Configuration · étape 1 sur 2"
       eyebrow={ctx ? "Nouvelle organisation" : "Bienvenue"}
       headerAction={
         ctx ? (
