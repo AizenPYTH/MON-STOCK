@@ -60,7 +60,8 @@ export function NightHeader<T extends string = string>({
   return (
     <OnDarkContext.Provider value>
       <View style={{ backgroundColor: color.brand, paddingTop: topInset ? insets.top : 0 }}>
-        <View style={{ paddingHorizontal: screenX, paddingBottom: tabs ? space[3] : space.bodyOverlap + space[5] }}>
+        {/* Bandeau sans titre ni chiffre (simple retour) : compact, pas de bande vide au-dessus du papier. */}
+        <View style={{ paddingHorizontal: screenX, paddingBottom: tabs ? space[3] : title || hero || sub || stage || over ? space.bodyOverlap + space[5] : space.bodyOverlap + space[1] }}>
           {back || right || left ? (
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: size.touchMin }}>
               {back ? (

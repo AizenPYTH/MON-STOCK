@@ -157,13 +157,7 @@ export default function NewProductScreen() {
           </StickyActions>
         }
       >
-        <DetailHeader parentLabel="Stock" />
-        <View style={{ gap: 4 }}>
-          <Txt variant="title2" accessibilityRole="header">
-            Nouveau produit
-          </Txt>
-          <Txt variant="label">Organisation : {active.organization.name} · prix en {active.organization.currency}</Txt>
-        </View>
+        <DetailHeader parentLabel="Stock" title="Nouveau produit" sub={`${active.organization.name} · prix en ${active.organization.currency}`} />
         {formError ? <AlertBanner text={formError} tone="dark" /> : null}
         <Card padded style={{ gap: space[3] }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: space[2] }}>

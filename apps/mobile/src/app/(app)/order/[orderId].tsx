@@ -6,13 +6,14 @@ import { ORDER_CHIP, PROVIDER_LABEL } from "~/data/sales";
 import { brandById } from "~/brands/registry";
 import { userMessage } from "~/lib/errors";
 import { formatClock, formatDate, formatMoney, formatNumber } from "~/lib/format";
-import { BrandMark, Button, Card, DetailHeader, Divider, EmptyState, ErrorState, ListRow, Screen, Skeleton, StatusChip, StickyActions, Thumb, Timeline, Txt, type TimelineStep } from "~/components/ui";
+import { BrandMark, Card, DetailHeader, Divider, EmptyState, ErrorState, ListRow, Screen, Skeleton, StatusChip, Thumb, Timeline, Txt, type TimelineStep } from "~/components/ui";
 import { color, radius, space } from "~/theme/tokens";
 
 /**
  * Détail de commande (données importées d'eBay ou saisies). La marge n'est affichée que si
  * chaque ligne a un coût d'achat connu ; les frais inconnus ne sont jamais supposés nuls.
- * Expédition / étiquette : nécessitent l'API eBay Fulfillment côté serveur → « bientôt ».
+ * Expédition / étiquette : nécessitent l'API eBay Fulfillment côté serveur — pas encore disponibles,
+ * donc AUCUN bouton (pas de bouton factice) : l'état est expliqué dans la frise.
  */
 export default function OrderScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
@@ -65,22 +66,11 @@ export default function OrderScreen() {
 
   return (
     <Screen
-      footer={
-        o.status === "paid" ? (
-          <StickyActions>
-            <Button label="Étiquette · bientôt" variant="secondary" disabled onPress={() => {}} style={{ flex: 1 }} />
-            <Button label="Expédition · bientôt" disabled onPress={() => {}} style={{ flex: 2 }} accessibilityHint="Le marquage « expédiée » sur eBay depuis l'application n'est pas encore disponible." />
-          </StickyActions>
-        ) : undefined
-      }
       refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} />}
     >
-      <DetailHeader parentLabel="Ventes" />
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space[3] }}>
+      <DetailHeader parentLabel="Ventes" over="Commande" title={o.order_number ?? o.external_order_id} />
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[3] }}>
         <View style={{ flex: 1, gap: 4 }}>
-          <Txt variant="title2" accessibilityRole="header">
-            Commande {o.order_number ?? o.external_order_id}
-          </Txt>
           <BrandMark brand={brandById(o.provider)} fallbackName={PROVIDER_LABEL[o.provider] ?? o.provider} kind="marketplace" size="sm" detail={`passée le ${placed}`} testID="order-channel" />
         </View>
         <StatusChip label={chip.label} tone={chip.tone} />
@@ -109,7 +99,7 @@ export default function OrderScreen() {
         <Divider />
         <View style={{ paddingVertical: space[3], paddingHorizontal: space[4], gap: 6 }}>
           <Line label="Articles" value={formatMoney(itemsTotal, currency)} />
-          <Line label="Frais eBay" value={fees === null ? "non communiqués" : `−${formatMoney(fees, currency)}`} />
+          <Line label={o.provider === "ebay" ? "Frais eBay" : "Frais de la plateforme"} value={fees === null ? "non communiqués" : `−${formatMoney(fees, currency)}`} />
           <Line label="Coût d'achat" value={cost === null ? "inconnu" : `−${formatMoney(cost, currency)}`} />
           {o.shipping_total !== null ? <Line label="Livraison facturée à l'acheteur" value={formatMoney(o.shipping_total, currency)} muted /> : null}
           <View style={{ height: 1, backgroundColor: color.lineSoft, marginVertical: 4 }} />

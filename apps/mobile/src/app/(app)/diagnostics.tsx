@@ -25,11 +25,7 @@ export default function DiagnosticsScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} />}>
-      <DetailHeader parentLabel="Réglages" />
-      <Txt variant="title2" accessibilityRole="header">
-        Diagnostic
-      </Txt>
-      <Txt variant="label">Environnement : {appConfig.ok ? appConfig.config.appEnv : "configuration incomplète"} · tirez vers le bas pour relancer les contrôles.</Txt>
+      <DetailHeader parentLabel="Retour" title="Diagnostic" sub={`Environnement ${appConfig.ok ? appConfig.config.appEnv : "incomplet"} · tirez vers le bas pour relancer`} />
       {q.isPending ? <SkeletonList rows={6} thumb={false} /> : null}
       {(q.data ?? []).map((c) => {
         const Icon = ICON[c.state];

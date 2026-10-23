@@ -54,8 +54,8 @@ export default function SalesScreen() {
               label: "Chiffre d'affaires · 7 jours",
               stats: [
                 { label: "À expédier", value: formatNumber(k.data.toShip), tone: k.data.toShip > 0 ? "warning" : undefined },
-                { label: "Remboursées · 30 j", value: formatNumber(k.data.refunded30d) },
-                { label: "Annonces actives", value: formatNumber(k.data.listingsActive) },
+                { label: "Remb. 30 j", value: formatNumber(k.data.refunded30d) },
+                { label: "En ligne", value: formatNumber(k.data.listingsActive) },
               ],
             }
           : undefined

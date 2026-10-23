@@ -60,7 +60,9 @@ export default function ProductScreen() {
             onPress={() => (single ? router.push({ pathname: "/adjust", params: { skuId: single.row.sku_id ?? "" } }) : router.push({ pathname: "/sku/[skuId]", params: { skuId: product.skus[0]!.row.sku_id ?? "" } }))}
             style={{ flex: 1 }}
           />
-          <Button label="Mise en vente eBay · bientôt" disabled onPress={() => {}} style={{ flex: 2 }} accessibilityHint="La création d'annonces eBay depuis l'application n'est pas encore disponible." />
+          {single && permissions.canWrite ? (
+            <Button label="Annonce eBay" onPress={() => router.push({ pathname: "/ebay-listing/[skuId]", params: { skuId: single.row.sku_id ?? "" } })} style={{ flex: 2 }} accessibilityHint="Prépare et vérifie une annonce eBay pour cette variante" />
+          ) : null}
         </StickyActions>
       }
       refreshControl={<RefreshControl refreshing={catalog.isRefetching} onRefresh={() => void catalog.refetch()} />}

@@ -251,9 +251,17 @@ d("Conservation limitée et suppression de compte eBay (I-08, D-10, Q-09)", () =
       await expectQueryError(c, "select * from public.advisor_retention_policy", [], /permission denied/);
 
       await asService(c);
+      // La purge est globale (cron) : d'autres fichiers de test peuvent avoir laissé des lignes
+      // anciennes dans la base partagée. Les compteurs sont donc des minimums, et l'effet exact est
+      // vérifié ligne par ligne sur les données créées ici.
       const { rows } = await c.query("select public.advisor_purge_expired() as r");
-      expect(rows[0].r).toMatchObject({ conversationsDeleted: 1, messagesCardsCleared: 1, usageEventsDeleted: 1 });
+      expect(rows[0].r.conversationsDeleted).toBeGreaterThanOrEqual(1);
+      expect(rows[0].r.messagesCardsCleared).toBeGreaterThanOrEqual(1);
+      expect(rows[0].r.usageEventsDeleted).toBeGreaterThanOrEqual(1);
       await asSuperuser(c);
+      const usage = (await c.query("select created_at > now() - interval '1 day' as recent from public.ai_usage_events where organization_id = $1", [org])).rows;
+      expect(usage).toEqual([{ recent: true }]);
+      expect((await c.query("select count(*)::int as n from public.advisor_conversations where id = $1", [recent])).rows[0].n).toBe(1);
       expect((await c.query("select count(*)::int as n from public.advisor_conversations where id = $1", [old])).rows[0].n).toBe(0);
       const msgs = (await c.query("select content, cards from public.advisor_messages where conversation_id = $1 order by created_at", [recent])).rows;
       expect(msgs).toEqual([
@@ -264,7 +272,10 @@ d("Conservation limitée et suppression de compte eBay (I-08, D-10, Q-09)", () =
       // Durées configurables (ex. conversations conservées 1 jour seulement).
       await asService(c);
       await c.query("update public.advisor_retention_policy set conversation_days = 1, card_days = 0");
-      expect((await c.query("select public.advisor_purge_expired(now() + interval '2 days') as r")).rows[0].r).toMatchObject({ conversationsDeleted: 1 });
+      expect((await c.query("select public.advisor_purge_expired(now() + interval '2 days') as r")).rows[0].r.conversationsDeleted).toBeGreaterThanOrEqual(1);
+      await asSuperuser(c);
+      expect((await c.query("select count(*)::int as n from public.advisor_conversations where id = $1", [recent])).rows[0].n).toBe(0);
+      await asService(c);
       await expectQueryError(c, "update public.advisor_retention_policy set usage_event_days = 1", [], /check constraint/);
     });
   });

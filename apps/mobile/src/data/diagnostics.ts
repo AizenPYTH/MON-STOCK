@@ -2,6 +2,9 @@ import type { IntegrationsDTO, SourcingStatusDTO } from "@/features/mobile-api/c
 import type { MobileSupabase } from "~/lib/supabase";
 import { callApi } from "~/lib/api";
 import { userMessage } from "~/lib/errors";
+import { ROLE_LABEL } from "~/org/org-service";
+
+const CONNECTION_LABEL: Record<string, string> = { connected: "connectée", active: "connectée", pending: "autorisation à terminer", expired: "expirée", error: "en erreur" };
 
 /**
  * Diagnostic de l'application : chaque contrôle est un VRAI appel (base, serveur, sources, eBay)
@@ -53,7 +56,7 @@ export async function runDiagnostics(supabase: MobileSupabase, ctx: { organizati
   ]);
 
   out.push({ key: "db", label: "Base de données (Supabase)", state: db.error ? "error" : "ok", detail: db.error ?? "Connexion et droits d'accès vérifiés.", durationMs: db.ms });
-  out.push({ key: "account", label: "Compte et organisation", state: "ok", detail: `${ctx.email ?? "Compte connecté"} · ${ctx.organizationName} · rôle ${ctx.role}`, durationMs: null });
+  out.push({ key: "account", label: "Compte et organisation", state: "ok", detail: `${ctx.email ?? "Compte connecté"} · ${ctx.organizationName} · ${ROLE_LABEL[ctx.role as keyof typeof ROLE_LABEL] ?? ctx.role}`, durationMs: null });
 
   const h = health.value;
   out.push({
@@ -90,7 +93,7 @@ export async function runDiagnostics(supabase: MobileSupabase, ctx: { organizati
         ? "Clés d'application eBay non configurées sur le serveur."
         : !conn
           ? "Aucun compte connecté (Réglages → Intégrations → eBay)."
-          : `${conn.externalUsername ?? "Compte"} · ${conn.status} · dernière synchronisation réussie : ${fmt(conn.lastSuccessfulSyncAt)}${conn.lastError ? ` · erreur : ${conn.lastError}` : ""}`,
+          : `${conn.externalUsername ?? "Compte"} · ${CONNECTION_LABEL[conn.status] ?? conn.status} · dernière synchronisation réussie : ${fmt(conn.lastSuccessfulSyncAt)}${conn.lastError ? ` · erreur : ${conn.lastError}` : ""}`,
       durationMs: integrations.ms,
     });
   }
