@@ -115,7 +115,7 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                   return (
                     <TR key={l.id} className="align-top">
                       <TD>
-                        <div className="max-w-[360px] truncate font-semibold text-foreground" title={l.title}>
+                        <div className="max-w-[280px] truncate font-semibold text-foreground" title={l.title}>
                           {l.title || "(sans titre)"}
                         </div>
                         <div className="text-xs text-muted">
@@ -129,14 +129,14 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                           {l.status !== "active" ? <Badge variant="neutral" className="ml-1">{l.status}</Badge> : null}
                         </div>
                       </TD>
-                      <TD className="ms-code text-xs">{l.external_sku ?? <span className="text-muted">—</span>}</TD>
+                      <TD className="ms-code whitespace-nowrap text-xs">{l.external_sku ?? <span className="text-muted">—</span>}</TD>
                       <TD align="right">{formatMoney(l.price, l.currency ?? "EUR")}</TD>
                       <TD align="right">{formatNumber(l.quantity_available ?? l.quantity_listed)}</TD>
                       {params.tab === "mapped" ? (
                         <TD>
-                          <div className="ms-code text-xs">{l.sku_code ?? "—"}</div>
+                          <div className="ms-code whitespace-nowrap text-xs">{l.sku_code ?? "—"}</div>
                           <div className="max-w-[220px] truncate text-xs text-muted">{l.sku_product_name ?? ""}</div>
-                          <div className="text-xs text-muted">
+                          <div className="whitespace-nowrap text-xs text-muted">
                             Stock interne : <span className="tnum">{formatNumber(l.sku_quantity_available)}</span>
                             {l.sku_quantity_available !== null && l.quantity_available !== null && Math.max(0, l.sku_quantity_available) !== l.quantity_available ? <StatusBadge tone="warning" className="ml-1" title="La quantité sur eBay diffère du stock interne disponible.">écart</StatusBadge> : null}
                           </div>
@@ -179,7 +179,7 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                           )}
                         </TD>
                       )}
-                      <TD className="text-xs text-muted">{formatRelative(l.last_synced_at)}</TD>
+                      <TD className="whitespace-nowrap text-xs text-muted">{formatRelative(l.last_synced_at)}</TD>
                       {writer ? (
                         <TD align="right">
                           <div className="flex flex-col items-end gap-1.5">

@@ -395,7 +395,7 @@ export default async function DirectoryEntryPage({ params, searchParams }: { par
                         <p className="text-[12.5px] font-semibold leading-[17px] text-ink-3">L&apos;activation exige l&apos;adresse exacte de la page des conditions que vous avez lue, puis votre attestation.</p>
                       ) : null}
                       {safeExternalUrl(library.termsUrl) ? (
-                        <ButtonLink href={safeExternalUrl(library.termsUrl) ?? ""} variant="link" className="min-h-10 self-start">
+                        <ButtonLink href={safeExternalUrl(library.termsUrl) ?? ""} variant="link" size="sm" className="min-h-10 self-start text-[13px]">
                           <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
                           {library.termsStatus === "confirmed" ? "Lire les conditions d’utilisation" : "Ouvrir le site du fournisseur"}
                         </ButtonLink>

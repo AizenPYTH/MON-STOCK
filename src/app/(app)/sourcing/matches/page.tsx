@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
+import { GitMerge } from "lucide-react";
 import { EmptyState } from "@/components/ui/page";
 import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +36,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
       </Scene>
       <Paper>
       {result.rows.length === 0 ? (
-        <EmptyState title="Aucune correspondance en attente." description="Les suggestions apparaissent après l'import d'offres (flux, pages, saisie) lorsqu'un SKU ressemble sans être certain." />
+        <EmptyState icon={<GitMerge />} title="Aucune correspondance en attente." description="Les suggestions apparaissent après l'import d'offres (flux, pages, saisie) lorsqu'un SKU ressemble sans être certain." />
       ) : (
         <div className="space-y-3">
           <Table className="min-w-[960px]">

@@ -50,7 +50,7 @@ export default function PrivacyPage() {
       </LegalSection>
 
       <LegalSection title="Prestataires (sous-traitants)">
-        <Table className="min-w-[600px] text-[14px] leading-5" stackOnMobile caption="Prestataires (sous-traitants) et leur localisation">
+        <Table wrapperClassName="max-sm:hidden" className="min-w-[600px] text-[14px] leading-5" caption="Prestataires (sous-traitants) et leur localisation">
           <THead>
             <tr>
               <TH>Prestataire</TH>
@@ -61,19 +61,32 @@ export default function PrivacyPage() {
           <TBody>
             {PROCESSORS.map((p) => (
               <TR key={p.name} className="align-top hover:bg-transparent">
-                <TD primary className="font-bold text-foreground">
+                <TD className="font-bold text-foreground">
                   {p.name}
                 </TD>
-                <TD label="Rôle" className="text-left text-muted-strong">
+                <TD className="text-muted-strong">
                   {p.role}
                 </TD>
-                <TD label="Localisation" className="text-left text-muted-strong">
+                <TD className="text-muted-strong">
                   {p.location}
                 </TD>
               </TR>
             ))}
           </TBody>
         </Table>
+        {/* Téléphone : une fiche par prestataire (le tableau à trois colonnes y serait illisible). */}
+        <ul className="divide-y divide-line-soft rounded-xl border border-border sm:hidden">
+          {PROCESSORS.map((p) => (
+            <li key={p.name} className="px-4 py-3 text-sm leading-5">
+              <p className="font-bold text-foreground">{p.name}</p>
+              <p className="mt-1 text-muted-strong">{p.role}</p>
+              <p className="mt-1.5 text-[13px] text-muted">
+                <span className="ms-mono mr-1.5 text-[10px] text-ink-3">Localisation</span>
+                {p.location}
+              </p>
+            </li>
+          ))}
+        </ul>
         <p>Les transferts hors de l&apos;Union européenne reposent sur les garanties prévues par le RGPD (clauses contractuelles types ou cadre de protection des données UE–États-Unis).</p>
       </LegalSection>
 

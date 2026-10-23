@@ -73,8 +73,7 @@ export function DisconnectAccountForm({ connectionId, accountName }: { connectio
       <input type="hidden" name="connectionId" value={connectionId} />
       <SubmitButton
         size="sm"
-        variant="ghost"
-        className="text-danger"
+        variant="danger"
         pendingText="Déconnexion…"
         confirmMessage={`Déconnecter ${accountName} ? Les identifiants enregistrés sont supprimés du serveur. Les offres déjà reçues restent dans l'historique.`}
       >

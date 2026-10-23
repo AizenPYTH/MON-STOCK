@@ -3,6 +3,9 @@ import type { SimpleDealDTO, SimpleRankedOfferDTO, SimpleSearchDTO } from "@/fea
 import { SupplierSearchView } from "@/features/sourcing-search/components/search-results";
 import { ImportProgress } from "@/features/catalog-imports/components/import-progress";
 import { ImportHistory } from "@/features/catalog-imports/components/import-history";
+import { LibraryCard } from "@/features/sources/components/library-list";
+import { ActivateLibraryForm } from "@/features/directory/components/activate-library-form";
+import type { LibraryEntryDTO } from "@/services/sourcing/source-library";
 
 const now = Date.now();
 const iso = (h: number) => new Date(now - h * 3_600_000).toISOString();
@@ -19,6 +22,17 @@ const data: SimpleSearchDTO = { query: "iphone 13", currency: "EUR", total: 4, o
 
 export default async function Harness({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
+  if (sp.view === "forms") {
+    const lib = (over: Partial<LibraryEntryDTO>): LibraryEntryDTO => ({ key: "k", name: "Brico-phone", website: "https://www.brico-phone.com", segment: "parts", country: "FR", currency: "EUR", access: "public_html", termsUrl: "https://www.brico-phone.com/cgv", termsStatus: "confirmed", termsLabel: "Page des conditions confirmée", requiresTermsUrl: false, notes: "Pièces détachées, prix publics TTC.", check: { status: "ok", checkedAt: iso(20), productCount: 120, message: null, sample: [] }, activatable: true, sourceId: null, blocked: null, ...over }) as LibraryEntryDTO;
+    return (
+      <div className="grid max-w-[1100px] gap-6 p-8 md:grid-cols-2">
+        <LibraryCard canActivate entry={lib({})} />
+        <LibraryCard canActivate entry={lib({ key: "k2", name: "Refreshed Apples", termsStatus: "unverified", termsLabel: "Page des conditions non vérifiée par MON STOCK (page d'accueil ou chemin supposé) : localisez les conditions sur le site", requiresTermsUrl: true })} />
+        <div className="rounded-2xl border border-border bg-surface p-4"><ActivateLibraryForm libraryKey="k" name="Brico-phone" termsUrl="https://www.brico-phone.com/cgv" termsConfirmed /></div>
+        <div className="rounded-2xl border border-border bg-surface p-4"><ActivateLibraryForm libraryKey="k2" name="Refreshed Apples" termsUrl="https://refreshedapples.com" termsConfirmed={false} /></div>
+      </div>
+    );
+  }
   if (sp.view === "progress") {
     const base = { supplierId: null, supplierName: "Foxway", sourceId: null, origin: "file" as const, fileName: "foxway-stock-semaine-42.xlsx", fileSize: 1_482_113, format: "xlsx" as const, mode: "snapshot" as const, counts: { read: 0, valid: 0, created: 0, updated: 0, unchanged: 0, duplicates: 0, invalid: 0, rejected: 0, unrecognized: 0, expired: 0 }, truncated: false, message: null, createdBy: null, startedAt: iso(0.2), finishedAt: null };
     return (

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Bell, Plus } from "lucide-react";
 import { requireOrgContext, canWrite } from "@/features/auth/dal";
 import { EmptyState } from "@/components/ui/page";
 import { Paper, Scene, SceneHeader } from "@/components/instrument";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { ButtonLink } from "@/components/ui/button";
 import { listSourcingAlerts, getSourcingAlert, parseCriteria } from "@/features/sourcing/queries";
 import { AlertForm, type AlertFormValues } from "@/features/sourcing/components/alert-form";
@@ -69,7 +70,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
       <div className="space-y-6">
         {formValues ? <AlertForm initial={formValues} currency={currency} /> : null}
         {alerts.length === 0 && !formValues ? (
-          <EmptyState title="Aucune alerte." description="Créez une alerte depuis une recherche (« Créer une alerte pour cette recherche ») ou ici." action={writable ? <ButtonLink href="/sourcing/alerts?new=1">Créer une alerte</ButtonLink> : undefined} />
+          <EmptyState icon={<Bell />} title="Aucune alerte." description="Créez une alerte depuis une recherche (« Créer une alerte pour cette recherche ») ou ici." action={writable ? <ButtonLink href="/sourcing/alerts?new=1">Créer une alerte</ButtonLink> : undefined} />
         ) : (
           alerts.map((a) => {
             const c = a.criteria;
@@ -88,7 +89,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
                   title={
                     <span className="flex flex-wrap items-center gap-2">
                       {a.name}
-                      <Badge variant={a.is_active ? "success" : "neutral"}>{a.is_active ? "Active" : "En pause"}</Badge>
+                      <StatusBadge tone={a.is_active ? "success" : "neutral"}>{a.is_active ? "Active" : "En pause"}</StatusBadge>
                       {a.unseenCount > 0 ? <Badge variant="danger">{a.unseenCount} nouveau(x)</Badge> : null}
                     </span>
                   }
@@ -111,7 +112,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
                             Marquer vu
                           </ActionButtonForm>
                         ) : null}
-                        <ActionButtonForm action={deleteAlertAction} fields={{ alert_id: a.id }} confirmMessage="Supprimer cette alerte et son historique ?" variant="ghost" buttonClassName="text-danger">
+                        <ActionButtonForm action={deleteAlertAction} fields={{ alert_id: a.id }} confirmMessage="Supprimer cette alerte et son historique ?" variant="danger">
                           Supprimer
                         </ActionButtonForm>
                       </div>

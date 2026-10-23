@@ -152,7 +152,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
                           <ActionButtonForm action={toggleSourceAction} fields={{ source_id: s.id, paused: s.status === "paused" ? "false" : "true" }} variant="ghost">
                             {s.status === "paused" ? "Réactiver" : "Mettre en pause"}
                           </ActionButtonForm>
-                          <ActionButtonForm action={deleteSourceAction} fields={{ source_id: s.id }} confirmMessage="Désactiver cette source ? Elle ne sera plus explorée." variant="ghost" buttonClassName="text-danger">
+                          <ActionButtonForm action={deleteSourceAction} fields={{ source_id: s.id }} confirmMessage="Désactiver cette source ? Elle ne sera plus explorée." variant="danger">
                             Désactiver
                           </ActionButtonForm>
                         </div>
