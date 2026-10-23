@@ -130,7 +130,7 @@ export default function SkuScreen() {
               title={MOVEMENT_TYPE_LABEL[m.type] ?? m.type}
               subtitle={`${formatDateTime(m.occurred_at)} · stock après : ${formatNumber(m.quantity_after)}${m.note ? ` · ${m.note}` : ""}`}
               right={
-                <Txt variant="body" num color={m.quantity < 0 ? color.danger : color.success} style={{ fontFamily: "Manrope_800ExtraBold" }}>
+                <Txt variant="body" num color={m.quantity < 0 ? color.dangerInk : color.success} style={{ fontFamily: "Manrope_800ExtraBold" }}>
                   {m.quantity > 0 ? "+" : ""}
                   {formatNumber(m.quantity)}
                 </Txt>

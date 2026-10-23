@@ -117,7 +117,7 @@ export default function ProductScreen() {
             title={variantTitle(v)}
             subtitle={v.row.code ?? ""}
             right={
-              <Txt variant="kpiSm" num style={{ fontSize: 17 }} color={(v.row.quantity_available ?? 0) <= 0 ? color.danger : color.ink}>
+              <Txt variant="kpiSm" num style={{ fontSize: 17 }} color={(v.row.quantity_available ?? 0) <= 0 ? color.dangerInk : color.ink}>
                 {formatNumber(v.row.quantity_available ?? 0)}
               </Txt>
             }

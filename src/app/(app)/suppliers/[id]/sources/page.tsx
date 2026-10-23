@@ -61,7 +61,7 @@ export default async function SupplierSourcesPage({ params }: { params: Promise<
         <Card>
           <CardHeader title="Flux CSV / XML / JSON" description="Fichier ou URL fourni par le fournisseur, avec mapping des colonnes." actions={writable ? <FeedForm supplierId={supplier.id} defaultCurrency={supplier.currency} /> : null} />
           <div>
-            {feedSources.length === 0 ? (
+            {feedSources.every((s) => s.feeds.length === 0) ? (
               <p className="px-5 py-5 text-sm text-muted">Aucun flux. <span className="font-medium">Source non connectée.</span></p>
             ) : (
               <ul className="divide-y divide-line-soft">

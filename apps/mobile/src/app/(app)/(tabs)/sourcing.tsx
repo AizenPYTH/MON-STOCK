@@ -265,7 +265,7 @@ function SearchField({ value, onChange, onSubmit, busy, canClear, onClear }: { v
         returnKeyType="search"
         autoCorrect={false}
         accessibilityLabel="Rechercher chez les fournisseurs"
-        maxFontSizeMultiplier={1.4}
+        maxFontSizeMultiplier={2}
         style={{ flex: 1, fontFamily: fontFamily[600], fontSize: 16, color: color.ink, paddingVertical: 0 }}
         testID="supplier-query"
       />

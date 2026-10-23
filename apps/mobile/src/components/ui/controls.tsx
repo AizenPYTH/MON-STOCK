@@ -62,7 +62,7 @@ export function Button({
       style={({ pressed }) => [
         {
           minHeight: compact ? size.buttonCompact : size.button,
-          borderRadius: compact ? radius.md : radius.lg,
+          borderRadius: radius.lg,
           paddingHorizontal: compact ? space[3] : space[4],
           flexDirection: "row",
           gap: space[2],
@@ -173,8 +173,8 @@ export function FilterChip({ label, count, selected, tone, onPress }: { label: s
         flexDirection: "row",
         alignItems: "center",
         gap: 6,
-        minHeight: 34,
-        paddingHorizontal: space[3],
+        minHeight: 36,
+        paddingHorizontal: 14,
         borderRadius: radius.pill,
         backgroundColor: selected ? color.brand : pressed ? color.surfacePressed : color.surface,
         borderWidth: 1,

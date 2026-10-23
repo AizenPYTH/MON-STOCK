@@ -125,7 +125,7 @@ function TableView({ entries }: { entries: DirectoryEntry[] }) {
   );
 }
 
-const selectCls = "h-10 rounded-xl border border-border-control bg-surface px-2.5 text-[13px] font-semibold text-foreground transition-[border-color,box-shadow] duration-150 hover:border-muted focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25 pointer-coarse:text-base";
+const selectCls = "h-10 w-full min-w-0 rounded-xl sm:w-auto border border-border-control bg-surface px-2.5 text-[13px] font-semibold text-foreground transition-[border-color,box-shadow] duration-150 hover:border-muted focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/25 pointer-coarse:text-base";
 
 export default async function SupplierDirectoryPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const ctx = await requireOrgContext();
@@ -235,7 +235,7 @@ export default async function SupplierDirectoryPage({ searchParams }: { searchPa
             {formatNumber(filtered.length)} fournisseur{filtered.length > 1 ? "s" : ""}
             {isFiltered ? ` sur ${formatNumber(entries.length)}` : ""} · {SORTS.find((s) => s.value === f.sort)?.label}
           </p>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:flex-wrap">
             <select form="dir-filters" name="country" defaultValue={f.country} aria-label="Pays" className={selectCls}>
               <option value="">Tous les pays</option>
               {countries.map((c) => (
@@ -268,6 +268,7 @@ export default async function SupplierDirectoryPage({ searchParams }: { searchPa
               </Link>
             ) : null}
             <Segmented
+              className="col-span-2 justify-self-start"
               label="Affichage"
               options={[
                 {

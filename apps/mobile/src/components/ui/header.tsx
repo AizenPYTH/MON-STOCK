@@ -142,11 +142,11 @@ function HeaderTabsRow<T extends string>({ tabs, large }: { tabs: HeaderTabs<T>;
             }}
             style={{ flex: 1, height: large ? 70 : 46, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 2, paddingHorizontal: 2, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: selected ? color.surface : "transparent" }}
           >
-            <Txt variant="body" color={selected ? color.ink : color.inkOnDarkSubtle} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.2} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: large ? (o.label.length > 4 ? 21 : 28) : 15, lineHeight: large ? 34 : 20, letterSpacing: large ? -0.8 : 0, flexShrink: 1 }}>
+            <Txt variant="body" color={selected ? color.ink : color.inkOnDarkSubtle} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.35} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: large ? (o.label.length > 4 ? 21 : 28) : 15, lineHeight: large ? 34 : 20, letterSpacing: large ? -0.8 : 0, flexShrink: 1 }}>
               {o.label}
             </Txt>
             {o.unit ? (
-              <Txt variant="body" color={selected ? color.ink : color.inkOnDarkSubtle} maxFontSizeMultiplier={1.2} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: large ? 16 : 13, lineHeight: large ? 22 : 18 }}>
+              <Txt variant="body" color={selected ? color.ink : color.inkOnDarkSubtle} maxFontSizeMultiplier={1.35} style={{ fontFamily: "Manrope_800ExtraBold", fontSize: large ? 16 : 13, lineHeight: large ? 22 : 18 }}>
                 {o.unit}
               </Txt>
             ) : null}

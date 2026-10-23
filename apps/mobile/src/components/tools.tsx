@@ -77,7 +77,7 @@ export function AmountField({
           placeholderTextColor={color.ink3}
           accessibilityLabel={label}
           accessibilityHint={error ?? hint}
-          maxFontSizeMultiplier={1.4}
+          maxFontSizeMultiplier={2}
           style={{ flex: 1, paddingVertical: space[3], paddingHorizontal: 14, minHeight: large ? 60 : size.touchMin, fontFamily: fontFamily[800], fontSize: large ? 28 : 17, color: color.ink }}
         />
         {suffix ? (

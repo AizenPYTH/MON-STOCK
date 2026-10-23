@@ -41,7 +41,7 @@ export function MessageBubble({ role, content, streaming = false, interrupted = 
           borderColor: error ? color.dangerSoft : color.line,
         }}
       >
-        <Txt variant="body" color={mine ? color.inkOnDark : error ? color.danger : color.ink} selectable style={mine ? { fontFamily: fontFamily[600] } : { fontFamily: fontFamily[500] }}>
+        <Txt variant="body" color={mine ? color.inkOnDark : error ? color.dangerInk : color.ink} selectable style={mine ? { fontFamily: fontFamily[600] } : { fontFamily: fontFamily[500] }}>
           {content}
           {streaming ? <Txt variant="body" color={color.ink3}>▍</Txt> : null}
         </Txt>

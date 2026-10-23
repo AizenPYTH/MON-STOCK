@@ -59,6 +59,8 @@ export function Screen({
       contentContainerStyle={[inner, { paddingTop: overlap ? 22 : space[4], paddingBottom: space[8] + clearance }]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      // Le clavier ne masque jamais le champ actif (iOS) — y compris sur les écrans sans KeyboardAvoidingView.
+      automaticallyAdjustKeyboardInsets
       refreshControl={refreshControl as never}
     >
       {found.rest}

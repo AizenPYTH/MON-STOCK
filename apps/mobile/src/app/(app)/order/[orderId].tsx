@@ -117,7 +117,7 @@ export default function OrderScreen() {
             <Txt variant="body" style={{ fontFamily: "Manrope_800ExtraBold" }}>
               Marge nette
             </Txt>
-            <Txt variant="body" num color={margin !== null && margin >= 0 ? color.success : margin !== null ? color.danger : color.ink3} style={{ fontFamily: "Manrope_800ExtraBold" }}>
+            <Txt variant="body" num color={margin !== null && margin >= 0 ? color.success : margin !== null ? color.dangerInk : color.ink3} style={{ fontFamily: "Manrope_800ExtraBold" }}>
               {margin === null ? "non calculable" : formatMoney(margin, currency)}
             </Txt>
           </View>

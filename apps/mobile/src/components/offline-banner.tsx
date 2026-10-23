@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { AccessibilityInfo, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NetInfo from "@react-native-community/netinfo";
 import { AlertBanner } from "~/components/ui/display";
@@ -12,12 +12,22 @@ import { space } from "~/theme/tokens";
  */
 export function OfflineBanner() {
   const [offline, setOffline] = useState(false);
+  const prevRef = useRef(false);
   const insets = useSafeAreaInsets();
-  useEffect(() => NetInfo.addEventListener((s) => setOffline(s.isConnected === false || s.isInternetReachable === false)), []);
+  useEffect(
+    () =>
+      NetInfo.addEventListener((s) => {
+        const next = s.isConnected === false || s.isInternetReachable === false;
+        if (prevRef.current !== next) AccessibilityInfo.announceForAccessibility?.(next ? "Hors ligne : aucune modification ne sera envoyée." : "Connexion rétablie.");
+        prevRef.current = next;
+        setOffline(next);
+      }),
+    [],
+  );
   if (!offline) return null;
   return (
-    <View style={{ position: "absolute", zIndex: 10, left: space[5], right: space[5], top: insets.top + space[2] }} accessibilityLiveRegion="polite">
-      <AlertBanner tone="dark" text="Hors ligne · données possiblement anciennes, modifications indisponibles" />
+    <View pointerEvents="none" style={{ position: "absolute", zIndex: 10, left: space[5], right: space[5], bottom: insets.bottom + 64 }} accessibilityLiveRegion="polite" accessibilityRole="alert">
+      <AlertBanner tone="dark" text="Hors ligne · données affichées possiblement anciennes · aucune modification n'est envoyée" />
     </View>
   );
 }

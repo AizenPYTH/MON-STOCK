@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { AccessibilityInfo, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ReAnimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { Check, X } from "lucide-react-native";
+import { Check, CircleAlert, X } from "lucide-react-native";
 import { color, motion, radius, shadow, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { Button } from "~/components/ui/controls";
@@ -33,6 +33,7 @@ export function EmptyState({ icon, title, description, actions = [] }: { icon?: 
 export function ErrorState({ title = "Impossible de charger les données", description, onRetry }: { title?: string; description: string; onRetry?: () => void }) {
   return (
     <View style={{ backgroundColor: color.dangerSoft, borderRadius: radius.card, borderWidth: 1, borderColor: color.dangerLine, padding: space[5], alignItems: "center", gap: space[2] }} accessibilityRole="alert">
+      <CircleAlert size={24} color={color.dangerInk} strokeWidth={2} />
       <Txt variant="headline" color={color.dangerInk} style={{ fontSize: 16, textAlign: "center" }}>
         {title}
       </Txt>
@@ -130,7 +131,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {toast.action ? (
               <Pressable
                 accessibilityRole="button"
-                hitSlop={10}
+                accessibilityLabel={toast.action.label}
+                hitSlop={8}
+                style={{ minHeight: 44, minWidth: 44, paddingHorizontal: space[2], alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: color.nightRaised }}
                 onPress={() => {
                   toast.action?.onPress();
                   setToast(null);

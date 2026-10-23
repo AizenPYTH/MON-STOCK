@@ -42,7 +42,7 @@ export function MonStockTabBar({ state, descriptors, navigation }: BottomTabBarP
   const x = useSlide(state.index * col + (col - 52) / 2, motion.tabIndicator);
   const indicator = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
-    <View accessibilityRole="tablist" onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.96)", borderTopWidth: 1, borderTopColor: color.line, paddingBottom: insets.bottom, paddingTop: 4 }}>
+    <View accessibilityRole="tablist" onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flexDirection: "row", backgroundColor: color.surface, borderTopWidth: 1, borderTopColor: color.line, paddingBottom: insets.bottom, paddingTop: 4 }}>
       {width > 0 ? <Animated.View pointerEvents="none" style={[{ position: "absolute", left: 0, top: compact ? 6 : 8, width: 52, height: compact ? 26 : 30, borderRadius: 15, backgroundColor: color.mint }, indicator]} /> : null}
       {state.routes.map((route, index) => {
         const options = descriptors[route.key]?.options ?? {};
@@ -70,7 +70,7 @@ export function MonStockTabBar({ state, descriptors, navigation }: BottomTabBarP
             <View style={{ width: 52, height: compact ? 26 : 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: focused && width === 0 ? color.mint : "transparent" }}>
               {options.tabBarIcon?.({ focused, color: focused ? color.brand : color.ink3, size: size.tabIcon })}
             </View>
-            <Txt variant="tab" color={focused ? color.ink : color.ink3} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+            <Txt variant="tab" color={focused ? color.ink : color.ink3} numberOfLines={1} maxFontSizeMultiplier={1.4}>
               {label}
             </Txt>
           </Pressable>

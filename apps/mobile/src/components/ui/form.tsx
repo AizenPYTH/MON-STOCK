@@ -6,20 +6,27 @@ import { color, radius, size, space } from "~/theme/tokens";
 import { fontFamily } from "~/theme/typography";
 import { Txt } from "~/components/ui/text";
 
-export const TextField = forwardRef<TextInput, TextInputProps & { label: string; error?: string; hint?: string }>(function TextField({ label, error, hint, style, onFocus, onBlur, ...props }, ref) {
+/**
+ * Champ de saisie : libellé visible ET annoncé, contour ≥ 3:1 (`borderControl`), focus épais en
+ * encre, erreur liée et annoncée ; touche Retour « Terminé » par défaut (les formulaires à
+ * plusieurs champs passent « next » et enchaînent le focus).
+ */
+export const TextField = forwardRef<TextInput, TextInputProps & { label: string; error?: string; hint?: string }>(function TextField({ label, error, hint, style, onFocus, onBlur, returnKeyType, multiline, ...props }, ref) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       <Txt variant="label" color={color.ink} style={{ fontFamily: fontFamily[700] }}>
         {label}
       </Txt>
-      <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: color.surface, borderWidth: error ? 1.5 : focused ? 2 : 1, borderColor: error ? color.danger : focused ? color.ink : color.line, borderRadius: radius.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: color.surface, borderWidth: error ? 1.5 : focused ? 2 : 1, borderColor: error ? color.dangerInk : focused ? color.ink : color.borderControl, borderRadius: radius.lg }}>
         <TextInput
           ref={ref}
           accessibilityLabel={label}
           accessibilityHint={error ?? hint}
+          returnKeyType={returnKeyType ?? (multiline ? "default" : "done")}
+          multiline={multiline}
           placeholderTextColor={color.ink3}
-          maxFontSizeMultiplier={1.4}
+          maxFontSizeMultiplier={2}
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -47,7 +54,7 @@ export const TextField = forwardRef<TextInput, TextInputProps & { label: string;
 export function SearchField({ value, onChangeText, placeholder, onSubmitEditing, autoFocus, testID }: { value: string; onChangeText: (v: string) => void; placeholder: string; onSubmitEditing?: () => void; autoFocus?: boolean; testID?: string }) {
   const [focused, setFocused] = useState(false);
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], height: size.input, backgroundColor: color.surface, borderRadius: radius.pill, paddingHorizontal: space[4], borderWidth: focused ? 1.5 : 1, borderColor: focused ? color.ink : color.line }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: space[2], height: size.input, backgroundColor: color.surface, borderRadius: radius.pill, paddingHorizontal: space[4], borderWidth: focused ? 2 : 1, borderColor: focused ? color.ink : color.borderControl }}>
       <Search size={18} color={color.ink3} strokeWidth={2} />
       <TextInput
         value={value}
@@ -59,7 +66,7 @@ export function SearchField({ value, onChangeText, placeholder, onSubmitEditing,
         autoCorrect={false}
         clearButtonMode="while-editing"
         returnKeyType="search"
-        maxFontSizeMultiplier={1.4}
+        maxFontSizeMultiplier={2}
         onSubmitEditing={onSubmitEditing}
         autoFocus={autoFocus}
         testID={testID}
