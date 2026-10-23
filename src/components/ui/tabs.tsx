@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Onglets de navigation (liens, pilotés par l'URL) : soulignement de l'onglet courant,
@@ -14,7 +15,7 @@ export function LinkTabs({ items, current, label = "Sections", className }: { it
           return (
             <Link
               key={it.href}
-              href={it.href as never}
+              href={internalRoute(it.href)}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-[10px] border-b-2 px-3 text-sm transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",

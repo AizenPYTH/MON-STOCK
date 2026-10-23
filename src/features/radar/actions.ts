@@ -8,6 +8,7 @@ import { toUserMessage } from "@/lib/errors";
 import { stockErrorMessage } from "@/features/stock/db-errors";
 import { saveCostSettings } from "@/services/radar/radar";
 import { parseDraftQuantity, parseSettingsForm } from "@/features/radar/settings-form";
+import { internalRoute } from "@/lib/routes";
 
 type MessageResult = ActionResult<{ message: string }>;
 
@@ -95,5 +96,5 @@ export async function createRadarDraftAction(_prev: ActionResult | null, formDat
   } catch (e) {
     return fail(toUserMessage(e));
   }
-  redirect(target as never);
+  redirect(internalRoute(target));
 }

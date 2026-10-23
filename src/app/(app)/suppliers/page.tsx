@@ -111,7 +111,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                 {rows.map(({ supplier, offersCount, offersCountExact, sourcesCount, sourceTypes, lastSyncAt }) => (
                   <TR key={supplier.id}>
                     <TD primary>
-                      <Link href={`/suppliers/${supplier.id}` as never} className="flex min-w-0 items-center gap-2.5 rounded-lg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                      <Link href={`/suppliers/${supplier.id}`} className="flex min-w-0 items-center gap-2.5 rounded-lg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                         <SupplierBadge name={supplier.name} domain={domainOf(supplier.website)} size="sm" />
                         <span className="min-w-0">
                           <span className="block truncate font-bold">{supplier.name}</span>

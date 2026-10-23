@@ -4,13 +4,14 @@ import { ChevronLeft } from "lucide-react";
 import { findTool } from "@/domain/tools/catalog";
 import { Paper, Scene, SceneHeader, Segmented } from "@/components/instrument";
 import type { ToolView } from "@/features/tools/view";
+import { internalRoute } from "@/lib/routes";
 
 export { readToolView, type ToolView } from "@/features/tools/view";
 
 /** Lien de retour discret (posé sur le papier). */
 export function BackToTools({ href = "/tools", label = "Outils" }: { href?: string; label?: string }) {
   return (
-    <Link href={href as never} className="inline-flex items-center gap-1 rounded text-xs font-medium uppercase tracking-wide text-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Link href={internalRoute(href)} className="inline-flex items-center gap-1 rounded text-xs font-medium uppercase tracking-wide text-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />
       {label}
     </Link>

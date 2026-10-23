@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { buttonClasses } from "@/components/ui/button";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Section de formulaire : intitulé et explication à gauche (au-dessus sur mobile), champs dans une
@@ -28,7 +29,7 @@ export function FormActions({ cancelHref, cancelLabel = "Annuler", note, childre
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
         {note ? <p className="mr-auto min-w-0 flex-1 basis-60 text-xs font-medium text-muted max-sm:hidden">{note}</p> : null}
         {cancelHref ? (
-          <Link href={cancelHref as never} className={buttonClasses("ghost", "md")}>
+          <Link href={internalRoute(cancelHref)} className={buttonClasses("ghost", "md")}>
             {cancelLabel}
           </Link>
         ) : null}

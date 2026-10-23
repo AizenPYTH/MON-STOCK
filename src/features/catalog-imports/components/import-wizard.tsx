@@ -548,7 +548,7 @@ function ImportResult({ result, mode, busy, onReimport, onForce, onFix, onRestar
         ) : null}
         <div className="flex flex-wrap gap-2.5">
           {written ? (
-            <Link href={"/sourcing" as never} className={buttonClasses("primary", "lg")}>
+            <Link href={"/sourcing"} className={buttonClasses("primary", "lg")}>
               Voir les offres
             </Link>
           ) : null}
@@ -568,7 +568,7 @@ function ImportResult({ result, mode, busy, onReimport, onForce, onFix, onRestar
             </Button>
           ) : null}
           {result.importJobId && !result.alreadyImported ? (
-            <Link href={`/sourcing/imports/${result.importJobId}` as never} className={buttonClasses("secondary", "lg")}>
+            <Link href={`/sourcing/imports/${result.importJobId}`} className={buttonClasses("secondary", "lg")}>
               {ignored > 1 ? `Rapport des ${formatNumber(ignored)} lignes ignorées` : ignored === 1 ? "Rapport de la ligne ignorée" : "Rapport de l'import"}
             </Link>
           ) : null}

@@ -16,6 +16,7 @@ import type { TrackedParcel } from "@/features/tools/parcels";
 import { frDate, PARCEL_TONE_CLASS } from "@/features/tools/format";
 import { evaluateTrackingEntry } from "@/features/tools/tracking-input";
 import { currencyHub, ebayHub, hubCopyText, HUB_WEIGHTS, marginHub, parcelHubLine, shippingByWeight, UNKNOWN, vatHub, VAT_HUB_MODES, type EbayHubInput, type HubLine } from "@/features/tools/hub";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Calculateurs côte à côte de la page « Outils » (maquette v5) : saisie, lignes « saisi » vs
@@ -35,7 +36,7 @@ function HubCard({ glyph, dark, title, desc, href, copy, children, note, footer 
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-px">
           <h2 className="text-[15.5px] font-extrabold leading-[21px]">
-            <Link href={href as never} className={cn("rounded hover:underline hover:underline-offset-2", FOCUS)}>
+            <Link href={internalRoute(href)} className={cn("rounded hover:underline hover:underline-offset-2", FOCUS)}>
               {title}
             </Link>
           </h2>
@@ -166,7 +167,7 @@ function ErrorText({ children }: { children: ReactNode }) {
 
 function FooterLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <Link href={href as never} className={cn("inline-flex min-h-10 items-center gap-1 rounded text-[13px] font-bold text-foreground hover:underline hover:underline-offset-2", FOCUS)}>
+    <Link href={internalRoute(href)} className={cn("inline-flex min-h-10 items-center gap-1 rounded text-[13px] font-bold text-foreground hover:underline hover:underline-offset-2", FOCUS)}>
       {children}
       <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
     </Link>
@@ -431,7 +432,7 @@ export function TrackingHubCard({ parcels, error, canWrite }: { parcels: Tracked
             const tone = PARCEL_TONE_CLASS[r.tone];
             return (
               <li key={p.id} className="border-b border-line-soft">
-                <Link href={`/tools/tracking/${p.id}` as never} className={cn("flex min-h-10 items-center gap-3 py-[9px] hover:bg-line-soft/60", FOCUS)}>
+                <Link href={`/tools/tracking/${p.id}`} className={cn("flex min-h-10 items-center gap-3 py-[9px] hover:bg-line-soft/60", FOCUS)}>
                   <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-muted">{r.label}</span>
                   <span className={cn("flex shrink-0 items-center gap-1.5 text-right text-[13.5px] font-semibold", tone.text)}>
                     <span aria-hidden="true" className={cn("h-[7px] w-[7px] rounded-full", tone.dot)} />

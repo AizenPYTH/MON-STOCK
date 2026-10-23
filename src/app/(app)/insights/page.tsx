@@ -16,6 +16,7 @@ import { RecommendationsTable } from "@/features/analytics/components/recommenda
 import { refreshRecommendationsAction } from "@/features/analytics/actions";
 import { skuLabel, type StockRowView } from "@/features/stock/model";
 import { formatDateTime, formatNumber, formatRelative } from "@/lib/format";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Insights" };
 
@@ -71,7 +72,7 @@ export default async function InsightsPage() {
             <ul className="divide-y divide-line-soft">
               {insights.map((it) => (
                 <li key={it.key}>
-                  <Link href={it.href as never} className="group flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors duration-150 ease-standard hover:bg-surface-2 sm:px-5">
+                  <Link href={internalRoute(it.href)} className="group flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors duration-150 ease-standard hover:bg-surface-2 sm:px-5">
                     <ToneIcon tone={SEVERITY_TONE[it.severity]}>{it.severity === "critical" ? <OctagonAlert /> : it.severity === "warning" ? <TriangleAlert /> : <Lightbulb />}</ToneIcon>
                     <span className="min-w-0 flex-1 basis-64">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -137,7 +138,7 @@ export default async function InsightsPage() {
             <ul className="divide-y divide-line-soft text-sm">
               {analytics.deadStock.slice(0, 10).map((v) => (
                 <li key={v.row.sku_id} className="flex items-center justify-between gap-3 px-5 py-2.5">
-                  <Link href={`/stock/${encodeURIComponent(v.row.code ?? "")}` as never} className="min-w-0 truncate hover:underline">
+                  <Link href={`/stock/${encodeURIComponent(v.row.code ?? "")}`} className="min-w-0 truncate hover:underline">
                     {skuLabel(v.row)} <span className="ms-code text-xs text-muted">{v.row.code}</span>
                   </Link>
                   <span className="shrink-0 text-xs text-muted tnum">

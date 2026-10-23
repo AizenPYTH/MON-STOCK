@@ -217,7 +217,7 @@ export async function acceptInvitationAction(formData: FormData): Promise<void> 
   const parsed = memberRefSchema.pick({ token: true }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/dashboard");
   const token = parsed.data.token;
-  const invitePath = `/invite/${encodeURIComponent(token)}`;
+  const invitePath = `/invite/${encodeURIComponent(token)}` as const;
   const user = await getCurrentUser();
   if (!user) redirect(`/login?error=session_expired&next=${encodeURIComponent(invitePath)}`);
   const supabase = await createServerSupabaseClient();

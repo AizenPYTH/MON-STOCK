@@ -87,7 +87,7 @@ export default async function TrackingListPage({ searchParams }: { searchParams:
                   return (
                     <TR key={p.id}>
                       <TD primary>
-                        <Link href={`/tools/tracking/${p.id}` as never} className={cn("font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", !p.label && "ms-code text-[13px]")}>
+                        <Link href={`/tools/tracking/${p.id}`} className={cn("font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", !p.label && "ms-code text-[13px]")}>
                           {p.label || p.trackingNumber}
                         </Link>
                         {p.label ? <div className="ms-code text-[11.5px] font-normal text-ink-3">N° {p.trackingNumber}</div> : null}

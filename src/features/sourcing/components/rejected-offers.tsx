@@ -19,7 +19,7 @@ export function RejectedOffersPanel({ rejected, currency }: { rejected: SearchRe
         {rejected.offers.map((r) => (
           <li key={r.id} className="py-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <Link href={`/sourcing/offers/${r.id}` as never} className="min-w-0 truncate font-medium hover:underline">
+              <Link href={`/sourcing/offers/${r.id}`} className="min-w-0 truncate font-medium hover:underline">
                 {r.title}
               </Link>
               <span className="text-xs text-muted">

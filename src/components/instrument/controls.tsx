@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Commandes v5 pilotées par l'URL (liens, aucun état caché) : puces de filtre, contrôle
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils";
 export function FilterChip({ href, selected, children, count, dot }: { href: string; selected: boolean; children: ReactNode; count?: number | string; dot?: string }) {
   return (
     <Link
-      href={href as never}
+      href={internalRoute(href)}
       aria-current={selected ? "true" : undefined}
       className={cn(
         "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13.5px] font-semibold transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-10",
@@ -32,7 +33,7 @@ export function Segmented({ options, label, className }: { options: { href: stri
       {options.map((o, i) => (
         <Link
           key={i}
-          href={o.href as never}
+          href={internalRoute(o.href)}
           aria-current={o.selected ? "true" : undefined}
           className={cn("inline-flex h-8 items-center justify-center gap-1.5 rounded-[10px] px-4 text-[13.5px] font-semibold transition-colors duration-150 ease-standard focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring pointer-coarse:h-10", o.selected ? "bg-surface text-foreground shadow-raised" : "text-muted hover:text-foreground")}
         >

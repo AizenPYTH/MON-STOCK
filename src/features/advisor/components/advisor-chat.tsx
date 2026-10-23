@@ -410,7 +410,7 @@ export function AdvisorChat({
               <ul className="flex flex-wrap justify-center gap-1.5">
                 {recent.map((h) => (
                   <li key={h.id}>
-                    <Link href={`/advisor?conversation=${h.id}` as never} className={cn("inline-flex min-h-8 max-w-[260px] items-center rounded-full border border-border bg-surface px-3 text-[12.5px] font-semibold text-foreground hover:border-border-strong hover:bg-surface-2 pointer-coarse:min-h-10", FOCUS)}>
+                    <Link href={`/advisor?conversation=${h.id}`} className={cn("inline-flex min-h-8 max-w-[260px] items-center rounded-full border border-border bg-surface px-3 text-[12.5px] font-semibold text-foreground hover:border-border-strong hover:bg-surface-2 pointer-coarse:min-h-10", FOCUS)}>
                       <span className="truncate">{h.title}</span>
                     </Link>
                   </li>

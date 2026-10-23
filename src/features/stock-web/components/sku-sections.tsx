@@ -11,6 +11,7 @@ import { coverDisplay, levelDisplay, marginDisplay, providerLabel } from "@/feat
 import { QuantityStepper } from "@/features/stock-web/components/sku-client";
 import { formatMoney, formatNumber, formatRelative } from "@/lib/format";
 import { cn, safeExternalUrl } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 const DAY = 86_400_000;
 
@@ -125,7 +126,7 @@ export function BestOfferCard({ detail, writable, findHref }: { detail: SkuDetai
             <span className="text-[14.5px] font-semibold leading-5">Aucune offre rapprochée</span>
             <span className="text-[12.5px] font-semibold leading-[17px] text-ink-3">Aucune offre fournisseur n&apos;est encore liée à ce SKU.</span>
           </span>
-          <Link href={findHref as never} className="inline-flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg px-1 text-[13px] font-bold hover:opacity-60">
+          <Link href={internalRoute(findHref)} className="inline-flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg px-1 text-[13px] font-bold hover:opacity-60">
             Chercher <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
           </Link>
         </Panel>
@@ -153,7 +154,7 @@ function OfferBody({ best, supplier, writable, recommendation, marginCtx, row }:
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="ms-mono text-[10px] leading-[13px] text-ink-3">Offre rapprochée</span>
-          <Link href={`/sourcing/offers/${best.id}` as never} className="truncate text-[15px] font-bold leading-5 hover:underline">
+          <Link href={`/sourcing/offers/${best.id}`} className="truncate text-[15px] font-bold leading-5 hover:underline">
             {name}
           </Link>
         </span>
@@ -176,7 +177,7 @@ function OfferBody({ best, supplier, writable, recommendation, marginCtx, row }:
         )}
         <span className="flex-1" />
         {writable && draftHref ? (
-          <Link href={draftHref as never} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-border-strong bg-surface px-3 text-[13.5px] font-extrabold hover:bg-line-soft">
+          <Link href={internalRoute(draftHref)} className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-border-strong bg-surface px-3 text-[13.5px] font-extrabold hover:bg-line-soft">
             <ClipboardList aria-hidden="true" className="h-4 w-4" />
             Brouillon de commande · {qty} u.
           </Link>
@@ -251,7 +252,7 @@ export function MovementsCard({ detail, limit, moreHref }: { detail: SkuDetail; 
       <Panel className="overflow-hidden">
         <MovementsTimeline movements={movements} limit={limit} />
         {moreHref && limit && movements.length > limit ? (
-          <Link href={moreHref as never} className="flex min-h-11 items-center justify-center border-t border-line-soft text-[13.5px] font-bold hover:bg-line-soft">
+          <Link href={internalRoute(moreHref)} className="flex min-h-11 items-center justify-center border-t border-line-soft text-[13.5px] font-bold hover:bg-line-soft">
             Tout l&apos;historique ({movements.length})
           </Link>
         ) : null}

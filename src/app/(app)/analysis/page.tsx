@@ -121,7 +121,7 @@ export default async function AnalysisPage({ searchParams }: { searchParams: Pro
                           </TD>
                           <TD primary>
                             {p.code ? (
-                              <Link href={`/stock/${encodeURIComponent(p.code)}` as never} className="group block min-w-0 max-w-[300px] rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                              <Link href={`/stock/${encodeURIComponent(p.code)}`} className="group block min-w-0 max-w-[300px] rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                                 <span className="block truncate font-semibold text-foreground group-hover:underline group-hover:underline-offset-4">{p.label}</span>
                                 <span className="ms-code text-xs font-normal text-ink-3">{p.code}</span>
                               </Link>

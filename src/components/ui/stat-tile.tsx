@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 export type StatTone = "success" | "warning" | "danger" | "neutral";
 
@@ -82,7 +83,7 @@ export function StatTile({
   );
   const cls = cn("block min-w-0 rounded-2xl border border-border bg-surface px-5 py-4", className);
   return href ? (
-    <Link href={href as never} className={cn(cls, "transition-colors duration-150 ease-standard hover:border-border-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring")}>
+    <Link href={internalRoute(href)} className={cn(cls, "transition-colors duration-150 ease-standard hover:border-border-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring")}>
       {body}
     </Link>
   ) : (

@@ -74,7 +74,7 @@ function AccountCard({
           <h3 className="text-base font-bold leading-[22px]">
             <Link
               href={
-                `/suppliers/directory/${encodeURIComponent(a.key)}` as never
+                `/suppliers/directory/${encodeURIComponent(a.key)}`
               }
               className="hover:underline"
             >

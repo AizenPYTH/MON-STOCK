@@ -58,7 +58,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
                     <TD>
                       {m.offer ? (
                         <>
-                          <Link href={`/sourcing/offers/${m.offer.id}` as never} className="font-medium hover:underline">
+                          <Link href={`/sourcing/offers/${m.offer.id}`} className="font-medium hover:underline">
                             <span className="block max-w-[320px] truncate">{m.offer.title_original}</span>
                           </Link>
                           <div className="text-xs text-muted">
@@ -71,7 +71,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
                     </TD>
                     <TD>
                       {m.sku ? (
-                        <Link href={`/stock/${encodeURIComponent(m.sku.code)}` as never} className="hover:underline">
+                        <Link href={`/stock/${encodeURIComponent(m.sku.code)}`} className="hover:underline">
                           <span className="font-mono text-xs">{m.sku.code}</span> {m.sku.product?.name}
                           {m.sku.variant?.name && m.sku.variant.name !== "Standard" ? ` · ${m.sku.variant.name}` : ""}
                         </Link>

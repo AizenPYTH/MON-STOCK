@@ -172,7 +172,7 @@ export function AnalysisPanel({ offer: o, orgCurrency, onClose }: { offer: Simpl
 
         <footer className="flex shrink-0 gap-2 border-t border-border bg-surface px-5 pb-4 pt-3">
           {UUID.test(o.supplierId) ? (
-            <Link href={`/suppliers/${o.supplierId}` as never} aria-label={`Fiche du fournisseur ${name}`} title="Fiche fournisseur" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-surface hover:bg-line-soft">
+            <Link href={`/suppliers/${o.supplierId}`} aria-label={`Fiche du fournisseur ${name}`} title="Fiche fournisseur" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-surface hover:bg-line-soft">
               <Store aria-hidden="true" className="h-5 w-5" />
             </Link>
           ) : null}

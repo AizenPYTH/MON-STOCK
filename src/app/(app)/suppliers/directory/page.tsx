@@ -13,6 +13,7 @@ import { DEFAULT_FILTERS, directoryCountries, directoryStats, filterDirectory, f
 import { supplierLogoUrl } from "@/features/directory/logos";
 import { SupplierBadge } from "@/features/directory/components/supplier-badge";
 import { cardActionLink } from "@/features/directory/components/primary-action";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Annuaire des fournisseurs" };
 
@@ -43,7 +44,7 @@ function DirectoryCard({ entry: e, writer }: { entry: DirectoryEntry; writer: bo
       <div className="flex items-center gap-3">
         <SupplierBadge name={e.name} domain={e.registry.domain} size="lg" />
         <span className="flex min-w-0 flex-1 flex-col gap-px">
-          <Link href={entryHref(e) as never} className="truncate rounded text-base font-bold leading-[22px] after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring">
+          <Link href={internalRoute(entryHref(e))} className="truncate rounded text-base font-bold leading-[22px] after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring">
             {name}
           </Link>
           <span className="truncate text-[13px] font-semibold leading-[18px] text-ink-3">{[e.country ? countryLabel(e.country) : null, segmentLabel(e.segment)].filter(Boolean).join(" · ")}</span>
@@ -72,7 +73,7 @@ function DirectoryCard({ entry: e, writer }: { entry: DirectoryEntry; writer: bo
             <span className="sr-only"> (site de {name}, nouvel onglet)</span>
           </a>
         ) : (
-          <Link href={action.href as never} className={buttonClasses("secondary", "md", "relative z-10 shrink-0 px-3 text-[13.5px] font-extrabold")}>
+          <Link href={internalRoute(action.href)} className={buttonClasses("secondary", "md", "relative z-10 shrink-0 px-3 text-[13.5px] font-extrabold")}>
             {action.label}
           </Link>
         )}
@@ -101,7 +102,7 @@ function TableView({ entries }: { entries: DirectoryEntry[] }) {
             return (
               <tr key={e.key} className="transition-colors duration-150 hover:bg-surface-2">
                 <td className="max-w-[260px] py-2.5 pl-4 pr-3">
-                  <Link href={entryHref(e) as never} className="flex items-center gap-2.5 font-bold hover:underline">
+                  <Link href={internalRoute(entryHref(e))} className="flex items-center gap-2.5 font-bold hover:underline">
                     <SupplierBadge name={e.name} domain={e.registry.domain} size="sm" />
                     <span className="truncate">{shortName(e.name)}</span>
                   </Link>
@@ -263,7 +264,7 @@ export default async function SupplierDirectoryPage({ searchParams }: { searchPa
               Appliquer
             </button>
             {isFiltered || f.q ? (
-              <Link href={clearHref as never} className={buttonClasses("ghost", "md", "px-2.5 text-[13px]")}>
+              <Link href={clearHref} className={buttonClasses("ghost", "md", "px-2.5 text-[13px]")}>
                 Tout effacer
               </Link>
             ) : null}

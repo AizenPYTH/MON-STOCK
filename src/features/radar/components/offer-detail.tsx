@@ -11,6 +11,7 @@ import { Chip, STATUS_CHIP, VERDICT_CHIP, VERDICT_TEXT } from "@/features/radar/
 import { RadarWaterfall } from "@/features/radar/components/radar-waterfall";
 import { SaveOfferButton } from "@/features/radar/components/save-offer-button";
 import { DraftDialogButton } from "@/features/radar/components/draft-dialog";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Détail d'une offre du radar (colonne droite collante de /radar ou pleine page /radar/[offerId]) :
@@ -65,7 +66,7 @@ export function RadarOfferDetail({
               {item.sku.code} · stock {formatNumber(item.sku.quantityAvailable)} · {formatNumber(item.sku.units30d)} ventes / 30 j
             </p>
             <h2 className="text-[22px] font-extrabold leading-7 tracking-[-0.4px]">
-              <Link href={`/radar/${o.offerId}` as never} className="hover:underline">
+              <Link href={`/radar/${o.offerId}`} className="hover:underline">
                 {item.sku.name}
               </Link>
             </h2>
@@ -181,7 +182,7 @@ export function RadarOfferDetail({
             <ul className="divide-y divide-line-soft overflow-hidden rounded-2xl border border-border bg-surface">
               {peers.map((p) => (
                 <li key={p.offerId}>
-                  <Link href={peerHref(p.offerId) as never} scroll={false} className="flex items-center justify-between gap-2 px-3.5 py-2.5 hover:bg-line-soft">
+                  <Link href={internalRoute(peerHref(p.offerId))} scroll={false} className="flex items-center justify-between gap-2 px-3.5 py-2.5 hover:bg-line-soft">
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="truncate text-[15px] font-semibold leading-5">{p.supplierName}</span>
                       <span className="ms-code truncate text-[10.5px] uppercase leading-[15px] text-ink-3 tnum">

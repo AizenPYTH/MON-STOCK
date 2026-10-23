@@ -42,7 +42,7 @@ export function DiscoveredSourcesPanel({ sources, writable, showSupplier = true,
                     {showSupplier ? (
                       <div className="text-xs text-muted">
                         Fournisseur :{" "}
-                        <Link href={`/suppliers/${s.supplierId}/sources` as never} className="underline-offset-2 hover:underline">
+                        <Link href={`/suppliers/${s.supplierId}/sources`} className="underline-offset-2 hover:underline">
                           {s.supplierName}
                         </Link>
                       </div>

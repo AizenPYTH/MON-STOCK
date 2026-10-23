@@ -210,7 +210,7 @@ function Restock({ rows, currency, columnHref }: { rows: RadarRestockDTO[]; curr
       {r.bestOfferId ? (
         <OfferStretchLink columnHref={columnHref(r.bestOfferId)} pageHref={`/radar/${r.bestOfferId}`} label={`${r.name} : meilleure offre`} />
       ) : (
-        <Link href={`/stock/${encodeURIComponent(r.code)}` as never} aria-label={`${r.name} : fiche produit`} className="absolute inset-0 z-[1]" />
+        <Link href={`/stock/${encodeURIComponent(r.code)}`} aria-label={`${r.name} : fiche produit`} className="absolute inset-0 z-[1]" />
       )}
     </li>
   );

@@ -61,7 +61,7 @@ export default async function RateCardsPage() {
                 return (
                   <TR key={c.id}>
                     <TD primary>
-                      <Link href={`/tools/shipping-rates/${c.id}` as never} className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                      <Link href={`/tools/shipping-rates/${c.id}`} className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                         {c.carrier}
                         {c.service ? ` · ${c.service}` : ""}
                       </Link>

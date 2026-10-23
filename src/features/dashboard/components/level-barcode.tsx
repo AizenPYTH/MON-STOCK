@@ -2,6 +2,7 @@ import Link from "next/link";
 import { barcodeBars, type BarcodeItem, type BarcodeLevel } from "@/components/instrument/pure";
 import type { StockLevel } from "@/domain/inventory/alerts";
 import { stockLevelHref } from "@/features/dashboard/today.pure";
+import { internalRoute } from "@/lib/routes";
 
 const FILL: Record<BarcodeLevel, string> = { ok: "color-mix(in srgb, var(--on-night) 86%, transparent)", low: "var(--amber)", out: "var(--danger-on-night)" };
 
@@ -22,7 +23,7 @@ export function LevelBarcode({ items, height = 56, label }: { items: (BarcodeIte
         return (
           <Link
             key={b.id}
-            href={href as never}
+            href={internalRoute(href)}
             tabIndex={-1}
             aria-hidden="true"
             title={b.id === "others" ? `Autres références (${tail})` : undefined}

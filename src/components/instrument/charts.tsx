@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { barcodeBars, relativeHeights, rulerPosition, shares, type BarcodeItem, type BarcodeLevel } from "@/components/instrument/pure";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Graphiques « Instrument » v5 en HTML/CSS (aucune bibliothèque) : code-barres du stock,
@@ -23,7 +24,7 @@ export function StockBarcode({ items, height = 56, href, hrefFor, label }: { ite
           const style = { flexGrow: b.weight, flexBasis: 0, background: LEVEL_FILL[b.level], animationDelay: `${160 + Math.min(i, 30) * 18}ms` };
           const to = hrefFor[b.level];
           return to ? (
-            <Link key={b.id} href={to as never} tabIndex={-1} aria-hidden="true" className="ms-grow-y ms-hatch block min-w-px hover:opacity-80" style={style} />
+            <Link key={b.id} href={internalRoute(to)} tabIndex={-1} aria-hidden="true" className="ms-grow-y ms-hatch block min-w-px hover:opacity-80" style={style} />
           ) : (
             <span key={b.id} aria-hidden="true" className="ms-grow-y ms-hatch block min-w-px" style={style} />
           );
@@ -39,7 +40,7 @@ export function StockBarcode({ items, height = 56, href, hrefFor, label }: { ite
     </span>
   );
   return href ? (
-    <Link href={href as never} aria-label={label} className="block rounded-sm">
+    <Link href={internalRoute(href)} aria-label={label} className="block rounded-sm">
       {body}
     </Link>
   ) : (
@@ -59,7 +60,7 @@ export function LegendKey({ color, label, href, onNight = true }: { color: strin
   );
   const cls = cn("ms-mono inline-flex items-center gap-1.5 text-[10.5px] leading-[14px]", onNight ? "text-on-night-muted" : "text-muted");
   return href ? (
-    <Link href={href as never} className={cn(cls, "rounded hover:opacity-80")}>
+    <Link href={internalRoute(href)} className={cn(cls, "rounded hover:opacity-80")}>
       {inner}
     </Link>
   ) : (
@@ -84,7 +85,7 @@ export function DayBars({ days, height = 96, label, href }: { days: { day: strin
     </span>
   );
   return href ? (
-    <Link href={href as never} aria-label={label} className="block">
+    <Link href={internalRoute(href)} aria-label={label} className="block">
       {body}
     </Link>
   ) : (

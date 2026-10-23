@@ -7,6 +7,7 @@ import { ActionForm } from "@/features/analytics/components/action-form";
 import { dismissRecommendationAction } from "@/features/analytics/actions";
 import type { RecommendationView } from "@/features/analytics/replenishment";
 import { formatDays, formatMoney, formatNumber } from "@/lib/format";
+import { internalRoute } from "@/lib/routes";
 
 const LEAD_SOURCE_LABEL: Record<string, string> = { sku: "fiche SKU", offer: "offre fournisseur", supplier: "délai moyen fournisseur" };
 
@@ -33,7 +34,7 @@ export function RecommendationsTable({ recommendations, writable }: { recommenda
           return (
             <TR key={r.id} className="align-top">
               <TD>
-                <Link href={stockHref as never} className="font-medium text-foreground hover:underline">
+                <Link href={internalRoute(stockHref)} className="font-medium text-foreground hover:underline">
                   {r.label}
                 </Link>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
@@ -71,7 +72,7 @@ export function RecommendationsTable({ recommendations, writable }: { recommenda
               </TD>
               <TD>
                 {r.supplier ? (
-                  <Link href={`/suppliers/${r.supplier.id}` as never} className="hover:underline">
+                  <Link href={`/suppliers/${r.supplier.id}`} className="hover:underline">
                     {r.supplier.name}
                   </Link>
                 ) : (

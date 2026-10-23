@@ -65,7 +65,7 @@ export function CurrentSupplierComparison({ sku, offers, bestSavings, requestedQ
                   </div>
                   <div className="text-xs text-muted">
                     #{o.rank} · score {o.score}/100 ·{" "}
-                    <Link href={`/sourcing/offers/${o.id}` as never} className="font-medium text-foreground underline-offset-2 hover:underline">
+                    <Link href={`/sourcing/offers/${o.id}`} className="font-medium text-foreground underline-offset-2 hover:underline">
                       {o.supplierName}
                     </Link>{" "}
                     — {o.title}

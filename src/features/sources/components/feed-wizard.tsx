@@ -112,7 +112,7 @@ export function FeedWizard({ suppliers, orgCurrency }: { suppliers: { id: string
       setHeaderValue("");
       setPassword("");
       toast.success("Flux ajouté. Lancez la première synchronisation depuis « Mes sources ».");
-      router.push("/sourcing/sources" as never);
+      router.push("/sourcing/sources");
     });
   }
 

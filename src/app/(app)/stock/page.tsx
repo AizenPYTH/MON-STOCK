@@ -18,6 +18,7 @@ import { UNKNOWN_COST_LABEL } from "@/domain/pricing/margin";
 import { STOCK_LEVEL_LABEL } from "@/domain/inventory/alerts";
 import { formatMoney, formatNumber, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Stock" };
 
@@ -220,7 +221,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     {formatNumber(from)}–{formatNumber(to)} sur {formatNumber(list.total)}
                   </span>
                   {list.page > 1 ? (
-                    <Link href={pageHref(list.page - 1) as never} rel="prev" aria-label="Page précédente" className={btn}>
+                    <Link href={internalRoute(pageHref(list.page - 1))} rel="prev" aria-label="Page précédente" className={btn}>
                       <ChevronLeft aria-hidden="true" className="h-4 w-4" />
                     </Link>
                   ) : (
@@ -229,7 +230,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     </span>
                   )}
                   {list.page < pageCount ? (
-                    <Link href={pageHref(list.page + 1) as never} rel="next" aria-label="Page suivante" className={btn}>
+                    <Link href={internalRoute(pageHref(list.page + 1))} rel="next" aria-label="Page suivante" className={btn}>
                       <ChevronRight aria-hidden="true" className="h-4 w-4" />
                     </Link>
                   ) : (

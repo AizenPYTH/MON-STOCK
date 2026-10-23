@@ -8,6 +8,7 @@ import { formatMoney, formatNumber } from "@/lib/format";
 import type { TodayDashboard } from "@/features/dashboard/queries";
 import { sceneDateLabel, shortDayLabel, stockLevelHref } from "@/features/dashboard/today.pure";
 import { LevelBarcode } from "@/features/dashboard/components/level-barcode";
+import { internalRoute } from "@/lib/routes";
 
 type Stat = { label: string; value: ReactNode | null; note?: string; href?: string };
 
@@ -28,7 +29,7 @@ function SceneStats({ stats }: { stats: Stat[] }) {
         return (
           <div key={st.label} className={cn("min-w-0 pr-1.5 pt-3", i % 2 === 1 && "border-l border-night-line pl-4", i >= 2 && "sm:border-l sm:border-night-line sm:pl-4", i === 2 && "max-sm:pl-0")}>
             {st.href ? (
-              <Link href={st.href as never} className="block rounded-lg hover:opacity-70">
+              <Link href={internalRoute(st.href)} className="block rounded-lg hover:opacity-70">
                 {body}
               </Link>
             ) : (

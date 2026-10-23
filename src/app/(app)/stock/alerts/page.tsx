@@ -115,7 +115,7 @@ export default async function StockAlertsPage({ searchParams }: { searchParams: 
                 return (
                   <TR key={r.sku_id} className="align-top">
                     <TD primary>
-                      <Link href={`/stock/${encodeURIComponent(code)}` as never} className="block max-w-[280px] rounded hover:underline">
+                      <Link href={`/stock/${encodeURIComponent(code)}`} className="block max-w-[280px] rounded hover:underline">
                         <span className="block truncate font-semibold text-foreground">{r.product_name}</span>
                         <span className="block truncate text-xs font-medium text-ink-3">
                           <code className="ms-code">{code}</code>

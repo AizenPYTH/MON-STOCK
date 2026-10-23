@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Scène nuit en tête de page (porte le titre ou LE chiffre de la page et au plus un graphique) ;
@@ -21,7 +22,7 @@ export function SceneHeader({ eyebrow, title, description, actions, back }: { ey
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
         {back ? (
-          <Link href={back.href as never} className="mb-2 inline-flex min-h-8 items-center gap-1 rounded-lg pr-1.5 text-[13px] font-semibold text-on-night-muted transition-colors hover:text-on-night pointer-coarse:min-h-10">
+          <Link href={internalRoute(back.href)} className="mb-2 inline-flex min-h-8 items-center gap-1 rounded-lg pr-1.5 text-[13px] font-semibold text-on-night-muted transition-colors hover:text-on-night pointer-coarse:min-h-10">
             <ChevronLeft aria-hidden="true" className="h-4 w-4" />
             {back.label}
           </Link>
@@ -55,7 +56,7 @@ export function StageStats({ stats, className, size = "md" }: { stats: StageStat
         return (
           <div key={s.label} className={cn("min-w-0 pr-4", i % 2 === 1 && "border-l border-night-line pl-4", i > 0 && "sm:border-l sm:border-night-line sm:pl-4")}>
             {s.href ? (
-              <Link href={s.href as never} className="block rounded-lg hover:opacity-80">
+              <Link href={internalRoute(s.href)} className="block rounded-lg hover:opacity-80">
                 {body}
               </Link>
             ) : (

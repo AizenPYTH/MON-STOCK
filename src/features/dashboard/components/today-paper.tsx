@@ -36,6 +36,7 @@ import type { TodayDashboard } from "@/features/dashboard/queries";
 import { saleTimeLabel, stockLevelHref, type SetupIcon, type Task, type TaskIcon, type SaleTone } from "@/features/dashboard/today.pure";
 import { PriorityShell, TaskRows } from "@/features/dashboard/components/disclosures";
 import { SupplierMark } from "@/features/dashboard/components/supplier-mark";
+import { internalRoute } from "@/lib/routes";
 
 const plural = (n: number, one: string, many: string) => `${formatNumber(n)} ${n > 1 ? many : one}`;
 const TASK_ICON: Record<TaskIcon, ReactNode> = {
@@ -71,7 +72,7 @@ function Chevron() {
 
 function SectionLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <Link href={href as never} className="inline-flex min-h-10 items-center gap-0.5 rounded-lg text-[13px] font-bold hover:opacity-60">
+    <Link href={internalRoute(href)} className="inline-flex min-h-10 items-center gap-0.5 rounded-lg text-[13px] font-bold hover:opacity-60">
       {children}
       <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
     </Link>
@@ -156,7 +157,7 @@ export function PrioritySection({ d, writable }: { d: TodayDashboard; writable: 
         <span className="ms-code text-[10.5px] font-semibold leading-[15px] tracking-[0.06em]">{out ? "RUPTURE" : sku.level === "at_risk" ? "RISQUE DE RUPTURE" : "STOCK FAIBLE"}</span>
       </span>
       <h3 className="text-[20px] font-bold leading-[26px] tracking-[-0.3px]">
-        <Link href={`/stock/${encodeURIComponent(sku.code)}` as never} className="rounded hover:underline">
+        <Link href={`/stock/${encodeURIComponent(sku.code)}`} className="rounded hover:underline">
           {sku.name}
         </Link>
       </h3>
@@ -186,7 +187,7 @@ export function PrioritySection({ d, writable }: { d: TodayDashboard; writable: 
   const offerBlock =
     o && e ? (
       <Link
-        href={`/radar/${o.offerId}` as never}
+        href={`/radar/${o.offerId}`}
         aria-label={`Meilleure offre rapprochée : ${o.supplierName}, ${formatMoney(o.price, offerCur)} ${tax}. Ouvrir l'analyse`}
         className="flex w-full flex-col gap-2.5 rounded-xl bg-background p-3 hover:bg-line-soft"
       >
@@ -226,7 +227,7 @@ export function PrioritySection({ d, writable }: { d: TodayDashboard; writable: 
   const primary =
     o && o.price !== null ? (
       writable ? (
-        <Link href={`/radar/${o.offerId}?quantity=${moq}` as never} className={cn(primaryCls, "bg-mint text-night hover:bg-mint-pressed")} aria-label={`Préparer un brouillon de commande : ${moq} unité${moq > 1 ? "s" : ""} chez ${o.supplierName}`}>
+        <Link href={`/radar/${o.offerId}?quantity=${moq}`} className={cn(primaryCls, "bg-mint text-night hover:bg-mint-pressed")} aria-label={`Préparer un brouillon de commande : ${moq} unité${moq > 1 ? "s" : ""} chez ${o.supplierName}`}>
           <ClipboardList aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
           <span className="truncate">Brouillon · {moq} u.</span>
         </Link>
@@ -237,7 +238,7 @@ export function PrioritySection({ d, writable }: { d: TodayDashboard; writable: 
         </button>
       )
     ) : (
-      <Link href={`/sourcing?q=${encodeURIComponent(sku.name)}` as never} className={cn(primaryCls, "bg-mint text-night hover:bg-mint-pressed")}>
+      <Link href={`/sourcing?q=${encodeURIComponent(sku.name)}`} className={cn(primaryCls, "bg-mint text-night hover:bg-mint-pressed")}>
         <Search aria-hidden="true" className="h-[18px] w-[18px] shrink-0" />
         <span className="truncate">Chercher une offre</span>
       </Link>
@@ -291,7 +292,7 @@ export function TasksSection({ tasks }: { tasks: Task[] }) {
           <TaskRows
             rows={tasks.map((t) => (
               <li key={t.key}>
-                <Link href={t.href as never} className={rowLink}>
+                <Link href={internalRoute(t.href)} className={rowLink}>
                   <ToneIcon tone={t.tone}>{TASK_ICON[t.icon]}</ToneIcon>
                   <span className="flex min-w-0 flex-1 flex-col gap-x-2.5 sm:flex-row sm:items-baseline">
                     <span className="truncate text-[15px] font-semibold leading-5 sm:shrink-0">{t.title}</span>
@@ -324,7 +325,7 @@ export function ActivitySection({ d }: { d: TodayDashboard }) {
         <ul className="divide-y divide-line-soft">
           {job ? (
             <li>
-              <Link href={`/sourcing/imports/${job.id}` as never} className={rowLink}>
+              <Link href={`/sourcing/imports/${job.id}`} className={rowLink}>
                 <ToneIcon tone={job.status === "completed" ? "success" : job.status === "failed" || job.status === "quarantined" ? "danger" : job.status === "running" ? "info" : "warning"}>
                   {job.status === "completed" ? <CheckCircle2 /> : job.status === "failed" ? <AlertTriangle /> : <FileWarning />}
                 </ToneIcon>
@@ -346,7 +347,7 @@ export function ActivitySection({ d }: { d: TodayDashboard }) {
           {sales.map((s) => (
             <li key={s.orderId}>
               <Link
-                href={`/sales/${s.orderId}` as never}
+                href={`/sales/${s.orderId}`}
                 className="grid min-h-[58px] grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 hover:bg-line-soft sm:grid-cols-[40px_minmax(0,1fr)_92px_64px_104px_76px]"
               >
                 <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-line-soft bg-background text-ink-3">
@@ -385,7 +386,7 @@ export function ActivitySection({ d }: { d: TodayDashboard }) {
 function Tile({ href, icon, title, detail, kbd, strong = false }: { href: string; icon: ReactNode; title: string; detail: string; kbd?: string; strong?: boolean }) {
   return (
     <Link
-      href={href as never}
+      href={internalRoute(href)}
       className={cn(
         "group flex min-h-24 flex-col justify-between gap-2 rounded-2xl border p-3 pb-[11px] transition-colors duration-150 ease-standard",
         strong ? "border-inverse bg-inverse hover:bg-inverse-hover" : "border-border bg-surface hover:border-border-strong hover:bg-surface-2",
@@ -445,7 +446,7 @@ export function RadarSection({ d }: { d: TodayDashboard }) {
               const stale = e.ageDays !== null && e.ageDays > 7;
               return (
                 <li key={o.offerId}>
-                  <Link href={`/radar/${o.offerId}` as never} className="flex min-h-[62px] items-center gap-3 px-3.5 py-2.5 hover:bg-line-soft">
+                  <Link href={`/radar/${o.offerId}`} className="flex min-h-[62px] items-center gap-3 px-3.5 py-2.5 hover:bg-line-soft">
                     <SupplierMark name={o.supplierName} size={34} />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="truncate text-[14.5px] font-semibold leading-5">{i.sku.name}</span>
@@ -514,7 +515,7 @@ export function SetupSection({ d }: { d: TodayDashboard }) {
         <ul className="divide-y divide-line-soft border-t border-line-soft">
           {todo.map((s) => (
             <li key={s.key}>
-              <Link href={s.href as never} className={rowLink}>
+              <Link href={internalRoute(s.href)} className={rowLink}>
                 <ToneIcon tone="neutral">{SETUP_ICON[s.icon]}</ToneIcon>
                 <span className="flex min-w-0 flex-1 flex-col gap-px">
                   <span className="text-[15px] font-semibold leading-5">{s.title}</span>

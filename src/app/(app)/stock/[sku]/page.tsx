@@ -21,6 +21,7 @@ import { safeExternalUrl } from "@/lib/utils";
 import { BestOfferCard, ListingsCard, MovementsCard, NightLevelChip, PriceTiles, QuantityCard, skuStageStats } from "@/features/stock-web/components/sku-sections";
 import { AdjustStockLauncher } from "@/features/stock-web/components/sku-client";
 import { sourcingHref } from "@/features/stock-web/components/sku-panel";
+import { internalRoute } from "@/lib/routes";
 
 export async function generateMetadata({ params }: { params: Promise<{ sku: string }> }): Promise<Metadata> {
   const { sku } = await params;
@@ -246,7 +247,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                     ) : replenishment.needed && writable ? (
                       <p className="text-xs font-medium text-muted">
                         Aucun fournisseur associé :{" "}
-                        <Link href={editHref as never} className="underline">
+                        <Link href={internalRoute(editHref)} className="underline">
                           choisissez un fournisseur par défaut
                         </Link>{" "}
                         ou associez une offre depuis le sourcing.
@@ -282,7 +283,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                       return (
                         <li key={o.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                           <div className="min-w-0">
-                            <Link href={`/sourcing/offers/${o.id}` as never} className="font-bold hover:underline">
+                            <Link href={`/sourcing/offers/${o.id}`} className="font-bold hover:underline">
                               {s?.name ?? "Fournisseur"}
                             </Link>
                             <div className="text-xs font-semibold text-ink-3">
@@ -330,7 +331,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                   title="Autres variantes"
                   right={
                     writable ? (
-                      <Link href={`/stock/new?product=${row.product_id}` as never} className="inline-flex min-h-10 items-center rounded-lg text-[13px] font-bold hover:underline">
+                      <Link href={`/stock/new?product=${row.product_id}`} className="inline-flex min-h-10 items-center rounded-lg text-[13px] font-bold hover:underline">
                         Ajouter une variante
                       </Link>
                     ) : undefined
@@ -343,7 +344,7 @@ export default async function SkuPage({ params }: { params: Promise<{ sku: strin
                     <ul className="divide-y divide-line-soft text-sm">
                       {siblings.map((s) => (
                         <li key={s.sku_id}>
-                          <Link href={`/stock/${encodeURIComponent(s.code ?? "")}` as never} className="flex min-h-11 items-center justify-between gap-3 px-4 py-2 hover:bg-line-soft">
+                          <Link href={`/stock/${encodeURIComponent(s.code ?? "")}`} className="flex min-h-11 items-center justify-between gap-3 px-4 py-2 hover:bg-line-soft">
                             <span className="min-w-0 truncate">
                               <span className="ms-code text-xs">{s.code}</span> <span className="font-semibold text-muted">{s.variant_name}</span>
                             </span>

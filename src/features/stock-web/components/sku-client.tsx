@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { stepPlan } from "@/features/stock-web/adjust.pure";
 import { recordMovement } from "@/features/stock-web/components/movements-client";
 import { AdjustDialog, type AdjustTarget } from "@/features/stock-web/components/adjust-dialog";
+import { internalRoute } from "@/lib/routes";
 
 function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -28,14 +29,14 @@ export function SkuPanelBar({ closeHref, prevHref, nextHref, fullHref, editHref 
       const href = e.key === "ArrowDown" ? nextHref : prevHref;
       if (!href) return;
       e.preventDefault();
-      router.push(href as never, { scroll: false });
+      router.push(internalRoute(href), { scroll: false });
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [prevHref, nextHref, router]);
   return (
     <div className="flex min-h-11 items-center justify-between gap-2">
-      <button type="button" onClick={() => router.push(closeHref as never, { scroll: false })} aria-label="Fermer la fiche (Échap)" className="flex h-10 items-center gap-2 rounded-[10px] pl-1.5 pr-2.5 text-on-night-muted hover:bg-night-raised hover:text-on-night">
+      <button type="button" onClick={() => router.push(internalRoute(closeHref), { scroll: false })} aria-label="Fermer la fiche (Échap)" className="flex h-10 items-center gap-2 rounded-[10px] pl-1.5 pr-2.5 text-on-night-muted hover:bg-night-raised hover:text-on-night">
         <X aria-hidden="true" className="h-[18px] w-[18px]" />
         <span className="text-sm font-semibold">Fermer</span>
         <kbd className="ms-code hidden rounded-[5px] border border-night-stroke px-1.5 text-[10.5px] leading-[18px] sm:inline">Échap</kbd>
@@ -44,19 +45,19 @@ export function SkuPanelBar({ closeHref, prevHref, nextHref, fullHref, editHref 
         {prevHref || nextHref ? (
           <>
             <span className="ms-mono mr-1 hidden whitespace-nowrap text-[10px] leading-[13px] text-on-night-subtle md:inline">↑ ↓ référence suivante</span>
-            <Link href={(prevHref ?? closeHref) as never} scroll={false} aria-label="Référence précédente (↑)" aria-disabled={!prevHref} tabIndex={prevHref ? undefined : -1} className={cn(iconBtn, "md:hidden", !prevHref && "pointer-events-none opacity-40")}>
+            <Link href={internalRoute((prevHref ?? closeHref))} scroll={false} aria-label="Référence précédente (↑)" aria-disabled={!prevHref} tabIndex={prevHref ? undefined : -1} className={cn(iconBtn, "md:hidden", !prevHref && "pointer-events-none opacity-40")}>
               <ArrowUp aria-hidden="true" className="h-4 w-4" />
             </Link>
-            <Link href={(nextHref ?? closeHref) as never} scroll={false} aria-label="Référence suivante (↓)" aria-disabled={!nextHref} tabIndex={nextHref ? undefined : -1} className={cn(iconBtn, "md:hidden", !nextHref && "pointer-events-none opacity-40")}>
+            <Link href={internalRoute((nextHref ?? closeHref))} scroll={false} aria-label="Référence suivante (↓)" aria-disabled={!nextHref} tabIndex={nextHref ? undefined : -1} className={cn(iconBtn, "md:hidden", !nextHref && "pointer-events-none opacity-40")}>
               <ArrowDown aria-hidden="true" className="h-4 w-4" />
             </Link>
           </>
         ) : null}
-        <Link href={fullHref as never} aria-label="Ouvrir en pleine page" title="Ouvrir en pleine page" className={iconBtn}>
+        <Link href={internalRoute(fullHref)} aria-label="Ouvrir en pleine page" title="Ouvrir en pleine page" className={iconBtn}>
           <Maximize2 aria-hidden="true" className="h-4 w-4" />
         </Link>
         {editHref ? (
-          <Link href={editHref as never} aria-label="Modifier la variante" title="Modifier la variante" className={iconBtn}>
+          <Link href={internalRoute(editHref)} aria-label="Modifier la variante" title="Modifier la variante" className={iconBtn}>
             <Pencil aria-hidden="true" className="h-4 w-4" />
           </Link>
         ) : null}

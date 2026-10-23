@@ -2,7 +2,9 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { publicEnv } from "@/lib/env";
+import type { Route } from "next";
 import { safeInternalPath } from "@/lib/utils";
+import { safeInternalRoute } from "@/lib/routes";
 import { fail, ok, type ActionResult } from "@/lib/result";
 import { createLogger } from "@/lib/logger";
 import { resetPasswordSchema, signInSchema, signUpSchema, updatePasswordSchema } from "@/features/auth/schemas";
@@ -18,9 +20,9 @@ function fieldErrors(issues: Array<{ path: PropertyKey[]; message: string }>): R
   return out;
 }
 
-function safeNext(next: string | undefined): string {
+function safeNext(next: string | undefined): Route {
   // Refuse aussi `/\evil.com` et les caractères de contrôle (normalisés en `//` par les navigateurs).
-  return safeInternalPath(next, "/dashboard");
+  return safeInternalRoute(next, "/dashboard");
 }
 
 function translateAuthError(message: string): string {
@@ -64,7 +66,7 @@ export async function signUpAction(_prev: ActionResult<{ needsConfirmation: bool
     return fail(translateAuthError(error.message));
   }
   // Si la confirmation d'email est désactivée côté Supabase, une session existe déjà.
-  if (data.session) redirect(safeInternalPath(parsed.data.next, "/onboarding"));
+  if (data.session) redirect(safeInternalRoute(parsed.data.next, "/onboarding"));
   return ok({ needsConfirmation: true });
 }
 

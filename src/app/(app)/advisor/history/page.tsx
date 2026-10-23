@@ -45,7 +45,7 @@ export default async function AdvisorHistoryPage() {
                     <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-surface-3 text-muted">
                       <MessageSquare className="h-4 w-4" />
                     </span>
-                    <Link href={`/advisor?conversation=${c.id}` as never} className="min-w-0 flex-1 rounded-lg py-1.5 hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:hover>span:first-child]:underline">
+                    <Link href={`/advisor?conversation=${c.id}`} className="min-w-0 flex-1 rounded-lg py-1.5 hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [&:hover>span:first-child]:underline">
                       <span className="block truncate text-sm font-bold text-foreground">{c.title}</span>
                       <span className="ms-code mt-0.5 block text-[10.5px] text-ink-3" title={formatDateTime(c.lastMessageAt)}>
                         {formatRelative(c.lastMessageAt)}

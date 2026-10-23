@@ -18,7 +18,7 @@ function AwardRow({ award, offer, currency, big }: { award: Award; offer: AwardO
           {award.label}
         </span>
         {award.offerId && offer ? (
-          <Link href={`/sourcing/offers/${award.offerId}` as never} className="text-xs font-bold text-interactive underline-offset-2 hover:underline tnum">
+          <Link href={`/sourcing/offers/${award.offerId}`} className="text-xs font-bold text-interactive underline-offset-2 hover:underline tnum">
             {offer.supplierName}
             {offer.comparableUnitPrice !== null ? ` · ${formatMoney(offer.comparableUnitPrice, currency)}` : ""}
           </Link>
@@ -46,7 +46,7 @@ export function PodiumPanel({ podium, highlights, awardOffers, currency, priceBa
             Pour {bestSavings.quantity} unité{bestSavings.quantity > 1 ? "s" : ""} : jusqu&apos;à {formatMoney(bestSavings.amount, currency)} d&apos;économie potentielle
             <span className="block text-xs font-normal">
               {formatMoney(bestSavings.perUnit, currency)} / unité vs votre coût actuel{bestSavings.basis === "unit" ? " — sur le prix unitaire, frais de port non communiqués" : " — sur le coût rendu (frais connus inclus)"} ·{" "}
-              <Link href={`/sourcing/offers/${bestSavings.offerId}` as never} className="underline">
+              <Link href={`/sourcing/offers/${bestSavings.offerId}`} className="underline">
                 voir l&apos;offre
               </Link>
             </span>

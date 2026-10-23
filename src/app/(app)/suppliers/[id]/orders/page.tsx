@@ -13,6 +13,7 @@ import { SupplierHeader } from "@/features/suppliers/components/supplier-header"
 import { AddItemForm, CreatePurchaseOrderForm, PurchaseOrderActionButton, ReceiveForm, type OrderPrefill } from "@/features/suppliers/components/purchase-order-forms";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { PO_STATUS_LABEL } from "@/features/sourcing/labels";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Commandes fournisseur" };
 
@@ -128,7 +129,7 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
                       <TR key={it.id}>
                         <TD>
                           {it.sku ? (
-                            <Link href={`/stock/${encodeURIComponent(it.sku.code)}` as never} className="hover:underline">
+                            <Link href={`/stock/${encodeURIComponent(it.sku.code)}`} className="hover:underline">
                               <span className="font-mono text-xs">{it.sku.code}</span> {it.sku.product?.name}
                               {it.sku.variant?.name && it.sku.variant.name !== "Standard" ? ` · ${it.sku.variant.name}` : ""}
                             </Link>
@@ -195,7 +196,7 @@ export default async function SupplierOrdersPage({ params, searchParams }: { par
                     return (
                       <TR key={po.id} className={po.id === selectedId ? "bg-surface-muted/60" : undefined}>
                         <TD>
-                          <Link href={`${base}?po=${po.id}` as never} className="font-medium hover:underline">
+                          <Link href={internalRoute(`${base}?po=${po.id}`)} className="font-medium hover:underline">
                             {po.reference ?? po.id.slice(0, 8)}
                           </Link>
                         </TD>

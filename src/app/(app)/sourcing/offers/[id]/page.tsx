@@ -99,7 +99,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
         }
         description={
           <span>
-            <Link href={`/suppliers/${o.supplier_id}` as never} className="font-bold text-on-night hover:underline">
+            <Link href={`/suppliers/${o.supplier_id}`} className="font-bold text-on-night hover:underline">
               {o.supplier?.name ?? "Fournisseur"}
             </Link>
             {" · "}
@@ -203,7 +203,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   { label: "Première / dernière vérification", value: `${formatDateTime(o.first_seen_at)} / ${formatDateTime(o.last_seen_at)}` },
                   { label: "Dernier changement de prix", value: formatDateTime(o.last_price_at) },
                   { label: "Dernier changement de stock", value: o.last_stock_at ? formatDateTime(o.last_stock_at) : NOT_PROVIDED },
-                  { label: "SKU associé", value: o.sku ? <Link href={`/stock/${encodeURIComponent(o.sku.code)}` as never} className="font-mono hover:underline">{o.sku.code}</Link> : "Aucun" },
+                  { label: "SKU associé", value: o.sku ? <Link href={`/stock/${encodeURIComponent(o.sku.code)}`} className="font-mono hover:underline">{o.sku.code}</Link> : "Aucun" },
                   { label: "Source", value: <span>{SOURCE_TYPE_LABEL[o.source_type]}{safeExternalUrl(o.source_url) ? <> · <a href={safeExternalUrl(o.source_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="break-all underline">{o.source_url}</a></> : " · URL non communiquée"}</span> },
                 ]}
               />
@@ -249,7 +249,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
                   {d.priceInsights.supplierHistories.map((h) => (
                     <li key={h.supplierId} className="flex flex-wrap items-center justify-between gap-3 px-5 py-2">
                       <div className="min-w-0">
-                        <Link href={`/suppliers/${h.supplierId}` as never} className="font-medium hover:underline">
+                        <Link href={`/suppliers/${h.supplierId}`} className="font-medium hover:underline">
                           {h.supplierName}
                         </Link>
                         <div className="text-xs text-muted">

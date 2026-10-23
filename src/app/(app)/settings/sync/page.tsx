@@ -64,7 +64,7 @@ export default async function SyncPage() {
                     <ConnectionStatusBadge status={c.status} size="sm" />
                   </div>
                   {last ? (
-                    <Link href={`/settings/sync/${last.id}` as never} className="group flex items-center justify-between gap-2 rounded-xl border border-line-soft bg-surface-2 px-3 py-2.5 transition-colors hover:border-border-strong">
+                    <Link href={`/settings/sync/${last.id}`} className="group flex items-center justify-between gap-2 rounded-xl border border-line-soft bg-surface-2 px-3 py-2.5 transition-colors hover:border-border-strong">
                       <RunSummary run={last} />
                       <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-ink-3 group-hover:text-foreground" />
                       <span className="sr-only">Détail du dernier passage</span>
@@ -136,7 +136,7 @@ export default async function SyncPage() {
                 return (
                   <TR key={r.id} className="font-semibold">
                     <TD primary className="whitespace-nowrap">
-                      <Link href={`/settings/sync/${r.id}` as never} className="text-foreground hover:underline tnum">
+                      <Link href={`/settings/sync/${r.id}`} className="text-foreground hover:underline tnum">
                         {formatDateTime(r.started_at)}
                       </Link>
                       <span className="block text-xs font-semibold text-ink-3">
@@ -163,7 +163,7 @@ export default async function SyncPage() {
                       {formatNumber(issues)}
                     </TD>
                     <TD align="right">
-                      <Link href={`/settings/sync/${r.id}` as never} aria-label={`Détail du passage du ${formatDateTime(r.started_at)}`} className="hidden h-9 w-9 items-center justify-center rounded-lg text-ink-3 sm:inline-flex hover:bg-line-soft hover:text-foreground">
+                      <Link href={`/settings/sync/${r.id}`} aria-label={`Détail du passage du ${formatDateTime(r.started_at)}`} className="hidden h-9 w-9 items-center justify-center rounded-lg text-ink-3 sm:inline-flex hover:bg-line-soft hover:text-foreground">
                         <ChevronRight aria-hidden="true" className="h-4 w-4" />
                       </Link>
                     </TD>

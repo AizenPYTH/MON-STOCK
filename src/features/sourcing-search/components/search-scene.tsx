@@ -32,7 +32,7 @@ export function SearchExamples() {
     <div className="flex flex-wrap items-center gap-2">
       <span className="ms-mono text-[10px] leading-[13px] text-on-night-subtle">Essayez</span>
       {SEARCH_EXAMPLES.map((e) => (
-        <Link key={e} href={`/sourcing?q=${encodeURIComponent(e)}` as never} aria-label={`Chercher ${e}`} className="inline-flex min-h-[34px] items-center rounded-full bg-night-raised px-3 text-[13px] font-bold text-on-night hover:bg-night-hover">
+        <Link key={e} href={`/sourcing?q=${encodeURIComponent(e)}`} aria-label={`Chercher ${e}`} className="inline-flex min-h-[34px] items-center rounded-full bg-night-raised px-3 text-[13px] font-bold text-on-night hover:bg-night-hover">
           {e}
         </Link>
       ))}

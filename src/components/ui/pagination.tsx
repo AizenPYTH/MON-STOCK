@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonClasses } from "@/components/ui/button";
 import { formatNumber } from "@/lib/format";
+import { internalRoute } from "@/lib/routes";
 
 /** Pagination par liens (URL) : plage affichée, page courante, précédent / suivant. */
 export function Pagination({ page, pageSize, total, makeHref, className }: { page: number; pageSize: number; total: number; makeHref: (page: number) => string; className?: string }) {
@@ -29,7 +30,7 @@ export function Pagination({ page, pageSize, total, makeHref, className }: { pag
         {content}
       </span>
     ) : (
-      <Link href={makeHref(target) as never} className={cn(buttonClasses("secondary", "sm"), "max-sm:w-10 max-sm:px-0")} rel={dir} aria-label={label}>
+      <Link href={internalRoute(makeHref(target))} className={cn(buttonClasses("secondary", "sm"), "max-sm:w-10 max-sm:px-0")} rel={dir} aria-label={label}>
         {content}
       </Link>
     );

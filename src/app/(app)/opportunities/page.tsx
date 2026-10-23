@@ -65,7 +65,7 @@ function OpportunityCard({ o, truncated }: { o: OpportunityView; truncated: bool
           <OpportunityStatus status={ev.status} />
         </div>
         <h3 className="text-h3 text-foreground">
-          <Link href={`/stock/${encodeURIComponent(o.code)}` as never} className="rounded hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+          <Link href={`/stock/${encodeURIComponent(o.code)}`} className="rounded hover:underline hover:underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             {o.name}
           </Link>
         </h3>

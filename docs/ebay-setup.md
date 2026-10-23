@@ -123,10 +123,12 @@ Aucun token n'apparaît dans les journaux ni dans `sync_errors`.
 eBay impose à toute application de production de s'abonner aux notifications **Marketplace Account Deletion** (RGPD).
 
 1. Portail développeur → **Alerts & Notifications** (ou *Application Keys → Notifications*).
-2. Section *Marketplace Account Deletion* :
-   - **Notification endpoint** : `${NEXT_PUBLIC_APP_URL}/api/webhooks/ebay`
-   - **Verification token** : la valeur de `EBAY_WEBHOOK_VERIFICATION_TOKEN`
-3. Cliquez **Save** : eBay appelle `GET …/api/webhooks/ebay?challenge_code=…` ; l'application répond
+2. Section *Marketplace Account Deletion* (un seul endpoint par application eBay) :
+   - **Notification endpoint** en production : l'Edge Function, `https://<ref>.supabase.co/functions/v1/api/ebay/webhook`.
+     La route web `${NEXT_PUBLIC_APP_URL}/api/webhooks/ebay` ne sert qu'en secours ou chez un autre hébergeur, avec
+     `MONSTOCK_WEB_LEGACY_ROUTES=1` (§ 6) ;
+   - **Verification token** : la valeur de `EBAY_WEBHOOK_VERIFICATION_TOKEN` (en production : Supabase → Project Settings → Vault).
+3. Cliquez **Save** : eBay appelle `GET <endpoint>?challenge_code=…` ; le serveur répond
    `{"challengeResponse": sha256(challengeCode + verificationToken + endpointUrl)}` (l'URL doit être **exactement** celle saisie).
    Si le token n'est pas configuré, la route répond 503 avec un message explicite.
 4. Les notifications `POST` sont signées (`x-ebay-signature`). La signature ECDSA est vérifiée avec la clé publique eBay
@@ -295,6 +297,7 @@ synchronisation complète planifiée.
 | Symptôme | Cause probable / solution |
 | --- | --- |
 | « Intégration eBay non configurée sur ce serveur » | `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` ou `EBAY_RU_NAME` manquants (liste affichée aux admins). Redémarrez le serveur après modification. |
+| Site web : « Connectez eBay depuis l'app iPhone » à la place du bouton | `EBAY_WEB_RU_NAME` absent des variables Vercel (§ 2). Connectez depuis l'iPhone, ou créez le RuName web. |
 | `invalid_client` / « eBay refuse les identifiants de l'application » | Clés d'un autre environnement (`EBAY_ENV` ≠ keyset) ou Cert ID erroné. |
 | eBay affiche « Invalid RuName » / redirection vers une page d'erreur eBay | `EBAY_RU_NAME` ne correspond pas au keyset, ou l'URL « auth accepted » n'est pas HTTPS/publique. |
 | URL `?error=browser_mismatch` / « ne provient pas du navigateur qui a lancé la connexion » | Le retour eBay a été ouvert dans un autre navigateur (ou cookies bloqués) : relancez **Connecter eBay** depuis le même navigateur. |
@@ -304,7 +307,7 @@ synchronisation complète planifiée.
 | `?error=scope_refused` / « eBay a refusé les autorisations demandées » | L'application eBay n'a pas accès à Finances / Analytics / Marketing : ajoutez ces scopes au keyset dans le portail développeur, ou restez en connexion standard. |
 | Le conseiller répond « reconnectez eBay avec l'analyse complète » | La connexion n'a pas les scopes étendus : **Réglages → Intégrations → Autoriser l'analyse complète** (administrateur). |
 | Le conseiller répond « eBay refuse l'accès à cette donnée » | eBay a répondu 403 pour cette API (compte non éligible, marketplace non pris en charge…) : la donnée n'est pas inventée. |
-| Le challenge du webhook échoue | L'URL saisie chez eBay diffère de `${NEXT_PUBLIC_APP_URL}/api/webhooks/ebay` (slash final, http/https) ou le token n'a pas 32–80 caractères. |
+| Le challenge du webhook échoue | L'URL saisie chez eBay diffère exactement de l'endpoint (`…/functions/v1/api/ebay/webhook` en production ; slash final, http/https) ou le token n'a pas 32–80 caractères. |
 | Notifications en statut `failed` (401) | Signature invalide : vérifiez que les clés eBay (`EBAY_CLIENT_ID/SECRET`) sont du même environnement que les notifications reçues. |
 | `/api/cron/sync` répond 503 | `CRON_SECRET` absent ou trop court. |
 | Run `failed` avec « Une synchronisation est déjà en cours » | Un run précédent n'a pas terminé ; il est automatiquement marqué échoué après 10 min. |

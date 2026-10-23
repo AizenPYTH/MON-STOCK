@@ -82,7 +82,7 @@ function SyncResult({ data }: { data: SyncActionData }) {
       ) : data.errorSummary ? (
         <p className="text-[13px] font-medium text-warning-ink">{data.errorSummary}</p>
       ) : null}
-      <Link href={`/settings/sync/${data.runId}` as never} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-bold text-interactive underline-offset-4 hover:underline">
+      <Link href={`/settings/sync/${data.runId}`} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-bold text-interactive underline-offset-4 hover:underline">
         Voir le détail du passage
         <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
       </Link>

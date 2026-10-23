@@ -164,7 +164,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
                     return (
                       <TR key={order.id}>
                         <TD primary>
-                          <Link href={`/sales/${order.id}` as never} className="ms-code rounded text-[13px] font-semibold text-foreground underline-offset-4 hover:text-interactive hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                          <Link href={`/sales/${order.id}`} className="ms-code rounded text-[13px] font-semibold text-foreground underline-offset-4 hover:text-interactive hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                             {order.order_number ?? order.external_order_id}
                           </Link>
                         </TD>

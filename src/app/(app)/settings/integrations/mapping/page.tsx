@@ -20,6 +20,7 @@ import { AssignSkuDialog } from "@/features/integrations/components/assign-sku-d
 import { PushQuantityButton } from "@/features/integrations/components/push-quantity-button";
 import { safeExternalUrl } from "@/lib/utils";
 import { SettingsSectionHeader } from "@/features/organizations/components/settings-section-header";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Listings non associés" };
 
@@ -77,7 +78,7 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
             Rechercher
           </Button>
           {params.q ? (
-            <Link href={tabHref(params.tab) as never} className={buttonClasses("ghost", "md")}>
+            <Link href={internalRoute(tabHref(params.tab))} className={buttonClasses("ghost", "md")}>
               Effacer
             </Link>
           ) : null}
@@ -186,7 +187,7 @@ export default async function MappingPage({ searchParams }: { searchParams: Prom
                             {params.tab === "unmapped" ? (
                               <>
                                 <AssignSkuDialog listingId={l.id} listingTitle={l.title} externalSku={l.external_sku} />
-                                <Link href={createHref as never} className={buttonClasses("ghost", "sm")}>
+                                <Link href={internalRoute(createHref)} className={buttonClasses("ghost", "sm")}>
                                   <Plus aria-hidden="true" className="h-3.5 w-3.5" /> Créer un SKU depuis cette annonce
                                 </Link>
                                 <ActionForm action={ignoreListingAction} hidden={{ listing_id: l.id }} inline>

@@ -57,10 +57,10 @@ export async function SearchSection({ ctx, query }: { ctx: OrgContext; query: st
             text={`${toUserMessage(e)} Aucune offre n'est affichée tant que vos fournisseurs n'ont pas été consultés.`}
             actions={
               <>
-                <Link href={`/sourcing?q=${encodeURIComponent(query)}` as never} className={buttonClasses("primary", "md")}>
+                <Link href={`/sourcing?q=${encodeURIComponent(query)}`} className={buttonClasses("primary", "md")}>
                   <RotateCw aria-hidden="true" className="h-4 w-4" /> Réessayer
                 </Link>
-                <Link href={`/sourcing/catalog?q=${encodeURIComponent(query)}` as never} className={buttonClasses("secondary", "md")}>
+                <Link href={`/sourcing/catalog?q=${encodeURIComponent(query)}`} className={buttonClasses("secondary", "md")}>
                   Chercher dans les offres collectées
                 </Link>
               </>
@@ -95,11 +95,11 @@ function NoResult({ data, notice }: { data: SimpleSearchDTO; notice: ReactNode }
           actions={
             <>
               {simpler ? (
-                <Link href={`/sourcing?q=${encodeURIComponent(simpler)}` as never} className={buttonClasses("primary", "md")}>
+                <Link href={`/sourcing?q=${encodeURIComponent(simpler)}`} className={buttonClasses("primary", "md")}>
                   Chercher « {simpler} »
                 </Link>
               ) : null}
-              <Link href={`/sourcing/catalog?q=${encodeURIComponent(data.query)}` as never} className={buttonClasses("secondary", "md")}>
+              <Link href={`/sourcing/catalog?q=${encodeURIComponent(data.query)}`} className={buttonClasses("secondary", "md")}>
                 Chercher dans les offres collectées
               </Link>
               <Link href="/suppliers" className={buttonClasses("ghost", "md")}>

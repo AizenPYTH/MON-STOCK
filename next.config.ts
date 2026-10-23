@@ -1,45 +1,30 @@
 import type { NextConfig } from "next";
-import { publicSupabaseUrl } from "./src/lib/site";
 import { SERVER_ACTION_BODY_LIMIT_BYTES } from "./src/lib/upload-limits";
 
 const isDev = process.env.NODE_ENV === "development";
 
 /**
- * Origine Supabase (REST + Realtime) autorisée côté navigateur ; repli sur *.supabase.co. Valeur
- * normalisée comme dans les pages (W-08) : une URL collée avec guillemets ou sans schéma donne la
- * même origine partout.
- */
-function supabaseOrigins(): string[] {
-  const raw = publicSupabaseUrl();
-  try {
-    if (raw) {
-      const u = new URL(raw);
-      if (u.protocol === "https:" || u.protocol === "http:") {
-        return [u.origin, `${u.protocol === "https:" ? "wss" : "ws"}://${u.host}`];
-      }
-    }
-  } catch {
-    // URL invalide : repli ci-dessous (l'application affichera l'erreur de configuration).
-  }
-  return ["https://*.supabase.co", "wss://*.supabase.co"];
-}
-
-/**
  * Content-Security-Policy sans nonce (compatible avec le rendu Next.js sans proxy dédié) :
  * - scripts / styles : même origine + inline (hydratation Next / styles injectés) ; `unsafe-eval` en dev uniquement ;
- * - images : https (images produit et fournisseurs externes) + data/blob ;
+ * - connexions (W-33) : même origine uniquement. Le navigateur ne parle jamais directement à Supabase
+ *   (aucun client Supabase navigateur, aucun Realtime : sessions et données passent par le serveur web) ;
+ *   conseiller (`/api/advisor/chat`, `/api/advisor/speech`), imports de fichiers et Server Actions sont
+ *   sur le site. La dictée (Web Speech API) est un service du navigateur, hors CSP ;
+ * - images : https (photos produit au domaine du fournisseur, imprévisible : pas de liste fermée
+ *   possible) + data ; `blob:` retiré (aucune image locale créée par le site) ;
  * - médias : même origine (voix du conseiller) + data (son muet qui débloque la lecture audio) ;
  * - form-action : même origine + eBay (le POST /api/integrations/ebay/connect redirige vers auth.ebay.com) ;
  * - aucune intégration en iframe (anti-clickjacking).
+ * CSP à nonce (Q-22) non retenue pour l'instant : voir docs/WEB-DEPLOY.md (« Sécurité du navigateur »).
  */
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
+  "img-src 'self' data: https:",
   "font-src 'self' data:",
   "media-src 'self' data:",
-  `connect-src 'self' ${supabaseOrigins().join(" ")}${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
   "frame-src 'none'",
   "frame-ancestors 'none'",
   "object-src 'none'",
@@ -76,7 +61,8 @@ const nextConfig: NextConfig = {
     },
   },
   // Les secrets ne sont jamais exposés : seules les variables NEXT_PUBLIC_* le sont.
-  serverExternalPackages: ["pg"],
+  // (W-23 : `serverExternalPackages: ["pg"]` retiré — `pg` n'est importé que par les scripts et les
+  // tests d'intégration, jamais par le code servi par Next.)
   experimental: {
     // W-09 : Server Actions recevant un fichier de flux (1 Mo par défaut chez Next) alignées sur la
     // limite pratique d'un envoi au site hébergé (~4,5 Mo chez Vercel), annoncée dans l'interface.

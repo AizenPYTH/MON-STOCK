@@ -9,6 +9,7 @@ import { toUserMessage } from "@/lib/errors";
 import { fetchCostDefaults, fetchFxRates, fetchParcels, fetchRateCards } from "@/features/tools/queries";
 import type { TrackedParcel } from "@/features/tools/parcels";
 import { CurrencyHubCard, EbayHubCard, MarginHubCard, ShippingHubCard, TrackingHubCard, VatHubCard } from "@/features/tools/components/hub-cards";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Outils" };
 
@@ -65,7 +66,7 @@ export default async function ToolsPage() {
                 const desc = m.desc ?? tool?.description ?? "";
                 return (
                   <li key={m.id} className={i > 0 ? "border-t border-line-soft" : undefined}>
-                    <Link href={m.route as never} className="flex min-h-14 items-center gap-3 px-3.5 py-2.5 hover:bg-line-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                    <Link href={internalRoute(m.route)} className="flex min-h-14 items-center gap-3 px-3.5 py-2.5 hover:bg-line-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                       <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-line-soft text-[13px] font-extrabold">
                         {m.glyph}
                       </span>

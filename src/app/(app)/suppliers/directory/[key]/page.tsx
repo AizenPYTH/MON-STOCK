@@ -38,6 +38,7 @@ import { DisconnectAccountForm, SyncAccountForm } from "@/features/pro-accounts/
 import { SupplierOffersTable } from "@/features/pro-accounts/components/offers-table";
 import { SupplierOfferRows } from "@/features/pro-accounts/components/offer-rows";
 import { countsText } from "@/features/catalog-imports/labels";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Fiche fournisseur (annuaire)" };
 
@@ -192,7 +193,7 @@ export default async function DirectoryEntryPage({ params, searchParams }: { par
     <>
       <Scene className="pt-1.5">
         <div className="flex min-h-11 items-center">
-          <Link href={"/suppliers/directory" as never} className="inline-flex h-10 items-center gap-0.5 rounded-lg pr-3 text-[15px] font-semibold text-on-night-muted hover:text-on-night">
+          <Link href={"/suppliers/directory"} className="inline-flex h-10 items-center gap-0.5 rounded-lg pr-3 text-[15px] font-semibold text-on-night-muted hover:text-on-night">
             <ChevronLeft aria-hidden="true" className="h-5 w-5" />
             Annuaire
           </Link>
@@ -269,7 +270,7 @@ export default async function DirectoryEntryPage({ params, searchParams }: { par
                       <SupplierOfferRows offers={offers.offers.slice(0, 3)} orgCurrency={currency} />
                       <p className="text-[12.5px] font-semibold text-ink-3">
                         {offers.total > 3 ? `… et ${formatNumber(offers.total - 3)} autres : ` : "Prix datés, pas du temps réel. "}
-                        <Link href={`${baseHref}?tab=produits` as never} className="font-bold text-foreground underline-offset-2 hover:underline">
+                        <Link href={internalRoute(`${baseHref}?tab=produits`)} className="font-bold text-foreground underline-offset-2 hover:underline">
                           voir les produits
                         </Link>{" "}
                         ou la recherche Sourcing pour les comparer.

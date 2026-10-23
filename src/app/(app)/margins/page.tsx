@@ -182,7 +182,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
                 return (
                   <TR key={l.skuId}>
                     <TD primary className="sm:sticky sm:left-0 sm:z-[1] sm:bg-surface">
-                      <Link href={`/stock/${encodeURIComponent(l.code)}` as never} className="block max-w-[280px] rounded hover:underline">
+                      <Link href={`/stock/${encodeURIComponent(l.code)}`} className="block max-w-[280px] rounded hover:underline">
                         <div className="truncate font-semibold text-foreground">{l.name}</div>
                         <div className="ms-code text-xs text-ink-3">{l.code}</div>
                       </Link>
@@ -195,7 +195,7 @@ export default async function MarginsPage({ searchParams }: { searchParams: Prom
                     </TD>
                     <TD label="Prix d'achat" align="right">
                       {l.costPrice === null ? (
-                        <Link href={`/stock/${encodeURIComponent(l.code)}/edit` as never} className="text-xs font-semibold text-warning underline underline-offset-2 hover:no-underline">
+                        <Link href={`/stock/${encodeURIComponent(l.code)}/edit`} className="text-xs font-semibold text-warning underline underline-offset-2 hover:no-underline">
                           Coût inconnu
                         </Link>
                       ) : (

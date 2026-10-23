@@ -3,6 +3,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Panneau latéral droit (fiche SKU, analyse d'offre…) piloté par l'URL : il s'ouvre quand la page
@@ -15,14 +16,14 @@ export function SidePanel({ closeHref, label, width = 540, children, header, foo
   useEffect(() => {
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector("dialog[open]")) router.push(closeHref as never, { scroll: false });
+      if (e.key === "Escape" && !document.querySelector("dialog[open]")) router.push(internalRoute(closeHref), { scroll: false });
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [closeHref, router]);
   return (
     <div className="fixed inset-0 z-50">
-      <button type="button" aria-label="Fermer le panneau" className="absolute inset-0 cursor-default bg-overlay" onClick={() => router.push(closeHref as never, { scroll: false })} />
+      <button type="button" aria-label="Fermer le panneau" className="absolute inset-0 cursor-default bg-overlay" onClick={() => router.push(internalRoute(closeHref), { scroll: false })} />
       <div
         ref={ref}
         role="dialog"

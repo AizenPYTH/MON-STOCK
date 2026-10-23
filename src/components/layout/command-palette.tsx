@@ -7,6 +7,7 @@ import { NAV } from "@/components/layout/sidebar";
 import { ADD_ITEMS } from "@/components/layout/topbar";
 import { cn } from "@/lib/utils";
 import { paletteKeyAction, paletteOptionId } from "@/components/layout/keyboard-nav";
+import { internalRoute } from "@/lib/routes";
 
 type Entry = { group: string; label: string; hint?: string; href: string };
 
@@ -51,9 +52,10 @@ export function CommandPalette({ onClose, readOnly }: { onClose: () => void; rea
   // Lu au premier rendu, avant que `autoFocus` ne place le focus dans le champ.
   const [previous] = useState<HTMLElement | null>(() => (typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null));
   useEffect(() => {
+    const input = inputRef.current;
     return () => {
       queueMicrotask(() => {
-        if (!inputRef.current?.isConnected && previous?.isConnected) previous.focus();
+        if (!input?.isConnected && previous?.isConnected) previous.focus();
       });
     };
   }, [previous]);
@@ -75,7 +77,7 @@ export function CommandPalette({ onClose, readOnly }: { onClose: () => void; rea
   const go = (e: Entry | undefined) => {
     if (!e) return;
     onClose();
-    router.push(e.href as never);
+    router.push(internalRoute(e.href));
   };
   const active = entries.length > 0 ? Math.min(index, entries.length - 1) : -1;
 

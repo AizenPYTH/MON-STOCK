@@ -93,7 +93,7 @@ export function TrackingNewForm() {
       const r = await addParcelAction({ trackingNumber: number, carrierCode: entry.carrier, carrierSource: carrierManual ? "manual" : "auto", label, orderId: order?.id ?? null, destinationCountry: dest || null });
       if (!r.ok) return setError(r.error);
       toast.success(r.data.message);
-      router.push(`/tools/tracking/${r.data.id}` as never);
+      router.push(`/tools/tracking/${r.data.id}`);
     });
   }
 

@@ -1,246 +1,216 @@
 # MON STOCK
 
-**Le centre de contrôle du vendeur multicanal.** Stock centralisé (PRODUIT → VARIANTE → SKU), ventes eBay synchronisées, alertes de rupture, recommandations de réapprovisionnement, fournisseurs et moteur de sourcing B2B.
+**Le centre de contrôle du revendeur multicanal** : téléphones, pièces et matériel reconditionné vendus sur eBay.
 
-> Principe fondateur : **aucune fausse donnée**. Tout ce qui s'affiche vient de la base de données de votre organisation. Une information inconnue est affichée comme telle (« Coût inconnu », « Pas assez de données », « Non communiqué »). Les fonctionnalités non disponibles sont marquées « Disponible prochainement ». Le mode démonstration est une organisation séparée, explicitement marquée **DEMO** sur chaque écran.
+- Stock centralisé (produit → variante → SKU) et mouvements journalisés.
+- Ventes eBay synchronisées, stock déduit une seule fois par ligne.
+- Alertes de rupture et réapprovisionnement.
+- Fournisseurs et sourcing B2B.
+- Analyse des marges, outils et conseiller IA.
+
+> Principe fondateur : **aucune fausse donnée**. Tout ce qui s'affiche vient de la base de votre organisation.
+>
+> - Une valeur inconnue s'affiche « — » ou « Coût inconnu », jamais 0.
+> - Une estimation est marquée « ≈ ».
+> - Une fonctionnalité absente est marquée « Disponible prochainement ».
+> - La démonstration est une organisation séparée, marquée **DEMO** sur chaque écran.
+
+Production : site https://mon-stock-chi.vercel.app, app iPhone sur TestFlight, base et Edge Function sur Supabase (UE). État des déploiements au 23/10/2026 : [`docs/OPERATIONS.md` § 1](docs/OPERATIONS.md#1-état-de-la-production-au-23102026).
 
 ## Sommaire
 
-1. [Installation](#1-installation)
-2. [Variables d'environnement](#2-variables-denvironnement)
-3. [Supabase](#3-supabase)
-4. [Migrations](#4-migrations)
-5. [Lancement local](#5-lancement-local)
-6. [Configuration eBay](#6-configuration-ebay)
-7. [OAuth callback](#7-oauth-callback)
-8. [Synchronisation](#8-synchronisation)
-9. [Architecture](#9-architecture)
-10. [Tests](#10-tests)
-11. [Déploiement](#11-déploiement)
-12. [État des fonctionnalités](#12-état-des-fonctionnalités)
+1. [Documentation](#1-documentation)
+2. [Stack](#2-stack)
+3. [Démarrage local](#3-démarrage-local)
+4. [Variables d'environnement](#4-variables-denvironnement)
+5. [Tests](#5-tests)
+6. [Intégration continue](#6-intégration-continue)
+7. [Déploiement](#7-déploiement)
+8. [eBay en bref](#8-ebay-en-bref)
+9. [État des fonctionnalités](#9-état-des-fonctionnalités)
 
----
+## 1. Documentation
 
-## 1. Installation
-
-Prérequis : Node.js ≥ 22, npm, un projet Supabase (gratuit) et, pour les tests d'intégration, un PostgreSQL 16 local.
-
-```bash
-git clone <repo> mon-stock
-cd mon-stock
-npm install
-cp .env.example .env.local   # puis remplir les valeurs (section 2)
-```
-
-## 2. Variables d'environnement
-
-Toutes les variables sont listées et commentées dans [`.env.example`](.env.example). Résumé :
-
-| Variable | Côté | Rôle |
-| --- | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | public | URL publique de l'application (callbacks OAuth, emails) |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | accès Supabase avec la clé anonyme (la RLS s'applique) |
-| `SUPABASE_SERVICE_ROLE_KEY` | serveur | moteur de synchronisation, webhooks, cron, secrets OAuth (**jamais** exposée) |
-| `TOKEN_ENCRYPTION_KEY` | serveur | chiffrement AES-256-GCM des tokens OAuth et credentials fournisseurs (`openssl rand -base64 32`) |
-| `CRON_SECRET` | serveur | protège `/api/cron/*` (`openssl rand -hex 32`) |
-| `EBAY_ENV`, `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_RU_NAME` | serveur | application eBay (voir section 6) |
-| `EBAY_WEBHOOK_VERIFICATION_TOKEN` | serveur | vérification des notifications eBay |
-| `SOURCING_USER_AGENT` | serveur | identité du crawler de sources publiques (User-Agent honnête et contactable) |
-| `SOURCING_DISCOVERY_PROVIDER` | serveur | `none` (défaut) ou `brave` : découverte de nouveaux fournisseurs via une API de recherche web officielle |
-| `BRAVE_SEARCH_API_KEY` | serveur | clé de la Brave Search API (uniquement si `SOURCING_DISCOVERY_PROVIDER=brave`) |
-
-Règles : `.env*` est ignoré par git **sauf** `.env.example` ; les variables `NEXT_PUBLIC_*` ne contiennent jamais de secret (URL Supabase et clé anonyme uniquement) ; les variables serveur sont validées paresseusement par Zod (`src/lib/env.ts`) avec des messages d'erreur explicites ; le client `service_role` (`src/lib/supabase/admin.ts`) importe `server-only` et n'est jamais atteint depuis un composant client.
-
-### Environnements
-
-| Environnement | Base | Fichier de variables | Usage |
-| --- | --- | --- | --- |
-| DEV | projet Supabase de développement | `.env.local` | `npm run dev` |
-| TEST | PostgreSQL 16 local + shim Supabase (`npm run db:local:reset`) | variables `DATABASE_URL` / `PGDATABASE` | tests d'intégration, aucune donnée réelle |
-| PRODUCTION | projet Supabase de production | variables de l'hébergeur (jamais dans le dépôt) | déploiement |
-
-Utilisez **un projet Supabase distinct** pour DEV et PRODUCTION, et des clés eBay *sandbox* en DEV. Ne lancez jamais `npm run seed:demo` ni les tests sur la production.
-
-## 3. Supabase
-
-1. Créez un projet sur <https://supabase.com>.
-2. **Authentication → Providers → Email** : activez Email/Password. La confirmation d'email est recommandée (elle est gérée par l'application).
-3. **Authentication → URL Configuration** :
-   - *Site URL* : `NEXT_PUBLIC_APP_URL` (ex. `http://localhost:3000`)
-   - *Redirect URLs* : ajoutez `http://localhost:3000/auth/callback` et l'URL de production équivalente.
-4. **Settings → API** : copiez l'URL du projet, la clé `anon` et la clé `service_role` dans `.env.local`.
-5. Appliquez les migrations (section 4).
-
-Les emails de confirmation et de réinitialisation redirigent vers `/auth/callback` qui échange le code PKCE contre une session.
-
-## 4. Migrations
-
-Toutes les modifications de schéma sont versionnées dans `supabase/migrations/` (SQL pur, appliquées dans l'ordre) :
-
-| Fichier | Contenu |
+| Document | Contenu |
 | --- | --- |
-| `…000100_core.sql` | extensions, profils, organisations, membres, invitations, helpers RLS |
-| `…000200_catalog_inventory.sql` | produits, variantes, SKU, stock, mouvements, historique des prix, `apply_inventory_movement` |
-| `…000300_channels_orders.sql` | canaux, connexions OAuth (+ secrets), annonces/mapping, commandes, runs de sync, webhooks |
-| `…000400_suppliers_sourcing.sql` | fournisseurs, sources, flux, connexions fournisseurs, produits normalisés, offres, historiques, correspondances, recherches, alertes sourcing, taux de change, commandes fournisseurs |
-| `…000500_alerts_recommendations.sql` | alertes événementielles, recommandations de réapprovisionnement |
-| `…000600_functions_views.sql` | `ingest_external_order`, `map_listing_to_sku`, `receive_purchase_order_items`, vues analytiques |
-| `…000700_rls.sql` | Row Level Security complète |
-| `…000800_catalog_functions.sql` | `create_sku` (création atomique produit → variante → SKU) |
-| `…000900_indexes.sql` | index des clés étrangères jointes |
-| `…001000_security_privileges.sql` | privilèges minimaux : EXECUTE retiré à PUBLIC/anon, pas de TRUNCATE, droits par colonne |
-| `…001100_membership_hardening.sql` | invitations (email vérifié), dernier propriétaire protégé, profils et rôles verrouillés |
-| `…001200_same_org_references.sql` | trigger « même organisation » sur toutes les clés étrangères, `organization_id` immuable |
-| `…002000_stock_po_integrity.sql` | intégrité du stock (limites, sens des mouvements, historique non supprimable) et machine à états des commandes fournisseurs |
-| `…002100_analytics_views.sql` | vues analytiques par devise, jours calendaires Europe/Paris, rotation du stock |
-| `…003000_sync_hardening.sql` | ingestion de commandes sans course, stockage atomique des tokens rafraîchis |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | vue d'ensemble, code partagé web / Edge / mobile, sécurité d'accès, flux principaux |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | branches, revue, règles de code, base de données, interdits en production |
+| [`docs/MIGRATIONS.md`](docs/MIGRATIONS.md) | migrations, historique de production, réconciliation, préproduction, retour arrière |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | déploiement, retour arrière, runbook de synchro eBay, supervision, sauvegardes, secrets, checklists |
+| [`docs/SERVER.md`](docs/SERVER.md) | Edge Function `api` : routes, secrets, tâches planifiées, eBay, sourcing, IA, outils |
+| [`docs/WEB-DEPLOY.md`](docs/WEB-DEPLOY.md) | site web sur Vercel |
+| [`docs/MOBILE.md`](docs/MOBILE.md) | application iPhone (Expo) |
+| [`docs/ebay-setup.md`](docs/ebay-setup.md) | application eBay, RuName, notifications, synchronisation |
+| [`docs/design/DESIGN-SYSTEM.md`](docs/design/DESIGN-SYSTEM.md) | système de design du web |
+| [`docs/data-model.md`](docs/data-model.md) · [`docs/ADVISOR.md`](docs/ADVISOR.md) | modèle de données ; conseiller IA |
 
-**Appliquer sur Supabase** : suivez **[`docs/MIGRATIONS.md`](docs/MIGRATIONS.md)**.
+## 2. Stack
 
-> **Attention : ne lancez pas `supabase db push` sur la production** tant que l'historique n'est pas réconcilié :
-> au 22/10/2026, `supabase_migrations.schema_migrations` de la production ne contient que 13 versions,
-> dont 11 différentes des fichiers du dépôt ; la CLI tenterait de rejouer des migrations déjà appliquées.
-> `docs/MIGRATIONS.md` décrit la comparaison de schéma, la réconciliation (`supabase migration repair`,
-> seulement après validation), la préproduction et le retour arrière. Sur un projet **neuf et vide**
-> (préproduction, DEV), `npx supabase db push` reste la bonne méthode.
+| Couche | Technologies |
+| --- | --- |
+| Web | Next.js 16 (App Router, Server Actions, `src/proxy.ts`), React 19, TypeScript strict, Tailwind CSS 4, Zod 4 |
+| Serveur | Supabase Edge Function `api` (Deno), construite depuis `src/` (`server/edge/`, `scripts/build-edge.mjs`) |
+| Base | Supabase Postgres 17 (UE) : RLS sur toutes les tables, Vault, `pg_cron` et `pg_net` |
+| Mobile | Expo / React Native (`apps/mobile`), expo-router, TanStack Query ; build TestFlight par GitHub Actions |
+| Tests | Vitest (unitaires et intégration sur PostgreSQL 16), Playwright (e2e), Jest (mobile) |
+| Services externes | eBay (OAuth, Trading, Sell Fulfillment, Notifications), OpenAI, transporteurs (Packlink, Boxtal, Sendcloud, La Poste, DHL, Ship24), BCE |
 
-**Base locale de test** (PostgreSQL 16 nu + shim reproduisant `auth.uid()`, les rôles `anon/authenticated/service_role`) :
+Node.js ≥ 22 est requis (`engines`).
 
-```bash
-PGPASSWORD=postgres npm run db:local:reset     # recrée mon_stock_test et applique tout (PGDATABASE=… pour une autre base)
-npm run db:types                               # régénère src/db/database.types.ts (supabase gen types)
-```
+## 3. Démarrage local
 
-Le fichier `supabase/local/0000_supabase_shim.sql` ne doit **jamais** être exécuté sur un vrai projet Supabase.
-
-Le détail du modèle (tables, vues, fonctions, correspondance avec le cahier des charges) est dans [`docs/data-model.md`](docs/data-model.md).
-
-## 5. Lancement local
+Le développement local n'a pas besoin de projet Supabase pour la base : les tests d'intégration tournent sur un **PostgreSQL 16 jetable**, avec un shim qui reproduit `auth.uid()` et les rôles `anon`, `authenticated` et `service_role`.
 
 ```bash
-npm run dev          # http://localhost:3000
-npm run typecheck    # tsc --noEmit
-npm run lint         # eslint
-npm test             # tests unitaires (vitest)
-npm run build        # build de production
+git clone https://github.com/AizenPYTH/MON-STOCK.git mon-stock && cd mon-stock
+npm ci
+cp .env.example .env.local     # puis compléter (§ 4) ; jamais commité
+
+# Base locale jetable (exemple avec Docker ; un PostgreSQL 16 installé convient aussi)
+docker run --rm -d --name monstock-pg -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16
+PGPASSWORD=postgres npm run db:local:reset   # supprime puis recrée mon_stock_test et applique toutes les migrations
+
+npm run dev                    # http://localhost:3000
 ```
 
-Parcours : `/signup` → confirmation email → `/onboarding` (créer votre organisation **ou** une organisation de démonstration DEMO) → `/dashboard`.
+- `npm run db:local:reset` (`scripts/db-local-reset.sh`) :
+  - lit `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` et `PGDATABASE` (défaut `mon_stock_test`) ;
+  - **refuse tout hôte non local** et toute base Supabase ;
+  - ne doit jamais viser autre chose qu'une base jetable.
+- `supabase/local/0000_supabase_shim.sql` ne doit **jamais** être exécuté sur un vrai projet Supabase.
+- Pour l'interface connectée (connexion, organisations), `npm run dev` a besoin d'un projet Supabase : une **préproduction** ou un projet personnel, jamais la production. Voir [`docs/OPERATIONS.md` § 2](docs/OPERATIONS.md#2-environnements).
+- `npm run db:types` régénère `src/db/database.types.ts` depuis la base locale. `DATABASE_URL` permet d'en viser une autre.
+- `npm run seed:demo -- --email <adresse>` crée une organisation **DEMO** pour un utilisateur existant. `npm run sync:run -- --due` lance une synchronisation. Ces deux scripts **refusent la base de production** (`scripts/lib/production-guard.ts`).
 
-Mode démonstration en ligne de commande : `npm run seed:demo -- --email vous@exemple.com` (utilise la clé service_role).
+Parcours dans l'application : `/signup` → confirmation de l'e-mail → `/onboarding` (votre organisation, ou une démonstration) → `/dashboard`.
 
-## 6. Configuration eBay
-
-Guide complet : [`docs/ebay-setup.md`](docs/ebay-setup.md). En résumé :
-
-1. Créez un compte développeur sur <https://developer.ebay.com> et une application (keyset **Production** et/ou **Sandbox**).
-2. Dans *User Tokens → Get a Token from eBay via Your Application*, créez un **RuName** (Redirect URL name) et renseignez :
-   - *Your auth accepted URL* : `${NEXT_PUBLIC_APP_URL}/api/integrations/ebay/callback`
-   - *Your auth declined URL* : `${NEXT_PUBLIC_APP_URL}/settings/integrations?error=declined`
-3. Copiez `App ID (Client ID)`, `Cert ID (Client Secret)` et ce RuName web dans `.env.local` (`EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_WEB_RU_NAME`), choisissez `EBAY_ENV=sandbox` ou `production`. `EBAY_RU_NAME` est le RuName du relais de l'application iPhone (Edge Function, `docs/SERVER.md` §4) : eBay n'accepte qu'une URL de retour par RuName. Sans `EBAY_WEB_RU_NAME`, le site invite à connecter eBay depuis l'iPhone.
-4. Scopes OAuth demandés (user token) : `https://api.ebay.com/oauth/api_scope`, `…/sell.fulfillment` (commandes), `…/sell.inventory` (annonces, quantités), `…/commerce.identity.readonly` (identité du compte).
-5. Pour recevoir les notifications eBay (obligatoire en production : *Marketplace Account Deletion*), déclarez l'endpoint `${NEXT_PUBLIC_APP_URL}/api/webhooks/ebay` et le jeton `EBAY_WEBHOOK_VERIFICATION_TOKEN` dans *Alerts & Notifications*.
-
-Aucun mot de passe eBay n'est jamais demandé ni stocké : la connexion passe exclusivement par OAuth. Les tokens sont chiffrés en base et ne transitent jamais vers le navigateur.
-
-## 7. OAuth callback
-
-Flux : `/settings/integrations` → **Connecter eBay** → `/api/integrations/ebay/connect` (crée un `state` anti-CSRF lié à l'organisation, redirige vers eBay) → autorisation par le vendeur → `/api/integrations/ebay/callback?code=…&state=…` (vérifie le `state`, échange le code contre les tokens, récupère l'identité du compte, chiffre et stocke les tokens côté serveur, marque la connexion **Connecté**) → assistant « Configuration de votre catalogue ».
-
-En cas de refus ou d'erreur, l'utilisateur est renvoyé vers `/settings/integrations` avec un message explicite. Un token expiré ou révoqué place la connexion en état *Expiré* avec le bouton **Reconnecter eBay**.
-
-## 8. Synchronisation
-
-Le moteur (`src/services/sync/`) est appelé de trois façons :
-
-- **Manuelle** : bouton *Synchroniser maintenant* (`/settings/integrations`).
-- **Automatique / périodique** : `pg_cron` → Edge Function `/api/cron/sync` toutes les 15 min (`docs/SERVER.md`). Chaque connexion a son intervalle (`sync_interval_minutes`) et peut être désactivée (`auto_sync`).
-- **Webhook** : notifications eBay reçues par l'Edge Function (signature vérifiée, événements dédoublonnés dans `webhook_events`).
-- Les routes web équivalentes (`/api/cron/*`, `/api/webhooks/ebay`) sont désactivées par défaut (404) ; `MONSTOCK_WEB_LEGACY_ROUTES=1` les réactive (W-18).
-
-Chaque exécution crée une ligne `sync_runs` (`started_at`, `finished_at`, `status`, `trigger`, `records_processed`, `error_count`, `stats`) et des lignes `sync_errors` détaillées, visibles sur `/settings/sync`. Rien n'est supposé réussi : les compteurs reflètent ce qui a réellement été traité.
-
-Ce que fait une synchronisation eBay : récupération des annonces actives (Trading API `GetMyeBaySelling`), rapprochement avec les SKU internes (association automatique **uniquement** sur correspondance exacte de SKU ; sinon suggestions à valider), récupération des commandes modifiées depuis le dernier curseur (Fulfillment API), ingestion idempotente (`ingest_external_order` : une commande n'est jamais comptée deux fois, une annulation recrédite une seule fois), mise à jour du stock central, et — si activé explicitement — envoi des quantités vers eBay.
-
-CLI : `npm run sync:run -- --connection <id>` ou `--all`.
-
-## 9. Architecture
-
-```
-src/
-  app/                 routes Next.js (App Router) : (auth), (app), api/, onboarding, invite
-  components/          ui/ (kit minimal : Button, Card, Table, Badge, Form…) et layout/ (sidebar, topbar)
-  features/            un dossier par fonctionnalité : queries (lecture), actions (Server Actions + Zod), composants
-  domain/              logique métier pure et testée : vitesse de vente, classification stock, marge, réapprovisionnement, sourcing (normalisation, matching, score, validation)
-  services/            orchestration serveur : synchronisation, stockage des tokens, ingestion de flux, crawler, taux de change
-  integrations/        connecteurs marketplace : core/ (MarketplaceConnector), ebay/, amazon/ et shopify/ (non implémentés, déclarés tels quels)
-                       sourcing/ : un dossier indépendant par adaptateur de source (crawler / parser / mapper / index) + registre + catalogue des sources
-  lib/                 env, clients Supabase (server / browser / admin), crypto, logger, erreurs, formatage
-  db/                  types générés (database.types.ts) et alias
-  proxy.ts             rafraîchissement de session + protection des routes (Next 16)
-supabase/migrations/   schéma versionné        supabase/local/  shim PostgreSQL local
-tests/unit             logique pure, adaptateurs (fixtures), actions   tests/integration RLS, sécurité, stock, commandes, synchronisation (PostgreSQL local)
-tests/e2e              rendu des pages publiques (Playwright)          tests/fixtures  documents fournisseurs d'exemple (formats documentés)
-docs/                  data-model, ebay-setup, sourcing-*, BETA-READINESS
-```
-
-Principes :
-
-- **UI → features → domain / services → integrations → base**. Aucune logique de connecteur dans les composants React.
-- **Multi-tenant strict** : chaque requête utilisateur passe par le client Supabase « au nom de l'utilisateur » (RLS). Le client `service_role` n'est utilisé que par le code serveur qui vérifie lui-même l'organisation (sync, webhooks, cron, secrets).
-- **Validation serveur** : toutes les entrées (formulaires, API externes, flux fournisseurs) sont validées par Zod avant d'entrer dans le domaine.
-- **Idempotence** : identifiants externes uniques (`orders`, `webhook_events`, `sourcing_offers`), transactions SQL pour les opérations critiques.
-- **Logs** sans secret (`src/lib/logger.ts` masque tokens, mots de passe, clés).
-
-## 10. Tests
+Application mobile :
 
 ```bash
-npm run typecheck && npm run lint
-npm test                                   # unitaires : domaine, adaptateurs de sourcing (fixtures), eBay, actions, liens internes…
-PGPASSWORD=postgres npm run db:local:reset # base locale (toutes les migrations)
-npm run test:integration                   # sécurité multi-tenant générée depuis le catalogue, rôles, stock, commandes fournisseurs,
-                                           # idempotence et concurrence (deux connexions), synchronisation eBay, webhooks
-npm run build
-# e2e (pages publiques, 3 largeurs, en-têtes de sécurité) contre un serveur lancé :
-NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=x npx next start -p 3100 &
-E2E_BASE_URL=http://localhost:3100 PLAYWRIGHT_CHROMIUM_PATH=<chemin chromium> npm run test:e2e
+npm ci --prefix apps/mobile
+cp apps/mobile/.env.example apps/mobile/.env.local   # valeurs publiques uniquement
+npm --prefix apps/mobile run start                   # Expo
 ```
 
-Les tests d'intégration s'exécutent dans une transaction annulée à la fin (base propre) en simulant les rôles PostgREST (`authenticated` + claims JWT, `anon`, `service_role`). Ils sont ignorés automatiquement si aucune base locale n'est joignable (`DATABASE_URL`). Les tests de sécurité énumèrent tables, vues et fonctions depuis `pg_catalog` : **toute nouvelle table avec `organization_id` doit appeler `public.install_same_org_guards(...)` et être ajoutée à `tests/integration/security-fixtures.ts`**, sinon ils échouent.
+## 4. Variables d'environnement
 
-Les adaptateurs de sourcing et l'API eBay sont testés **uniquement sur des fixtures** construites d'après leur documentation publique : ils n'ont jamais été exécutés contre les vrais services depuis l'environnement de développement (réseau sortant bloqué).
+Toutes les variables lues par le code sont listées et commentées dans [`.env.example`](.env.example) (web, scripts et tests) et dans [`apps/mobile/.env.example`](apps/mobile/.env.example).
 
-## 11. Déploiement
+Règles :
 
-1. Déployez sur Vercel (ou tout hébergeur Node.js ≥ 22) avec les variables de la section 2.
-2. Mettez `NEXT_PUBLIC_APP_URL` sur l'URL publique, ajoutez-la aux *Redirect URLs* Supabase et dans la configuration eBay (RuName).
-3. Les tâches planifiées tournent dans Supabase (`pg_cron` → Edge Function) ; `vercel.json` ne déclare aucun cron. Voir `docs/WEB-DEPLOY.md`.
-4. Vérifiez l'endpoint webhook eBay (challenge GET) depuis le portail développeur.
-5. Configurez Supabase : *Confirm email*, *Secure email change* et *Secure password change* activés ; *Redirect URLs* limitées à votre domaine.
-6. Si votre projet Supabase utilise un domaine personnalisé, ajoutez-le à `connect-src` de la Content-Security-Policy (`next.config.ts`).
-7. Vérification finale : `npm run typecheck && npm run lint && npm test && npm run test:integration && npm run build`.
+- `.env*` est ignoré par git, sauf les fichiers `.env.example`.
+- Les variables `NEXT_PUBLIC_*` et `EXPO_PUBLIC_*` sont **publiques** : jamais de secret dedans.
+- Les variables serveur sont validées par Zod au premier usage (`src/lib/env.ts`), avec des messages explicites.
+- Le client `service_role` (`src/lib/supabase/admin.ts`) importe `server-only` : il n'est jamais atteint depuis un composant client.
 
-Avant la bêta, lisez [`docs/BETA-READINESS.md`](docs/BETA-READINESS.md).
+En production, le web lit ses secrets partagés dans le **Vault Supabase** au démarrage (`src/instrumentation.ts`). La liste est fermée (`src/lib/web-runtime-secrets.ts`) : `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET`, `EBAY_*` et la découverte de sources. L'IA, les transporteurs et la publication d'annonces passent par l'Edge. Où vit chaque secret : [`docs/OPERATIONS.md` § 10](docs/OPERATIONS.md#10-secrets).
 
-## 12. État des fonctionnalités
+## 5. Tests
 
-Légende : ✅ réellement disponible · ⚠️ partiellement disponible / non vérifié en conditions réelles · 🚧 prochainement disponible.
+```bash
+npm run typecheck                 # tsc --noEmit
+npm run lint                      # eslint
+npm test                          # unitaires (tests/unit) : domaine, adaptateurs sur fixtures, eBay simulé, garde-fous
+npm run build                     # build de production
+```
+
+**Intégration** (`tests/integration`) : sur la base locale de § 3. Ces tests couvrent :
+
+- la sécurité multi-organisation, énumérée depuis `pg_catalog` ;
+- les rôles, le stock et les commandes fournisseurs ;
+- l'idempotence et la concurrence ;
+- la synchronisation eBay et les webhooks.
+
+```bash
+PGPASSWORD=postgres npm run db:local:reset
+REQUIRE_DB=1 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mon_stock_test npm run test:integration
+```
+
+Sans `REQUIRE_DB=1`, les tests d'intégration sont **ignorés** si la base est injoignable. Avec, ils échouent : c'est le réglage de la CI. Toute nouvelle table avec `organization_id` doit appeler `public.install_same_org_guards(...)` et être ajoutée à `tests/integration/security-fixtures.ts`.
+
+**End-to-end** (Playwright, `tests/e2e`) : pages publiques sur 3 largeurs et en-têtes de sécurité, contre un serveur déjà lancé.
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co NEXT_PUBLIC_SUPABASE_ANON_KEY=x \
+  NEXT_PUBLIC_APP_URL=http://localhost:3100 npx next dev -p 3100 &
+E2E_BASE_URL=http://localhost:3100 npm run test:e2e   # PLAYWRIGHT_CHROMIUM_PATH=<chemin> si besoin
+```
+
+Le parcours d'inscription (`tests/e2e/onboarding.spec.ts`) n'est lancé qu'avec `E2E_ONBOARDING=1`, et contre une préproduction.
+
+**Mobile** : typecheck, lint, Jest et recherche de secrets dans le bundle exporté.
+
+```bash
+npm --prefix apps/mobile run check
+```
+
+`npm run test:all` lance unitaires et intégration ensemble. Les adaptateurs de sourcing et les API eBay sont testés sur des **fixtures** construites d'après leur documentation publique. Un test ne dépend ni de la date du jour ni du réseau.
+
+## 6. Intégration continue
+
+`.github/workflows/ci.yml` tourne à chaque push de branche et à chaque pull request. Il n'utilise aucun secret, seulement des valeurs publiques factices.
+
+| Job | Contrôles |
+| --- | --- |
+| `web` | `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` |
+| `edge-bundle` | reconstruit `supabase/functions/api/bundle.js` et échoue s'il diffère du fichier commité |
+| `integration` | nommage des migrations, application complète sur PostgreSQL 16 vierge (`scripts/db-local-reset.sh`), `npm run test:integration` avec `REQUIRE_DB=1` |
+| `mobile` | `npm --prefix apps/mobile run check`, export iOS et scan des secrets du bundle |
+| `secrets` | gitleaks sur tout l'historique (`.gitleaks.toml`) |
+
+Autres workflows :
+
+- `ios-testflight-local.yml` : build iOS sur macOS et envoi sur TestFlight (lancement manuel ou tag `testflight-*`) ;
+- `supplier-logos.yml` : logos fournisseurs, proposés par pull request.
+
+Dependabot (`.github/dependabot.yml`) propose les mises à jour chaque semaine.
+
+> Au 23/10/2026, sur `claude/remediation-audit`, quatre jobs sont verts et le job `mobile` échoue au lint : `apps/mobile/preview/mock-api.ts` importe un fichier d'aperçu généré, non versionné. La protection de la branche de production, qui exigerait ces contrôles, reste à activer côté GitHub (Q-01).
+
+## 7. Déploiement
+
+**Toute la procédure est dans [`docs/OPERATIONS.md`](docs/OPERATIONS.md).** En résumé :
+
+- ordre : **migration → Edge → web → mobile** ;
+- **base** : migrations appliquées une par une, avec l'accord du titulaire, après essai en local puis en préproduction ([`docs/MIGRATIONS.md`](docs/MIGRATIONS.md)). L'historique de la production diffère du dépôt : `supabase db push` n'est **pas** une méthode de déploiement en production ;
+- **Edge Function** : `npm run edge:build`, commit du bundle, puis déploiement d'un `index.ts` qui importe le bundle d'un **SHA complet** ([`docs/OPERATIONS.md` § 4](docs/OPERATIONS.md#4-déployer-ledge-function)) ;
+- **web** : Vercel publie à chaque push sur la branche de production ([`docs/WEB-DEPLOY.md`](docs/WEB-DEPLOY.md)) ;
+- **mobile** : workflow `ios-testflight-local.yml`.
+
+Tâches planifiées : `pg_cron` dans Supabase appelle l'Edge Function (synchro eBay toutes les 15 min, sourcing, suivi de colis, contrôles). **`vercel.json` ne déclare aucun cron.** Sur la branche de remédiation, les routes web `/api/cron/*` et `/api/webhooks/ebay` sont désactivées par défaut (404) ; `MONSTOCK_WEB_LEGACY_ROUTES=1` les réactive en secours.
+
+## 8. eBay en bref
+
+Guide complet : [`docs/ebay-setup.md`](docs/ebay-setup.md).
+
+- Connexion par **OAuth uniquement** : aucun mot de passe eBay n'est demandé ni stocké. Les jetons sont chiffrés en base (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`) et ne vont jamais vers le navigateur ou le téléphone.
+- eBay n'accepte qu'une URL de retour par RuName, d'où deux RuName :
+  - `EBAY_RU_NAME` sert l'**iPhone** : retour sur l'Edge Function (`…/functions/v1/api/ebay/callback`), puis l'application ;
+  - `EBAY_WEB_RU_NAME` sert le **site web** : retour sur `${NEXT_PUBLIC_APP_URL}/api/integrations/ebay/callback`. **Sans lui, la connexion eBay depuis le site est désactivée** et le site renvoie vers l'iPhone.
+- Notifications (dont *Marketplace Account Deletion*, obligatoire) : reçues par l'Edge Function (`…/functions/v1/api/ebay/webhook`), signature vérifiée, événements dédoublonnés.
+- Synchronisation :
+  - par le cron toutes les 15 min, par « Synchroniser maintenant », ou par une notification ;
+  - chaque run est borné (100 s) et reprenable ;
+  - chaque run est tracé dans `sync_runs` et `sync_errors`, visible sur `/settings/sync`.
+- L'envoi des quantités vers eBay est désactivé par défaut (`push_inventory`). La publication d'annonces est verrouillée (`EBAY_LISTING_ENABLED`, administrateur, confirmation).
+
+## 9. État des fonctionnalités
+
+Légende : ✅ disponible · ⚠️ partiel ou non vérifié en conditions réelles · 🚧 prochainement.
 
 | Fonctionnalité | État |
 | --- | --- |
-| Inscription, connexion, reset, sessions, protection des routes | ✅ |
-| Organisations, membres, rôles, invitations | ✅ (email d'invitation non envoyé : le lien est affiché à l'administrateur) |
-| Isolation multi-tenant (RLS + garde « même organisation ») | ✅ testée table par table, fonction par fonction |
-| Stock central PRODUIT → VARIANTE → SKU, mouvements, historique, archivage | ✅ |
-| Commandes fournisseurs : brouillon → envoyée → réception partielle/totale | ✅ |
-| Tableau de bord, alertes de rupture, vitesse, jours de stock, rotation, réapprovisionnement, marges | ✅ (calculés uniquement à partir des données présentes) |
-| eBay : OAuth, annonces, commandes, mapping, webhooks, cron | ⚠️ implémenté et testé sur réponses simulées ; **jamais exécuté contre l'API eBay réelle** |
-| Envoi des quantités vers eBay | ⚠️ opt-in, même réserve |
-| Fournisseurs, offres manuelles, import CSV/XML/JSON | ✅ |
-| Sourcing : recherche, normalisation, filtrage, déduplication, classement expliqué, confiance, historique, alertes, « Trouver moins cher » | ✅ sur les offres présentes en base (saisies, flux importés) |
-| Sourcing : recherche en direct via 6 adaptateurs (JSON-LD, Shopify, WooCommerce, Google Merchant, BigBuy, Ingram Micro) | ⚠️ testés sur fixtures uniquement ; **0 source réellement connectée à ce jour** |
-| Sourcing : découverte de nouveaux fournisseurs | ⚠️ désactivée par défaut (nécessite une clé Brave Search API), sources découvertes à valider manuellement |
-| Amazon, Shopify (canal de vente), WooCommerce (canal de vente) | 🚧 « Disponible prochainement » |
-| Facturation | 🚧 « Disponible prochainement » |
+| Inscription, connexion, sessions, organisations, rôles, invitations | ✅ (le lien d'invitation est affiché à l'administrateur ; aucun e-mail n'est envoyé) |
+| Isolation multi-organisation (RLS et garde « même organisation ») | ✅ testée table par table et fonction par fonction |
+| Stock produit → variante → SKU, mouvements, historique, commandes fournisseurs | ✅ |
+| Tableau de bord, ruptures, réapprovisionnement, marges | ✅ calculés uniquement à partir des données présentes |
+| Synchronisation eBay (annonces, commandes, stock) | ✅ en production pour deux comptes depuis le correctif du 23/10/2026 |
+| Envoi des quantités vers eBay, publication d'annonces | ⚠️ opt-in et verrouillés ; jamais exécutés sur un compte réel |
+| Connexion eBay depuis le site web | ⚠️ exige `EBAY_WEB_RU_NAME` (branche de remédiation, non déployée) |
+| Sourcing : imports de catalogues, bibliothèque de sources vérifiées, radar | ✅ ; sources publiques réelles listées dans [`docs/SERVER.md` § 5](docs/SERVER.md#5-fournisseurs-professionnels) |
+| Conseiller IA, produit dicté | ⚠️ dépend d'`OPENAI_API_KEY` côté Edge |
+| Devis d'expédition, suivi de colis | ⚠️ connecteurs prêts, en attente des clés des transporteurs |
+| Suppression de compte (iPhone, web, Edge) | ⚠️ sur la branche de remédiation ; exige la migration `20261023000600` |
+| Amazon, Shopify, WooCommerce (canaux de vente), facturation | 🚧 |
 
-État réel des sources de sourcing : voir la carte « État des sources » sur `/sourcing` et [`docs/sourcing-sources-verification.md`](docs/sourcing-sources-verification.md).
+Avant toute ouverture commerciale : [`docs/OPERATIONS.md` § 12](docs/OPERATIONS.md#12-checklist-avant-commercialisation).

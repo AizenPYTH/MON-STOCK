@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import type { RadarSort } from "@/features/mobile-api/contract";
 import { SORT_OPTIONS, radarHref, type RadarFilter } from "@/features/radar/labels";
+import { internalRoute } from "@/lib/routes";
 
 /** Tri des offres évaluées (Pertinence, Bénéfice, Marge, Disponibilité, Fraîcheur) : change l'URL. */
 export function RadarSortSelect({ sort, filter, offer }: { sort: RadarSort; filter: RadarFilter; offer: string | null }) {
@@ -12,7 +13,7 @@ export function RadarSortSelect({ sort, filter, offer }: { sort: RadarSort; filt
       Tri
       <select
         value={sort}
-        onChange={(e) => router.push(radarHref({ sort: e.target.value as RadarSort, filter, offer }) as never, { scroll: false })}
+        onChange={(e) => router.push(internalRoute(radarHref({ sort: e.target.value as RadarSort, filter, offer })), { scroll: false })}
         className="h-10 cursor-pointer appearance-none rounded-full border border-border-control bg-surface pl-3 pr-8 text-[12.5px] font-bold text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         {SORT_OPTIONS.map((o) => (

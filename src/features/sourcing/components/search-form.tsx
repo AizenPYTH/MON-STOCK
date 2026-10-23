@@ -4,6 +4,7 @@ import { Input, Select } from "@/components/ui/form";
 import { Button, ButtonLink } from "@/components/ui/button";
 import type { SourcingSearchParams } from "@/features/sourcing/schemas";
 import { SOURCE_TYPE_LABEL } from "@/features/sourcing/labels";
+import { internalRoute } from "@/lib/routes";
 
 export function SourcingSearchForm({ params, suppliers, skuCode, liveEnabled = true, toggleLiveHref }: { params: SourcingSearchParams; suppliers: Array<{ id: string; name: string }>; skuCode?: string | null; liveEnabled?: boolean; toggleLiveHref?: string }) {
   return (
@@ -21,7 +22,7 @@ export function SourcingSearchForm({ params, suppliers, skuCode, liveEnabled = t
         {toggleLiveHref ? (
           <>
             {" "}
-            <Link href={toggleLiveHref as never} className="font-medium text-muted-strong underline-offset-2 hover:underline">
+            <Link href={internalRoute(toggleLiveHref)} className="font-medium text-muted-strong underline-offset-2 hover:underline">
               {liveEnabled ? "Rechercher sans interroger les sources" : "Interroger les sources en direct"}
             </Link>
           </>

@@ -2,6 +2,7 @@ import { Children, cloneElement, isValidElement, type InputHTMLAttributes, type 
 import Link from "next/link";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Contrôle de saisie : contour ≥ 3:1 (WCAG 1.4.11), focus = contour bleu + halo, erreur = contour rouge.
@@ -106,7 +107,7 @@ export function FormError({ message, action }: { message?: string | null; action
         <span className="min-w-0">{message}</span>
       </span>
       {action ? (
-        <Link href={action.href as never} className="font-bold underline underline-offset-2 hover:no-underline">
+        <Link href={internalRoute(action.href)} className="font-bold underline underline-offset-2 hover:no-underline">
           {action.label}
         </Link>
       ) : null}

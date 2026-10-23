@@ -5,6 +5,7 @@ import { formatDuration } from "@/features/integrations/format";
 import { formatNumber, formatRelative } from "@/lib/format";
 import type { LiveSearchSummary, LiveSourceReport } from "@/services/sourcing/live-search.types";
 import { LIVE_SOURCE_STATUS_LABEL, LIVE_SOURCE_STATUS_VARIANT, RETRIEVAL_METHOD_LABEL } from "@/features/sourcing/labels";
+import { internalRoute } from "@/lib/routes";
 
 function dotTone(s: LiveSourceReport["status"]): "success" | "warning" | "danger" | "neutral" | "info" {
   const v = LIVE_SOURCE_STATUS_VARIANT[s];
@@ -45,7 +46,7 @@ export function LiveSourcesPanel({ summary, liveEnabled, toggleHref, hasQuery }:
         description={description}
         actions={
           hasQuery ? (
-            <Link href={toggleHref as never} className="text-xs font-medium text-muted-strong underline-offset-2 hover:underline">
+            <Link href={internalRoute(toggleHref)} className="text-xs font-medium text-muted-strong underline-offset-2 hover:underline">
               {liveEnabled ? "Rechercher sans interroger les sources" : "Interroger les sources en direct"}
             </Link>
           ) : null
@@ -65,7 +66,7 @@ export function LiveSourcesPanel({ summary, liveEnabled, toggleHref, hasQuery }:
                       <span className="truncate font-medium">{s.sourceName}</span>
                     </div>
                     <div className="truncate text-xs text-muted">
-                      <Link href={`/suppliers/${s.supplierId}/sources` as never} className="hover:underline">
+                      <Link href={`/suppliers/${s.supplierId}/sources`} className="hover:underline">
                         {s.supplierName}
                       </Link>
                       {" · "}

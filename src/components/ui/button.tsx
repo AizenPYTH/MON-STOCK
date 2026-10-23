@@ -2,6 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { cn, safeExternalUrl } from "@/lib/utils";
+import { internalRoute } from "@/lib/routes";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "link" | "dark" | "night";
 export type ButtonSize = "sm" | "md" | "lg" | "xl";
@@ -107,7 +108,7 @@ export function ButtonLink({
   if (isInternalHref(href)) {
     // typedRoutes : les routes dynamiques construites sont validées à l'exécution.
     return (
-      <Link href={href as never} className={classes} {...rest}>
+      <Link href={internalRoute(href)} className={classes} {...rest}>
         {children}
       </Link>
     );

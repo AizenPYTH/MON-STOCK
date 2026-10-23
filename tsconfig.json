@@ -27,5 +27,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", ".next", "apps", "supabase/functions"]
+  "exclude": ["node_modules", ".next/dev", ".next/cache", ".next/server", ".next/static", "apps", "supabase/functions"]
 }

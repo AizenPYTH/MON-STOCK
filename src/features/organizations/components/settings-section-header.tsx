@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * En-tête d'une section des Réglages, posé sur le papier (le titre de page « Réglages » est
@@ -11,7 +12,7 @@ export function SettingsSectionHeader({ title, description, actions, back }: { t
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
         {back ? (
-          <Link href={back.href as never} className="mb-1.5 inline-flex min-h-8 items-center gap-1 rounded-lg text-[13px] font-semibold text-muted hover:text-foreground">
+          <Link href={internalRoute(back.href)} className="mb-1.5 inline-flex min-h-8 items-center gap-1 rounded-lg text-[13px] font-semibold text-muted hover:text-foreground">
             <ChevronLeft aria-hidden="true" className="h-4 w-4" />
             {back.label}
           </Link>

@@ -9,6 +9,7 @@ import type { ShellAlert } from "@/features/shell/queries";
 import { formatRelativeShort } from "@/components/layout/relative-time";
 import { cn } from "@/lib/utils";
 import { useMenuKeyboard } from "@/components/layout/use-menu-keyboard";
+import { internalRoute } from "@/lib/routes";
 
 export const ADD_ITEMS = [
   { href: "/stock/new", label: "Produit", sub: "Variantes, saisie ou dictée", icon: Boxes, kbd: "P" },
@@ -46,7 +47,7 @@ function AlertsMenu({ alerts, total }: { alerts: ShellAlert[]; total: number | n
             <p aria-hidden="true" className="border-t border-line-soft px-4 py-5 text-sm font-semibold text-muted">Aucune alerte ouverte.</p>
           ) : (
             alerts.map((a) => (
-              <Link key={a.id} role="menuitem" tabIndex={-1} href={(a.href ?? "/stock/alerts") as never} onClick={() => setOpen(false)} className="flex min-h-14 items-center gap-3 border-t border-line-soft px-4 py-2.5 hover:bg-line-soft">
+              <Link key={a.id} role="menuitem" tabIndex={-1} href={internalRoute((a.href ?? "/stock/alerts"))} onClick={() => setOpen(false)} className="flex min-h-14 items-center gap-3 border-t border-line-soft px-4 py-2.5 hover:bg-line-soft">
                 <ToneIcon tone={a.severity === "critical" ? "danger" : a.severity === "warning" ? "warning" : "info"}>{a.severity === "info" ? <Info /> : <AlertTriangle />}</ToneIcon>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-semibold">{a.title}</span>
@@ -89,7 +90,7 @@ function AddMenu({ readOnly, open, setOpen }: { readOnly: boolean; open: boolean
       {open ? (
         <div role="menu" aria-label="Ajouter" {...menuProps} className={cn(FLOAT, "w-[280px] p-1.5")}>
           {ADD_ITEMS.map((a) => (
-            <Link key={a.href} role="menuitem" tabIndex={-1} href={a.href as never} onClick={() => setOpen(false)} className="flex min-h-11 items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 hover:bg-line-soft">
+            <Link key={a.href} role="menuitem" tabIndex={-1} href={a.href} onClick={() => setOpen(false)} className="flex min-h-11 items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 hover:bg-line-soft">
               <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-background">
                 <a.icon aria-hidden="true" className="h-4 w-4" />
               </span>

@@ -47,7 +47,7 @@ function SourcesTable({ sources, caption, writer, admin }: { sources: SourceOver
                 <div className="flex items-center gap-2.5">
                   <SupplierBadge name={s.supplierName ?? s.name} size="sm" />
                   <div className="min-w-0">
-                    <Link href={`/suppliers/${s.supplierId}` as never} className="block truncate font-medium hover:underline">
+                    <Link href={`/suppliers/${s.supplierId}`} className="block truncate font-medium hover:underline">
                       {s.supplierName ?? s.name}
                     </Link>
                     <div className="truncate text-xs text-muted">

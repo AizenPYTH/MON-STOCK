@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/form";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Barre d'outils au-dessus d'une liste : filtres / recherche à gauche (`children`), actions à
@@ -50,7 +51,7 @@ export function FilterBar({
         <div className="flex w-full items-center justify-between gap-3 text-sm text-muted sm:w-auto sm:justify-end">
           {summary ? <span className="tnum">{summary}</span> : null}
           {active && resetHref ? (
-            <Link href={resetHref as never} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1.5 font-semibold text-interactive hover:text-interactive-hover hover:underline underline-offset-4 pointer-coarse:min-h-10">
+            <Link href={internalRoute(resetHref)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1.5 font-semibold text-interactive hover:text-interactive-hover hover:underline underline-offset-4 pointer-coarse:min-h-10">
               <X aria-hidden="true" className="h-3.5 w-3.5" />
               {resetLabel}
             </Link>

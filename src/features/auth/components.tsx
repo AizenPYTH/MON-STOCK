@@ -6,6 +6,7 @@ import { CircleAlert, CircleCheck, Loader2 } from "lucide-react";
 import type { ActionResult } from "@/lib/result";
 import { cn } from "@/lib/utils";
 import { requestPasswordResetAction, signInAction, signUpAction, updatePasswordAction } from "@/features/auth/actions";
+import { internalRoute } from "@/lib/routes";
 
 /*
  * Formulaires d'authentification — gabarit unique « Instrument » (Connexion / Inscription /
@@ -40,7 +41,7 @@ function AuthError({ message, action }: { message?: string | null; action?: { la
         {action ? (
           <>
             {" "}
-            <Link href={action.href as never} className="font-extrabold underline underline-offset-2">
+            <Link href={internalRoute(action.href)} className="font-extrabold underline underline-offset-2">
               {action.label}
             </Link>
           </>
@@ -136,7 +137,7 @@ export function SwitchLine({ text, href, link }: { text: string; href: string; l
   return (
     <p className="text-center text-sm font-semibold text-muted">
       {text}{" "}
-      <Link href={href as never} className="inline-flex min-h-10 items-center font-extrabold text-foreground underline underline-offset-4 hover:text-interactive">
+      <Link href={internalRoute(href)} className="inline-flex min-h-10 items-center font-extrabold text-foreground underline underline-offset-4 hover:text-interactive">
         {link}
       </Link>
     </p>

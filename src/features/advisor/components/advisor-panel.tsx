@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { loadAdvisorPanelAction, type AdvisorPanelData } from "@/features/advisor/actions";
 import { rememberedConversation } from "@/features/advisor/remember";
 import { AdvisorChat, AdvisorNotConfigured, AdvisorQuota, AdvisorStatusUnavailable, AdvisorUsageProvider } from "@/features/advisor/components/advisor-chat";
+import { internalRoute } from "@/lib/routes";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint focus-visible:ring-offset-2 focus-visible:ring-offset-night";
 
@@ -83,7 +84,7 @@ export function AdvisorPanel({ onClose }: { onClose: () => void }) {
         </h2>
         {data ? <AdvisorQuota variant="panel" /> : <span className="ms-code text-[10px] leading-[13px] text-on-night-muted">{load.state === "loading" ? "Chargement…" : "Quota : —"}</span>}
       </div>
-      <Link href={pageHref as never} onClick={() => onClose()} title="Ouvrir la page" aria-label="Ouvrir la page du conseiller" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-night-raised text-on-night hover:bg-night-hover", FOCUS)}>
+      <Link href={internalRoute(pageHref)} onClick={() => onClose()} title="Ouvrir la page" aria-label="Ouvrir la page du conseiller" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-night-raised text-on-night hover:bg-night-hover", FOCUS)}>
         <Maximize2 aria-hidden="true" className="h-4 w-4" />
       </Link>
       <button type="button" onClick={() => onClose()} aria-label="Fermer le conseiller (Échap)" title="Fermer (Échap)" className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-night-raised text-on-night hover:bg-night-hover", FOCUS)}>

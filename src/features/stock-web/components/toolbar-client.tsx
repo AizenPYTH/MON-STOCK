@@ -5,6 +5,7 @@ import { Check, ChevronDown, Columns3, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { stockHref } from "@/features/stock-web/params";
 import { STOCK_COLUMNS, toggleColumn, useHiddenColumns } from "@/features/stock-web/components/columns";
+import { internalRoute } from "@/lib/routes";
 
 function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -31,7 +32,7 @@ export function StockSearch({ flat, initial }: { flat: Record<string, string>; i
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
-  const go = (value: string) => router.push(stockHref(flat, { q: value.trim() || null }) as never, { scroll: false });
+  const go = (value: string) => router.push(internalRoute(stockHref(flat, { q: value.trim() || null })), { scroll: false });
   const submit = (e: FormEvent) => {
     e.preventDefault();
     go(q);
@@ -77,7 +78,7 @@ export function CategorySelect({ flat, categories, current }: { flat: Record<str
       <span className="sr-only">Catégorie</span>
       <select
         value={current ?? ""}
-        onChange={(e) => router.push(stockHref(flat, { category: e.target.value || null }) as never, { scroll: false })}
+        onChange={(e) => router.push(internalRoute(stockHref(flat, { category: e.target.value || null })), { scroll: false })}
         className={cn("h-9 cursor-pointer appearance-none rounded-full border pl-3.5 pr-8 text-[13.5px] font-semibold transition-colors duration-150 ease-standard pointer-coarse:h-10", current ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover" : "border-border-strong bg-surface text-foreground hover:bg-surface-2")}
       >
         <option value="">Toutes catégories</option>

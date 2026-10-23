@@ -26,7 +26,7 @@ export function PublicHeader() {
         </Link>
         <nav aria-label="Site" className="hidden flex-1 items-center gap-[22px] md:flex">
           {SITE_LINKS.map((l) => (
-            <Link key={l.href} href={l.href as never} prefetch={false} className="rounded-md py-2 text-sm font-semibold text-on-night-muted hover:text-on-night">
+            <Link key={l.href} href={l.href} prefetch={false} className="rounded-md py-2 text-sm font-semibold text-on-night-muted hover:text-on-night">
               {l.label}
             </Link>
           ))}

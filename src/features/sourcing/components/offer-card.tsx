@@ -59,12 +59,12 @@ export function OfferCard({ view, currency, sku, requestedQuantity }: { view: Se
           ) : null}
           <h3 className="flex min-w-0 items-baseline gap-2 text-[15px] font-bold leading-5 text-foreground">
             <span className="ms-code shrink-0 text-[11px] font-medium text-ink-3 tnum">#{view.ranking.rank}</span>
-            <Link href={`/sourcing/offers/${o.id}` as never} className="min-w-0 break-words rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            <Link href={`/sourcing/offers/${o.id}`} className="min-w-0 break-words rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
               {o.title_original}
             </Link>
           </h3>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted">
-            <Link href={`/suppliers/${supplierId}` as never} className="font-bold text-foreground hover:underline">
+            <Link href={`/suppliers/${supplierId}`} className="font-bold text-foreground hover:underline">
               {view.supplierName}
             </Link>
             <span aria-hidden="true">·</span>

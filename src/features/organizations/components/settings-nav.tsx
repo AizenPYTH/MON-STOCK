@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { ArrowUpRight, Building2, Calculator, CircleUserRound, CreditCard, Plug, RefreshCw, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { activeSettingsSection, SETTINGS_SECTIONS, type SettingsSectionId } from "@/features/organizations/components/settings-sections";
+import { internalRoute } from "@/lib/routes";
 
 const ICONS: Record<SettingsSectionId, LucideIcon> = {
   organization: Building2,
@@ -40,7 +41,7 @@ export function SettingsNav() {
           return (
             <li key={s.id} className="shrink-0">
               <Link
-                href={s.href as never}
+                href={internalRoute(s.href)}
                 aria-current={current ? "page" : undefined}
                 className={cn(
                   "flex min-h-10 items-center gap-2.5 whitespace-nowrap rounded-[10px] border px-3 text-sm transition-colors",

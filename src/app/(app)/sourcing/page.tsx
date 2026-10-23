@@ -10,6 +10,7 @@ import { legacyCatalogHref } from "@/features/sourcing-search/legacy";
 import { MIN_QUERY_LENGTH, normalizeQuery } from "@/features/sourcing-search/display";
 import { SearchExamples, SourcingScene } from "@/features/sourcing-search/components/search-scene";
 import { SearchPending, SearchSection } from "@/features/sourcing-search/components/search-section";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Recherche fournisseurs" };
 // recherche en direct : jusqu'à ~35 s chez les fournisseurs, puis lecture et analyse des offres
@@ -19,7 +20,7 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
   const raw = await searchParams;
   // anciens liens du moteur complet (mode SKU, filtres) → Offres collectées
   const legacy = legacyCatalogHref(raw);
-  if (legacy) redirect(legacy as never);
+  if (legacy) redirect(internalRoute(legacy));
   const ctx = await requireOrgContext();
   const query = normalizeQuery(raw.q);
 
@@ -85,7 +86,7 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
 
 function Tile({ href, icon, label, count }: { href: string; icon: ReactNode; label: string; count?: number }) {
   return (
-    <Link href={href as never} className="flex min-h-[88px] flex-col justify-between rounded-2xl border border-border bg-surface p-3 hover:bg-line-soft">
+    <Link href={internalRoute(href)} className="flex min-h-[88px] flex-col justify-between rounded-2xl border border-border bg-surface p-3 hover:bg-line-soft">
       <span className="flex items-center justify-between">
         <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[10px] bg-background [&>svg]:h-4 [&>svg]:w-4" aria-hidden="true">
           {icon}

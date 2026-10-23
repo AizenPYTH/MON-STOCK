@@ -113,7 +113,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                           </div>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                             {sku ? (
-                              <Link href={`/stock/${encodeURIComponent(sku.code)}` as never} className="group inline-flex min-w-0 max-w-full items-baseline gap-2 rounded-md bg-surface-2 px-2 py-1 ring-1 ring-inset ring-border hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                              <Link href={`/stock/${encodeURIComponent(sku.code)}`} className="group inline-flex min-w-0 max-w-full items-baseline gap-2 rounded-md bg-surface-2 px-2 py-1 ring-1 ring-inset ring-border hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                                 <span className="ms-code shrink-0 text-xs font-semibold text-foreground">{sku.code}</span>
                                 <span className="truncate text-xs text-muted group-hover:text-foreground">
                                   {sku.productName}

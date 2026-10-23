@@ -9,6 +9,7 @@ import { CategoryGlyph } from "@/features/stock-web/components/glyph";
 import { useHiddenColumns, type StockColumn } from "@/features/stock-web/components/columns";
 import { AdjustDialog, type AdjustTarget } from "@/features/stock-web/components/adjust-dialog";
 import type { Tone } from "@/features/stock-web/list.pure";
+import { internalRoute } from "@/lib/routes";
 
 /** Ligne prête à afficher (calculée côté serveur : aucune donnée inventée, « — » si inconnu). */
 export interface StockRowDTO {
@@ -135,7 +136,7 @@ export function StockTableV5({
     return (
       <th scope="col" aria-sort={s?.active ? s.dir : undefined} className={cn(th, align === "right" ? "text-right" : "text-left", extra)}>
         {s ? (
-          <Link href={s.href as never} scroll={false} className={cn("inline-flex h-10 items-center gap-1 rounded hover:text-foreground", s.active && "text-foreground", align === "right" && "flex-row-reverse")}>
+          <Link href={internalRoute(s.href)} scroll={false} className={cn("inline-flex h-10 items-center gap-1 rounded hover:text-foreground", s.active && "text-foreground", align === "right" && "flex-row-reverse")}>
             {label}
             <span aria-hidden="true" className={cn("flex", s.active ? "opacity-100" : "opacity-0")}>
               {s.dir === "ascending" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
@@ -151,7 +152,7 @@ export function StockTableV5({
   const openRow = (e: MouseEvent<HTMLTableRowElement>, href: string) => {
     const t = e.target as HTMLElement;
     if (t.closest("a, button, input, label")) return;
-    router.push(href as never, { scroll: false });
+    router.push(internalRoute(href), { scroll: false });
   };
 
   return (
@@ -201,7 +202,7 @@ export function StockTableV5({
                   <div className="flex min-w-0 items-center gap-3">
                     <CategoryGlyph category={r.category} productName={r.productName} size={compact ? 30 : 38} />
                     <div className="flex min-w-0 flex-col gap-px">
-                      <Link href={r.openHref as never} scroll={false} title={r.title} className="truncate rounded text-sm font-semibold leading-[19px] text-foreground hover:underline">
+                      <Link href={internalRoute(r.openHref)} scroll={false} title={r.title} className="truncate rounded text-sm font-semibold leading-[19px] text-foreground hover:underline">
                         {r.title}
                       </Link>
                       <span className="flex min-w-0 items-center gap-2">
@@ -262,7 +263,7 @@ export function StockTableV5({
               Exporter
             </a>
             {single ? (
-              <Link href={`/sourcing?q=${encodeURIComponent(single.productName)}` as never} className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-on-inverse/10 px-3 text-[13.5px] font-bold transition-colors duration-150 ease-standard hover:bg-on-inverse/20">
+              <Link href={`/sourcing?q=${encodeURIComponent(single.productName)}`} className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-on-inverse/10 px-3 text-[13.5px] font-bold transition-colors duration-150 ease-standard hover:bg-on-inverse/20">
                 <ScanSearch aria-hidden="true" className="h-4 w-4" />
                 Chercher des offres
               </Link>
@@ -293,7 +294,7 @@ function MobileList({ rows, selected, toggle, openCode }: { rows: StockRowDTO[];
             <button type="button" role="checkbox" aria-checked={checked} aria-label={`Sélectionner ${r.title}`} onClick={() => toggle(r.skuId)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
               <Box checked={checked} />
             </button>
-            <Link href={r.openHref as never} scroll={false} className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg pt-1.5">
+            <Link href={internalRoute(r.openHref)} scroll={false} className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg pt-1.5">
               <span className="flex min-w-0 items-start gap-3">
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="line-clamp-2 text-[14.5px] font-semibold leading-[19px] text-foreground">{r.title}</span>

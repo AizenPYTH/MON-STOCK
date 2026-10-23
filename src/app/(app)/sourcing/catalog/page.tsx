@@ -24,6 +24,7 @@ import { SourcingStatusCard } from "@/features/sourcing/components/status-card";
 import { loadSourcingStatus } from "@/features/sourcing/status-queries";
 import { listPendingDiscoveredSources } from "@/features/suppliers/discovered-queries";
 import { DiscoveredSourcesPanel } from "@/features/suppliers/components/discovered-sources";
+import { internalRoute } from "@/lib/routes";
 
 export const metadata: Metadata = { title: "Offres collectées" };
 
@@ -165,7 +166,7 @@ export default async function SourcingCatalogPage({ searchParams }: { searchPara
                     {liveEnabled ? "" : " · offres enregistrées uniquement"} · page {result.page} / {Math.max(1, Math.ceil(result.total / result.pageSize))}
                     {result.expandedQueries.some((q) => q.useFor === "adapter_search") ? ` · reformulations envoyées aux sources : ${result.expandedQueries.filter((q) => q.useFor === "adapter_search").slice(0, 2).map((q) => `« ${q.text} »`).join(", ")}` : ""}
                   </span>
-                  <Link href={alertHref as never} className="font-medium text-foreground underline-offset-2 hover:underline">
+                  <Link href={internalRoute(alertHref)} className="font-medium text-foreground underline-offset-2 hover:underline">
                     Créer une alerte pour cette recherche
                   </Link>
                 </div>

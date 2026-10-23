@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Lien étiré d'une carte du radar : à partir de 1280 px, ouvre le détail dans la colonne de droite
@@ -8,8 +9,8 @@ export function OfferStretchLink({ columnHref, pageHref, label }: { columnHref: 
   const cls = "absolute inset-0 z-[1] rounded-[inherit]";
   return (
     <>
-      <Link href={columnHref as never} scroll={false} aria-label={label} className={`${cls} hidden xl:block`} />
-      <Link href={pageHref as never} aria-label={label} className={`${cls} xl:hidden`} />
+      <Link href={internalRoute(columnHref)} scroll={false} aria-label={label} className={`${cls} hidden xl:block`} />
+      <Link href={internalRoute(pageHref)} aria-label={label} className={`${cls} xl:hidden`} />
     </>
   );
 }

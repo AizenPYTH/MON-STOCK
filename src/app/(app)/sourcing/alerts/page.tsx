@@ -133,7 +133,7 @@ export default async function SourcingAlertsPage({ searchParams }: { searchParam
                             </div>
                             <div className="text-xs text-muted">
                               {e.message} ·{" "}
-                              <Link href={`/sourcing/offers/${e.offer_id}` as never} className="underline">
+                              <Link href={`/sourcing/offers/${e.offer_id}`} className="underline">
                                 {e.offer?.title_original ?? "voir l'offre"}
                               </Link>
                             </div>

@@ -22,7 +22,7 @@ export function ImportHistory({ jobs, currentId, className, wide = false }: { jo
         return (
           <li key={j.id} className={cn(i > 0 && "border-t border-line-soft")}>
             <Link
-              href={`/sourcing/imports/${j.id}` as never}
+              href={`/sourcing/imports/${j.id}`}
               aria-current={j.id === currentId ? "page" : undefined}
               className={cn("flex flex-col gap-2 px-3.5 py-3 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", wide && "lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_150px] lg:items-center lg:gap-6 lg:px-5 lg:py-3.5", j.id === currentId && "bg-selection")}
             >

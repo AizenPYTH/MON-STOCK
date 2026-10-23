@@ -70,7 +70,7 @@ export default async function SupplierOffersPage({ params, searchParams }: { par
                 return (
                   <TR key={o.id}>
                     <TD primary>
-                      <Link href={`/sourcing/offers/${o.id}` as never} className="font-bold hover:underline">
+                      <Link href={`/sourcing/offers/${o.id}`} className="font-bold hover:underline">
                         <span className="block max-w-[320px] truncate">{o.title_original}</span>
                       </Link>
                       <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
@@ -100,7 +100,7 @@ export default async function SupplierOffersPage({ params, searchParams }: { par
                     </TD>
                     <TD label="SKU">
                       {o.sku ? (
-                        <Link href={`/stock/${encodeURIComponent(o.sku.code)}` as never} className="font-mono text-xs hover:underline">
+                        <Link href={`/stock/${encodeURIComponent(o.sku.code)}`} className="font-mono text-xs hover:underline">
                           {o.sku.code}
                         </Link>
                       ) : (

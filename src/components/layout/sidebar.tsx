@@ -6,6 +6,7 @@ import { BarChart3, Boxes, LayoutDashboard, Library, PanelLeftClose, PanelLeftOp
 import { cn } from "@/lib/utils";
 import { activeHref } from "@/components/layout/active-href";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { internalRoute } from "@/lib/routes";
 
 /**
  * Barre latérale v5 « Instrument » (handoff web) : fond nuit, groupes Pilotage · Achats ·
@@ -127,7 +128,7 @@ export function Sidebar({ collapsed = false, onToggle, counts, footer, header, o
           const n = s.countKey ? counts?.[s.countKey] : undefined;
           return (
             <li key={s.href}>
-              <Link href={s.href as never} onClick={onNavigate} aria-current={on ? "page" : undefined} className={cn("flex h-8 items-center gap-3 rounded-lg pl-[23px] pr-2.5 transition-colors duration-150 ease-standard hover:bg-night-raised/60 hover:text-on-night pointer-coarse:h-10", on ? "text-on-night" : "text-on-night-muted")}>
+              <Link href={internalRoute(s.href)} onClick={onNavigate} aria-current={on ? "page" : undefined} className={cn("flex h-8 items-center gap-3 rounded-lg pl-[23px] pr-2.5 transition-colors duration-150 ease-standard hover:bg-night-raised/60 hover:text-on-night pointer-coarse:h-10", on ? "text-on-night" : "text-on-night-muted")}>
                 <span aria-hidden="true" className={cn("h-[18px] w-0.5 shrink-0 rounded-[1px]", on ? "bg-mint" : "bg-night-stroke")} />
                 <span className={cn("flex-1 truncate text-[13.5px] leading-[18px]", on ? "font-bold" : "font-semibold")}>{s.label}</span>
                 {n === null ? (
@@ -147,7 +148,7 @@ export function Sidebar({ collapsed = false, onToggle, counts, footer, header, o
 
   const navLink = (href: string, label: string, Icon: LucideIcon, on: boolean) => (
     <Link
-      href={href as never}
+      href={internalRoute(href)}
       onClick={onNavigate}
       aria-current={on ? "page" : undefined}
       data-nav-active={on ? "true" : undefined}

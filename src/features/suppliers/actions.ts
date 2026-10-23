@@ -1,5 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
+import type { Route } from "next";
+import { internalRoute } from "@/lib/routes";
 import { revalidatePath } from "next/cache";
 import { requireOrgContextForAction, type OrgContext } from "@/features/auth/dal";
 import { fail, ok, type ActionResult } from "@/lib/result";
@@ -30,8 +32,8 @@ import { changePurchaseOrderStatus, receivePurchaseOrder } from "@/features/supp
 
 const log = createLogger("SUPPLIERS");
 
-function supplierPath(id: string, tab?: string): string {
-  return `/suppliers/${id}${tab ? `/${tab}` : ""}`;
+function supplierPath(id: string, tab?: string): Route {
+  return internalRoute(`/suppliers/${id}${tab ? `/${tab}` : ""}`);
 }
 
 async function assertSupplier(ctx: OrgContext, supplierId: string): Promise<{ id: string; name: string; currency: string }> {
@@ -580,7 +582,7 @@ export async function createPurchaseOrderAction(_prev: ActionResult | null, form
     return fail(toUserMessage(e));
   }
   revalidatePath(supplierPath(supplierId, "orders"));
-  redirect(`${supplierPath(supplierId, "orders")}?po=${poId}`);
+  redirect(internalRoute(`${supplierPath(supplierId, "orders")}?po=${poId}`));
 }
 
 export async function addPurchaseOrderItemAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
