@@ -48,14 +48,15 @@ export function CommandPalette({ onClose, readOnly }: { onClose: () => void; rea
 
   // Focus rendu à l'élément actif avant l'ouverture (bouton de recherche, page…). Vérifié après coup :
   // le double montage du mode strict (développement) ne doit pas retirer le focus du champ.
+  // Lu au premier rendu, avant que `autoFocus` ne place le focus dans le champ.
+  const [previous] = useState<HTMLElement | null>(() => (typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null));
   useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement && document.activeElement !== inputRef.current ? document.activeElement : null;
     return () => {
       queueMicrotask(() => {
         if (!inputRef.current?.isConnected && previous?.isConnected) previous.focus();
       });
     };
-  }, []);
+  }, [previous]);
 
   const entries = useMemo<Entry[]>(() => {
     const t = q.trim();
