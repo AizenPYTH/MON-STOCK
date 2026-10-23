@@ -61,8 +61,7 @@ begin
 end;
 $$;
 
-drop trigger if exists supplier_sources_require_library_review on public.supplier_sources;
-create trigger supplier_sources_require_library_review
+create or replace trigger supplier_sources_require_library_review
   before insert on public.supplier_sources
   for each row execute function public.supplier_sources_require_library_review();
 

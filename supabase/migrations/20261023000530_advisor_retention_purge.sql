@@ -166,15 +166,13 @@ $$;
 
 revoke all on function public.advisor_purge_on_ebay_account_deleted() from public, anon, authenticated;
 
-drop trigger if exists orders_advisor_purge_on_buyer_deleted on public.orders;
-create trigger orders_advisor_purge_on_buyer_deleted
+create or replace trigger orders_advisor_purge_on_buyer_deleted
   after update of buyer_username on public.orders
   for each row
   when (new.buyer_username = '[compte eBay supprimé]' and old.buyer_username is distinct from new.buyer_username and old.buyer_username is not null)
   execute function public.advisor_purge_on_ebay_account_deleted();
 
-drop trigger if exists channel_connections_advisor_purge_on_deleted on public.channel_connections;
-create trigger channel_connections_advisor_purge_on_deleted
+create or replace trigger channel_connections_advisor_purge_on_deleted
   after update of external_username on public.channel_connections
   for each row
   when (new.external_username = '[compte eBay supprimé]' and old.external_username is distinct from new.external_username and old.external_username is not null)

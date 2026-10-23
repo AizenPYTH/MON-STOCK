@@ -141,13 +141,11 @@ $$;
 revoke all on function public.supplier_sources_attestation_stamp() from public, anon, authenticated;
 revoke all on function public.supplier_sources_attestation_log() from public, anon, authenticated;
 
-drop trigger if exists supplier_sources_attestation_stamp on public.supplier_sources;
-create trigger supplier_sources_attestation_stamp
+create or replace trigger supplier_sources_attestation_stamp
   before insert or update on public.supplier_sources
   for each row execute function public.supplier_sources_attestation_stamp();
 
-drop trigger if exists supplier_sources_attestation_log on public.supplier_sources;
-create trigger supplier_sources_attestation_log
+create or replace trigger supplier_sources_attestation_log
   after insert or update on public.supplier_sources
   for each row execute function public.supplier_sources_attestation_log();
 
