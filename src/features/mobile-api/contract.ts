@@ -101,7 +101,8 @@ export interface WindowTotalsDTO {
 
 export interface TodoDTO {
   key: string;
-  count: number;
+  /** null = compteur inconnu (requête en échec) : afficher « — » ; `label` le dit déjà (W-14) */
+  count: number | null;
   label: string;
   tone: string;
 }
@@ -134,7 +135,7 @@ export interface ChannelStateDTO {
 export interface DashboardDTO {
   context: OrganizationContextDTO;
   firstName: string;
-  /** aucune donnée réelle encore (ni produit, ni vente, ni fournisseur) */
+  /** aucune donnée réelle encore (ni produit, ni vente) ; faux si le nombre de commandes est inconnu */
   isEmpty: boolean;
   sales: { today: WindowTotalsDTO; last7d: WindowTotalsDTO; last30d: WindowTotalsDTO; otherCurrencies: Array<{ currency: string; revenue: number; orders: number }> };
   profit: { profit30d: number | null; revenue30d: number; caveat: string | null };
@@ -148,7 +149,8 @@ export interface DashboardDTO {
     truncated: boolean;
   };
   todo: TodoDTO[];
-  counts: { syncFailed24h: number; openAlerts: number; unmappedListings: number; pendingSales: number; ordersTotal: number; suppliersCount: number };
+  /** compteurs opérationnels ; null = inconnu (requête en échec) : afficher « — », jamais 0 (W-14) */
+  counts: { syncFailed24h: number | null; openAlerts: number | null; unmappedListings: number | null; pendingSales: number | null; ordersTotal: number | null; suppliersCount: number | null };
   toReplenish: number;
   recentOrders: OrderRowDTO[];
   channels: ChannelStateDTO[];

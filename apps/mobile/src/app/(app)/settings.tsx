@@ -75,7 +75,7 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
-      <SectionHeader title="Organisation active" count={memberships.length} />
+      <SectionHeader title={memberships.length > 1 ? "Organisation active" : "Organisation"} />
       <Card>
         {memberships.map((m, i) => {
           const selected = m.organization.id === active.organization.id;
@@ -126,6 +126,7 @@ export default function SettingsScreen() {
           subtitle={consent.status === "granted" ? "Autorisé : conseiller, brouillon de produit, voix" : "Non autorisé : fonctions IA désactivées"}
           right={<StatusChip label={consent.status === "granted" ? "Autorisé" : "Désactivé"} tone={consent.status === "granted" ? "success" : "neutral"} />}
           onPress={consent.status === "granted" ? revokeAi : () => setConsentSheet(true)}
+          subtitleLines={2}
           accessibilityLabel={consent.status === "granted" ? "Traitement par OpenAI autorisé. Toucher pour retirer votre accord." : "Traitement par OpenAI non autorisé. Toucher pour lire et donner votre accord."}
           last
           testID="settings-ai-consent"

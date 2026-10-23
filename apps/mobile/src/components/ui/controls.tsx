@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useState, type ReactNode } from "react";
 import { ActivityIndicator, Image, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -6,6 +6,7 @@ import { Package } from "lucide-react-native";
 import { color, radius, shadow, size, space } from "~/theme/tokens";
 import { Txt } from "~/components/ui/text";
 import { useSlide } from "~/components/ui/motion";
+import { useOnDark } from "~/components/ui/header";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 
@@ -91,7 +92,12 @@ export function Button({
 }
 
 /** Bouton icône 36 dans une zone tactile de 44, rayon 12. `filled` = bleu nuit ; `onDark` = sur bandeau nuit. */
-export function IconButton({ icon, label, onPress, filled = false, onDark = false, testID, badge }: { icon: ReactNode; label: string; onPress: () => void; filled?: boolean; onDark?: boolean; testID?: string; badge?: number }) {
+export function IconButton({ icon, label, onPress, filled = false, onDark: onDarkProp, testID, badge }: { icon: ReactNode; label: string; onPress: () => void; filled?: boolean; onDark?: boolean; testID?: string; badge?: number }) {
+  // Dans le bandeau nuit, le style « sur fond sombre » s'applique tout seul (jamais un carré blanc).
+  const inHeader = useOnDark();
+  const onDark = onDarkProp ?? inHeader;
+  // Icône toujours lisible sur la scène : claire sur bouton nuit, bleu nuit sur bouton menthe.
+  const glyph = onDark && isValidElement<{ color?: string }>(icon) ? cloneElement(icon, { color: filled ? color.onMint : color.inkOnDark }) : icon;
   return (
     <Pressable
       testID={testID}
@@ -112,7 +118,7 @@ export function IconButton({ icon, label, onPress, filled = false, onDark = fals
         transform: [{ scale: pressed ? 0.96 : 1 }],
       })}
     >
-      {icon}
+      {glyph}
     </Pressable>
   );
 }

@@ -126,4 +126,13 @@ describe("formatRunSummary", () => {
     expect(readStats(null).orders_created).toBe(0);
     expect(readStats({ orders_created: "x" }).orders_created).toBe(0);
   });
+
+  it("un arrêt sur budget de temps se lit comme une reprise, pas comme une erreur", () => {
+    const stats = { listings_fetched: 1400, orders_fetched: 9, inventory_changes: 0, errors: 1, budget_reached: true };
+    expect(formatRunSummary({ status: "partial", stats, error_count: 1 })).toMatch(/^↻ Reprise prévue · 1\s400 listings analysés · 9 commandes récupérées · 0 stock modifié · 0 erreur$/u);
+    // Une vraie erreur en plus de l'arrêt programmé reste comptée.
+    expect(formatRunSummary({ status: "partial", stats: { ...stats, errors: 2 }, error_count: 2 })).toMatch(/· 1 erreur$/);
+    // Partiel sans budget atteint : toujours signalé comme partiel.
+    expect(formatRunSummary({ status: "partial", stats: { errors: 1 }, error_count: 1 })).toMatch(/^⚠ Partielle/);
+  });
 });

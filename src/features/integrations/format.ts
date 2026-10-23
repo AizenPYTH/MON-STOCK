@@ -1,6 +1,7 @@
 import type { Json } from "@/db/database.types";
 import type { SyncStats } from "@/services/sync/engine";
 import { formatNumber } from "@/lib/format";
+import { runIssueCount, runStoppedByBudget } from "@/features/integrations/components/sync-status";
 
 /** Module pur : libellés et résumé d'un run (utilisé par les pages et testé unitairement). */
 
@@ -58,10 +59,13 @@ function plural(n: number, singular: string, pluralForm = `${singular}s`): strin
 /** « ✓ Réussie · 247 listings analysés · 13 commandes récupérées · 4 stocks modifiés · 0 erreur » */
 export function formatRunSummary(run: { status: string; stats: Json | null; error_count?: number | null }): string {
   const stats = readStats(run.stats);
-  const icon = run.status === "success" ? "✓" : run.status === "partial" ? "⚠" : run.status === "failed" ? "✗" : "…";
-  const errors = run.error_count ?? stats.errors;
+  // Arrêt sur budget de temps : reprise normale au prochain passage, pas une erreur (l'entrée
+  // « budget atteint » du journal est retirée du compte d'erreurs).
+  const resumed = runStoppedByBudget({ status: run.status, stats: run.stats });
+  const icon = resumed ? "↻" : run.status === "success" ? "✓" : run.status === "partial" ? "⚠" : run.status === "failed" ? "✗" : "…";
+  const errors = resumed ? runIssueCount({ status: run.status, stats: run.stats, error_count: run.error_count ?? stats.errors }) : (run.error_count ?? stats.errors);
   const parts = [
-    `${icon} ${SYNC_STATUS_LABEL[run.status] ?? run.status}`,
+    `${icon} ${resumed ? "Reprise prévue" : (SYNC_STATUS_LABEL[run.status] ?? run.status)}`,
     `${plural(stats.listings_fetched, "listing analysé", "listings analysés")}`,
     `${plural(stats.orders_fetched, "commande récupérée", "commandes récupérées")}`,
     `${plural(stats.inventory_changes, "stock modifié", "stocks modifiés")}`,

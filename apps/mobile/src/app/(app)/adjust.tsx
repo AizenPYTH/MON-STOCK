@@ -105,15 +105,7 @@ export default function AdjustScreen() {
           </StickyActions>
         }
       >
-        <DetailHeader parentLabel="Retour" />
-        <View style={{ gap: 4 }}>
-          <Txt variant="title2" accessibilityRole="header">
-            Ajuster le stock
-          </Txt>
-          <Txt variant="label">
-            {v.row.product_name} · {variantTitle(v)} · SKU {v.row.code}
-          </Txt>
-        </View>
+        <DetailHeader parentLabel="Retour" title="Ajuster le stock" sub={`${v.row.product_name ?? ""} · ${variantTitle(v)} · SKU ${v.row.code ?? "—"}`} />
         {!permissions.canWrite ? (
           <ErrorState title="Lecture seule" description="Votre rôle ne permet pas de modifier le stock." />
         ) : (

@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { AdvisorActionDTO, AdvisorCardDTO } from "@/features/mobile-api/contract";
 import { ADVISOR_MESSAGE_MAX_CHARS } from "@/features/mobile-api/contract";
 import { AdvisorCardView, MessageBubble, VoiceStatus, type VoicePhase } from "~/components/advisor";
-import { AlertBanner, DetailHeader, Screen, SkeletonList, StickyActions, Txt, useToast } from "~/components/ui";
+import { AlertBanner, DetailHeader, IconButton, Screen, SkeletonList, StickyActions, Txt, useToast } from "~/components/ui";
 import { AiConsentCard } from "~/components/ai-consent";
 import { useUser } from "~/auth/session-provider";
 import { useAiConsent } from "~/lib/ai-consent";
@@ -371,10 +371,7 @@ function AdvisorChat() {
   );
 }
 
-function HeaderButton({ label, onPress, children, testID }: { label: string; onPress: () => void; children: React.ReactNode; testID?: string }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={4} testID={testID} style={({ pressed }) => ({ width: size.iconButton, height: size.iconButton, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: color.surface, borderWidth: 1, borderColor: color.line, opacity: pressed ? 0.85 : 1 })}>
-      {children}
-    </Pressable>
-  );
+function HeaderButton({ label, onPress, children, testID }: { label: string; onPress: () => void; children: React.ReactElement; testID?: string }) {
+  // Bouton de la scène nuit (fond nuit relevé, icône claire, zone tactile 44 pt).
+  return <IconButton icon={children} label={label} onPress={onPress} testID={testID} onDark />;
 }

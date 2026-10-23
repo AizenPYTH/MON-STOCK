@@ -400,6 +400,23 @@ describe("outils du conseiller", () => {
     expect(JSON.parse(r.content).realQuotes).toEqual([]);
     expect(r.cards[0]!.warnings[0]).toMatch(/Aucun tarif réel disponible/);
   });
+
+  it("point du jour : un comptage en échec est transmis « null » au modèle et affiché « — », jamais 0 (W-14)", async () => {
+    const boom = { error: { message: "boom" }, count: null };
+    const { client } = fakeSupabase({ sync_runs: boom, order_items: boom, channel_listings: { count: 4 }, alerts: { count: 2 }, orders: boom, tracked_parcels: { count: 0 } });
+    const r = await runAdvisorTool(toolCtx(client), "today_briefing", {});
+    expect(r.isError).toBe(false);
+    const result = JSON.parse(r.content);
+    expect(result).toMatchObject({ failedSyncs24h: null, salesNotDeductedFromStock: null, ordersToShip: null, listingsNotLinkedToStock: 4, openAlerts: 2, parcelsWithProblems: 0 });
+    expect(result.note).toMatch(/null signifie « inconnu »/);
+    const rows = Object.fromEntries(r.cards[0]!.rows.map((x) => [x.label, x]));
+    for (const label of ["Synchronisations en échec (24 h)", "Ventes non déduites du stock", "Commandes à expédier"]) {
+      expect(rows[label]).toMatchObject({ value: "—", detail: "compteur indisponible pour le moment", tone: "neutral" });
+    }
+    expect(rows["Annonces non liées au stock"]).toMatchObject({ value: "4", tone: "warning" });
+    expect(rows["Colis en difficulté"]).toMatchObject({ value: "0", tone: "neutral" });
+    expect(r.cards[0]!.rows.some((x) => x.value === "null")).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

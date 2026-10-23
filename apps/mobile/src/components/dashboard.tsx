@@ -384,11 +384,10 @@ export function TaskList({ tasks }: { tasks: Task[] }) {
   );
 }
 
-/** Raccourcis vers les opérations fréquentes (toutes réelles) : une rangée de 4 (2 × 2 sur petit écran). */
+/** Raccourcis vers les opérations fréquentes (toutes réelles) : grille 2 × 2, libellés entiers (jamais tronqués). */
 export function Shortcuts() {
-  const { compact } = useLayout();
   return (
-    <ShortcutGrid columns={compact ? 2 : 4}>
+    <ShortcutGrid columns={2}>
       {[
         <ShortcutTile key="search" accent icon={Search} label="Chercher une offre" onPress={() => router.push("/sourcing")} testID="shortcut-search" />,
         <ShortcutTile key="add" icon={Plus} label="Ajouter un produit" onPress={() => router.push("/product/new")} testID="shortcut-add" />,

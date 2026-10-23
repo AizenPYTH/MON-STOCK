@@ -87,6 +87,7 @@ const SETTINGS_SUBS: Sub[] = [
   { href: "/settings/sync", label: "Synchronisation" },
   { href: "/radar/settings", label: "Coûts du radar" },
   { href: "/settings/billing", label: "Facturation" },
+  { href: "/settings/account", label: "Mon compte" },
 ];
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + "/");

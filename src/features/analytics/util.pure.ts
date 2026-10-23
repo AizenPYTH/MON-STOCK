@@ -16,6 +16,19 @@ export function sumBy<T>(items: readonly T[], pick: (item: T) => number | null |
   return total;
 }
 
+/**
+ * Somme de compteurs dont certains peuvent être inconnus (null = requête en échec) : le total est
+ * inconnu dès qu'un terme l'est, jamais complété par 0 (W-14).
+ */
+export function addCounts(...values: readonly (number | null)[]): number | null {
+  let total = 0;
+  for (const v of values) {
+    if (v === null) return null;
+    total += v;
+  }
+  return total;
+}
+
 export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }

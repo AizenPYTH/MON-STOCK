@@ -4,7 +4,7 @@ import { UNKNOWN_COST_LABEL } from "@/domain/pricing/margin";
 import { useActiveOrg } from "~/org/org-provider";
 import { useApplyPendingSales, useSkuDetail } from "~/data/hooks";
 import { userMessage } from "~/lib/errors";
-import { formatDateTime, formatDays, formatMoneyRounded, formatNumber, MOVEMENT_TYPE_LABEL, STOCK_LEVEL_LABEL } from "~/lib/format";
+import { formatDateTime, formatMoneyRounded, frenchDecimals, formatNumber, MOVEMENT_TYPE_LABEL, STOCK_LEVEL_LABEL } from "~/lib/format";
 import { Pencil } from "lucide-react-native";
 import { AlertBanner, Button, Card, DetailHeader, IconButton, useToast, EmptyState, ErrorState, KpiCard, KpiGrid, ListRow, Screen, SectionHeader, Skeleton, StatusChip, StickyActions, Txt } from "~/components/ui";
 import { QuantityCard, variantTitle } from "~/components/stock";
@@ -53,7 +53,8 @@ export default function SkuScreen() {
       footer={
         <StickyActions>
           <Button
-            label="Trouver un fournisseur"
+            label="Fournisseurs"
+            accessibilityHint="Cherche ce produit chez les fournisseurs"
             variant="secondary"
             onPress={() => router.push({ pathname: "/sourcing", params: { q: [r.brand && !(r.product_name ?? "").toLowerCase().startsWith(r.brand.toLowerCase()) ? r.brand : null, r.product_name, r.variant_name && r.variant_name !== "Standard" ? r.variant_name.replace(/ \/ /g, " ") : null].filter(Boolean).join(" "), sku: r.code ?? "" } })}
             style={{ flex: 1 }}
@@ -65,20 +66,16 @@ export default function SkuScreen() {
     >
       <DetailHeader
         parentLabel={r.product_name ?? "Produit"}
-        right={permissions.canWrite ? <IconButton icon={<Pencil size={18} color={color.ink} />} label="Modifier la variante" onPress={() => router.push({ pathname: "/sku/edit/[skuId]", params: { skuId: r.sku_id ?? "" } })} /> : undefined}
+        title={variantTitle(v)}
+        right={permissions.canWrite ? <IconButton icon={<Pencil size={18} color={color.inkOnDark} />} label="Modifier la variante" onPress={() => router.push({ pathname: "/sku/edit/[skuId]", params: { skuId: r.sku_id ?? "" } })} /> : undefined}
       />
-      <View style={{ gap: 4 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-          <Txt variant="title2" style={{ flex: 1 }} accessibilityRole="header">
-            {variantTitle(v)}
-          </Txt>
-          <StatusChip label={STOCK_LEVEL_LABEL[v.classification.level]} tone={LEVEL_TONE[v.classification.level]} />
-        </View>
-        <Txt variant="label">
+      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <Txt variant="code" style={{ flex: 1 }} numberOfLines={2}>
           SKU {r.code}
-          {r.location ? ` · Emplacement ${r.location}` : ""}
+          {r.location ? ` · ${r.location}` : ""}
           {r.barcode ? ` · ${r.barcode}` : ""}
         </Txt>
+        <StatusChip label={STOCK_LEVEL_LABEL[v.classification.level]} tone={LEVEL_TONE[v.classification.level]} />
       </View>
       <KpiGrid>
         {[
@@ -91,12 +88,12 @@ export default function SkuScreen() {
       <QuantityCard view={v} canWrite={permissions.canWrite} />
       <KpiGrid>
         {[
-          <KpiCard key="cover" label="Couverture" value={v.daysOfCover === null ? "—" : formatDays(v.daysOfCover)} hint={v.velocity.dailyVelocity === null ? "vitesse inconnue" : `${v.velocity.dailyVelocity.toFixed(2)} / jour`} />,
+          <KpiCard key="cover" label="Couverture" value={v.daysOfCover === null ? "—" : `≈ ${formatNumber(Math.round(v.daysOfCover))} j`} hint={v.velocity.dailyVelocity === null ? "vitesse inconnue" : `${frenchDecimals(v.velocity.dailyVelocity.toFixed(2))} / jour`} />,
           <KpiCard key="sold" label="Vendus 30 j" value={r.units_30d === null || r.units_30d === undefined ? "—" : formatNumber(r.units_30d)} />,
           <KpiCard key="order" label="En commande" value={onOrder === null ? "—" : formatNumber(onOrder)} hint={onOrder === null ? "lecture impossible" : undefined} />,
         ]}
       </KpiGrid>
-      <Txt variant="label">{v.classification.reason}</Txt>
+      <Txt variant="label">{frenchDecimals(v.classification.reason)}</Txt>
       {pendingSalesCount === null ? <Txt variant="label">Ventes non déduites du stock : vérification impossible pour le moment (tirez pour actualiser).</Txt> : null}
       {pendingSalesCount !== null && pendingSalesCount > 0 ? (
         <Card padded style={{ gap: 8 }}>
@@ -127,7 +124,7 @@ export default function SkuScreen() {
           {movements.map((m, i) => (
             <ListRow
               key={m.id}
-              title={MOVEMENT_TYPE_LABEL[m.type] ?? m.type}
+              title={MOVEMENT_TYPE_LABEL[m.type] ?? "Mouvement"}
               subtitle={`${formatDateTime(m.occurred_at)} · stock après : ${formatNumber(m.quantity_after)}${m.note ? ` · ${m.note}` : ""}`}
               right={
                 <Txt variant="body" num color={m.quantity < 0 ? color.dangerInk : color.success} style={{ fontFamily: "Manrope_800ExtraBold" }}>

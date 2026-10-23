@@ -2,7 +2,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, View } from "react-native";
 import { Redirect, router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, Trash2 } from "lucide-react-native";
+import { CircleAlert } from "lucide-react-native";
 import { ACCOUNT_DELETE_CONFIRMATION } from "@/features/mobile-api/contract";
 import { useSession, useUser } from "~/auth/session-provider";
 import { signOutAndPurge } from "~/auth/sign-out";
@@ -76,12 +76,11 @@ export default function AccountDeleteScreen() {
           <StickyActions>
             <Button label="Annuler" variant="secondary" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} disabled={busy} style={{ flex: 1 }} />
             <Button
-              label="Supprimer définitivement"
+              label="Supprimer le compte"
               variant="destructive"
               onPress={submit}
               disabled={!typed || !online}
               loading={busy}
-              icon={<Trash2 size={18} color={!typed || !online ? color.ink3 : color.dangerInk} strokeWidth={2.2} />}
               accessibilityHint="Supprime votre compte et vos données. Action irréversible."
               testID="account-delete-submit"
               style={{ flex: 2 }}
@@ -113,7 +112,7 @@ export default function AccountDeleteScreen() {
 
         {memberships.length > 0 ? (
           <>
-            <SectionHeader title="Vos organisations" count={memberships.length} />
+            <SectionHeader title="Vos organisations" />
             <Card padded style={{ gap: space[2] }}>
               {memberships.map((m) => (
                 <Txt key={m.organization.id} variant="bodyRegular">

@@ -7,6 +7,7 @@ import { createLogger } from "@/lib/logger";
 import { getStockAnalytics } from "@/features/analytics/stock-analytics";
 import { loadDailySales } from "@/features/analytics/sales";
 import { getOperationalCounts } from "@/features/analytics/dashboard";
+import { isEmptyWorkspace } from "@/features/analytics/priorities.pure";
 import { computeRecommendationsWithCoverage } from "@/features/analytics/replenishment";
 import { fetchRowsUpTo } from "@/lib/supabase/paginate";
 import { buildChannelCards, type ChannelCard } from "@/features/analytics/channels.pure";
@@ -23,6 +24,7 @@ import {
   outOfStockSalesShare,
   pickPriority,
   radarOpportunities,
+  resolveHasSupplier,
   saleStatus,
   setupSteps,
   type MarginOrderLike,
@@ -73,8 +75,8 @@ export interface TodayDashboard {
   otherCurrencies: ForeignCurrencyTotal[];
   marginToday: number | null;
   toShip: number | null;
-  /** ventes rattachées à un SKU mais pas encore déduites du stock (compteur opérationnel existant) */
-  pendingSales: number;
+  /** ventes rattachées à un SKU mais pas encore déduites du stock ; null = compteur inconnu (« — ») */
+  pendingSales: number | null;
   stock: {
     skus: number;
     units: number;
@@ -94,6 +96,7 @@ export interface TodayDashboard {
   recentSales: RecentSaleView[];
   radar: { opportunities: RadarItemDTO[]; provisional: boolean; missingSettings: string[] } | null;
   setup: SetupStep[];
+  /** faux tant que le nombre de commandes est inconnu (jamais « vide » par défaut) */
   isEmpty: boolean;
   /** sources secondaires indisponibles (bloc masqué) */
   unavailable: string[];
@@ -211,13 +214,14 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
 
   // --- à traiter ---
   const channels: ChannelCard[] = buildChannelCards(channelsRes.data ?? [], connectionsRes.data ?? [], now);
+  const toShip = toShipRes.error ? null : (toShipRes.count ?? null);
   const tasks = buildTasks({
     now,
     outOfStock: stock.counts.out_of_stock,
     atRisk: stock.counts.at_risk,
     low: stock.counts.low,
     negativeStock: stock.negativeStock.length,
-    toShip: toShipRes.error ? 0 : (toShipRes.count ?? 0),
+    toShip,
     pendingSales: counts.pendingSales,
     unmappedListings: counts.unmappedListings,
     syncFailed24h: counts.syncFailed24h,
@@ -248,7 +252,7 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
   });
 
   // --- bien démarrer ---
-  const hasSupplier = accounts ? accounts.totals.account + accounts.totals.public > 0 || accounts.accounts.some((a) => a.status === "connected") || counts.suppliersCount > 0 : counts.suppliersCount > 0 ? true : null;
+  const hasSupplier = resolveHasSupplier(accounts, counts.suppliersCount);
   const setup = setupSteps({
     hasProducts: stock.totals.skus > 0,
     hasChannel: channels.some((c) => c.provider === "ebay" && c.state === "connected"),
@@ -268,7 +272,7 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
     last14Days,
     otherCurrencies: windows.otherCurrencies,
     marginToday,
-    toShip: toShipRes.error ? null : (toShipRes.count ?? 0),
+    toShip,
     pendingSales: counts.pendingSales,
     stock: {
       skus: stock.totals.skus,
@@ -288,7 +292,7 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
     recentSales,
     radar: radar ? { opportunities, provisional: opportunities.some((o) => o.evaluation.status === "estimated"), missingSettings: radar.missingSettings } : null,
     setup,
-    isEmpty: stock.totals.skus === 0 && counts.ordersTotal === 0,
+    isEmpty: isEmptyWorkspace(stock.totals.skus, counts.ordersTotal),
     unavailable,
   };
 }

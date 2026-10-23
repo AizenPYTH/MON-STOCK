@@ -92,6 +92,8 @@ export function StockHealthSection({ d }: { d: TodayDashboard }) {
   const out = c.out_of_stock;
   const risk = c.at_risk;
   const low = c.low;
+  // null = compteur inconnu : StatTile affiche « — », jamais 0 (W-14)
+  const pending = d.pendingSales;
   return (
     <section className="flex flex-col gap-2.5">
       <MonoTitle title="État du stock" right={<SectionLink href="/stock/alerts">Toutes les alertes</SectionLink>} />
@@ -107,10 +109,10 @@ export function StockHealthSection({ d }: { d: TodayDashboard }) {
         <StatTile label="Stock faible" value={low} tone={low > 0 ? "warning" : "neutral"} hint={low > 0 ? "sous le seuil de réappro." : "tout est au-dessus du seuil"} href={stockLevelHref("low")} />
         <StatTile
           label="Ventes non déduites"
-          value={d.pendingSales}
-          tone={d.pendingSales > 0 ? "warning" : "neutral"}
-          hint={d.pendingSales > 0 ? "le stock affiché est surestimé" : "toutes les ventes sont déduites"}
-          href={d.pendingSales > 0 ? "/sales?inventory=pending" : "/sales"}
+          value={pending}
+          tone={pending !== null && pending > 0 ? "warning" : "neutral"}
+          hint={pending === null ? "compteur indisponible pour le moment" : pending > 0 ? "le stock affiché est surestimé" : "toutes les ventes sont déduites"}
+          href={pending === null || pending > 0 ? "/sales?inventory=pending" : "/sales"}
         />
       </div>
     </section>

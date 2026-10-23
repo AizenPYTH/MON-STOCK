@@ -16,7 +16,13 @@ export const MOVEMENT_TYPE_LABEL: Record<string, string> = {
   sale: "Vente",
   cancellation: "Annulation de vente",
   initial: "Stock initial",
+  purchase: "Achat",
 };
+
+/** Nombres décimaux d'un texte (« 12.9 jour(s) ») au format français (« 12,9 jour(s) »). */
+export function frenchDecimals(text: string): string {
+  return text.replace(/(\d)\.(\d)/g, "$1,$2");
+}
 
 /** Variation en % avec signe (« +18 % »). */
 export function formatSignedPercent(value: number | null | undefined): string {

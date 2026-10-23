@@ -217,11 +217,12 @@ export interface TaskInput {
   atRisk: number;
   low: number;
   negativeStock: number;
-  toShip: number;
-  pendingSales: number;
-  unmappedListings: number;
-  syncFailed24h: number;
-  openAlerts: number;
+  /** compteurs de requêtes : null = inconnu (requête en échec) → ligne « compteur indisponible », jamais 0 */
+  toShip: number | null;
+  pendingSales: number | null;
+  unmappedListings: number | null;
+  syncFailed24h: number | null;
+  openAlerts: number | null;
   toReplenish: number | null;
   unknownCostWithSales: number;
   jobs: readonly ImportJobLike[] | null;
@@ -232,9 +233,17 @@ export interface TaskInput {
 const n = (v: number) => new Intl.NumberFormat("fr-FR").format(v);
 const pl = (count: number, one: string, many: string) => `${n(count)} ${count > 1 ? many : one}`;
 
-/** Tâches actionnables, des plus graves aux moins graves ; chacune mène à sa résolution. */
+/** Rang des lignes « compteur indisponible » : après les tâches actionnables. */
+const UNKNOWN_RANK = 6;
+
+/**
+ * Tâches actionnables, des plus graves aux moins graves ; chacune mène à sa résolution. Un
+ * compteur inconnu (null) donne une ligne d'information « compteur indisponible », jamais « 0 ».
+ */
 export function buildTasks(i: TaskInput): Task[] {
   const tasks: Task[] = [];
+  const unknown = (key: string, icon: TaskIcon, what: string, href: string) =>
+    tasks.push({ key: `${key}-unknown`, icon, tone: "info", title: `${what} : compteur indisponible`, detail: "vérification impossible pour le moment", cta: "Voir", href, rank: UNKNOWN_RANK });
   // seul le DERNIER import de chaque fournisseur compte (un échec corrigé depuis n'est plus à traiter)
   const latest = new Map<string, ImportJobLike>();
   for (const j of i.jobs ?? []) {
@@ -255,14 +264,19 @@ export function buildTasks(i: TaskInput): Task[] {
     if (c.state === "error" || c.state === "expired") tasks.push({ key: `ch-${c.key}`, icon: "link2Off", tone: "danger", title: c.state === "expired" ? `Connexion ${c.name} expirée` : `Connexion ${c.name} en erreur`, detail: c.detail, cta: "Reconnecter", href: "/settings/integrations", rank: 0 });
   if (i.outOfStock > 0) tasks.push({ key: "out", icon: "packageX", tone: "danger", title: pl(i.outOfStock, "produit en rupture", "produits en rupture"), detail: null, cta: "Voir", href: stockLevelHref("out_of_stock"), rank: 1 });
   if (i.negativeStock > 0) tasks.push({ key: "negative", icon: "minus", tone: "danger", title: pl(i.negativeStock, "stock négatif à corriger", "stocks négatifs à corriger"), detail: "Ventes déduites au-delà du stock connu", cta: "Corriger", href: "/stock?stock=negative", rank: 1 });
-  if (i.syncFailed24h > 0) tasks.push({ key: "sync", icon: "refresh", tone: "danger", title: pl(i.syncFailed24h, "synchronisation échouée", "synchronisations échouées"), detail: "ces dernières 24 h", cta: "Voir", href: "/settings/sync", rank: 1 });
-  if (i.toShip > 0) tasks.push({ key: "ship", icon: "truck", tone: "warning", title: pl(i.toShip, "commande à expédier", "commandes à expédier"), detail: null, cta: "Expédier", href: "/sales?status=paid", rank: 2 });
+  if (i.syncFailed24h === null) unknown("sync", "refresh", "Synchronisations échouées", "/settings/sync");
+  else if (i.syncFailed24h > 0) tasks.push({ key: "sync", icon: "refresh", tone: "danger", title: pl(i.syncFailed24h, "synchronisation échouée", "synchronisations échouées"), detail: "ces dernières 24 h", cta: "Voir", href: "/settings/sync", rank: 1 });
+  if (i.toShip === null) unknown("ship", "truck", "Commandes à expédier", "/sales?status=paid");
+  else if (i.toShip > 0) tasks.push({ key: "ship", icon: "truck", tone: "warning", title: pl(i.toShip, "commande à expédier", "commandes à expédier"), detail: null, cta: "Expédier", href: "/sales?status=paid", rank: 2 });
   if (i.toReplenish !== null && i.toReplenish > 0) tasks.push({ key: "replenish", icon: "clipboard", tone: "warning", title: pl(i.toReplenish, "produit à réapprovisionner", "produits à réapprovisionner"), detail: "d'après vos ventes et délais fournisseur", cta: "Voir", href: "/insights#recommandations", rank: 2 });
   if (i.atRisk > 0) tasks.push({ key: "at_risk", icon: "packageMinus", tone: "warning", title: pl(i.atRisk, "produit à risque de rupture", "produits à risque de rupture"), detail: "couverture inférieure au délai de réapprovisionnement", cta: "Voir", href: stockLevelHref("at_risk"), rank: 2 });
   if (i.low > 0) tasks.push({ key: "low", icon: "packageMinus", tone: "warning", title: pl(i.low, "produit en stock faible", "produits en stock faible"), detail: "sous le seuil de réapprovisionnement", cta: "Voir", href: stockLevelHref("low"), rank: 3 });
-  if (i.openAlerts > 0) tasks.push({ key: "alerts", icon: "bell", tone: "warning", title: pl(i.openAlerts, "alerte ouverte", "alertes ouvertes"), detail: null, cta: "Traiter", href: "/stock/alerts#evenements", rank: 3 });
-  if (i.pendingSales > 0) tasks.push({ key: "pending", icon: "boxes", tone: "neutral", title: pl(i.pendingSales, "vente non déduite du stock", "ventes non déduites du stock"), detail: "le stock affiché est surestimé", cta: "Vérifier", href: "/sales?inventory=pending", rank: 4 });
-  if (i.unmappedListings > 0) tasks.push({ key: "unmapped", icon: "tag", tone: "neutral", title: pl(i.unmappedListings, "annonce non associée", "annonces non associées"), detail: "leurs ventes ne sont pas déduites du stock", cta: "Associer", href: "/settings/integrations/mapping", rank: 4 });
+  if (i.openAlerts === null) unknown("alerts", "bell", "Alertes ouvertes", "/stock/alerts#evenements");
+  else if (i.openAlerts > 0) tasks.push({ key: "alerts", icon: "bell", tone: "warning", title: pl(i.openAlerts, "alerte ouverte", "alertes ouvertes"), detail: null, cta: "Traiter", href: "/stock/alerts#evenements", rank: 3 });
+  if (i.pendingSales === null) unknown("pending", "boxes", "Ventes non déduites", "/sales?inventory=pending");
+  else if (i.pendingSales > 0) tasks.push({ key: "pending", icon: "boxes", tone: "neutral", title: pl(i.pendingSales, "vente non déduite du stock", "ventes non déduites du stock"), detail: "le stock affiché est surestimé", cta: "Vérifier", href: "/sales?inventory=pending", rank: 4 });
+  if (i.unmappedListings === null) unknown("unmapped", "tag", "Annonces non associées", "/settings/integrations/mapping");
+  else if (i.unmappedListings > 0) tasks.push({ key: "unmapped", icon: "tag", tone: "neutral", title: pl(i.unmappedListings, "annonce non associée", "annonces non associées"), detail: "leurs ventes ne sont pas déduites du stock", cta: "Associer", href: "/settings/integrations/mapping", rank: 4 });
   if (i.unknownCostWithSales > 0) tasks.push({ key: "unknown_cost", icon: "wallet", tone: "info", title: pl(i.unknownCostWithSales, "produit vendu sans coût d'achat", "produits vendus sans coût d'achat"), detail: "marge incalculable", cta: "Compléter", href: "/margins?unknown=1", rank: 5 });
   return tasks.sort((a, b) => a.rank - b.rank);
 }
@@ -279,6 +293,21 @@ export interface SetupStep {
   title: string;
   detail: string;
   href: string;
+}
+
+/**
+ * « Fournisseur branché ? » : vrai dès qu'une source le prouve (comptes/sources pro, connexion
+ * active, fournisseur enregistré). Faux seulement si toutes les sources sont connues et vides ;
+ * null (étape masquée) si le hub des comptes ou le compteur des fournisseurs est inconnu.
+ */
+export function resolveHasSupplier(
+  accounts: { totals: { account: number; public: number }; accounts: readonly { status: string }[] } | null,
+  suppliersCount: number | null,
+): boolean | null {
+  if (suppliersCount !== null && suppliersCount > 0) return true;
+  if (accounts && (accounts.totals.account + accounts.totals.public > 0 || accounts.accounts.some((a) => a.status === "connected"))) return true;
+  if (accounts === null || suppliersCount === null) return null;
+  return false;
 }
 
 /** Étapes réelles de configuration ; une étape dont l'état est inconnu (null) n'est pas affichée. */

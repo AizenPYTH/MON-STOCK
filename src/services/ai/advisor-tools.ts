@@ -3,7 +3,7 @@ import type { LlmTool } from "./llm";
 import { z } from "zod";
 import type { OrgContext } from "@/features/auth/dal";
 import type { AdvisorActionDTO, AdvisorCardDTO } from "@/features/mobile-api/contract";
-import { card, row } from "./advisor-cards";
+import { card, countRow, row } from "./advisor-cards";
 import { isDeadStock } from "@/features/analytics/stock.pure";
 import { loadStockViews } from "@/features/analytics/stock-analytics";
 import { computeRecommendations } from "@/features/analytics/replenishment";
@@ -337,26 +337,28 @@ async function todayBriefing(ctx: AdvisorToolContext): Promise<AdvisorToolOutput
   ]);
   const ruptures = bundle.views.filter((v) => v.classification.level === "out_of_stock" && (v.row.units_30d ?? 0) > 0).length;
   const atRisk = bundle.views.filter((v) => v.classification.level === "at_risk" || v.classification.level === "low").length;
+  // null = comptage en échec : transmis tel quel au modèle, jamais remplacé par 0 (W-14)
+  const headCount = (res: { count: number | null; error: unknown }): number | null => (res.error ? null : (res.count ?? null));
   const result = {
-    ordersToShip: toShip.count ?? 0,
+    ordersToShip: headCount(toShip),
     ruptureOfSellingProducts: ruptures,
     lowOrAtRiskStock: atRisk,
-    parcelsWithProblems: problems.count ?? 0,
+    parcelsWithProblems: headCount(problems),
     listingsNotLinkedToStock: counts.unmappedListings,
     salesNotDeductedFromStock: counts.pendingSales,
     failedSyncs24h: counts.syncFailed24h,
     openAlerts: counts.openAlerts,
-    pendingAdvisorActions: pending.count ?? 0,
-    note: "« ordersToShip » = commandes au statut payé (non expédiées) selon la dernière synchronisation.",
+    pendingAdvisorActions: headCount(pending),
+    note: "« ordersToShip » = commandes au statut payé (non expédiées) selon la dernière synchronisation. Une valeur null signifie « inconnu » (comptage momentanément indisponible) : ne la présente jamais comme 0.",
   };
   const rows = [
-    row("Commandes à expédier", String(result.ordersToShip), null, result.ordersToShip ? "warning" : "success"),
+    countRow("Commandes à expédier", result.ordersToShip, "warning", "success"),
     row("Ruptures sur produits qui se vendent", String(ruptures), null, ruptures ? "danger" : "success"),
     row("Stock bas ou à risque", String(atRisk), null, atRisk ? "warning" : "neutral"),
-    row("Colis en difficulté", String(result.parcelsWithProblems), null, result.parcelsWithProblems ? "danger" : "neutral"),
-    row("Annonces non liées au stock", String(counts.unmappedListings), null, counts.unmappedListings ? "warning" : "neutral"),
-    row("Ventes non déduites du stock", String(counts.pendingSales), null, counts.pendingSales ? "warning" : "neutral"),
-    row("Synchronisations en échec (24 h)", String(counts.syncFailed24h), null, counts.syncFailed24h ? "danger" : "neutral"),
+    countRow("Colis en difficulté", result.parcelsWithProblems, "danger"),
+    countRow("Annonces non liées au stock", counts.unmappedListings, "warning"),
+    countRow("Ventes non déduites du stock", counts.pendingSales, "warning"),
+    countRow("Synchronisations en échec (24 h)", counts.syncFailed24h, "danger"),
   ];
   return { result, cards: [card("kpis", "À faire aujourd'hui", rows)] };
 }

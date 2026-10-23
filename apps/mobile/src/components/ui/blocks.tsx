@@ -103,13 +103,13 @@ export function ShortcutTile({ icon: Icon, label, sub, onPress, testID, accent =
       accessibilityLabel={sub ? `${label}, ${sub}` : label}
       onPress={onPress}
       scale={0.96}
-      style={[cardStyle, { flex: 1, paddingTop: space[3], paddingHorizontal: 10, paddingBottom: 11, gap: space[2], minHeight: 96, justifyContent: "space-between", backgroundColor: accent ? color.brand : color.card, borderColor: accent ? color.brand : color.line }]}
+      style={[cardStyle, { flex: 1, flexDirection: "row", alignItems: "center", paddingVertical: space[3], paddingHorizontal: space[3], gap: space[3], minHeight: 60, backgroundColor: accent ? color.brand : color.card, borderColor: accent ? color.brand : color.line }]}
     >
-      <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: accent ? color.mint : color.surfaceSunken, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: accent ? color.mint : color.surfaceSunken, alignItems: "center", justifyContent: "center" }}>
         <Icon size={16} color={accent ? color.onMint : color.ink} strokeWidth={2.1} />
       </View>
-      <View style={{ gap: 1 }}>
-        <Txt variant="body" color={accent ? color.inkOnDark : color.ink} numberOfLines={2} style={{ fontSize: 12.5, lineHeight: 16, fontFamily: "Manrope_700Bold" }}>
+      <View style={{ gap: 1, flex: 1, minWidth: 0 }}>
+        <Txt variant="body" color={accent ? color.inkOnDark : color.ink} numberOfLines={2} style={{ fontSize: 14, lineHeight: 18, fontFamily: "Manrope_700Bold" }}>
           {label}
         </Txt>
         {sub ? (
