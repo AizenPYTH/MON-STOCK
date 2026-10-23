@@ -9,8 +9,9 @@ import { createDemoOrganizationAction } from "@/features/demo/actions";
 import { AuthCard, AuthField, AuthFrame, authInputClass, AuthSubmit, TextInput } from "@/features/auth/components";
 
 /**
- * Création de l'organisation (gabarit d'authentification v5) : organisation réelle, ou
- * organisation de démonstration séparée, marquée « DÉMO » sur chaque écran. Logique inchangée.
+ * Création de l'organisation (parcours v2, dans `AuthShell`) : organisation réelle (suite : choix de
+ * la plateforme de vente), ou organisation de démonstration séparée, marquée « DÉMO » sur chaque
+ * écran (suite : tableau de bord). Logique inchangée.
  */
 export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }) {
   const [state, action] = useActionState<ActionResult | null, FormData>(createOrganizationAction, null);
@@ -24,9 +25,10 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
   const demoErr = demoState && !demoState.ok ? demoState : null;
   return (
     <AuthFrame
-      eyebrow={hasOrganization ? "Organisation" : "Bienvenue"}
+      headingLevel="h2"
+      eyebrow={hasOrganization ? "Organisation" : "Votre activité"}
       title={hasOrganization ? "Nouvelle organisation" : "Créez votre organisation"}
-      subtitle="Une organisation regroupe votre stock, vos ventes, vos fournisseurs et vos collaborateurs. Vous pourrez inviter des membres ensuite."
+      subtitle="Vous pourrez inviter des membres ensuite."
       error={err?.error}
       footer={
         <>
@@ -35,7 +37,7 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
             <span className="ms-mono text-[10.5px] leading-[14px]">ou</span>
             <span className="h-px flex-1 bg-border-strong" />
           </div>
-          <section aria-labelledby="demo-title" className="flex flex-col gap-3 rounded-3xl border-[1.5px] border-dashed border-border-control/50 bg-surface p-5 sm:p-6">
+          <section aria-labelledby="demo-title" className="flex flex-col gap-3 rounded-[20px] border-[1.5px] border-dashed border-paper-marketing-rule-strong bg-surface/60 p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <DemoBadge onNight={false} />
               <h2 id="demo-title" className="text-[15px] font-bold text-foreground">
@@ -80,7 +82,7 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
               )}
             </AuthField>
           </div>
-          <AuthSubmit pendingText="Création…" locked={anyLocked} lockedText="Ouverture du tableau de bord…">
+          <AuthSubmit pendingText="Création…" locked={anyLocked} lockedText="Étape suivante…">
             Créer l&apos;organisation
           </AuthSubmit>
         </AuthCard>

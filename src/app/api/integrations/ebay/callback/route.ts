@@ -8,6 +8,7 @@ import { ebayScopeList } from "@/integrations/ebay/config";
 import { scrubSecrets } from "@/integrations/core/sanitize";
 import { upsertOAuthConnection } from "@/services/channels/connection-store";
 import { isExtendedOAuthState, OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, oauthCallbackErrorCode, oauthErrorCodeFor, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
+import { OAUTH_RETURN_COOKIE, oauthErrorTarget, oauthSuccessTarget, resolveOAuthReturn, returnFromState, type OAuthReturnPath } from "@/features/integrations/oauth-return";
 
 const log = createLogger("EBAY_OAUTH");
 
@@ -20,14 +21,18 @@ const log = createLogger("EBAY_OAUTH");
  * 4. enregistre la connexion (tokens chiffrés) et redirige vers l'assistant de configuration.
  * Les redirections sont construites côté serveur (origine de l'application + chemin fixe) :
  * aucun paramètre ne permet de rediriger ailleurs, et seul un CODE d'erreur circule dans l'URL.
+ * Page de retour (liste blanche, oauth-return.ts) : celle enregistrée dans l'état OAuth une fois
+ * celui-ci consommé ; avant, celle du cookie httpOnly posé par /connect (revalidée), sinon les intégrations.
  */
 export async function GET(request: NextRequest) {
   const origin = publicEnv().NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   const clearState = (res: NextResponse) => {
     res.cookies.set(OAUTH_STATE_COOKIE, "", { httpOnly: true, sameSite: "lax", path: OAUTH_STATE_COOKIE_PATH, maxAge: 0 });
+    res.cookies.set(OAUTH_RETURN_COOKIE, "", { httpOnly: true, sameSite: "lax", path: OAUTH_STATE_COOKIE_PATH, maxAge: 0 });
     return res;
   };
-  const fail = (code: OAuthErrorCode) => clearState(NextResponse.redirect(`${origin}/settings/integrations?error=${code}`));
+  let returnTo: OAuthReturnPath = resolveOAuthReturn(request.cookies.get(OAUTH_RETURN_COOKIE)?.value);
+  const fail = (code: OAuthErrorCode) => clearState(NextResponse.redirect(`${origin}${oauthErrorTarget(returnTo, code)}`));
   const params = request.nextUrl.searchParams;
   const code = params.get("code");
   const state = params.get("state");
@@ -55,6 +60,8 @@ export async function GET(request: NextRequest) {
     return fail("state_check_failed");
   }
   if (!stateRow) return fail("state_unknown");
+  // L'état consommé fait foi pour la page de retour (enregistrée par le serveur au démarrage).
+  returnTo = returnFromState(stateRow.redirect_to);
   if (new Date(stateRow.expires_at).getTime() < Date.now()) return fail("state_expired");
 
   // Même RuName qu'au démarrage (eBay exige un redirect_uri identique pour l'échange du code).
@@ -78,7 +85,7 @@ export async function GET(request: NextRequest) {
       scopes: ebayScopeList({ extended: isExtendedOAuthState(stateRow.state) }),
     });
     log.info("connexion eBay établie", { connectionId: connection.id, orgId: stateRow.organization_id, username: account.username, isNew, environment: config.environment });
-    const target = isNew || !connection.last_successful_sync_at ? `/settings/integrations/ebay/setup?connection=${connection.id}` : `/settings/integrations?connected=${connection.id}`;
+    const target = oauthSuccessTarget(returnTo, { connectionId: connection.id, isNew, hasSynced: Boolean(connection.last_successful_sync_at) });
     return clearState(NextResponse.redirect(`${origin}${target}`));
   } catch (e) {
     log.error("échec de la connexion eBay", { orgId: stateRow.organization_id, message: scrubSecrets(toUserMessage(e)) });

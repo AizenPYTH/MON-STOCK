@@ -61,8 +61,15 @@ export async function openExistingOrganization(supabase: ServerSupabaseClient, u
  * d'organisation) et peut réafficher l'onboarding. Avec `revalidatePath("/", "layout")`, le client
  * vide le BFCache et tout le cache de préchargement, puis navigue en `FreshnessPolicy.RefreshAll`
  * (`server-action-reducer.js`).
+ *
+ * Destination : l'étape « plateforme » du parcours pour une organisation réelle (choix du canal de
+ * vente, `/onboarding/plateforme`) ; le tableau de bord pour une démonstration (données fictives :
+ * on n'y relie pas un vrai compte eBay).
  */
-export function finishOrganizationCreation(): never {
+export const AFTER_ORGANIZATION_CREATED = "/onboarding/plateforme" as const;
+export const AFTER_DEMO_CREATED = "/dashboard" as const;
+
+export function finishOrganizationCreation(to: typeof AFTER_ORGANIZATION_CREATED | typeof AFTER_DEMO_CREATED): never {
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect(to);
 }

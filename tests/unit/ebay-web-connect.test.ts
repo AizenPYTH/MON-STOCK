@@ -180,3 +180,71 @@ describe("GET /api/integrations/ebay/callback", () => {
     fetchSpy.mockRestore();
   });
 });
+
+describe("page de retour du parcours (`return_to`, liste blanche)", () => {
+  function connectWith(returnTo: string, base = APP) {
+    const body = new URLSearchParams({ return_to: returnTo });
+    return new NextRequest(`${base}/api/integrations/ebay/connect`, { method: "POST", body, headers: { origin: base, "sec-fetch-site": "same-origin", "content-type": "application/x-www-form-urlencoded" } });
+  }
+
+  it("depuis l'onboarding : échec renvoyé sur /onboarding/plateforme (domaine canonique), code seul", async () => {
+    configureApp(null);
+    const res = await POST(connectWith("/onboarding/plateforme"));
+    expect(location(res).toString()).toBe(`${APP}/onboarding/plateforme?error=web_runame_missing`);
+  });
+
+  it("W-29 conservé : domaine non canonique → domaine canonique, page du parcours", async () => {
+    configureApp("Mon-Stock-PRD-web");
+    const res = await POST(connectWith("/onboarding/plateforme", "https://mon-stock-git-branche.vercel.app"));
+    expect(location(res).toString()).toBe(`${APP}/onboarding/plateforme?error=wrong_host`);
+    expect(inserted.rows).toEqual([]);
+  });
+
+  it("démarrage réussi : page de retour enregistrée dans l'état (serveur) et dans un cookie httpOnly", async () => {
+    configureApp("Mon-Stock-PRD-web");
+    const res = await POST(connectWith("/onboarding/plateforme"));
+    expect(location(res).host).toBe("auth.ebay.com");
+    expect(inserted.rows[0]).toMatchObject({ redirect_to: "/onboarding/plateforme" });
+    const cookies = res.headers.getSetCookie().join("\n");
+    expect(cookies).toMatch(/ebay_oauth_return=%2Fonboarding%2Fplateforme|ebay_oauth_return=\/onboarding\/plateforme/);
+    expect(cookies).toMatch(/ebay_oauth_return=[^;]*;[^\n]*HttpOnly/i);
+  });
+
+  it("valeur hors liste blanche (URL externe) : ignorée, retour historique, cookie de retour effacé", async () => {
+    configureApp(null);
+    expect(location(await POST(connectWith("https://evil.example/phish"))).toString()).toBe(`${APP}/settings/integrations?error=web_runame_missing`);
+    configureApp("Mon-Stock-PRD-web");
+    const res = await POST(connectWith("//evil.example"));
+    expect(inserted.rows[0]).toMatchObject({ redirect_to: "/settings/integrations/ebay/setup" });
+    expect(res.headers.getSetCookie().join("\n")).toMatch(/ebay_oauth_return=;[^\n]*Max-Age=0/i);
+  });
+
+  it("non connecté : la connexion renvoie ensuite vers la page du parcours", async () => {
+    configureApp("Mon-Stock-PRD-web");
+    auth.ctx = null;
+    const loc = location(await POST(connectWith("/onboarding/plateforme")));
+    expect(loc.pathname).toBe("/login");
+    expect(loc.searchParams.get("next")).toBe("/onboarding/plateforme");
+  });
+
+  it("callback : refus chez eBay → page du cookie de retour (revalidée) ; cookie forgé → intégrations", async () => {
+    const ok = await callback.GET(new NextRequest(`${APP}/api/integrations/ebay/callback?error=access_denied`, { headers: { cookie: "ebay_oauth_return=/onboarding/plateforme" } }));
+    expect(location(ok).toString()).toBe(`${APP}/onboarding/plateforme?error=access_denied`);
+    expect(ok.headers.getSetCookie().join("\n")).toMatch(/ebay_oauth_return=;/);
+    const forged = await callback.GET(new NextRequest(`${APP}/api/integrations/ebay/callback?error=access_denied`, { headers: { cookie: "ebay_oauth_return=https://evil.example" } }));
+    expect(location(forged).toString()).toBe(`${APP}/settings/integrations?error=access_denied`);
+  });
+
+  it("callback : après consommation, l'état en base fait foi (le cookie ne peut pas détourner)", async () => {
+    configureApp("Mon-Stock-PRD-web");
+    const state = "u".repeat(64);
+    inserted.stateRow = { state, organization_id: "o1", created_by: "u1", redirect_to: "/onboarding/plateforme", expires_at: new Date(Date.now() + 60_000).toISOString() };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 }));
+    const res = await callback.GET(new NextRequest(`${APP}/api/integrations/ebay/callback?code=c&state=${state}`, { headers: { cookie: `ebay_oauth_state=${state}` } }));
+    expect(location(res).toString()).toBe(`${APP}/onboarding/plateforme?error=exchange_denied`);
+    inserted.stateRow = { state, organization_id: "o1", created_by: "u1", redirect_to: "/settings/integrations/ebay/setup", expires_at: new Date(Date.now() + 60_000).toISOString() };
+    const res2 = await callback.GET(new NextRequest(`${APP}/api/integrations/ebay/callback?code=c&state=${state}`, { headers: { cookie: `ebay_oauth_state=${state}; ebay_oauth_return=/onboarding/plateforme` } }));
+    expect(location(res2).toString()).toBe(`${APP}/settings/integrations?error=exchange_denied`);
+    fetchSpy.mockRestore();
+  });
+});

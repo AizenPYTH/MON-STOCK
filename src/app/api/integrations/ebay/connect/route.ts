@@ -6,6 +6,7 @@ import { randomToken } from "@/lib/crypto";
 import { createLogger } from "@/lib/logger";
 import { ebayWebConnect, isCanonicalOrigin, publicRequestOrigin } from "@/features/integrations/ebay-web";
 import { buildOAuthState, isCrossSiteRequest, OAUTH_STATE_COOKIE, OAUTH_STATE_COOKIE_PATH, OAUTH_STATE_TTL_SECONDS, type OAuthErrorCode } from "@/features/integrations/oauth-flow";
+import { DEFAULT_OAUTH_RETURN, OAUTH_RETURN_COOKIE, OAUTH_RETURN_FIELD, oauthErrorTarget, resolveOAuthReturn, stateRedirectFor, type OAuthReturnPath } from "@/features/integrations/oauth-return";
 
 const log = createLogger("EBAY_OAUTH");
 
@@ -18,20 +19,25 @@ const log = createLogger("EBAY_OAUTH");
  * lecture supplémentaires : finances, trafic, marketing), mémorisé dans l'état OAuth.
  * W-06 : RuName web dédié (EBAY_WEB_RU_NAME) exigé, jamais celui du relais iPhone.
  * W-29 : démarrage refusé hors du domaine canonique (NEXT_PUBLIC_APP_URL), renvoi vers celui-ci.
+ * Champ facultatif `return_to` : page de retour (liste blanche exacte, voir oauth-return.ts), par
+ * exemple `/onboarding/plateforme` pour le parcours d'inscription. Toute autre valeur est ignorée.
  */
-async function wantsExtended(request: NextRequest): Promise<boolean> {
+async function readConnectForm(request: NextRequest): Promise<{ extended: boolean; returnTo: OAuthReturnPath }> {
   try {
     const form = await request.formData();
-    return form.get("extended") === "1";
+    return { extended: form.get("extended") === "1", returnTo: resolveOAuthReturn(form.get(OAUTH_RETURN_FIELD)) };
   } catch {
-    return false; // pas de corps de formulaire : connexion standard
+    // pas de corps de formulaire : connexion standard, retour vers les intégrations
+    return { extended: false, returnTo: DEFAULT_OAUTH_RETURN };
   }
 }
 
 async function handle(request: NextRequest): Promise<NextResponse> {
   const origin = publicEnv().NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-  // 303 : le navigateur suit la redirection en GET (jamais un nouveau POST).
-  const back = (code: OAuthErrorCode) => NextResponse.redirect(`${origin}/settings/integrations?error=${code}`, { status: 303 });
+  const { extended, returnTo } = await readConnectForm(request);
+  // 303 : le navigateur suit la redirection en GET (jamais un nouveau POST). Toujours vers l'origine
+  // canonique et un chemin de la liste blanche.
+  const back = (code: OAuthErrorCode) => NextResponse.redirect(`${origin}${oauthErrorTarget(returnTo, code)}`, { status: 303 });
 
   const requestOrigin = publicRequestOrigin(request.headers, request.nextUrl);
   if (isCrossSiteRequest(request.headers, [origin, request.nextUrl.origin, requestOrigin])) {
@@ -47,7 +53,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
 
   const ctx = await getOrgContext();
   if (!ctx) {
-    return NextResponse.redirect(`${origin}/login?next=${encodeURIComponent("/settings/integrations")}`, { status: 303 });
+    return NextResponse.redirect(`${origin}/login?next=${encodeURIComponent(returnTo)}`, { status: 303 });
   }
   if (!isAdmin(ctx.role)) return back("not_admin");
 
@@ -55,7 +61,6 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   if (web.status !== "ready") return back(web.status);
   const connector = web.connector;
 
-  const extended = await wantsExtended(request);
   const state = buildOAuthState(randomToken(32), extended);
   const admin = createAdminSupabaseClient();
   // Ménage opportuniste des états expirés (jamais consommés).
@@ -65,7 +70,8 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     organization_id: ctx.organization.id,
     provider: "ebay",
     created_by: ctx.user.id,
-    redirect_to: "/settings/integrations/ebay/setup",
+    // Page de retour retenue CÔTÉ SERVEUR (source de vérité du callback après consommation de l'état).
+    redirect_to: stateRedirectFor(returnTo),
     expires_at: new Date(Date.now() + OAUTH_STATE_TTL_SECONDS * 1000).toISOString(),
   });
   if (error) {
@@ -73,11 +79,20 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     return back("state_failed");
   }
 
-  log.info("redirection vers eBay", { orgId: ctx.organization.id, userId: ctx.user.id, environment: connector.config()?.environment, extended });
+  log.info("redirection vers eBay", { orgId: ctx.organization.id, userId: ctx.user.id, environment: connector.config()?.environment, extended, returnTo });
   const response = NextResponse.redirect(connector.getAuthorizeUrl(state, { extended }), { status: 303 });
   // L'état est aussi lié au navigateur qui a démarré le flux (cookie httpOnly, 15 min) : le callback
   // exige la correspondance cookie ↔ state, ce qu'un tiers ne peut pas forger.
   response.cookies.set(OAUTH_STATE_COOKIE, state, { httpOnly: true, sameSite: "lax", secure: origin.startsWith("https://"), path: OAUTH_STATE_COOKIE_PATH, maxAge: OAUTH_STATE_TTL_SECONDS });
+  // Page de retour des échecs survenus avant la lecture de l'état (refus chez eBay…) : posée hors du
+  // retour par défaut, effacée sinon (un flux précédent ne doit pas déteindre), revalidée au callback.
+  response.cookies.set(OAUTH_RETURN_COOKIE, returnTo === DEFAULT_OAUTH_RETURN ? "" : returnTo, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: origin.startsWith("https://"),
+    path: OAUTH_STATE_COOKIE_PATH,
+    maxAge: returnTo === DEFAULT_OAUTH_RETURN ? 0 : OAUTH_STATE_TTL_SECONDS,
+  });
   return response;
 }
 

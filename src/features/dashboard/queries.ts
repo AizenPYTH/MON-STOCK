@@ -96,6 +96,8 @@ export interface TodayDashboard {
   recentSales: RecentSaleView[];
   radar: { opportunities: RadarItemDTO[]; provisional: boolean; missingSettings: string[] } | null;
   setup: SetupStep[];
+  /** Premiers pas (checklist de l'entrée du tableau de bord) : null = lecture en échec, inconnu. */
+  firstSteps: { ebayConnected: boolean | null; catalogImported: boolean | null; hasProducts: boolean };
   /** faux tant que le nombre de commandes est inconnu (jamais « vide » par défaut) */
   isEmpty: boolean;
   /** sources secondaires indisponibles (bloc masqué) */
@@ -253,9 +255,10 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
 
   // --- bien démarrer ---
   const hasSupplier = resolveHasSupplier(accounts, counts.suppliersCount);
+  const ebayConnected = channels.some((c) => c.provider === "ebay" && c.state === "connected");
   const setup = setupSteps({
     hasProducts: stock.totals.skus > 0,
-    hasChannel: channels.some((c) => c.provider === "ebay" && c.state === "connected"),
+    hasChannel: ebayConnected,
     hasSupplier,
     hasCosts: radar ? radar.missingSettings.length === 0 : null,
   });
@@ -292,6 +295,11 @@ export async function getTodayDashboard(ctx: OrgContext): Promise<TodayDashboard
     recentSales,
     radar: radar ? { opportunities, provisional: opportunities.some((o) => o.evaluation.status === "estimated"), missingSettings: radar.missingSettings } : null,
     setup,
+    firstSteps: {
+      ebayConnected: connectionsRes.error ? null : ebayConnected,
+      catalogImported: jobs === null ? null : jobs.some((j) => j.status === "completed" || j.status === "partial"),
+      hasProducts: stock.totals.skus > 0,
+    },
     isEmpty: isEmptyWorkspace(stock.totals.skus, counts.ordersTotal),
     unavailable,
   };

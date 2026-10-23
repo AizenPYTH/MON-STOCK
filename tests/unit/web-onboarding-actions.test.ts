@@ -4,7 +4,9 @@
  *   l'action n'a pas d'en-tête `x-action-revalidated` et le routeur client peut réafficher
  *   l'onboarding à partir de son cache) ;
  * - une création répétée rapidement (même nom, même utilisateur) ouvre l'organisation existante
- *   au lieu d'en créer une seconde.
+ *   au lieu d'en créer une seconde ;
+ * - parcours v2 : une organisation RÉELLE mène au choix de plateforme (`/onboarding/plateforme`),
+ *   une démonstration (données fictives) au tableau de bord.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -101,11 +103,11 @@ beforeEach(() => {
 });
 
 describe("createOrganizationAction (W-01)", () => {
-  it("revalide le layout racine AVANT de rediriger vers le tableau de bord", async () => {
+  it("revalide le layout racine AVANT de rediriger vers l'étape « plateforme » du parcours", async () => {
     const to = await run(createOrganizationAction(null, form({ name: "Ma Boutique", country: "FR", default_currency: "EUR" })));
-    expect(to).toBe("/dashboard");
+    expect(to).toBe("/onboarding/plateforme");
     const revalidate = state.events.indexOf("revalidate:/:layout");
-    const redirect = state.events.indexOf("redirect:/dashboard");
+    const redirect = state.events.indexOf("redirect:/onboarding/plateforme");
     expect(revalidate).toBeGreaterThan(-1);
     expect(revalidate).toBeLessThan(redirect);
     expect(state.events.indexOf("rpc:create")).toBeLessThan(revalidate);
@@ -124,9 +126,9 @@ describe("createOrganizationAction (W-01)", () => {
   it("répétition rapprochée du même nom : aucune seconde création, l'organisation existante est ouverte", async () => {
     state.recent = [{ id: OLD_ORG, name: "  ma   BOUTIQUE ", created_at: new Date().toISOString(), is_demo: false, created_by: ME }];
     const to = await run(createOrganizationAction(null, form({ name: "Ma Boutique" })));
-    expect(to).toBe("/dashboard");
+    expect(to).toBe("/onboarding/plateforme");
     expect(state.rpcCalls).toHaveLength(0);
-    expect(state.events).toEqual([`profile:${OLD_ORG}`, "revalidate:/:layout", "redirect:/dashboard"]);
+    expect(state.events).toEqual([`profile:${OLD_ORG}`, "revalidate:/:layout", "redirect:/onboarding/plateforme"]);
   });
 
   it("autre nom (ou création ancienne) : nouvelle organisation créée", async () => {
@@ -137,7 +139,7 @@ describe("createOrganizationAction (W-01)", () => {
 
   it("lecture du garde-fou en échec : la création n'est pas bloquée", async () => {
     state.recentError = { message: "boom" };
-    expect(await run(createOrganizationAction(null, form({ name: "Ma Boutique" })))).toBe("/dashboard");
+    expect(await run(createOrganizationAction(null, form({ name: "Ma Boutique" })))).toBe("/onboarding/plateforme");
     expect(state.rpcCalls).toHaveLength(1);
   });
 
@@ -149,7 +151,7 @@ describe("createOrganizationAction (W-01)", () => {
 });
 
 describe("createDemoOrganizationAction (W-01)", () => {
-  it("seed puis revalidation puis redirection", async () => {
+  it("seed puis revalidation puis redirection vers le tableau de bord (pas d'étape plateforme pour une démo)", async () => {
     expect(await run(createDemoOrganizationAction(null, new FormData()))).toBe("/dashboard");
     expect(state.events.slice(-3)).toEqual(["seed", "revalidate:/:layout", "redirect:/dashboard"]);
   });

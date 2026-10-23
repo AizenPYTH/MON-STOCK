@@ -597,3 +597,115 @@ html[data-scroll-locked] {
     content: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Site public et parcours (docs/design/HANDOFF-v2-site-parcours.md) — AJOUTS uniquement.
+   Palette marketing fixe (indépendante du thème de l'app) : papier chaud et ses filets,
+   accent typographique Instrument Serif italique (chargé dans app/layout.tsx).
+--------------------------------------------------------------------------- */
+:root {
+  --paper-marketing: #f3f2ee; /* papier chaud (l'app garde #F2F4F7) */
+  --paper-marketing-line: #e1dfd7; /* bordures sur papier chaud */
+  --paper-marketing-rule: #eeede7; /* filet intérieur */
+  --paper-marketing-rule-strong: #dad8d0; /* filet appuyé */
+}
+
+@theme inline {
+  --font-serif: var(--font-instrument-serif), ui-serif, Georgia, "Times New Roman", serif;
+  --color-paper-marketing: var(--paper-marketing);
+  --color-paper-marketing-line: var(--paper-marketing-line);
+  --color-paper-marketing-rule: var(--paper-marketing-rule);
+  --color-paper-marketing-rule-strong: var(--paper-marketing-rule-strong);
+}
+
+/* Entrées (hero, parcours) : uniquement transform et opacity. */
+@keyframes mk-rise {
+  from { opacity: 0; transform: translateY(34px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mk-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes mk-window-in {
+  from { opacity: 0; transform: translateY(90px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mk-screen-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+/* Point du dock : descend le long du trait de 34 px (la vente arrive d'eBay). */
+@keyframes mk-dock-dot {
+  0% { opacity: 0; transform: translateY(0); }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(var(--mk-dot-travel, 34px)); }
+}
+/* Point voyageur du câble eBay (panneau de brassage, ports) : de gauche à droite. */
+@keyframes mk-cable-dot {
+  0% { opacity: 0; transform: translateX(0); }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(var(--mk-cable-travel, 100%)); }
+}
+/* Bandeau défilant (contenu dupliqué : −50 % = une boucle). */
+@keyframes mk-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+/* Succès / erreur (parcours) : coche qui apparaît, champ qui tremble. */
+@keyframes mk-pop {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mk-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+@keyframes mk-flash {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes mk-timebar {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.mk-rise { animation: mk-rise 1100ms var(--ease-instrument) both; }
+.mk-fade-in { animation: mk-fade-in 900ms var(--ease-instrument) both; }
+.mk-screen-in { animation: mk-screen-in 500ms var(--ease-instrument) both; }
+.mk-pop { animation: mk-pop 500ms var(--ease-instrument) both; }
+.mk-shake { animation: mk-shake 400ms var(--ease-standard) both; }
+
+/* Champ de barres (<BarcodeField>) : croissance depuis le bas, retard selon la distance à l'origine. */
+.mk-field { height: var(--mk-fh-m, var(--mk-fh)); }
+@media (min-width: 760px) {
+  .mk-field { height: var(--mk-fh); }
+}
+.mk-field-bar {
+  transform-origin: bottom;
+  animation: ms-grow-y var(--mk-grow-ms, 1100ms) var(--ease-instrument) both;
+  animation-delay: calc(var(--mk-grow-delay, 300ms) + var(--mk-grow-step, 14ms) * var(--mk-dist, 0));
+}
+
+/* Révélations au défilement (<RevealObserver>) : data-r (fondu + montée), data-g (barre verticale),
+   data-gx (barre horizontale). Masquées seulement une fois l'observateur actif (sans JS : visibles). */
+:root[data-mk-reveal] [data-r]:not(.in) { opacity: 0; transform: translateY(28px); }
+[data-r].in { transition: opacity 900ms var(--ease-instrument) var(--d, 0ms), transform 900ms var(--ease-instrument) var(--d, 0ms); }
+[data-g] { transform-origin: bottom; }
+:root[data-mk-reveal] [data-g]:not(.in) { transform: scaleY(0); }
+[data-g].in { transition: transform 800ms var(--ease-instrument) var(--d, 0ms); }
+[data-gx] { transform-origin: left; }
+:root[data-mk-reveal] [data-gx]:not(.in) { transform: scaleX(0); }
+[data-gx].in { transition: transform 1000ms var(--ease-instrument) var(--d, 0ms); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-mk-reveal] [data-r]:not(.in),
+  :root[data-mk-reveal] [data-g]:not(.in),
+  :root[data-mk-reveal] [data-gx]:not(.in) { opacity: 1; transform: none; }
+  /* Boucles décoratives (points voyageurs, bandeau) : masquées ou figées. */
+  .mk-loop { animation: none !important; }
+  .mk-loop-hide { display: none !important; }
+}
