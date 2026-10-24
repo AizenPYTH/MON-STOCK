@@ -67,7 +67,7 @@ test.describe("accueil à 1440 × 900", () => {
 });
 
 test.describe("accueil, réduire les animations", () => {
-  test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+  test.use({ viewport: { width: 1440, height: 900 }, contextOptions: { reducedMotion: "reduce" } });
 
   test("contenu immédiat, aucune boucle, avant/après statique", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
