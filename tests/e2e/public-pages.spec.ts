@@ -10,9 +10,9 @@ const PAGES = [
   { slug: "conditions", url: "/conditions", heading: "Conditions d'utilisation" },
   { slug: "mentions-legales", url: "/mentions-legales", heading: "Mentions légales" },
   { slug: "support", url: "/support", heading: "Support" },
-  { slug: "login", url: "/login", heading: "Connexion" },
-  { slug: "signup", url: "/signup", heading: "Créer un compte" },
-  { slug: "reset-password", url: "/reset-password", heading: /mot de passe/i },
+  { slug: "login", url: "/login", heading: /Retrouvez votre stock/ },
+  { slug: "signup", url: "/signup", heading: /Un compte\. Un seul stock/ },
+  { slug: "reset-password", url: "/reset-password", heading: /Un lien, et c.est reparti/ },
   { slug: "invite", url: "/invite/jeton-de-test", heading: "Rejoindre une organisation" },
   // /auth/* est public (proxy) et n'a pas de page : la 404 globale s'affiche.
   { slug: "404", url: "/auth/page-inexistante", heading: "Page introuvable", status: 404 },

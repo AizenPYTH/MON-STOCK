@@ -30,8 +30,8 @@ test.describe("accueil : contenus et statuts", () => {
 
     // 0 image, police serif servie par le site.
     await expect(page.locator("main img")).toHaveCount(0);
-    const fontHosts = await page.evaluate(() => performance.getEntriesByType("resource").filter((e) => /\.woff2?($|\?)/.test(e.name)).map((e) => new URL(e.name).host));
-    expect(fontHosts.every((h) => h === location.host)).toBe(true);
+    const foreignFonts = await page.evaluate(() => performance.getEntriesByType("resource").filter((e) => /\.woff2?($|\?)/.test(e.name) && new URL(e.name).host !== location.host).length);
+    expect(foreignFonts).toBe(0);
   });
 });
 
@@ -50,7 +50,7 @@ test.describe("accueil à 1440 × 900", () => {
     await inView(page.getByRole("heading", { level: 1 }));
     await inView(page.getByText("Vos références, vos quantités", { exact: false }));
     await inView(page.locator("#hero-titre ~ div a", { hasText: "Créer un compte" }).first());
-    await inView(page.getByRole("list", { name: "Canaux" }));
+    await inView(page.getByRole("list", { name: "Canaux", exact: true }));
     await inView(page.locator("figure").first().locator("span.tabular-nums").first());
   });
 
@@ -91,7 +91,7 @@ test.describe("accueil à 390 px", () => {
   test("pas de défilement horizontal ; dock réduit à eBay ; feuille de menu ; cibles ≥ 44 px", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-    const dock = page.getByRole("list", { name: "Canaux" });
+    const dock = page.getByRole("list", { name: "Canaux", exact: true });
     await expect(dock.locator("li:visible")).toHaveCount(1);
     await expect(dock).toContainText("eBay");
 

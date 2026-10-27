@@ -66,11 +66,11 @@ export function AuthShell({
       <main id="contenu" className="relative z-10 -mt-7 flex flex-1 flex-col rounded-t-[28px] bg-paper-marketing text-foreground">
         <div className={cn("mx-auto w-full px-[18px] pb-20 pt-9 sm:px-8 sm:pt-12 xl:px-14", width === "wide" ? "max-w-[944px]" : ports ? "max-w-[1240px]" : "max-w-[524px] xl:max-w-[572px]")}>
           {ports ? (
-            <div className="grid items-start gap-12 min-[1100px]:grid-cols-[minmax(0,1fr)_460px] min-[1100px]:gap-14">
+            <div className="grid grid-cols-1 items-start gap-12 min-[1100px]:grid-cols-[minmax(0,1fr)_460px] min-[1100px]:gap-14">
               <div className="hidden min-[1100px]:block">
                 <PortsPanel />
               </div>
-              <div className="mx-auto w-full max-w-[460px] min-[1100px]:mx-0">{children}</div>
+              <div className="mx-auto w-full min-w-0 max-w-[460px] min-[1100px]:mx-0">{children}</div>
             </div>
           ) : (
             children
